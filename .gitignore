@@ -17,3 +17,9 @@ rust/target/
 # Tool caches
 .cxx/
 .kotlin/
+
+# Private migration bundles and exported databases
+*ladies-export*.zip
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

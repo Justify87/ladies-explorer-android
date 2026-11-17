@@ -41,7 +41,7 @@ private enum class Tab(val title: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LadiesApp(viewModel: MainViewModel) {
+fun LadiesApp(viewModel: MainViewModel, onPickLegacyBundle: () -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val tabs = Tab.entries
@@ -87,7 +87,7 @@ fun LadiesApp(viewModel: MainViewModel) {
                 Tab.Settings -> {
                     Text("Lokale Datenbasis", style = MaterialTheme.typography.headlineMedium)
                     Text(
-                        "Personen, Quellenprofile und Inserate werden in einer Rust-eigenen SQLite-Datenbank verwaltet.",
+                        "Personen, Quellenprofile und Inserate werden in der Rust-eigenen SQLite-Datenbank verwaltet.",
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     if (state.loading) CircularProgressIndicator()
@@ -101,6 +101,24 @@ fun LadiesApp(viewModel: MainViewModel) {
                     }
                     Button(enabled = !state.loading, onClick = viewModel::refresh) {
                         Text("Datenbankstatus aktualisieren")
+                    }
+                    Button(enabled = !state.loading, onClick = onPickLegacyBundle) {
+                        Text("Web-App-Datenarchiv importieren")
+                    }
+                    Text(
+                        "Das ZIP muss mit tools/export-legacy.sh aus dem bisherigen Web-App-Datenordner erstellt worden sein. Ein Import in eine bereits befüllte Datenbank wird abgelehnt.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    state.lastImport?.let { report ->
+                        Text("Import abgeschlossen", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Personen: " + report.persons +
+                                " · Quellenprofile: " + report.sourceProfiles +
+                                " · Inserate: " + report.listings +
+                                " · Gespeicherte Suchen: " + report.savedSearches +
+                                " · Manuelle Preislisten: " + report.manualPriceLists +
+                                " · Mediendateien: " + report.mediaFiles,
+                        )
                     }
                 }
             }

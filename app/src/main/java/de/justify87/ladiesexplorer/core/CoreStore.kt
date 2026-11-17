@@ -6,11 +6,12 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * The application has one Rust-owned database. Kotlin uses generated UniFFI types
- * and never opens SQLite directly or blocks the UI thread.
+ * Android access point to generated UniFFI bindings. Rust owns the local database,
+ * its import transaction and the archived media files.
  */
 class CoreStore(context: Context) {
-    private val database = File(context.filesDir, "ladies.sqlite")
+    private val appFiles = context.filesDir
+    private val database = File(appFiles, "ladies.sqlite")
     private val engine: LadiesCore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         LadiesCore(database.absolutePath)
     }
@@ -32,5 +33,9 @@ class CoreStore(context: Context) {
 
     suspend fun setFavorite(personId: Long, favorite: Boolean) = withContext(Dispatchers.IO) {
         engine.setFavorite(personId, favorite)
+    }
+
+    suspend fun importLegacyBundle(file: File): ImportReport = withContext(Dispatchers.IO) {
+        engine.importLegacyBundle(file.absolutePath, appFiles.absolutePath)
     }
 }
