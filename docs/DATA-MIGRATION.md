@@ -2,9 +2,9 @@
 
 ## Reference and scope
 
-Source reference: Justify87/ladies-webapp @ \`9c514af6ce3659089807fefd4ed5040599975a5a\`
-(2026-10-16), particularly \`ladies/models.py\`, \`ladies/core/repositories/persons.py\`,
-\`search.py\`, and \`person_identity.py\`.
+Source reference: Justify87/ladies-webapp @ `9c514af6ce3659089807fefd4ed5040599975a5a`
+(2026-10-16), particularly `ladies/models.py`, `ladies/core/repositories/persons.py`,
+`search.py`, `person_identity.py`, and `ladies/core/repositories/saved_searches.py`.
 
 This milestone does **not** copy SQLAlchemy, Flask, Python scraping, Messenger,
 WhatsApp synchronization, OCR, price extraction or any user data to Android.
@@ -14,9 +14,9 @@ WhatsApp synchronization, OCR, price extraction or any user data to Android.
 - **Person** is the canonical user-facing identity. Several listings and
   external source profiles can belong to one person.
 - **SourceProfile** represents one identity on an external source. Its
-  \`(source, external_profile_id)\` must not be reassigned silently.
+  `(source, external_profile_id)` must not be reassigned silently.
 - **Listing** represents a unique advertisement on a source. Its
-  \`(source, external_listing_id)\` must not be reassigned silently.
+  `(source, external_listing_id)` must not be reassigned silently.
 - A repeated name, telephone number or image resemblance **does not**
   automatically merge persons. Merge/split algorithms require a separate,
   test-backed identity milestone.
@@ -25,7 +25,7 @@ WhatsApp synchronization, OCR, price extraction or any user data to Android.
 - **ListingSnapshot**, **SnapshotValue**, **SnapshotMedia** and **ChangeEvent**
   are append-only domain history structures; this milestone defines their
   storage, but does not yet implement capture/extraction.
-- \`media_assets\` is content-addressed by SHA-256; \`media_sources\` carries
+- `media_assets` is content-addressed by SHA-256; `media_sources` carries
   remote origin metadata. Actual download/archive behavior comes later.
 
 ## Schema mapping
@@ -40,7 +40,8 @@ WhatsApp synchronization, OCR, price extraction or any user data to Android.
 | ListingSnapshot / SnapshotValue | listing_snapshots / snapshot_values | Created |
 | MediaAsset / MediaSource / SnapshotMedia | media_assets / media_sources / snapshot_media | Created |
 | SearchRun / SearchResult / ListingObservation | search_runs / search_results / listing_observations | Created |
-| Saved searches | saved_searches | Created; UI/serialization later |
+| SavedSearchRecord | saved_searches | String IDs, definition versions, notification/delta state |
+| SavedSearchResultRecord | saved_search_results | Historical results, visibility and first/last seen |
 | ChangeEvent | change_events | Created |
 | IdentityEvidence / IdentityEvent | identity_evidence / identity_events | Created |
 | Encounter / EncounterService | encounters / encounter_services | Created |
@@ -57,18 +58,33 @@ tables, preserving foreign keys, evidence, historical records and media.
 
 ## Migration and safety semantics
 
-- SQLite schema version is \`PRAGMA user_version = 1\`.
+- SQLite schema version is `PRAGMA user_version = 1`. The separate Android
+  `PRAGMA application_id` is `0x4C445850` (LDXP). The former web-app database
+  also uses `user_version = 1`; it must never be opened as the new schema.
 - Migration runs transactionally on the **Rust side** before exposing the store.
-- A new DB installs the version 1 schema in one transaction.
-- The obsolete \`scaffold_notes\` technical-demo table is dropped within the
+- A new DB installs the version 1 schema in one transaction, recording both
+  the application ID and the schema version. On all subsequent opens, the Rust
+  core verifies the complete SQLite tables/indexes/triggers signature against
+  the canonical v1 definition, even when the version number already matches.
+- The obsolete `scaffold_notes` technical-demo table is dropped within the
   migration transaction; real people or history are never implicitly deleted.
-- Unknown unversioned tables or future schema versions cause a typed error,
-  not silent replacement or destructive recreation.
-- \`PRAGMA foreign_keys=ON\` is enabled for every new connection.
-- The database is stored privately in \`filesDir/ladies.sqlite\`.
+- Unknown unversioned tables, foreign application IDs, mismatched v1 schemas
+  and future schema versions cause typed errors, not silent replacement or
+  destructive recreation. Only an empty DB or the exact old technical
+  `scaffold_notes` demo shape can be upgraded automatically.
+- `PRAGMA foreign_keys=ON` is enabled for every new connection.
+- The database is stored privately in `filesDir/ladies.sqlite`.
 - Public write operations use SQLite parameters and transactions.
+- A person INSERT creates its user-state row via a database trigger, regardless
+  of whether Kotlin/UniFFI or a future importer inserted it.
+- SQLite triggers forbid linking a listing to a source profile belonging to a
+  different person or source, including direct INSERT/UPDATE from an importer.
+- Seeing a source profile or listing updates the canonical person's last-seen
+  timestamp; listing events also update the attached source profile.
+- The people feed exposes keyset pagination (`last_seen_at`, `person_id`) with
+  explicit 1–100 page-size validation and deterministic tie-breaking.
 - The SQLite connection is shared behind a Rust Mutex; Kotlin invokes the
-  generated bindings from \`Dispatchers.IO\`.
+  generated bindings from `Dispatchers.IO`.
 
 ## Evidence and tests
 
@@ -76,14 +92,19 @@ Unit tests exercise new DB creation, repeat migration, upgrade from the demo
 scaffold, unknown-schema rejection, foreign-key enforcement, successful
 person/profile/listing round trips, duplicate idempotency, refusal to
 reassign identities, non-merge of distinct people, input validation and
-reopening the persisted DB.
+reopening the persisted DB. Additional tests cover legacy v1 rejection and
+preservation, same-version schema drift, saved-search string IDs and result
+history, direct SQLite cross-source/person writes, activity time updates,
+and paging across more than 100 people with identical timestamps.
 
-CI runs \`cargo fmt --all -- --check\`, \`cargo test --workspace\` and an
+CI runs `cargo fmt --all -- --check`, `cargo test --workspace` and an
 ARM64 Android APK build with the Artefact-aligned Gradle + UniFFI toolchain.
 
 ## Subsequent milestones
 
 1. Archive exporter/importer and verified reference fixtures from the web app.
+   The importer must explicitly validate referential integrity and transfer
+   saved-search definitions, result histories, and their timestamps/state.
 2. Rust HTTP search and page extraction, preserving source-specific behavior.
 3. Snapshot/change history, media archive, explicit identity evidence and matching.
 4. Compose profile views, discovery swipe deck, filters and MapLibre UI.

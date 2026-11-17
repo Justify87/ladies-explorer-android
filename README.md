@@ -23,7 +23,7 @@ There is no embedded Python, Flask, Node.js, messaging client or price-extractio
 - Three native placeholder tabs: Entdecken, Suche and Einstellungen.
 - Material 3 theme with Android dynamic colors.
 - Settings tab shows the Rust-owned database schema version and domain counts.
-- Rust unit tests verify versioned migrations, source/listing uniqueness, foreign keys and persistence.
+- Rust unit tests verify schema identity, versioned migrations, saved-search history, source/listing uniqueness, foreign keys, paging and persistence.
 - Debug and release build variants; debug installs under a separate application ID.
 - GitHub Actions checks Rust tests and assembles the arm64 debug APK.
 
@@ -59,7 +59,7 @@ Do not claim installation on a physical device until it has actually been tested
 
 ## What comes next
 
-Search and profile extraction, SQLite schema migration, media archiving, person
+Search and profile extraction, archive import, media archiving, person
 identity/history, swipe discovery and MapLibre will be implemented separately.
 WhatsApp is an external-open button only; integrated messaging and AI price
 extraction are explicitly excluded.
