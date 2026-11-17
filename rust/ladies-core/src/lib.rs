@@ -203,18 +203,20 @@ impl LadiesCore {
         let tx = db.transaction()?;
         ensure_person(&tx, person_id)?;
         if let Some(profile_id) = source_profile_id {
-            let owner: Option<i64> = tx
+            let owner: Option<(i64, String)> = tx
                 .query_row(
-                    "SELECT person_id FROM source_profiles WHERE source_profile_id = ?1",
+                    "SELECT person_id, source FROM source_profiles WHERE source_profile_id = ?1",
                     params![profile_id],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .optional()?;
             match owner {
                 None => return Err(CoreError::SourceProfileNotFound(profile_id)),
-                Some(owner_id) if owner_id != person_id => {
+                Some((owner_id, profile_source))
+                    if owner_id != person_id || profile_source != source =>
+                {
                     return Err(CoreError::IdentityConflict(
-                        "A listing cannot use a source profile belonging to another person".into(),
+                        "A listing must use a source profile of the same person and source".into(),
                     ));
                 }
                 _ => {}
