@@ -2,6 +2,7 @@
 //! A person is distinct from its source profiles and individual listings.
 
 mod schema;
+mod legacy_import;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -26,6 +27,8 @@ pub enum CoreError {
     InvalidInput(String),
     #[error("Unsupported local database schema version {0}")]
     UnsupportedSchema(u32),
+    #[error("Legacy import failed: {0}")]
+    Import(String),
     #[error("Incompatible local database schema: {0}")]
     SchemaMismatch(String),
 }
@@ -97,6 +100,16 @@ pub struct PersonPage {
 
 type RawPerson = (i64, Option<String>, String, i64, u32, String);
 
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ImportReport {
+    pub persons: u32,
+    pub listings: u32,
+    pub source_profiles: u32,
+    pub saved_searches: u32,
+    pub manual_price_lists: u32,
+    pub media_files: u32,
+}
+
 #[derive(uniffi::Object)]
 pub struct LadiesCore {
     db: Mutex<Connection>,
@@ -116,6 +129,14 @@ impl LadiesCore {
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
         Ok(Arc::new(Self { db: Mutex::new(db) }))
+    }
+
+    pub fn import_legacy_bundle(
+        &self,
+        bundle_path: String,
+        app_files_directory: String,
+    ) -> Result<ImportReport, CoreError> {
+        legacy_import::import_bundle(self, &bundle_path, &app_files_directory)
     }
 
     pub fn status(&self) -> Result<CoreStatus, CoreError> {
