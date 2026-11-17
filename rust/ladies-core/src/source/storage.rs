@@ -714,7 +714,6 @@ mod tests {
         assert_eq!((count, changed), (2, 1));
     }
 
-
     #[test]
     fn reverting_to_historical_snapshot_counts_as_actual_change() {
         let core = core();
@@ -729,13 +728,16 @@ mod tests {
         assert!(!restored.new_snapshot);
         assert_eq!(restored.snapshot_id, original.snapshot_id);
         let db = core.connection().unwrap();
-        let last: (i64, i64, i64) = db.query_row(
-            "SELECT json_extract(details_json,'$.snapshot_changed'),
+        let last: (i64, i64, i64) = db
+            .query_row(
+                "SELECT json_extract(details_json,'$.snapshot_changed'),
                     json_extract(details_json,'$.new_snapshot_created'), snapshot_id
              FROM listing_observations WHERE listing_id=?1 AND source='PROFILE'
              ORDER BY observation_id DESC LIMIT 1",
-            [listing], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
-        ).unwrap();
+                [listing],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
         assert_eq!(last, (1, 0, original.snapshot_id));
     }
 

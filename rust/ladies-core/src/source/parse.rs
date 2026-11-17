@@ -642,7 +642,6 @@ mod tests {
         assert_eq!(profile.media[2].position, 3);
     }
 
-
     #[test]
     fn fallback_video_order_follows_source_not_sorted_url() {
         let html = r#"<h2 class="page-heading kuenstlername">Anna</h2>
