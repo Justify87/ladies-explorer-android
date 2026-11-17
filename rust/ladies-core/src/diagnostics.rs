@@ -118,10 +118,9 @@ impl Diagnostics {
             .state
             .lock()
             .map_err(|_| io::Error::other("Diagnostic journal lock poisoned"))?;
-        let source = self
-            .path
-            .as_ref()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Diagnostic journal is disabled"))?;
+        let source = self.path.as_ref().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "Diagnostic journal is disabled")
+        })?;
         let mut input = File::open(source)?;
         fs::create_dir_all(directory)?;
         let mut temporary = Builder::new()
@@ -153,7 +152,8 @@ mod tests {
         for n in 0..2_800 {
             log.event("HTTP", format!("event={n} {}", "x".repeat(650)));
         }
-        let content = fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
+        let content =
+            fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
         assert!(content.len() < MAX_BYTES + 2048);
         assert!(content.contains("event=2799"));
     }
@@ -166,8 +166,10 @@ mod tests {
         let b = logger(second.path());
         a.event("CORE", "first-only");
         b.event("CORE", "second-only");
-        let content_a = fs::read_to_string(first.path().join("diagnostics/ladies-debug.log")).unwrap();
-        let content_b = fs::read_to_string(second.path().join("diagnostics/ladies-debug.log")).unwrap();
+        let content_a =
+            fs::read_to_string(first.path().join("diagnostics/ladies-debug.log")).unwrap();
+        let content_b =
+            fs::read_to_string(second.path().join("diagnostics/ladies-debug.log")).unwrap();
         assert!(content_a.contains("first-only"));
         assert!(!content_a.contains("second-only"));
         assert!(content_b.contains("second-only"));
@@ -182,7 +184,10 @@ mod tests {
         let (available, _, error) = log.status().unwrap();
         assert!(!available);
         assert!(error.is_some());
-        assert!(log.snapshot(directory.path().join("export").as_path()).is_err());
+        assert!(
+            log.snapshot(directory.path().join("export").as_path())
+                .is_err()
+        );
     }
 
     #[test]

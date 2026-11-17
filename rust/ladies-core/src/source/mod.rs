@@ -3,8 +3,8 @@ mod network;
 mod parse;
 mod storage;
 
-use std::sync::Arc;
 use crate::{CoreError, LadiesCore, diagnostics::Diagnostics};
+use std::sync::Arc;
 
 pub(crate) struct SourceSession(network::SourceHttp);
 
@@ -135,7 +135,8 @@ pub(crate) fn search(
     );
     filter::validate_request(&request)?;
     let downloaded = network::fetch_search(&core.source_session.0, &request).map_err(|error| {
-        core.diagnostics.event("SEARCH", format!("Search fetch failed: {error}"));
+        core.diagnostics
+            .event("SEARCH", format!("Search fetch failed: {error}"));
         error
     })?;
     let saved = storage::save_search(core, &request, downloaded);
@@ -148,7 +149,9 @@ pub(crate) fn search(
                 response.profiles.len()
             ),
         ),
-        Err(error) => core.diagnostics.event("STORAGE", format!("Search save failed: {error}")),
+        Err(error) => core
+            .diagnostics
+            .event("STORAGE", format!("Search save failed: {error}")),
     }
     saved
 }
@@ -157,7 +160,8 @@ pub(crate) fn load_profile(
     core: &LadiesCore,
     listing_id: i64,
 ) -> Result<ProfileResponse, CoreError> {
-    core.diagnostics.event("PROFILE", format!("Profile requested listing={listing_id}"));
+    core.diagnostics
+        .event("PROFILE", format!("Profile requested listing={listing_id}"));
     let (url, advert_id, name, city, category) = storage::listing_target(core, listing_id)?;
     let html = core.source_session.0.get_profile(&url)?;
     let fallback = Card {
@@ -200,7 +204,9 @@ pub(crate) fn load_profile(
                 listing_id, saved.snapshot_id, saved.new_snapshot
             ),
         ),
-        Err(error) => core.diagnostics.event("STORAGE", format!("Profile save failed: {error}")),
+        Err(error) => core
+            .diagnostics
+            .event("STORAGE", format!("Profile save failed: {error}")),
     }
     result
 }

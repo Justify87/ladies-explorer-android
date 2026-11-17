@@ -22,12 +22,18 @@ struct Response {
 
 trait Transport {
     fn get(&self, url: &str) -> Result<Response, CoreError>;
-    fn diagnostics(&self) -> Option<&Diagnostics> { None }
+    fn diagnostics(&self) -> Option<&Diagnostics> {
+        None
+    }
     fn log_event(&self, component: &str, message: impl AsRef<str>) {
-        if let Some(log) = self.diagnostics() { log.event(component, message); }
+        if let Some(log) = self.diagnostics() {
+            log.event(component, message);
+        }
     }
     fn log_html(&self, stage: &str, html: &str) {
-        if let Some(log) = self.diagnostics() { log.html(stage, html); }
+        if let Some(log) = self.diagnostics() {
+            log.html(stage, html);
+        }
     }
     fn wait_between_pages(&self) {}
 }
@@ -60,7 +66,10 @@ impl SourceHttp {
             )
             .build()
             .map_err(|e| CoreError::Source(format!("HTTP initialization failed: {e}")))?;
-        Ok(Self { client, diagnostics })
+        Ok(Self {
+            client,
+            diagnostics,
+        })
     }
 
     pub(super) fn get_profile(&self, url: &str) -> Result<String, CoreError> {
@@ -106,7 +115,8 @@ impl Transport for SourceHttp {
             .header("DNT", "1")
             .send()
             .map_err(|e| {
-                self.diagnostics.event("HTTP", format!("GET failure {url}: {e}"));
+                self.diagnostics
+                    .event("HTTP", format!("GET failure {url}: {e}"));
                 CoreError::Source(format!("Source HTTP request failed: {e}"))
             })?;
         let status = response.status().as_u16();
@@ -261,11 +271,15 @@ fn parse_api(response: Response, logger: Option<&Diagnostics>) -> Result<Option<
         )));
     }
     let payload: Value = serde_json::from_str(&response.body).map_err(|e| {
-        if let Some(log) = logger { log.html("invalid_api_json", &response.body); }
+        if let Some(log) = logger {
+            log.html("invalid_api_json", &response.body);
+        }
         CoreError::Source(format!("Invalid source search API payload: {e}"))
     })?;
     if !payload.is_object() {
-        if let Some(log) = logger { log.html("invalid_api_shape", &response.body); }
+        if let Some(log) = logger {
+            log.html("invalid_api_shape", &response.body);
+        }
         return Err(CoreError::Source(
             "Search API response is not an object".into(),
         ));
@@ -299,7 +313,9 @@ fn append_page(
         .ok_or_else(|| CoreError::Source("Search API page missing HTML content".into()))?;
     let parsed = parse::parse_cards(content);
     if parsed.is_empty() && !content.trim().is_empty() {
-        if let Some(log) = logger { log.html("api_page_unrecognized_cards", content); }
+        if let Some(log) = logger {
+            log.html("api_page_unrecognized_cards", content);
+        }
         return Err(CoreError::Source(format!(
             "Die Folgeseite enthält keine erkennbaren Anzeigenkarten. {}",
             parse::search_page_diagnostics(content)
@@ -460,13 +476,16 @@ fn fetch_search_using<T: Transport>(
             partial = true;
         } else {
             client.wait_between_pages();
-            let probe = parse_api(client.get(&search_url(
-                &city_slug,
-                request.radius_km,
-                2,
-                &filter_path,
-                true,
-            ))?, client.diagnostics())?;
+            let probe = parse_api(
+                client.get(&search_url(
+                    &city_slug,
+                    request.radius_km,
+                    2,
+                    &filter_path,
+                    true,
+                ))?,
+                client.diagnostics(),
+            )?;
             if let Some(payload) = probe {
                 fetched_pages += 1;
                 match payload.get("distanceSearched") {
@@ -500,13 +519,16 @@ fn fetch_search_using<T: Transport>(
     if !boundary_stopped {
         for page in next_page..=total_pages.min(request.max_pages) {
             client.wait_between_pages();
-            let response = parse_api(client.get(&search_url(
-                &city_slug,
-                request.radius_km,
-                page,
-                &filter_path,
-                true,
-            ))?, client.diagnostics())?;
+            let response = parse_api(
+                client.get(&search_url(
+                    &city_slug,
+                    request.radius_km,
+                    page,
+                    &filter_path,
+                    true,
+                ))?,
+                client.diagnostics(),
+            )?;
             let Some(payload) = response else {
                 partial = true;
                 break;

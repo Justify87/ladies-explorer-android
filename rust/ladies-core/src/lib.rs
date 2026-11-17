@@ -167,7 +167,8 @@ impl LadiesCore {
         bundle_path: String,
         app_files_directory: String,
     ) -> Result<ImportReport, CoreError> {
-        self.diagnostics.event("IMPORT", "Legacy data import requested");
+        self.diagnostics
+            .event("IMPORT", "Legacy data import requested");
         let result = legacy_import::import_bundle(self, &bundle_path, &app_files_directory);
         match &result {
             Ok(report) => self.diagnostics.event(
@@ -177,7 +178,9 @@ impl LadiesCore {
                     report.persons, report.listings, report.media_files
                 ),
             ),
-            Err(error) => self.diagnostics.event("IMPORT", format!("Import failed: {error}")),
+            Err(error) => self
+                .diagnostics
+                .event("IMPORT", format!("Import failed: {error}")),
         }
         result
     }
@@ -198,7 +201,10 @@ impl LadiesCore {
         })
     }
 
-    pub fn export_diagnostic_snapshot(&self, export_directory: String) -> Result<String, CoreError> {
+    pub fn export_diagnostic_snapshot(
+        &self,
+        export_directory: String,
+    ) -> Result<String, CoreError> {
         let directory = std::path::Path::new(&export_directory);
         let path = self
             .diagnostics
