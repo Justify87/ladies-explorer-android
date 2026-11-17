@@ -41,7 +41,12 @@ private enum class Tab(val title: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LadiesApp(viewModel: MainViewModel, onPickLegacyBundle: () -> Unit) {
+fun LadiesApp(
+    viewModel: MainViewModel,
+    onPickLegacyBundle: () -> Unit,
+    onSaveDiagnostics: () -> Unit,
+    onShareDiagnostics: () -> Unit,
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val tabs = Tab.entries
@@ -106,6 +111,19 @@ fun LadiesApp(viewModel: MainViewModel, onPickLegacyBundle: () -> Unit) {
                         "Das ZIP muss mit tools/export-legacy.sh aus dem bisherigen Web-App-Datenordner erstellt worden sein. Ein Import in eine bereits befüllte Datenbank wird abgelehnt.",
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    Text("Debug-Protokoll", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "Fehler und HTTP-Antworten werden lokal protokolliert. Bei nicht lesbaren " +
+                            "Seiten enthält das Protokoll einen Ausschnitt des echten HTML. " +
+                            "Es kann personenbezogene Daten enthalten. Bitte nur bewusst teilen.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Button(onClick = onSaveDiagnostics) {
+                        Text("Debug-Log als Datei speichern")
+                    }
+                    Button(onClick = onShareDiagnostics) {
+                        Text("Debug-Log teilen")
+                    }
                     state.lastImport?.let { report ->
                         Text("Import abgeschlossen", style = MaterialTheme.typography.titleMedium)
                         Text(
