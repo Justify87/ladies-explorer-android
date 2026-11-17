@@ -78,6 +78,14 @@ Source HTML may change and must be verified on-device with real pages.
 See [docs/SOURCE-M03.md](docs/SOURCE-M03.md) for behavior, compatibility
 choices, offline tests and what is explicitly deferred to M04/M05.
 
+## Debug log export
+
+The native source service records bounded local diagnostics, including request
+metadata, parser failures, Rust/SQLite outcomes and a limited HTML excerpt when
+parsing fails. Under Settings, choose **Debug-Log als Datei speichern** or
+**Debug-Log teilen** to export the TXT file through Android's system UI.
+See [docs/DEBUG-LOG.md](docs/DEBUG-LOG.md) for details and privacy notes.
+
 ## What comes next
 
 Media archiving, complete profile UI, person
