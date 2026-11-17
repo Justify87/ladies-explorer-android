@@ -600,4 +600,89 @@ mod tests {
         assert_eq!(again.status().unwrap().schema_version, schema::VERSION);
         assert_eq!(again.get_person(id).unwrap().unwrap().favorite, true);
     }
+
+    #[test]
+    fn keyset_pagination_returns_more_than_one_hundred_people_without_duplicates() {
+        let core = memory_core();
+        {
+            let mut db = core.connection().unwrap();
+            let tx = db.transaction().unwrap();
+            for number in 0..235 {
+                tx.execute(
+                    "INSERT INTO persons (display_name, last_seen_at)
+                     VALUES (?1, '2026-01-01T00:00:00.000Z')",
+                    params![format!("Person {number}")],
+                ).unwrap();
+            }
+            tx.commit().unwrap();
+        }
+        let mut cursor = None;
+        let mut ids = Vec::new();
+        loop {
+            let page = core.list_people(70, cursor).unwrap();
+            assert!(!page.people.is_empty());
+            assert!(page.people.len() <= 70);
+            ids.extend(page.people.into_iter().map(|person| person.person_id));
+            match page.next_cursor {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        assert_eq!(ids.len(), 235);
+        assert!(ids.windows(2).all(|pair| pair[0] > pair[1]));
+        assert_eq!(ids.first().copied(), Some(235));
+        assert_eq!(ids.last().copied(), Some(1));
+    }
+
+    #[test]
+    fn pagination_rejects_invalid_page_size_and_cursor() {
+        let core = memory_core();
+        assert!(matches!(core.list_people(0, None), Err(CoreError::InvalidInput(_))));
+        assert!(matches!(core.list_people(101, None), Err(CoreError::InvalidInput(_))));
+        assert!(matches!(
+            core.list_people(25, Some(PersonCursor {
+                last_seen_at: "2026".into(),
+                person_id: 0
+            })),
+            Err(CoreError::InvalidInput(_))
+        ));
+        assert!(core.list_people(25, None).unwrap().people.is_empty());
+    }
+
+    #[test]
+    fn source_profiles_and_listings_update_the_person_activity_timestamp() {
+        let core = memory_core();
+        let id = core.create_person(Some("Active".into())).unwrap();
+        const OLD: &str = "2000-01-01T00:00:00.000Z";
+        {
+            let db = core.connection().unwrap();
+            db.execute("UPDATE persons SET last_seen_at=?1 WHERE person_id=?2", params![OLD, id]).unwrap();
+        }
+        let profile_id = core.add_source_profile(id, "LADIES".into(), "profile".into()).unwrap();
+        assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
+
+        {
+            let db = core.connection().unwrap();
+            db.execute("UPDATE persons SET last_seen_at=?1 WHERE person_id=?2", params![OLD, id]).unwrap();
+            db.execute(
+                "UPDATE source_profiles SET last_seen_at=?1 WHERE source_profile_id=?2",
+                params![OLD, profile_id],
+            ).unwrap();
+        }
+        core.add_listing(id, Some(profile_id), "LADIES".into(), "ad".into(), None).unwrap();
+        assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
+        {
+            let db = core.connection().unwrap();
+            let profile_seen: String = db.query_row(
+                "SELECT last_seen_at FROM source_profiles WHERE source_profile_id=?1",
+                params![profile_id],
+                |r| r.get(0),
+            ).unwrap();
+            assert!(profile_seen.as_str() > OLD);
+            db.execute("UPDATE persons SET last_seen_at=?1 WHERE person_id=?2", params![OLD, id]).unwrap();
+        }
+        core.add_listing(id, Some(profile_id), "LADIES".into(), "ad".into(), None).unwrap();
+        assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
+    }
+
 }
