@@ -5,7 +5,6 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path};
-use std::sync::Arc;
 
 use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
 use sha2::{Digest, Sha256};

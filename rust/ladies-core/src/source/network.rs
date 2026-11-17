@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::io::Read;
 use std::thread;
 use std::time::Duration;
@@ -361,6 +361,8 @@ fn fetch_search_using<T: Transport>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use serde_json::json;
 
     #[derive(Default)]
     struct Mock {
