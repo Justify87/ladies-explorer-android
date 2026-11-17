@@ -5,10 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/**
- * Android access point to generated UniFFI bindings. Rust owns the local database,
- * its import transaction and the archived media files.
- */
+/** Android access to the Rust database, online source service and diagnostics. */
 class CoreStore(context: Context) {
     private val appFiles = context.filesDir
     private val database = File(appFiles, "ladies.sqlite")
@@ -16,34 +13,60 @@ class CoreStore(context: Context) {
         LadiesCore(database.absolutePath)
     }
 
+    /** App-private, size-bounded log; shared only through explicit user interaction. */
+    fun diagnosticLogFile(): File = File(appFiles, "diagnostics/ladies-debug.log")
+
+    private inline fun <T> recorded(operation: String, work: () -> T): T {
+        runCatching { engine.recordDebugEvent("ANDROID", "$operation started") }
+        return try {
+            val result = work()
+            runCatching { engine.recordDebugEvent("ANDROID", "$operation completed") }
+            result
+        } catch (failure: Exception) {
+            runCatching {
+                engine.recordDebugEvent(
+                    "ANDROID",
+                    "$operation failed: ${failure.stackTraceToString().take(3000)}",
+                )
+            }
+            throw failure
+        }
+    }
+
     suspend fun status(): CoreStatus = withContext(Dispatchers.IO) {
-        engine.status()
+        recorded("status") { engine.status() }
     }
 
     suspend fun people(
         limit: UInt = 50u,
         cursor: PersonCursor? = null,
     ): PersonPage = withContext(Dispatchers.IO) {
-        engine.listPeople(limit, cursor)
+        recorded("people") { engine.listPeople(limit, cursor) }
     }
 
     suspend fun setPreference(personId: Long, preference: Preference) = withContext(Dispatchers.IO) {
-        engine.setPreference(personId, preference)
+        recorded("setPreference") { engine.setPreference(personId, preference) }
     }
 
     suspend fun setFavorite(personId: Long, favorite: Boolean) = withContext(Dispatchers.IO) {
-        engine.setFavorite(personId, favorite)
+        recorded("setFavorite") { engine.setFavorite(personId, favorite) }
     }
 
     suspend fun importLegacyBundle(file: File): ImportReport = withContext(Dispatchers.IO) {
-        engine.importLegacyBundle(file.absolutePath, appFiles.absolutePath)
+        recorded("importLegacyBundle") {
+            engine.importLegacyBundle(file.absolutePath, appFiles.absolutePath)
+        }
     }
 
     suspend fun search(query: SearchRequest): SearchResponse = withContext(Dispatchers.IO) {
-        engine.searchSource(query)
+        recorded("search city=${query.city} radius=${query.radiusKm}") {
+            engine.searchSource(query)
+        }
     }
 
     suspend fun loadProfile(listingId: Long): ProfileResponse = withContext(Dispatchers.IO) {
-        engine.loadSourceProfile(listingId)
+        recorded("loadProfile listingId=$listingId") {
+            engine.loadSourceProfile(listingId)
+        }
     }
 }
