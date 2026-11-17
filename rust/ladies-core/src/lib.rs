@@ -26,6 +26,8 @@ pub enum CoreError {
     InvalidInput(String),
     #[error("Unsupported local database schema version {0}")]
     UnsupportedSchema(u32),
+    #[error("Incompatible local database schema: {0}")]
+    SchemaMismatch(String),
 }
 
 impl From<rusqlite::Error> for CoreError {
@@ -79,6 +81,18 @@ pub struct PersonSummary {
     pub favorite: bool,
     pub listing_count: u32,
     pub last_seen_at: String,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PersonCursor {
+    pub last_seen_at: String,
+    pub person_id: i64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PersonPage {
+    pub people: Vec<PersonSummary>,
+    pub next_cursor: Option<PersonCursor>,
 }
 
 type RawPerson = (i64, Option<String>, String, i64, u32, String);
@@ -136,10 +150,7 @@ impl LadiesCore {
             params![name],
         )?;
         let id = tx.last_insert_rowid();
-        tx.execute(
-            "INSERT INTO person_user_state (person_id) VALUES (?1)",
-            params![id],
-        )?;
+        // An SQLite trigger initializes person_user_state for all insertion paths.
         tx.commit()?;
         Ok(id)
     }
@@ -184,6 +195,7 @@ impl LadiesCore {
             )?;
             tx.last_insert_rowid()
         };
+        touch_person(&tx, person_id)?;
         tx.commit()?;
         Ok(id)
     }
@@ -263,6 +275,14 @@ impl LadiesCore {
             )?;
             tx.last_insert_rowid()
         };
+        touch_person(&tx, person_id)?;
+        tx.execute(
+            "UPDATE source_profiles
+             SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE source_profile_id =
+               (SELECT source_profile_id FROM listings WHERE listing_id = ?1)",
+            params![id],
+        )?;
         tx.commit()?;
         Ok(id)
     }
@@ -275,18 +295,45 @@ impl LadiesCore {
         raw.map(PersonSummary::try_from).transpose()
     }
 
-    pub fn list_people(&self, limit: u32) -> Result<Vec<PersonSummary>, CoreError> {
-        if limit == 0 {
-            return Ok(Vec::new());
+    pub fn list_people(
+        &self,
+        limit: u32,
+        cursor: Option<PersonCursor>,
+    ) -> Result<PersonPage, CoreError> {
+        if limit == 0 || limit > 100 {
+            return Err(CoreError::InvalidInput(
+                "Page size must be between 1 and 100".into(),
+            ));
+        }
+        if cursor.as_ref().is_some_and(|value| {
+            value.person_id <= 0 || value.last_seen_at.is_empty()
+        }) {
+            return Err(CoreError::InvalidInput("Invalid person cursor".into()));
         }
         let db = self.connection()?;
         let mut query = db.prepare(PERSON_QUERY_LIST)?;
-        let rows = query.query_map(params![limit.min(100)], parse_person_row)?;
-        rows.map(|row| {
-            let raw = row?;
-            PersonSummary::try_from(raw)
-        })
-        .collect()
+        let rows = query.query_map(
+            params![
+                cursor.as_ref().map(|value| value.last_seen_at.as_str()),
+                cursor.as_ref().map(|value| value.person_id),
+                i64::from(limit) + 1,
+            ],
+            parse_person_row,
+        )?;
+        let mut people = rows
+            .map(|row| PersonSummary::try_from(row?))
+            .collect::<Result<Vec<_>, _>>()?;
+        let has_more = people.len() > limit as usize;
+        people.truncate(limit as usize);
+        let next_cursor = if has_more {
+            people.last().map(|person| PersonCursor {
+                last_seen_at: person.last_seen_at.clone(),
+                person_id: person.person_id,
+            })
+        } else {
+            None
+        };
+        Ok(PersonPage { people, next_cursor })
     }
 
     pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
@@ -333,8 +380,9 @@ SELECT p.person_id, p.display_name, s.preference, s.favorite,
        p.last_seen_at
 FROM persons p
 JOIN person_user_state s ON s.person_id = p.person_id
+WHERE (?1 IS NULL OR p.last_seen_at < ?1 OR (p.last_seen_at = ?1 AND p.person_id < ?2))
 ORDER BY p.last_seen_at DESC, p.person_id DESC
-LIMIT ?1
+LIMIT ?3
 "#;
 
 fn parse_person_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawPerson> {
@@ -371,6 +419,17 @@ fn non_empty(value: String, field: &'static str) -> Result<String, CoreError> {
         )));
     }
     Ok(cleaned)
+}
+
+fn touch_person(db: &Connection, person_id: i64) -> Result<(), CoreError> {
+    db.execute(
+        "UPDATE persons
+         SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE person_id = ?1",
+        params![person_id],
+    )?;
+    Ok(())
 }
 
 fn ensure_person(db: &Connection, person_id: i64) -> Result<(), CoreError> {
@@ -442,7 +501,7 @@ mod tests {
         assert_eq!(person.preference, Preference::Like);
         assert!(person.favorite);
         assert_eq!(person.listing_count, 1);
-        assert_eq!(core.list_people(10).unwrap().len(), 1);
+        assert_eq!(core.list_people(10, None).unwrap().people.len(), 1);
         assert_eq!(core.status().unwrap().source_profile_count, 1);
         assert_eq!(core.status().unwrap().listing_count, 1);
     }

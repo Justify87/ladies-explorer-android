@@ -19,8 +19,11 @@ class CoreStore(context: Context) {
         engine.status()
     }
 
-    suspend fun people(limit: UInt = 50u): List<PersonSummary> = withContext(Dispatchers.IO) {
-        engine.listPeople(limit)
+    suspend fun people(
+        limit: UInt = 50u,
+        cursor: PersonCursor? = null,
+    ): PersonPage = withContext(Dispatchers.IO) {
+        engine.listPeople(limit, cursor)
     }
 
     suspend fun setPreference(personId: Long, preference: Preference) = withContext(Dispatchers.IO) {
