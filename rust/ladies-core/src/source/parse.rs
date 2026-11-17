@@ -707,6 +707,28 @@ mod tests {
     }
 
     #[test]
+    fn anonymized_october_har_media_shapes_keep_revision_tokens() {
+        // Synthetic IDs with URL shapes observed in the October browser archives.
+        let html = r#"<h2 class="page-heading kuenstlername">Beispiel</h2>
+            <div class="auftrag-main-thumb" data-index="0">
+              <img src="https://bilder1.ladies-cdn.de/Bilder/321/12345678-F1.JPG?h=preview">
+            </div>
+            <div class="girl-galerie">
+              <a class="gallery_item" data-index="1"
+                 href="//bilder1.ladies-cdn.de/Bilder/321/12345678-F2.JPG?h=thumb"></a>
+            </div>
+            <img src="https://bilder1.ladies-cdn.de/Bilder/321/12345678-A2.JPG?h=full">"#;
+        let profile = parse_profile(html, &example_card()).unwrap();
+        assert_eq!(profile.media.len(), 2);
+        assert_eq!(profile.media[0].position, 1);
+        assert_eq!(profile.media[0].variant.as_deref(), Some("F"));
+        assert_eq!(profile.media[0].revision_token.as_deref(), Some("preview"));
+        assert_eq!(profile.media[1].position, 2);
+        assert_eq!(profile.media[1].variant.as_deref(), Some("A"));
+        assert_eq!(profile.media[1].revision_token.as_deref(), Some("full"));
+    }
+
+    #[test]
     fn fallback_video_order_follows_source_not_sorted_url() {
         let html = r#"<h2 class="page-heading kuenstlername">Anna</h2>
         <script>
