@@ -30,6 +30,7 @@ pub(super) fn save_search(
         "server_advert_count": downloaded.server_count,
         "total_pages": downloaded.total_pages,
         "fetched_pages": downloaded.fetched_pages,
+        "radius_verified": downloaded.radius_verified,
     });
     tx.execute(
         "INSERT INTO search_runs
@@ -42,7 +43,7 @@ pub(super) fn save_search(
             request.radius_km,
             filters.to_string(),
             downloaded.server_count,
-            request.radius_km,
+            downloaded.radius_verified.then_some(request.radius_km),
             metadata.to_string(),
         ],
     )?;
@@ -54,7 +55,7 @@ pub(super) fn save_search(
             "INSERT INTO search_results
              (search_run_id, listing_id, position, name, city, thumbnail_url,
               has_video, is_premium, has_ai_content, markers_json)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'{}')",
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
             params![
                 run_id,
                 listing_id,
@@ -65,6 +66,10 @@ pub(super) fn save_search(
                 card.has_video,
                 card.is_premium,
                 card.has_ai_content,
+                json!({
+                    "has_18plus": card.has_18plus,
+                    "has_stars": card.has_stars,
+                }).to_string(),
             ],
         )?;
         tx.execute(
@@ -92,6 +97,8 @@ pub(super) fn save_search(
             has_video: card.has_video,
             is_premium: card.is_premium,
             has_ai_content: card.has_ai_content,
+            has_18plus: card.has_18plus,
+            has_stars: card.has_stars,
         });
     }
     tx.commit()?;
@@ -104,6 +111,7 @@ pub(super) fn save_search(
         fetched_pages: downloaded.fetched_pages,
         partial: downloaded.partial,
         radius_boundary_stopped: downloaded.radius_boundary_stopped,
+        radius_verified: downloaded.radius_verified,
         profiles,
     })
 }
@@ -184,7 +192,37 @@ pub(super) fn listing_target(
     ))
 }
 
-fn upsert_source_profile(
+
+fn record_profile_identity_conflict(
+    db: &Connection,
+    person_id: i64,
+    listing_id: i64,
+    external_id: &str,
+    candidate_person_id: Option<i64>,
+    kind: &str,
+) -> Result<(), CoreError> {
+    let already_recorded: bool = db.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM identity_evidence
+            WHERE listing_id = ?1 AND person_id = ?2
+              AND candidate_person_id IS ?3 AND kind = ?4 AND value = ?5
+        )",
+        params![listing_id, person_id, candidate_person_id, kind, external_id],
+        |row| row.get(0),
+    )?;
+    if !already_recorded {
+        db.execute(
+            "INSERT INTO identity_evidence
+             (listing_id, person_id, candidate_person_id, kind, value)
+             VALUES (?1,?2,?3,?4,?5)",
+            params![listing_id, person_id, candidate_person_id, kind, external_id],
+        )?;
+    }
+    Ok(())
+}
+
+/// Identity evidence may be ambiguous; extraction must still persist independently.
+fn link_source_profile_or_record_conflict(
     db: &Connection,
     person_id: i64,
     listing_id: i64,
@@ -199,17 +237,37 @@ fn upsert_source_profile(
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let profile_id = if let Some((id, owner)) = existing {
-        if owner != person_id {
-            return Err(CoreError::IdentityConflict(
-                "Source profile belongs to another existing person; automatic merges are disabled"
-                    .into(),
-            ));
+    let current_profile: Option<i64> = db.query_row(
+        "SELECT source_profile_id FROM listings WHERE listing_id=?1",
+        [listing_id],
+        |row| row.get(0),
+    )?;
+
+    if let Some((_, another_person)) = existing.filter(|(_, owner)| *owner != person_id) {
+        return record_profile_identity_conflict(
+            db, person_id, listing_id, external_id,
+            Some(another_person), "SOURCE_PROFILE_OWNER_CONFLICT",
+        );
+    }
+    if let (Some(current), Some((new_profile, _))) = (current_profile, existing) {
+        if current != new_profile {
+            return record_profile_identity_conflict(
+                db, person_id, listing_id, external_id,
+                None, "SOURCE_PROFILE_REASSIGNMENT_CONFLICT",
+            );
         }
+    } else if current_profile.is_some() && existing.is_none() {
+        return record_profile_identity_conflict(
+            db, person_id, listing_id, external_id,
+            None, "SOURCE_PROFILE_REASSIGNMENT_CONFLICT",
+        );
+    }
+    let profile_id = if let Some((id, _)) = existing {
         db.execute(
-            "UPDATE source_profiles SET canonical_id=COALESCE(?1,canonical_id),
-             last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE source_profile_id=?2",
+            "UPDATE source_profiles
+             SET canonical_id = COALESCE(?1, canonical_id),
+                 last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE source_profile_id = ?2",
             params![canonical_id, id],
         )?;
         id
@@ -222,16 +280,6 @@ fn upsert_source_profile(
         )?;
         db.last_insert_rowid()
     };
-    let prior: Option<i64> = db.query_row(
-        "SELECT source_profile_id FROM listings WHERE listing_id=?1",
-        [listing_id],
-        |row| row.get(0),
-    )?;
-    if prior.is_some_and(|id| id != profile_id) {
-        return Err(CoreError::IdentityConflict(
-            "Listing already has a different source profile; refusing reassignment".into(),
-        ));
-    }
     db.execute(
         "UPDATE listings SET source_profile_id=?1 WHERE listing_id=?2",
         params![profile_id, listing_id],
@@ -260,7 +308,7 @@ pub(super) fn save_profile(
         return Err(CoreError::ListingNotFound(listing_id));
     };
     if let Some(external_id) = profile.source_profile_id.as_deref() {
-        upsert_source_profile(
+        link_source_profile_or_record_conflict(
             &tx,
             person_id,
             listing_id,
@@ -382,6 +430,15 @@ pub(super) fn save_profile(
          WHERE person_id=?2",
         params![profile.name, person_id],
     )?;
+    tx.execute(
+        "INSERT INTO listing_observations
+         (listing_id, source, status, http_status, snapshot_id, details_json)
+         VALUES (?1,'PROFILE','ACTIVE',200,?2,?3)",
+        params![listing_id, snapshot_id, json!({
+            "snapshot_changed": new_snapshot,
+            "fingerprint": fingerprint,
+        }).to_string()],
+    )?;
     tx.commit()?;
     Ok(ProfileResponse {
         listing_id,
@@ -424,6 +481,8 @@ mod tests {
             has_video: false,
             is_premium: false,
             has_ai_content: false,
+            has_18plus: false,
+            has_stars: false,
         }
     }
 
@@ -440,6 +499,7 @@ mod tests {
                 fetched_pages: 1,
                 partial: false,
                 radius_boundary_stopped: false,
+                radius_verified: true,
             },
         )
         .unwrap()
@@ -534,33 +594,78 @@ mod tests {
         assert_eq!(count, 2);
     }
 
+
     #[test]
-    fn profile_source_identity_conflicts_fail_without_partial_writes() {
+    fn conflicting_source_identity_preserves_snapshots_and_person_ownership() {
         let core = core();
         let found = save_cards(&core, vec![card("101", "Anna"), card("102", "Mia")]);
         let first = found.profiles[0].listing_id;
         let second = found.profiles[1].listing_id;
-        save_profile(
-            &core,
-            first,
-            &found.profiles[0].profile_url,
-            profile("Anna"),
-        )
-        .unwrap();
+        let second_person = found.profiles[1].person_id;
+        core.set_favorite(second_person, true).unwrap();
+        save_profile(&core, first, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+
         let mut other = profile("Mia");
         other.advert_id = "102".into();
-        assert!(matches!(
-            save_profile(&core, second, &found.profiles[1].profile_url, other),
-            Err(CoreError::IdentityConflict(_))
-        ));
+        let saved = save_profile(&core, second, &found.profiles[1].profile_url, other.clone()).unwrap();
+        assert!(saved.new_snapshot);
+        let again = save_profile(&core, second, &found.profiles[1].profile_url, other).unwrap();
+        assert_eq!(saved.snapshot_id, again.snapshot_id);
+        assert!(!again.new_snapshot);
+
         let db = core.connection().unwrap();
-        let count: i64 = db
-            .query_row(
-                "SELECT COUNT(*) FROM listing_snapshots WHERE listing_id=?1",
-                [second],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 0);
+        let (owner, link): (i64, Option<i64>) = db.query_row(
+            "SELECT person_id, source_profile_id FROM listings WHERE listing_id=?1",
+            [second], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        assert_eq!(owner, second_person);
+        assert!(link.is_none());
+        let snapshot_count: i64 = db.query_row(
+            "SELECT COUNT(*) FROM listing_snapshots WHERE listing_id=?1",
+            [second], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(snapshot_count, 1);
+        let evidence: (i64, i64) = db.query_row(
+            "SELECT COUNT(*), MAX(candidate_person_id)
+             FROM identity_evidence WHERE listing_id=?1 AND kind='SOURCE_PROFILE_OWNER_CONFLICT'",
+            [second], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        assert_eq!(evidence, (1, found.profiles[0].person_id));
+        drop(db);
+        assert!(core.get_person(second_person).unwrap().unwrap().favorite);
     }
+
+    #[test]
+    fn every_successful_profile_check_has_observation_without_duplicate_snapshot() {
+        let core = core();
+        let found = save_cards(&core, vec![card("101", "Anna")]);
+        let listing = found.profiles[0].listing_id;
+        let first = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        let repeated = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        assert_eq!(first.snapshot_id, repeated.snapshot_id);
+        let db = core.connection().unwrap();
+        let (count, changed): (i64,i64) = db.query_row(
+            "SELECT COUNT(*), SUM(CASE WHEN json_extract(details_json, '$.snapshot_changed')=1 THEN 1 ELSE 0 END)
+             FROM listing_observations WHERE listing_id=?1 AND source='PROFILE'",
+            [listing], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        assert_eq!((count, changed), (2,1));
+    }
+
+    #[test]
+    fn card_markers_are_persisted_as_search_history() {
+        let core = core();
+        let mut entry = card("101", "Anna");
+        entry.has_18plus = true;
+        entry.has_stars = true;
+        save_cards(&core, vec![entry]);
+        let db = core.connection().unwrap();
+        let flags: (i64,i64) = db.query_row(
+            "SELECT json_extract(markers_json,'$.has_18plus'),
+                    json_extract(markers_json,'$.has_stars') FROM search_results",
+            [], |r| Ok((r.get(0)?,r.get(1)?)),
+        ).unwrap();
+        assert_eq!(flags, (1,1));
+    }
+
 }
