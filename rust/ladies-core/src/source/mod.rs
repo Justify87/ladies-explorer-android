@@ -125,22 +125,28 @@ pub(crate) fn search(
     core: &LadiesCore,
     request: SearchRequest,
 ) -> Result<SearchResponse, CoreError> {
-    diagnostics::event("SEARCH", format!(
-        "Search requested city={} radius={} category={} max_pages={}",
-        request.city, request.radius_km, request.category, request.max_pages
-    ));
+    diagnostics::event(
+        "SEARCH",
+        format!(
+            "Search requested city={} radius={} category={} max_pages={}",
+            request.city, request.radius_km, request.category, request.max_pages
+        ),
+    );
     filter::validate_request(&request)?;
-    let downloaded = network::fetch_search(&core.source_session.0, &request)
-        .map_err(|error| {
-            diagnostics::event("SEARCH", format!("Search fetch failed: {error}"));
-            error
-        })?;
+    let downloaded = network::fetch_search(&core.source_session.0, &request).map_err(|error| {
+        diagnostics::event("SEARCH", format!("Search fetch failed: {error}"));
+        error
+    })?;
     let saved = storage::save_search(core, &request, downloaded);
     match &saved {
-        Ok(response) => diagnostics::event("STORAGE", format!(
-            "Search saved run={} cards={}",
-            response.search_run_id, response.profiles.len()
-        )),
+        Ok(response) => diagnostics::event(
+            "STORAGE",
+            format!(
+                "Search saved run={} cards={}",
+                response.search_run_id,
+                response.profiles.len()
+            ),
+        ),
         Err(error) => diagnostics::event("STORAGE", format!("Search save failed: {error}")),
     }
     saved
@@ -168,19 +174,31 @@ pub(crate) fn load_profile(
     };
     let profile = parse::parse_profile(&html, &fallback).map_err(|error| {
         diagnostics::html("profile_parse_failed", &html);
-        diagnostics::event("PROFILE", format!("Profile parse failed listing={listing_id}: {error}"));
+        diagnostics::event(
+            "PROFILE",
+            format!("Profile parse failed listing={listing_id}: {error}"),
+        );
         error
     })?;
-    diagnostics::event("PROFILE", format!(
-        "Profile parsed listing={} name={} media={} services_bytes={}",
-        listing_id, profile.name, profile.media.len(), profile.services_json.len()
-    ));
+    diagnostics::event(
+        "PROFILE",
+        format!(
+            "Profile parsed listing={} name={} media={} services_bytes={}",
+            listing_id,
+            profile.name,
+            profile.media.len(),
+            profile.services_json.len()
+        ),
+    );
     let result = storage::save_profile(core, listing_id, &url, profile);
     match &result {
-        Ok(saved) => diagnostics::event("STORAGE", format!(
-            "Profile saved listing={} snapshot={} new_snapshot={}",
-            listing_id, saved.snapshot_id, saved.new_snapshot
-        )),
+        Ok(saved) => diagnostics::event(
+            "STORAGE",
+            format!(
+                "Profile saved listing={} snapshot={} new_snapshot={}",
+                listing_id, saved.snapshot_id, saved.new_snapshot
+            ),
+        ),
         Err(error) => diagnostics::event("STORAGE", format!("Profile save failed: {error}")),
     }
     result

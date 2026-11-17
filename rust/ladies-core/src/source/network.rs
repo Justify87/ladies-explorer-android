@@ -131,7 +131,10 @@ impl Transport for SourceHttp {
         }
         let body = String::from_utf8(bytes)
             .map_err(|_| CoreError::Source("Source response is not UTF-8".into()))?;
-        diagnostics::event("HTTP", format!("Response bytes={} status={status}", body.len()));
+        diagnostics::event(
+            "HTTP",
+            format!("Response bytes={} status={status}", body.len()),
+        );
         if status >= 400 {
             diagnostics::html("http_error", &body);
         }
@@ -242,11 +245,10 @@ fn parse_api(response: Response) -> Result<Option<Value>, CoreError> {
             response.status
         )));
     }
-    let payload: Value = serde_json::from_str(&response.body)
-        .map_err(|e| {
-            diagnostics::html("invalid_api_json", &response.body);
-            CoreError::Source(format!("Invalid source search API payload: {e}"))
-        })?;
+    let payload: Value = serde_json::from_str(&response.body).map_err(|e| {
+        diagnostics::html("invalid_api_json", &response.body);
+        CoreError::Source(format!("Invalid source search API payload: {e}"))
+    })?;
     if !payload.is_object() {
         diagnostics::html("invalid_api_shape", &response.body);
         return Err(CoreError::Source(
@@ -302,10 +304,13 @@ fn fetch_search_using<T: Transport>(
     filter::validate_request(request)?;
     let filter_path = filter::filter_path(request)?;
     let (city_slug, city) = resolve_location(client, &request.city);
-    diagnostics::event("SEARCH", format!(
-        "Resolved location={} slug={} radius={} max_pages={} filter_path={}",
-        city, city_slug, request.radius_km, request.max_pages, filter_path
-    ));
+    diagnostics::event(
+        "SEARCH",
+        format!(
+            "Resolved location={} slug={} radius={} max_pages={} filter_path={}",
+            city, city_slug, request.radius_km, request.max_pages, filter_path
+        ),
+    );
     let first = client.get(&search_url(
         &city_slug,
         request.radius_km,
@@ -344,11 +349,18 @@ fn fetch_search_using<T: Transport>(
         )));
     }
     let mut cards = parse::parse_cards(&first.body);
-    diagnostics::event("PARSER", format!(
-        "Search page=1 status={} cards={} pages={:?} advert_count={:?} observed_radius={:?} {}",
-        first.status, cards.len(), total_from_html, server_count, observed_radius,
-        parse::search_page_diagnostics(&first.body)
-    ));
+    diagnostics::event(
+        "PARSER",
+        format!(
+            "Search page=1 status={} cards={} pages={:?} advert_count={:?} observed_radius={:?} {}",
+            first.status,
+            cards.len(),
+            total_from_html,
+            server_count,
+            observed_radius,
+            parse::search_page_diagnostics(&first.body)
+        ),
+    );
     if cards.is_empty()
         && (server_count != Some(0) || total_from_html.is_some_and(|pages| pages > 1))
     {
@@ -503,10 +515,18 @@ fn fetch_search_using<T: Transport>(
 
     let mut ids = HashSet::new();
     cards.retain(|card| ids.insert(card.advert_id.clone()));
-    diagnostics::event("SEARCH", format!(
-        "Search completed cards={} fetched_pages={} total_pages={} partial={} radius_verified={} boundary_stopped={}",
-        cards.len(), fetched_pages, total_pages, partial, radius_verified, boundary_stopped
-    ));
+    diagnostics::event(
+        "SEARCH",
+        format!(
+            "Search completed cards={} fetched_pages={} total_pages={} partial={} radius_verified={} boundary_stopped={}",
+            cards.len(),
+            fetched_pages,
+            total_pages,
+            partial,
+            radius_verified,
+            boundary_stopped
+        ),
+    );
     if server_count.is_some_and(|count| cards.len() as u32 != count) {
         partial = true;
     }

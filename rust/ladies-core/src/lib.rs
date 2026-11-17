@@ -160,10 +160,13 @@ impl LadiesCore {
         diagnostics::event("IMPORT", "Legacy data import requested");
         let result = legacy_import::import_bundle(self, &bundle_path, &app_files_directory);
         match &result {
-            Ok(report) => diagnostics::event("IMPORT", format!(
-                "Import completed: persons={} listings={} media={}",
-                report.persons, report.listings, report.media_files
-            )),
+            Ok(report) => diagnostics::event(
+                "IMPORT",
+                format!(
+                    "Import completed: persons={} listings={} media={}",
+                    report.persons, report.listings, report.media_files
+                ),
+            ),
             Err(error) => diagnostics::event("IMPORT", format!("Import failed: {error}")),
         }
         result
