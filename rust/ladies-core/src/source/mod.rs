@@ -31,6 +31,8 @@ pub struct SearchCard {
     pub has_video: bool,
     pub is_premium: bool,
     pub has_ai_content: bool,
+    pub has_18plus: bool,
+    pub has_stars: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -43,6 +45,7 @@ pub struct SearchResponse {
     pub fetched_pages: u32,
     pub partial: bool,
     pub radius_boundary_stopped: bool,
+    pub radius_verified: bool,
     pub profiles: Vec<SearchCard>,
 }
 
@@ -88,6 +91,8 @@ struct Card {
     has_video: bool,
     is_premium: bool,
     has_ai_content: bool,
+    has_18plus: bool,
+    has_stars: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +140,8 @@ pub(crate) fn load_profile(
         has_video: false,
         is_premium: false,
         has_ai_content: false,
+        has_18plus: false,
+        has_stars: false,
     };
     let profile = parse::parse_profile(&html, &fallback)?;
     storage::save_profile(core, listing_id, &url, profile)

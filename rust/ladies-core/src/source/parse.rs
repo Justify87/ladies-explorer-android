@@ -50,6 +50,7 @@ pub(super) fn valid_profile_url(value: &str) -> Option<String> {
     Some(format!("https://www.ladies.de{}", parsed.path()))
 }
 
+
 pub(super) fn parse_cards(html: &str) -> Vec<Card> {
     let document = Html::parse_document(html);
     let mut profiles = Vec::new();
@@ -66,53 +67,27 @@ pub(super) fn parse_cards(html: &str) -> Vec<Card> {
         let Some(url) = link.value().attr("href").and_then(valid_profile_url) else {
             continue;
         };
-        let city = card
-            .select(&selector(".card-city"))
-            .next()
-            .map(text)
-            .unwrap_or_default();
-        let name = card
-            .select(&selector(".card-name"))
-            .next()
-            .map(text)
-            .unwrap_or_default();
+        let name = card.select(&selector(".card-name")).next().map(text).unwrap_or_default();
+        let city = card.select(&selector(".card-city")).next().map(text).unwrap_or_default();
         let thumbnail = card
             .select(&selector("img.card-thumb-image"))
             .next()
             .and_then(|image| image.value().attr("src"))
-            .and_then(|url| Url::parse("https://www.ladies.de/").ok()?.join(url).ok())
+            .and_then(|value| Url::parse("https://www.ladies.de/").ok()?.join(value).ok())
             .filter(|url| url.scheme() == "https")
             .map(|url| url.to_string());
         let classes = card.value().classes().collect::<Vec<_>>();
-        let ai_markers = [
-            "ki-kennzeichnung",
-            "ki-generiert",
-            "ki-bearbeitet",
-            "ai-icon",
-            "ai_icon",
-            "basic-eu-ai",
-            "eu-ai-icon",
-            "artificial-intelligence",
+        let html_lower = card.html().to_lowercase();
+        let has_ai_content = [
+            "ki-kennzeichnung", "ki-generiert", "ki-bearbeitet", "ai-icon",
+            "ai_icon", "basic-eu-ai", "eu-ai-icon", "artificial-intelligence",
             "artificial_intelligence",
-        ];
-        let has_ai_content = ai_markers
-            .iter()
-            .any(|marker| card.html().to_lowercase().contains(marker));
-        let parts: Vec<_> = Url::parse(&url)
-            .ok()
-            .map(|parsed| {
-                parsed
-                    .path_segments()
-                    .map(|segments| segments.map(str::to_owned).collect())
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default();
-        let category = parts
-            .iter()
-            .position(|segment| segment == "sex-anzeigen")
-            .and_then(|pos| parts.get(pos + 1))
-            .map(|value| value.replace('-', " "))
-            .unwrap_or_default();
+        ].iter().any(|marker| html_lower.contains(marker));
+        let category = Url::parse(&url).ok().and_then(|parsed| {
+            let segments = parsed.path_segments()?.collect::<Vec<_>>();
+            let index = segments.iter().position(|s| *s == "sex-anzeigen")?;
+            segments.get(index + 1).map(|value| value.replace('-', " "))
+        }).unwrap_or_default();
         profiles.push(Card {
             advert_id: id,
             name,
@@ -120,12 +95,11 @@ pub(super) fn parse_cards(html: &str) -> Vec<Card> {
             category,
             profile_url: url,
             thumbnail_url: thumbnail,
-            has_video: card
-                .select(&selector(".card-videos-marker"))
-                .next()
-                .is_some(),
+            has_video: card.select(&selector(".card-videos-marker")).next().is_some(),
             is_premium: classes.contains(&"card-gallery-premium"),
             has_ai_content,
+            has_18plus: card.select(&selector(r#"[class*="18"], [title*="18"]"#)).next().is_some(),
+            has_stars: card.select(&selector(r#"[class*="star"], [title*="Star"]"#)).next().is_some(),
         });
     }
     profiles
@@ -224,142 +198,150 @@ fn revision_token(url: &str) -> Option<String> {
         .map(|(_, val)| val.into_owned())
 }
 
-fn media_url(raw: &str) -> Option<String> {
-    let url = Url::parse(raw.trim().trim_end_matches([')', ',', ';'])).ok()?;
-    if url.scheme() != "https" {
+
+fn media_url(raw: &str) -> Option<Url> {
+    let base = Url::parse("https://www.ladies.de/").ok()?;
+    let url = base.join(raw.trim().trim_matches(['"', '\'']).trim_end_matches([')', ',', ';'])).ok()?;
+    if url.scheme() != "https" || url.username() != "" || url.password().is_some() {
         return None;
     }
     let host = url.host_str()?;
-    if !(host.starts_with("bilder") || host.starts_with("video"))
-        || !host.ends_with(".ladies-cdn.de")
-    {
-        return None;
-    }
-    Some(url.to_string())
+    let source_host = matches!(host, "www.ladies.de" | "m.ladies.de");
+    let image_cdn = host.starts_with("bilder") && host.ends_with(".ladies-cdn.de");
+    let video_cdn = host.starts_with("video") && host.ends_with(".ladies-cdn.de");
+    (source_host || image_cdn || video_cdn).then_some(url)
 }
 
-fn media_ref(
-    url: &str,
-    kind: &str,
-    position: u32,
-    photo_no: Option<u32>,
-    variant: &str,
-) -> MediaReference {
+fn image_number(url: &Url) -> Option<(u32, String)> {
+    let re = Regex::new(r"(?i)^/Bilder/\d+/\d+-([AF])(\d+)\.jpe?g$").expect("photo filename regex");
+    let match_ = re.captures(url.path())?;
+    Some((
+        match_.get(2)?.as_str().parse::<u32>().ok()?,
+        match_.get(1)?.as_str().to_ascii_uppercase(),
+    ))
+}
+
+fn video_variant(url: &Url) -> Option<String> {
+    let path = url.path().to_ascii_lowercase();
+    let extension = path.rsplit('.').next()?;
+    matches!(extension, "mp4" | "webm").then(|| extension.to_owned())
+}
+
+fn media_ref(url: &str, kind: &str, position: u32, photo_no: Option<u32>, variant: &str) -> MediaReference {
     MediaReference {
         url: url.to_owned(),
         kind: kind.to_owned(),
         position,
-        role: if photo_no == Some(1) {
-            "PRIMARY"
-        } else {
-            "GALLERY"
-        }
-        .into(),
+        role: if photo_no == Some(1) { "PRIMARY" } else { "GALLERY" }.into(),
         variant: Some(variant.to_owned()),
         revision_token: revision_token(url),
     }
 }
 
+
 fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
-    let photo_re = Regex::new(
-        r#"(?i)https://bilder\d+\.ladies-cdn\.de/Bilder/\d+/\d+-([AF])(\d+)\.JPG(?:\?[^\s"'<>)]*)?"#
-    ).expect("photo regex");
-    let video_re = Regex::new(
-        r#"(?i)https://video\d+\.ladies-cdn\.de/[^\s"'<>]+?\.(webm|mp4)(?:\?[^\s"'<>)]*)?"#,
-    )
-    .expect("video regex");
-    let mut photos: BTreeMap<u32, (String, String)> = BTreeMap::new();
-    for m in photo_re.captures_iter(html) {
-        let url = m.get(0).unwrap().as_str().trim_end_matches([')', ',', ';']);
-        let Some(url) = media_url(url) else { continue };
-        let Some(number) = m.get(2).and_then(|m| m.as_str().parse::<u32>().ok()) else {
-            continue;
-        };
-        let variant = m.get(1).unwrap().as_str().to_ascii_uppercase();
-        if variant == "A" || !photos.contains_key(&number) {
-            photos.insert(number, (url, variant));
+    let mut images: BTreeMap<u32, (String, String)> = BTreeMap::new();
+    let mut videos: BTreeMap<String, String> = BTreeMap::new();
+
+    let mut collect = |raw: &str| {
+        let Some(url) = media_url(raw) else { return };
+        if let Some((number, variant)) = image_number(&url) {
+            let normalized = url.to_string();
+            if variant == "A" || !images.contains_key(&number) {
+                images.insert(number, (normalized, variant));
+            }
+        } else if let Some(variant) = video_variant(&url) {
+            videos.insert(url.to_string(), variant);
+        }
+    };
+
+    // A variants and supplementary photos are often outside the visible gallery.
+    for node in doc.select(&selector("img")) {
+        for field in ["src", "data-src"] {
+            if let Some(value) = node.value().attr(field) {
+                collect(value);
+            }
         }
     }
+    let css_url = Regex::new(r#"(?i)url\(\s*['"]?([^'")]+)['"]?\s*\)"#)
+        .expect("CSS url regex");
+    for node in doc.select(&selector("[style]")) {
+        if let Some(style) = node.value().attr("style") {
+            for capture in css_url.captures_iter(style) {
+                if let Some(value) = capture.get(1) {
+                    collect(value.as_str());
+                }
+            }
+        }
+    }
+    let raw_image = Regex::new(
+        r#"(?i)(?:https?:)?//bilder\d+\.ladies-cdn\.de/Bilder/\d+/\d+-[AF]\d+\.JPG(?:\?[^\s"'<>)]*)?"#
+    ).expect("raw photo regex");
+    let raw_video = Regex::new(
+        r#"(?i)(?:https?:)?//video\d+\.ladies-cdn\.de/[^\s"'<>]+?\.(?:webm|mp4)(?:\?[^\s"'<>)]*)?"#
+    ).expect("raw video regex");
+    for value in raw_image.find_iter(html).chain(raw_video.find_iter(html)) {
+        collect(value.as_str());
+    }
+    for node in doc.select(&selector(".auftrag-main-thumb img, .girl-galerie .gallery_item")) {
+        if let Some(value) = node.value().attr("src").or_else(|| node.value().attr("href")) {
+            collect(value);
+        }
+    }
+
     let mut ordered = Vec::new();
     let mut used_photos = HashSet::new();
     let mut used_videos = HashSet::new();
-    let mut add_photo = |candidate: &str, position: u32, ordered: &mut Vec<MediaReference>| {
-        let Some(found) = photo_re.captures(candidate) else {
-            return;
-        };
-        let Some(no) = found.get(2).and_then(|m| m.as_str().parse::<u32>().ok()) else {
-            return;
-        };
-        if !used_photos.insert(no) {
-            return;
-        }
-        if let Some((url, variant)) = photos.get(&no) {
-            ordered.push(media_ref(url, "IMAGE", position, Some(no), variant));
+    let mut add_image = |raw: &str, position: u32, output: &mut Vec<MediaReference>| {
+        let Some(url) = media_url(raw) else { return };
+        let Some((number, _)) = image_number(&url) else { return };
+        if let Some((best_url, variant)) = images.get(&number) {
+            if used_photos.insert(number) {
+                output.push(media_ref(best_url, "IMAGE", position, Some(number), variant));
+            }
         }
     };
-    if let Some(main) = doc
-        .select(&selector(".auftrag-main-thumb[data-index]"))
-        .next()
-    {
-        let position = main
-            .value()
-            .attr("data-index")
+    if let Some(main) = doc.select(&selector(".auftrag-main-thumb[data-index]")).next() {
+        let position = main.value().attr("data-index")
             .and_then(|value| value.parse::<u32>().ok())
-            .unwrap_or(0)
-            + 1;
-        if let Some(src) = main
-            .select(&selector("img"))
-            .next()
-            .and_then(|node| node.value().attr("src"))
-        {
-            add_photo(src, position, &mut ordered);
+            .and_then(|value| value.checked_add(1))
+            .unwrap_or(1);
+        if let Some(src) = main.select(&selector("img")).next()
+            .and_then(|img| img.value().attr("src")) {
+            add_image(src, position, &mut ordered);
         }
     }
     for node in doc.select(&selector(".girl-galerie .gallery_item[data-index]")) {
-        let Some(position) = node
-            .value()
-            .attr("data-index")
-            .and_then(|s| s.parse::<u32>().ok())
-            .and_then(|n| n.checked_add(1))
-        else {
-            continue;
-        };
-        let Some(href) = node.value().attr("href") else {
-            continue;
-        };
-        if let Some(found) = video_re.find(href) {
-            let url = found.as_str().to_owned();
-            if used_videos.insert(url.clone()) {
-                let variant = Url::parse(&url)
-                    .ok()
-                    .and_then(|parsed| parsed.path().rsplit('.').next().map(str::to_lowercase))
-                    .unwrap_or_else(|| "mp4".into());
-                ordered.push(media_ref(&url, "VIDEO", position, None, &variant));
+        let Some(position) = node.value().attr("data-index")
+            .and_then(|value| value.parse::<u32>().ok())
+            .and_then(|value| value.checked_add(1)) else { continue };
+        let Some(href) = node.value().attr("href") else { continue };
+        if let Some(url) = media_url(href) {
+            if let Some(variant) = video_variant(&url) {
+                let key = url.to_string();
+                if used_videos.insert(key.clone()) {
+                    ordered.push(media_ref(&key, "VIDEO", position, None, &variant));
+                }
+                continue;
             }
-        } else {
-            add_photo(href, position, &mut ordered);
+        }
+        add_image(href, position, &mut ordered);
+    }
+
+    let mut next_position = ordered.iter().map(|item| item.position).max().unwrap_or(0);
+    for (number, (url, variant)) in &images {
+        if used_photos.insert(*number) {
+            next_position += 1;
+            ordered.push(media_ref(url, "IMAGE", next_position, Some(*number), variant));
         }
     }
-    let mut position = ordered.iter().map(|m| m.position).max().unwrap_or(0);
-    for (no, (url, variant)) in &photos {
-        if used_photos.insert(*no) {
-            position += 1;
-            ordered.push(media_ref(url, "IMAGE", position, Some(*no), variant));
+    for (url, variant) in videos {
+        if used_videos.insert(url.clone()) {
+            next_position += 1;
+            ordered.push(media_ref(&url, "VIDEO", next_position, None, &variant));
         }
     }
-    for found in video_re.find_iter(html) {
-        let url = found.as_str().trim_end_matches([')', ',', ';']).to_owned();
-        if used_videos.insert(url.clone()) && media_url(&url).is_some() {
-            position += 1;
-            let variant = if url.to_ascii_lowercase().contains(".webm") {
-                "webm"
-            } else {
-                "mp4"
-            };
-            ordered.push(media_ref(&url, "VIDEO", position, None, variant));
-        }
-    }
-    ordered.sort_by_key(|m| (m.position, m.kind.clone()));
+    ordered.sort_by_key(|item| (item.position, item.kind.clone()));
     ordered
 }
 
@@ -556,6 +538,39 @@ mod tests {
             parse_profile(html, &example_card()),
             Err(CoreError::Source(_))
         ));
+    }
+
+
+    #[test]
+    fn relative_gallery_urls_and_css_photos_preserve_mixed_order() {
+        let html = r#"<h2 class="page-heading kuenstlername">Anna</h2>
+            <div class="auftrag-main-thumb" data-index="0"><img src="//bilder1.ladies-cdn.de/Bilder/12/456-F1.JPG"/></div>
+            <div style="background-image:url('//bilder1.ladies-cdn.de/Bilder/12/456-A1.JPG?h=abc')"></div>
+            <div class="girl-galerie">
+              <a class="gallery_item gallery_video" data-index="1" href="//video1.ladies-cdn.de/clip.webm"></a>
+              <a class="gallery_item" data-index="2" href="//bilder1.ladies-cdn.de/Bilder/12/456-F2.JPG"></a>
+            </div>"#;
+        let profile = parse_profile(html, &example_card()).unwrap();
+        assert_eq!(profile.media.len(), 3);
+        assert_eq!(profile.media[0].position, 1);
+        assert!(profile.media[0].url.contains("456-A1.JPG"));
+        assert_eq!(profile.media[0].revision_token.as_deref(), Some("abc"));
+        assert_eq!(profile.media[1].kind, "VIDEO");
+        assert_eq!(profile.media[1].position, 2);
+        assert_eq!(profile.media[2].position, 3);
+    }
+
+    #[test]
+    fn search_cards_preserve_legacy_markers() {
+        let cards = parse_cards(
+            r#"<div class="ladies-card">
+              <a class="card-link" data-ref-id="123" href="/sex-anzeigen/huren-hostessen/123"></a>
+              <i class="icon-18plus"></i><span class="star-marker"></span>
+            </div>"#,
+        );
+        assert_eq!(cards.len(), 1);
+        assert!(cards[0].has_18plus);
+        assert!(cards[0].has_stars);
     }
 
     #[test]
