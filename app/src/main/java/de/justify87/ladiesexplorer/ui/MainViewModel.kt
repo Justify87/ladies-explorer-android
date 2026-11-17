@@ -25,6 +25,9 @@ data class HomeUiState(
     val sourceProfileCount: String = "0",
     val listingCount: String = "0",
     val lastImport: ImportReport? = null,
+    val diagnosticAvailable: Boolean = false,
+    val diagnosticSizeBytes: Long = 0,
+    val diagnosticLastError: String? = null,
     val error: String? = null,
 )
 
@@ -164,12 +167,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    suspend fun prepareDiagnosticSnapshot(): File = core.createDiagnosticSnapshot()
+
     private suspend fun publishStatus() {
         val status = core.status()
+        val diagnostic = core.diagnosticStatus()
         _uiState.update {
             it.copy(
                 loading = false,
                 schemaVersion = status.schemaVersion.toString(),
+                diagnosticAvailable = diagnostic.available,
+                diagnosticSizeBytes = diagnostic.sizeBytes.toLong(),
+                diagnosticLastError = diagnostic.lastWriteError,
                 personCount = status.personCount.toString(),
                 sourceProfileCount = status.sourceProfileCount.toString(),
                 listingCount = status.listingCount.toString(),

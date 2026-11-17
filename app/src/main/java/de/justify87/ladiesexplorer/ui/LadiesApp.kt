@@ -118,10 +118,27 @@ fun LadiesApp(
                             "Es kann personenbezogene Daten enthalten. Bitte nur bewusst teilen.",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    Button(onClick = onSaveDiagnostics) {
+                    state.diagnosticLastError?.let { error ->
+                        Text(
+                            "Debug-Logging fehlgeschlagen: $error",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    if (!state.diagnosticAvailable) {
+                        Text(
+                            "Noch keine lesbare Log-Datei vorhanden.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    } else {
+                        Text(
+                            "Log-Datei: " + state.diagnosticSizeBytes + " Bytes",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Button(onClick = onSaveDiagnostics, enabled = state.diagnosticAvailable) {
                         Text("Debug-Log als Datei speichern")
                     }
-                    Button(onClick = onShareDiagnostics) {
+                    Button(onClick = onShareDiagnostics, enabled = state.diagnosticAvailable) {
                         Text("Debug-Log teilen")
                     }
                     state.lastImport?.let { report ->

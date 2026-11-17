@@ -14,7 +14,15 @@ class CoreStore(context: Context) {
     }
 
     /** App-private, size-bounded log; shared only through explicit user interaction. */
-    fun diagnosticLogFile(): File = File(appFiles, "diagnostics/ladies-debug.log")
+    private val diagnosticExports = File(context.cacheDir, "diagnostic-exports")
+
+    suspend fun diagnosticStatus(): DiagnosticStatus = withContext(Dispatchers.IO) {
+        engine.diagnosticStatus()
+    }
+
+    suspend fun createDiagnosticSnapshot(): File = withContext(Dispatchers.IO) {
+        File(engine.exportDiagnosticSnapshot(diagnosticExports.absolutePath))
+    }
 
     private inline fun <T> recorded(operation: String, work: () -> T): T {
         runCatching { engine.recordDebugEvent("ANDROID", "$operation started") }
