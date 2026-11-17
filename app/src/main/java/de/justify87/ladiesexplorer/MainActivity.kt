@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
                 LadiesApp(
                     viewModel = viewModel,
                     onPickLegacyBundle = {
-                        pickLegacyBundle.launch(arrayOf("application/zip", "application/octet-stream"))
+                        pickLegacyBundle.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
                     },
                 )
             }

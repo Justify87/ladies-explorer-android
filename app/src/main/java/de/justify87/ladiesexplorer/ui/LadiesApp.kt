@@ -113,6 +113,7 @@ fun LadiesApp(viewModel: MainViewModel, onPickLegacyBundle: () -> Unit) {
                         Text("Import abgeschlossen", style = MaterialTheme.typography.titleMedium)
                         Text(
                             "Personen: " + report.persons +
+                                " · Quellenprofile: " + report.sourceProfiles +
                                 " · Inserate: " + report.listings +
                                 " · Gespeicherte Suchen: " + report.savedSearches +
                                 " · Manuelle Preislisten: " + report.manualPriceLists +

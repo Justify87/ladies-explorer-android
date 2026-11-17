@@ -3,9 +3,9 @@
 A native, on-device Android application scaffold with **Kotlin**, **Jetpack Compose /
 Material 3 Expressive**, **Rust**, **UniFFI** and **SQLite**.
 
-This is intentionally **a technical skeleton, not a functional port of Ladies Explorer**.
-No person profiles, scraping, identity matching, map, swiping or personal data have been
-imported. Those features belong to the subsequent migration milestones.
+This is a staged native migration, not yet a complete Ladies Explorer replacement.
+The Android app can import a legacy SQLite/media bundle locally, but discovery, scraping,
+swiping and maps are not implemented yet. No personal records are stored in this repository.
 
 ## Architecture
 

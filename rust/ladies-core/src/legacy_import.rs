@@ -254,7 +254,7 @@ fn validate_legacy(source: &Connection) -> Result<(), CoreError> {
 }
 
 fn target_has_data(db: &Connection) -> Result<bool, CoreError> {
-    for (table, _) in TABLES {
+    for table in TABLES.iter().map(|(table, _)| *table).chain(std::iter::once("app_settings")) {
         let count: i64 = db.query_row(
             &format!("SELECT COUNT(*) FROM {}", identifier(table)),
             [],
