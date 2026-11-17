@@ -22,8 +22,8 @@ There is no embedded Python, Flask, Node.js, messaging client or price-extractio
 
 - Three native placeholder tabs: Entdecken, Suche and Einstellungen.
 - Material 3 theme with Android dynamic colors.
-- Settings tab exercises Rust → SQLite → Rust → Kotlin round trips and error handling.
-- A Rust unit test exercises upsert, read and the invalid-path error.
+- Settings tab shows the Rust-owned database schema version and domain counts.
+- Rust unit tests verify schema identity, versioned migrations, saved-search history, source/listing uniqueness, foreign keys, paging and persistence.
 - Debug and release build variants; debug installs under a separate application ID.
 - GitHub Actions checks Rust tests and assembles the arm64 debug APK.
 
@@ -52,21 +52,21 @@ The Gradle build automatically runs:
 - cargo fmt --all -- --check (in rust/)
 - cargo test --workspace (in rust/)
 - ./gradlew :app:assembleDebug -Pladies.abis=arm64-v8a
-- Install the APK and open Einstellungen; save, refresh and read the SQLite test value.
+- Install the APK and open Einstellungen; check schema v1 and refresh the domain counts.
 
 The GitHub Actions run is the authoritative verification of the Android build.
 Do not claim installation on a physical device until it has actually been tested.
 
 ## What comes next
 
-Search and profile extraction, SQLite schema migration, media archiving, person
+Search and profile extraction, archive import, media archiving, person
 identity/history, swipe discovery and MapLibre will be implemented separately.
 WhatsApp is an external-open button only; integrated messaging and AI price
 extraction are explicitly excluded.
 
 ## Upstream provenance
 
-See [docs/PROVENANCE.md](docs/PROVENANCE.md). The build architecture is adapted
+See [docs/PROVENANCE.md](docs/PROVENANCE.md) and [docs/DATA-MIGRATION.md](docs/DATA-MIGRATION.md). The build architecture is adapted
 from Artefact, not its features. No Artefact document engine, OCR model, widget,
 PDF renderer or liquid-glass module is bundled.
 

@@ -6,8 +6,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Android's single access point to the generated UniFFI bindings.
- * Every blocking Rust call runs on Dispatchers.IO, never on the UI thread.
+ * The application has one Rust-owned database. Kotlin uses generated UniFFI types
+ * and never opens SQLite directly or blocks the UI thread.
  */
 class CoreStore(context: Context) {
     private val database = File(context.filesDir, "ladies.sqlite")
@@ -19,12 +19,18 @@ class CoreStore(context: Context) {
         engine.status()
     }
 
-    suspend fun saveTestNote(text: String): CoreStatus = withContext(Dispatchers.IO) {
-        engine.saveNote("scaffold", text)
-        engine.status()
+    suspend fun people(
+        limit: UInt = 50u,
+        cursor: PersonCursor? = null,
+    ): PersonPage = withContext(Dispatchers.IO) {
+        engine.listPeople(limit, cursor)
     }
 
-    suspend fun loadTestNote(): String? = withContext(Dispatchers.IO) {
-        engine.loadNote("scaffold")
+    suspend fun setPreference(personId: Long, preference: Preference) = withContext(Dispatchers.IO) {
+        engine.setPreference(personId, preference)
+    }
+
+    suspend fun setFavorite(personId: Long, favorite: Boolean) = withContext(Dispatchers.IO) {
+        engine.setFavorite(personId, favorite)
     }
 }
