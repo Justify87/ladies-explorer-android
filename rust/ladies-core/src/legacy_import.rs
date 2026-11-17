@@ -254,7 +254,11 @@ fn validate_legacy(source: &Connection) -> Result<(), CoreError> {
 }
 
 fn target_has_data(db: &Connection) -> Result<bool, CoreError> {
-    for table in TABLES.iter().map(|(table, _)| *table).chain(std::iter::once("app_settings")) {
+    for table in TABLES
+        .iter()
+        .map(|(table, _)| *table)
+        .chain(std::iter::once("app_settings"))
+    {
         let count: i64 = db.query_row(
             &format!("SELECT COUNT(*) FROM {}", identifier(table)),
             [],
@@ -357,7 +361,11 @@ mod tests {
     use std::io::Write;
     use zip::write::SimpleFileOptions;
 
-    fn fixture(root: &Path, missing_media: bool, invalid_owner: bool) -> (std::path::PathBuf, std::path::PathBuf) {
+    fn fixture(
+        root: &Path,
+        missing_media: bool,
+        invalid_owner: bool,
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
         let source_file = root.join("source.sqlite3");
         let mut src = Connection::open(&source_file).unwrap();
         crate::schema::migrate(&mut src).unwrap();
@@ -431,8 +439,9 @@ mod tests {
         if invalid_owner {
             src.execute_batch(
                 "PRAGMA foreign_keys=OFF;
-                 UPDATE listings SET person_id=999, source_profile_id=NULL WHERE listing_id=21;"
-            ).unwrap();
+                 UPDATE listings SET person_id=999, source_profile_id=NULL WHERE listing_id=21;",
+            )
+            .unwrap();
         }
         drop(src);
         let bundle = root.join("export.zip");
@@ -494,9 +503,8 @@ mod tests {
     fn inconsistent_source_foreign_keys_roll_back_after_partial_copy() {
         let tmp = tempfile::tempdir().unwrap();
         let (bundle, app) = fixture(tmp.path(), false, true);
-        let core = LadiesCore::new(
-            app.join("ladies.sqlite").to_string_lossy().into_owned()
-        ).unwrap();
+        let core =
+            LadiesCore::new(app.join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
         assert!(matches!(
             import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()),
             Err(CoreError::Import(_))
