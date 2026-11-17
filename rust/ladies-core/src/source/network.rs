@@ -7,7 +7,7 @@ use reqwest::blocking::Client;
 use serde_json::Value;
 use url::Url;
 
-use crate::CoreError;
+use crate::{CoreError, diagnostics};
 
 use super::{Card, SearchRequest, filter, parse};
 
@@ -83,6 +83,7 @@ impl Transport for SourceHttp {
             "text/html, application/xhtml+xml, */*"
         };
         let requested_path = parsed.path().to_owned();
+        diagnostics::event("HTTP", format!("GET {url}"));
         let mut response = self
             .client
             .get(parsed)
@@ -91,8 +92,25 @@ impl Transport for SourceHttp {
             .header("Referer", BASE)
             .header("DNT", "1")
             .send()
-            .map_err(|e| CoreError::Source(format!("Source HTTP request failed: {e}")))?;
+            .map_err(|e| {
+                diagnostics::event("HTTP", format!("GET failure {url}: {e}"));
+                CoreError::Source(format!("Source HTTP request failed: {e}"))
+            })?;
         let status = response.status().as_u16();
+        let response_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("not specified")
+            .to_owned();
+        diagnostics::event(
+            "HTTP",
+            format!(
+                "Response status={status} type={response_type} final_url={} content_length={:?}",
+                response.url(),
+                response.content_length()
+            ),
+        );
         if status == 200 && response.url().path() != requested_path {
             return Err(CoreError::Source(format!(
                 "Die Website hat statt der angeforderten Seite {} die Seite {} geliefert.",
@@ -113,6 +131,10 @@ impl Transport for SourceHttp {
         }
         let body = String::from_utf8(bytes)
             .map_err(|_| CoreError::Source("Source response is not UTF-8".into()))?;
+        diagnostics::event("HTTP", format!("Response bytes={} status={status}", body.len()));
+        if status >= 400 {
+            diagnostics::html("http_error", &body);
+        }
         Ok(Response { status, body })
     }
 
@@ -221,8 +243,12 @@ fn parse_api(response: Response) -> Result<Option<Value>, CoreError> {
         )));
     }
     let payload: Value = serde_json::from_str(&response.body)
-        .map_err(|e| CoreError::Source(format!("Invalid source search API payload: {e}")))?;
+        .map_err(|e| {
+            diagnostics::html("invalid_api_json", &response.body);
+            CoreError::Source(format!("Invalid source search API payload: {e}"))
+        })?;
     if !payload.is_object() {
+        diagnostics::html("invalid_api_shape", &response.body);
         return Err(CoreError::Source(
             "Search API response is not an object".into(),
         ));
@@ -252,6 +278,7 @@ fn append_page(profiles: &mut Vec<Card>, payload: &Value) -> Result<(), CoreErro
         .ok_or_else(|| CoreError::Source("Search API page missing HTML content".into()))?;
     let parsed = parse::parse_cards(content);
     if parsed.is_empty() && !content.trim().is_empty() {
+        diagnostics::html("api_page_unrecognized_cards", content);
         return Err(CoreError::Source(format!(
             "Die Folgeseite enthält keine erkennbaren Anzeigenkarten. {}",
             parse::search_page_diagnostics(content)
@@ -275,6 +302,10 @@ fn fetch_search_using<T: Transport>(
     filter::validate_request(request)?;
     let filter_path = filter::filter_path(request)?;
     let (city_slug, city) = resolve_location(client, &request.city);
+    diagnostics::event("SEARCH", format!(
+        "Resolved location={} slug={} radius={} max_pages={} filter_path={}",
+        city, city_slug, request.radius_km, request.max_pages, filter_path
+    ));
     let first = client.get(&search_url(
         &city_slug,
         request.radius_km,
@@ -313,12 +344,19 @@ fn fetch_search_using<T: Transport>(
         )));
     }
     let mut cards = parse::parse_cards(&first.body);
+    diagnostics::event("PARSER", format!(
+        "Search page=1 status={} cards={} pages={:?} advert_count={:?} observed_radius={:?} {}",
+        first.status, cards.len(), total_from_html, server_count, observed_radius,
+        parse::search_page_diagnostics(&first.body)
+    ));
     if cards.is_empty()
         && (server_count != Some(0) || total_from_html.is_some_and(|pages| pages > 1))
     {
         // The browser HAR shows the same search cards in an API 'content' field.
         // Try that first-page representation before treating HTML parser drift as fatal.
         let diagnostic = parse::search_page_diagnostics(&first.body);
+        diagnostics::html("search_page_1_unrecognized", &first.body);
+        diagnostics::event("SEARCH", "Attempting JSON API fallback for page 1");
         let first_api = client
             .get(&search_url(
                 &city_slug,
@@ -354,6 +392,7 @@ fn fetch_search_using<T: Transport>(
             })?;
         let recovered = parse::parse_cards(api_html);
         if recovered.is_empty() {
+            diagnostics::html("api_page_1_unrecognized_cards", api_html);
             return Err(CoreError::Source(format!(
                 "Keine erkennbaren Anzeigenkarten in HTML oder API. HTML: {diagnostic}; API: {}",
                 parse::search_page_diagnostics(api_html)
@@ -464,6 +503,10 @@ fn fetch_search_using<T: Transport>(
 
     let mut ids = HashSet::new();
     cards.retain(|card| ids.insert(card.advert_id.clone()));
+    diagnostics::event("SEARCH", format!(
+        "Search completed cards={} fetched_pages={} total_pages={} partial={} radius_verified={} boundary_stopped={}",
+        cards.len(), fetched_pages, total_pages, partial, radius_verified, boundary_stopped
+    ));
     if server_count.is_some_and(|count| cards.len() as u32 != count) {
         partial = true;
     }
