@@ -1,6 +1,7 @@
 //! App-private Rust persistence and the typed UniFFI boundary.
 //! A person is distinct from its source profiles and individual listings.
 
+mod diagnostics;
 mod legacy_import;
 mod schema;
 mod source;
@@ -138,10 +139,13 @@ impl LadiesCore {
                 "Database path must not be empty".into(),
             ));
         }
+        diagnostics::initialize(&database_path);
+        diagnostics::event("CORE", "Opening SQLite");
         let mut db = Connection::open(database_path)?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
+        diagnostics::event("CORE", "SQLite schema ready");
         Ok(Arc::new(Self {
             db: Mutex::new(db),
             source_session: source::SourceSession::new()?,
@@ -153,7 +157,20 @@ impl LadiesCore {
         bundle_path: String,
         app_files_directory: String,
     ) -> Result<ImportReport, CoreError> {
-        legacy_import::import_bundle(self, &bundle_path, &app_files_directory)
+        diagnostics::event("IMPORT", "Legacy data import requested");
+        let result = legacy_import::import_bundle(self, &bundle_path, &app_files_directory);
+        match &result {
+            Ok(report) => diagnostics::event("IMPORT", format!(
+                "Import completed: persons={} listings={} media={}",
+                report.persons, report.listings, report.media_files
+            )),
+            Err(error) => diagnostics::event("IMPORT", format!("Import failed: {error}")),
+        }
+        result
+    }
+
+    pub fn record_debug_event(&self, component: String, message: String) {
+        diagnostics::event(&component, message);
     }
 
     pub fn search_source(&self, query: SearchRequest) -> Result<SearchResponse, CoreError> {
