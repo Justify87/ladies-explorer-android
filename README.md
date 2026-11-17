@@ -57,9 +57,20 @@ The Gradle build automatically runs:
 The GitHub Actions run is the authoritative verification of the Android build.
 Do not claim installation on a physical device until it has actually been tested.
 
+## Import existing web-app data
+
+Create a versioned ZIP with the Bash exporter and import it using Android's
+document picker in Settings. This requires no Python on macOS or Android:
+
+    ./tools/export-legacy.sh /path/to/ladies-webapp/data ~/Downloads/ladies-export.zip
+
+See [docs/DATA-IMPORT.md](docs/DATA-IMPORT.md) for prerequisites, exact
+inclusion/exclusion rules, integrity checks and caveats. The generated ZIP
+contains personal records; never commit or upload it to GitHub.
+
 ## What comes next
 
-Search and profile extraction, archive import, media archiving, person
+Search and profile extraction, media browsing, person
 identity/history, swipe discovery and MapLibre will be implemented separately.
 WhatsApp is an external-open button only; integrated messaging and AI price
 extraction are explicitly excluded.

@@ -34,6 +34,9 @@ jobs:
         with:
           workspaces: rust -> target
 
+      - name: Export script syntax
+        run: bash -n tools/export-legacy.sh
+
       - name: Rust unit tests and formatting
         working-directory: rust
         run: |
