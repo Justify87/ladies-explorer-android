@@ -68,9 +68,19 @@ See [docs/DATA-IMPORT.md](docs/DATA-IMPORT.md) for prerequisites, exact
 inclusion/exclusion rules, integrity checks and caveats. The generated ZIP
 contains personal records; never commit or upload it to GitHub.
 
+## Live source search and profile parsing
+
+M03 adds a typed Rust/UniFFI search API: configured location, source filter
+mapping, radius-aware pagination, deduplicated results, SQLite search runs and
+profile snapshot extraction. The Compose Search tab has a minimal smoke-test UI.
+Source HTML may change and must be verified on-device with real pages.
+
+See [docs/SOURCE-M03.md](docs/SOURCE-M03.md) for behavior, compatibility
+choices, offline tests and what is explicitly deferred to M04/M05.
+
 ## What comes next
 
-Search and profile extraction, media browsing, person
+Media archiving, complete profile UI, person
 identity/history, swipe discovery and MapLibre will be implemented separately.
 WhatsApp is an external-open button only; integrated messaging and AI price
 extraction are explicitly excluded.
