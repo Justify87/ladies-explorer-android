@@ -22,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +30,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -49,9 +47,7 @@ fun LadiesApp(viewModel: MainViewModel) {
     val tabs = Tab.entries
 
     Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(title = { Text("Ladies Explorer") })
-        },
+        topBar = { CenterAlignedTopAppBar(title = { Text("Ladies Explorer") }) },
         bottomBar = {
             NavigationBar {
                 tabs.forEachIndexed { index, tab ->
@@ -82,46 +78,29 @@ fun LadiesApp(viewModel: MainViewModel) {
             when (tabs[selected]) {
                 Tab.Discover -> Placeholder(
                     title = "Entdecken",
-                    detail = "Hier entsteht der Swipe-Stapel. Das technische Grundgerüst enthält keine Demo-Profile.",
+                    detail = "Die Profildatenbank ist vorbereitet. Der Swipe-Stapel folgt in einem späteren Migrationsschritt.",
                 )
                 Tab.Search -> Placeholder(
                     title = "Suche",
-                    detail = "Online-Suche und Filter werden erst in den Migrationsmeilensteinen implementiert.",
+                    detail = "Das Rust-Datenmodell ist vorhanden. Suche und HTML-Extraktion werden separat integriert.",
                 )
                 Tab.Settings -> {
-                    Text("Technischer Selbsttest", style = MaterialTheme.typography.headlineMedium)
+                    Text("Lokale Datenbasis", style = MaterialTheme.typography.headlineMedium)
                     Text(
-                        "Die Android-Oberfläche kommuniziert über UniFFI mit Rust und SQLite.",
+                        "Personen, Quellenprofile und Inserate werden in einer Rust-eigenen SQLite-Datenbank verwaltet.",
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     if (state.loading) CircularProgressIndicator()
                     if (state.error != null) {
-                        Text(
-                            "Fehler: " + state.error,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    } else if (state.coreVersion != null) {
-                        Text("Rust-API: v" + state.coreVersion)
-                        Text("Gespeicherte Testeinträge: " + state.storedNotes)
-                    }
-                    OutlinedTextField(
-                        modifier = Modifier.fillMaxWidth(),
-                        value = state.draftNote,
-                        onValueChange = viewModel::updateNote,
-                        label = { Text("SQLite-Testwert") },
-                        singleLine = true,
-                    )
-                    Button(
-                        enabled = !state.loading && state.error == null,
-                        onClick = viewModel::saveTestNote,
-                    ) {
-                        Text("Testwert speichern")
+                        Text("Fehler: " + state.error, color = MaterialTheme.colorScheme.error)
+                    } else if (state.schemaVersion != null) {
+                        Text("Datenbankschema: v" + state.schemaVersion)
+                        Text("Personen: " + state.personCount)
+                        Text("Quellenprofile: " + state.sourceProfileCount)
+                        Text("Inserate: " + state.listingCount)
                     }
                     Button(enabled = !state.loading, onClick = viewModel::refresh) {
-                        Text("Rust-Status aktualisieren")
-                    }
-                    if (state.lastSavedNote != null) {
-                        Text("Zuletzt gespeichert: " + state.lastSavedNote)
+                        Text("Datenbankstatus aktualisieren")
                     }
                 }
             }
@@ -138,12 +117,8 @@ private fun Placeholder(title: String, detail: String) {
             modifier = Modifier.padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Technisches Skelett", style = MaterialTheme.typography.titleLarge)
-            Text(
-                detail,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Start,
-            )
+            Text("Migration läuft", style = MaterialTheme.typography.titleLarge)
+            Text(detail, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }

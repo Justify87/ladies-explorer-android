@@ -11,10 +11,10 @@ import kotlinx.coroutines.launch
 
 data class HomeUiState(
     val loading: Boolean = true,
-    val coreVersion: String? = null,
-    val storedNotes: String = "0",
-    val draftNote: String = "",
-    val lastSavedNote: String? = null,
+    val schemaVersion: String? = null,
+    val personCount: String = "0",
+    val sourceProfileCount: String = "0",
+    val listingCount: String = "0",
     val error: String? = null,
 )
 
@@ -27,48 +27,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refresh()
     }
 
-    fun updateNote(value: String) {
-        _uiState.update { it.copy(draftNote = value) }
-    }
-
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, error = null) }
-            runCatching {
-                val status = core.status()
-                val saved = core.loadTestNote()
-                status to saved
-            }.onSuccess { (status, saved) ->
-                _uiState.update {
-                    it.copy(
-                        loading = false,
-                        coreVersion = status.apiVersion.toString(),
-                        storedNotes = status.storedNotes.toString(),
-                        lastSavedNote = saved,
-                    )
-                }
-            }.onFailure { failure ->
-                _uiState.update { it.copy(loading = false, error = failure.message ?: "Rust core unavailable") }
-            }
-        }
-    }
-
-    fun saveTestNote() {
-        val note = _uiState.value.draftNote
-        viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, error = null) }
-            runCatching { core.saveTestNote(note) }
+            runCatching { core.status() }
                 .onSuccess { status ->
                     _uiState.update {
                         it.copy(
                             loading = false,
-                            storedNotes = status.storedNotes.toString(),
-                            lastSavedNote = note,
+                            schemaVersion = status.schemaVersion.toString(),
+                            personCount = status.personCount.toString(),
+                            sourceProfileCount = status.sourceProfileCount.toString(),
+                            listingCount = status.listingCount.toString(),
                         )
                     }
                 }
                 .onFailure { failure ->
-                    _uiState.update { it.copy(loading = false, error = failure.message ?: "Storage failed") }
+                    _uiState.update {
+                        it.copy(loading = false, error = failure.message ?: "Rust-Datenbank nicht verfügbar")
+                    }
                 }
         }
     }
