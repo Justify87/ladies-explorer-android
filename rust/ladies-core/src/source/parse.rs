@@ -166,7 +166,7 @@ pub(super) fn is_radius_transition_placeholder(html: &str, requested_radius: u32
                     .is_none()
                 && card
                     .select(&selector(".card-name, .card-city"))
-                    .all(|node| text(&node).trim().is_empty())
+                    .all(|node| text(node).trim().is_empty())
         })
 }
 
