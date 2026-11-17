@@ -29,7 +29,7 @@ There is no embedded Python, Flask, Node.js, messaging client or price-extractio
 
 ## Build
 
-Requirements: Java 21, Android SDK Platform 37, Android NDK 29.0.14206865,
+Requirements: Java 21, Android SDK Platform 36, Android NDK 29.0.14206865,
 Rust 1.99, the Android Rust targets, and cargo-ndk 4.1.2. Android Studio can
 open the repository root.
 

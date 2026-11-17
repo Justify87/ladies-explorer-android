@@ -46,7 +46,7 @@ jobs:
 
       - name: Install required Android SDK and NDK
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "ndk;29.0.14206865"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "ndk;29.0.14206865"
 
       - name: Build arm64 APK (automatically builds Rust and UniFFI)
         run: ./gradlew :app:assembleDebug -Pladies.abis=arm64-v8a --stacktrace
