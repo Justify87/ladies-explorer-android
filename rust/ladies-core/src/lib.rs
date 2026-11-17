@@ -305,9 +305,10 @@ impl LadiesCore {
                 "Page size must be between 1 and 100".into(),
             ));
         }
-        if cursor.as_ref().is_some_and(|value| {
-            value.person_id <= 0 || value.last_seen_at.is_empty()
-        }) {
+        if cursor
+            .as_ref()
+            .is_some_and(|value| value.person_id <= 0 || value.last_seen_at.is_empty())
+        {
             return Err(CoreError::InvalidInput("Invalid person cursor".into()));
         }
         let db = self.connection()?;
@@ -333,7 +334,10 @@ impl LadiesCore {
         } else {
             None
         };
-        Ok(PersonPage { people, next_cursor })
+        Ok(PersonPage {
+            people,
+            next_cursor,
+        })
     }
 
     pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
@@ -612,7 +616,8 @@ mod tests {
                     "INSERT INTO persons (display_name, last_seen_at)
                      VALUES (?1, '2026-01-01T00:00:00.000Z')",
                     params![format!("Person {number}")],
-                ).unwrap();
+                )
+                .unwrap();
             }
             tx.commit().unwrap();
         }
@@ -637,13 +642,22 @@ mod tests {
     #[test]
     fn pagination_rejects_invalid_page_size_and_cursor() {
         let core = memory_core();
-        assert!(matches!(core.list_people(0, None), Err(CoreError::InvalidInput(_))));
-        assert!(matches!(core.list_people(101, None), Err(CoreError::InvalidInput(_))));
         assert!(matches!(
-            core.list_people(25, Some(PersonCursor {
-                last_seen_at: "2026".into(),
-                person_id: 0
-            })),
+            core.list_people(0, None),
+            Err(CoreError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            core.list_people(101, None),
+            Err(CoreError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            core.list_people(
+                25,
+                Some(PersonCursor {
+                    last_seen_at: "2026".into(),
+                    person_id: 0
+                })
+            ),
             Err(CoreError::InvalidInput(_))
         ));
         assert!(core.list_people(25, None).unwrap().people.is_empty());
@@ -656,33 +670,51 @@ mod tests {
         const OLD: &str = "2000-01-01T00:00:00.000Z";
         {
             let db = core.connection().unwrap();
-            db.execute("UPDATE persons SET last_seen_at=?1 WHERE person_id=?2", params![OLD, id]).unwrap();
+            db.execute(
+                "UPDATE persons SET last_seen_at=?1 WHERE person_id=?2",
+                params![OLD, id],
+            )
+            .unwrap();
         }
-        let profile_id = core.add_source_profile(id, "LADIES".into(), "profile".into()).unwrap();
+        let profile_id = core
+            .add_source_profile(id, "LADIES".into(), "profile".into())
+            .unwrap();
         assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
 
         {
             let db = core.connection().unwrap();
-            db.execute("UPDATE persons SET last_seen_at=?1 WHERE person_id=?2", params![OLD, id]).unwrap();
+            db.execute(
+                "UPDATE persons SET last_seen_at=?1 WHERE person_id=?2",
+                params![OLD, id],
+            )
+            .unwrap();
             db.execute(
                 "UPDATE source_profiles SET last_seen_at=?1 WHERE source_profile_id=?2",
                 params![OLD, profile_id],
-            ).unwrap();
+            )
+            .unwrap();
         }
-        core.add_listing(id, Some(profile_id), "LADIES".into(), "ad".into(), None).unwrap();
+        core.add_listing(id, Some(profile_id), "LADIES".into(), "ad".into(), None)
+            .unwrap();
         assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
         {
             let db = core.connection().unwrap();
-            let profile_seen: String = db.query_row(
-                "SELECT last_seen_at FROM source_profiles WHERE source_profile_id=?1",
-                params![profile_id],
-                |r| r.get(0),
-            ).unwrap();
+            let profile_seen: String = db
+                .query_row(
+                    "SELECT last_seen_at FROM source_profiles WHERE source_profile_id=?1",
+                    params![profile_id],
+                    |r| r.get(0),
+                )
+                .unwrap();
             assert!(profile_seen.as_str() > OLD);
-            db.execute("UPDATE persons SET last_seen_at=?1 WHERE person_id=?2", params![OLD, id]).unwrap();
+            db.execute(
+                "UPDATE persons SET last_seen_at=?1 WHERE person_id=?2",
+                params![OLD, id],
+            )
+            .unwrap();
         }
-        core.add_listing(id, Some(profile_id), "LADIES".into(), "ad".into(), None).unwrap();
+        core.add_listing(id, Some(profile_id), "LADIES".into(), "ad".into(), None)
+            .unwrap();
         assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
     }
-
 }

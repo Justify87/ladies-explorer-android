@@ -542,8 +542,12 @@ mod tests {
             "CREATE TABLE persons (person_id INTEGER PRIMARY KEY, legacy_value TEXT);
              INSERT INTO persons (legacy_value) VALUES ('keep');
              PRAGMA user_version = 1;",
-        ).unwrap();
-        assert!(matches!(migrate(&mut db), Err(CoreError::SchemaMismatch(_))));
+        )
+        .unwrap();
+        assert!(matches!(
+            migrate(&mut db),
+            Err(CoreError::SchemaMismatch(_))
+        ));
         let value: String = db
             .query_row("SELECT legacy_value FROM persons", [], |row| row.get(0))
             .unwrap();
@@ -554,16 +558,24 @@ mod tests {
     fn schema_drift_with_correct_version_is_not_accepted() {
         let mut db = Connection::open_in_memory().unwrap();
         migrate(&mut db).unwrap();
-        db.execute_batch("ALTER TABLE persons ADD COLUMN rogue TEXT;").unwrap();
-        assert!(matches!(migrate(&mut db), Err(CoreError::SchemaMismatch(_))));
+        db.execute_batch("ALTER TABLE persons ADD COLUMN rogue TEXT;")
+            .unwrap();
+        assert!(matches!(
+            migrate(&mut db),
+            Err(CoreError::SchemaMismatch(_))
+        ));
     }
 
     #[test]
     fn missing_table_with_correct_version_is_not_accepted() {
         let mut db = Connection::open_in_memory().unwrap();
         migrate(&mut db).unwrap();
-        db.execute_batch("DROP TABLE saved_search_results;").unwrap();
-        assert!(matches!(migrate(&mut db), Err(CoreError::SchemaMismatch(_))));
+        db.execute_batch("DROP TABLE saved_search_results;")
+            .unwrap();
+        assert!(matches!(
+            migrate(&mut db),
+            Err(CoreError::SchemaMismatch(_))
+        ));
     }
 
     #[test]
@@ -576,30 +588,41 @@ mod tests {
               unread_new_results, last_delta_json)
              VALUES (?1, ?2, ?3, 7, 1, ?4)",
             rusqlite::params!["uuid-abc-4711", "Leipzig", "{}", "{\"new\":2}"],
-        ).unwrap();
+        )
+        .unwrap();
         db.execute(
             "INSERT INTO saved_search_results
              (saved_search_id, result_key, snapshot_json, position, present, visible)
              VALUES (?1, ?2, ?3, 1, 1, 1)",
             rusqlite::params!["uuid-abc-4711", "source-ad-id", "{\"ad\":1}"],
-        ).unwrap();
+        )
+        .unwrap();
         migrate(&mut db).unwrap();
-        let row: (String, i64, i64) = db.query_row(
-            "SELECT saved_search_id, definition_version, unread_new_results
-             FROM saved_searches", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        ).unwrap();
+        let row: (String, i64, i64) = db
+            .query_row(
+                "SELECT saved_search_id, definition_version, unread_new_results
+             FROM saved_searches",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
         assert_eq!(row, ("uuid-abc-4711".into(), 7, 1));
-        let result_key: String = db.query_row(
-            "SELECT result_key FROM saved_search_results", [], |r| r.get(0),
-        ).unwrap();
+        let result_key: String = db
+            .query_row("SELECT result_key FROM saved_search_results", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
         assert_eq!(result_key, "source-ad-id");
         db.execute(
             "DELETE FROM saved_searches WHERE saved_search_id = ?1",
             ["uuid-abc-4711"],
-        ).unwrap();
-        let remaining: i64 = db.query_row(
-            "SELECT COUNT(*) FROM saved_search_results", [], |r| r.get(0),
-        ).unwrap();
+        )
+        .unwrap();
+        let remaining: i64 = db
+            .query_row("SELECT COUNT(*) FROM saved_search_results", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
         assert_eq!(remaining, 0);
     }
 
@@ -607,13 +630,15 @@ mod tests {
     fn person_insert_always_creates_default_user_state() {
         let mut db = Connection::open_in_memory().unwrap();
         migrate(&mut db).unwrap();
-        db.execute("INSERT INTO persons (display_name) VALUES ('Test')", []).unwrap();
+        db.execute("INSERT INTO persons (display_name) VALUES ('Test')", [])
+            .unwrap();
         let state: (String, i64) = db
             .query_row(
                 "SELECT preference, favorite FROM person_user_state WHERE person_id=1",
                 [],
                 |r| Ok((r.get(0)?, r.get(1)?)),
-            ).unwrap();
+            )
+            .unwrap();
         assert_eq!(state, ("NONE".into(), 0));
     }
 
@@ -625,40 +650,60 @@ mod tests {
             "INSERT INTO persons (person_id, display_name) VALUES (1, 'One'), (2, 'Two');
              INSERT INTO source_profiles (source_profile_id, person_id, source, external_profile_id)
              VALUES (10, 1, 'LADIES', 'profile-10');",
-        ).unwrap();
-        assert!(db.execute(
-            "INSERT INTO listings (person_id, source_profile_id, source, external_listing_id)
+        )
+        .unwrap();
+        assert!(
+            db.execute(
+                "INSERT INTO listings (person_id, source_profile_id, source, external_listing_id)
              VALUES (2, 10, 'LADIES', 'ad-other-person')",
-            [],
-        ).is_err());
-        assert!(db.execute(
-            "INSERT INTO listings (person_id, source_profile_id, source, external_listing_id)
+                [],
+            )
+            .is_err()
+        );
+        assert!(
+            db.execute(
+                "INSERT INTO listings (person_id, source_profile_id, source, external_listing_id)
              VALUES (1, 10, 'OTHER', 'ad-other-source')",
-            [],
-        ).is_err());
+                [],
+            )
+            .is_err()
+        );
         db.execute(
             "INSERT INTO listings (person_id, source_profile_id, source, external_listing_id)
              VALUES (1, 10, 'LADIES', 'ad-same')",
             [],
-        ).unwrap();
-        assert!(db.execute(
-            "UPDATE listings SET person_id=2 WHERE external_listing_id='ad-same'",
-            [],
-        ).is_err());
-        assert!(db.execute(
-            "UPDATE source_profiles SET source='OTHER' WHERE source_profile_id=10",
-            [],
-        ).is_err());
-        assert!(db.execute(
-            "UPDATE source_profiles SET person_id=2 WHERE source_profile_id=10",
-            [],
-        ).is_err());
-        db.execute("DELETE FROM source_profiles WHERE source_profile_id=10", []).unwrap();
-        let linked: Option<i64> = db.query_row(
-            "SELECT source_profile_id FROM listings WHERE external_listing_id='ad-same'",
-            [], |r| r.get(0),
-        ).unwrap();
+        )
+        .unwrap();
+        assert!(
+            db.execute(
+                "UPDATE listings SET person_id=2 WHERE external_listing_id='ad-same'",
+                [],
+            )
+            .is_err()
+        );
+        assert!(
+            db.execute(
+                "UPDATE source_profiles SET source='OTHER' WHERE source_profile_id=10",
+                [],
+            )
+            .is_err()
+        );
+        assert!(
+            db.execute(
+                "UPDATE source_profiles SET person_id=2 WHERE source_profile_id=10",
+                [],
+            )
+            .is_err()
+        );
+        db.execute("DELETE FROM source_profiles WHERE source_profile_id=10", [])
+            .unwrap();
+        let linked: Option<i64> = db
+            .query_row(
+                "SELECT source_profile_id FROM listings WHERE external_listing_id='ad-same'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(linked, None);
     }
-
 }
