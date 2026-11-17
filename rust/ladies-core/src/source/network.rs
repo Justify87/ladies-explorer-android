@@ -103,6 +103,7 @@ pub(super) struct DownloadedSearch {
     pub fetched_pages: u32,
     pub partial: bool,
     pub radius_boundary_stopped: bool,
+    pub radius_verified: bool,
 }
 
 fn resolve_location<T: Transport>(client: &T, city: &str) -> (String, String) {
@@ -213,12 +214,17 @@ fn distance_matches(payload: &Value, requested_radius: u32) -> bool {
     }
 }
 
+
 fn append_page(profiles: &mut Vec<Card>, payload: &Value) -> Result<(), CoreError> {
-    let content = payload
-        .get("content")
-        .and_then(Value::as_str)
+    let content = payload.get("content").and_then(Value::as_str)
         .ok_or_else(|| CoreError::Source("Search API page missing HTML content".into()))?;
-    profiles.extend(parse::parse_cards(content));
+    let parsed = parse::parse_cards(content);
+    if parsed.is_empty() && !content.trim().is_empty() {
+        return Err(CoreError::Source(
+            "Search API HTML contains content but no recognizable cards".into(),
+        ));
+    }
+    profiles.extend(parsed);
     Ok(())
 }
 
@@ -229,6 +235,7 @@ pub(super) fn fetch_search(
     fetch_search_using(client, request)
 }
 
+
 fn fetch_search_using<T: Transport>(
     client: &T,
     request: &SearchRequest,
@@ -236,8 +243,9 @@ fn fetch_search_using<T: Transport>(
     filter::validate_request(request)?;
     let filter_path = filter::filter_path(request)?;
     let (city_slug, city) = resolve_location(client, &request.city);
-    let first_url = search_url(&city_slug, request.radius_km, 1, &filter_path, false);
-    let first = client.get(&first_url)?;
+    let first = client.get(&search_url(
+        &city_slug, request.radius_km, 1, &filter_path, false,
+    ))?;
     if first.status == 404 {
         return Ok(DownloadedSearch {
             cards: Vec::new(),
@@ -248,96 +256,111 @@ fn fetch_search_using<T: Transport>(
             fetched_pages: 1,
             partial: false,
             radius_boundary_stopped: false,
+            radius_verified: false,
         });
     }
     if first.status != 200 {
-        return Err(CoreError::Source(format!(
-            "Search HTTP status {}",
-            first.status
-        )));
+        return Err(CoreError::Source(format!("Search HTTP status {}", first.status)));
     }
+
     let total_from_html = parse::parse_config(&first.body, "totalPages");
-    let server_count = parse::parse_config(&first.body, "advertCount");
-    let radius = parse::parse_config(&first.body, "distanceSearched");
-    if radius.is_some_and(|radius| radius != request.radius_km) {
+    let mut server_count = parse::parse_config(&first.body, "advertCount");
+    let observed_radius = parse::parse_config(&first.body, "distanceSearched");
+    if observed_radius.is_some_and(|radius| radius != request.radius_km) {
         return Err(CoreError::Source(format!(
             "Search radius was expanded by the source: requested {} km, returned {} km",
-            request.radius_km,
-            radius.unwrap_or_default()
+            request.radius_km, observed_radius.unwrap_or_default()
         )));
     }
+    let mut radius_verified = observed_radius == Some(request.radius_km);
+    let mut partial = !radius_verified;
     let mut cards = parse::parse_cards(&first.body);
-    if cards.is_empty() && total_from_html.is_none() && server_count.is_none() {
-        return Err(CoreError::Source(
-            "Search HTML does not contain expected cards or pagination metadata".into(),
-        ));
-    }
-    if cards.is_empty() && server_count.is_some_and(|count| count > 0) {
-        return Err(CoreError::Source(
-            "Search advert count is nonzero but cards are missing".into(),
-        ));
+
+    if cards.is_empty() {
+        // Metadata-only HTML with an unreadable card DOM is not a valid empty search.
+        if server_count != Some(0) || total_from_html.is_some_and(|pages| pages > 1) {
+            return Err(CoreError::Source(
+                "Search returned no recognized cards without a confirmed zero advert count".into(),
+            ));
+        }
+        return Ok(DownloadedSearch {
+            cards,
+            city,
+            city_slug,
+            server_count,
+            total_pages: 0,
+            fetched_pages: 1,
+            partial,
+            radius_boundary_stopped: false,
+            radius_verified,
+        });
     }
 
     let mut total_pages = total_from_html.unwrap_or(1).max(1);
     let mut fetched_pages = 1u32;
     let mut boundary_stopped = false;
-    let mut partial = false;
-    let mut start = 2;
-    let mut server_count = server_count;
-
+    let mut next_page = 2;
     if total_from_html.is_none() {
-        // Legacy source behavior: probe API page 2 to discover pagination metadata.
-        // Fail closed if this page silently expands the requested radius.
-        client.wait_between_pages();
-        let response = parse_api(client.get(&search_url(
-            &city_slug,
-            request.radius_km,
-            2,
-            &filter_path,
-            true,
-        ))?)?;
-        if let Some(payload) = response {
-            fetched_pages += 1;
-            if !distance_matches(&payload, request.radius_km) {
-                boundary_stopped = true;
-                partial = true;
-                total_pages = 2;
-            } else {
-                total_pages = number(payload.pointer("/pagination/totalPages"))
-                    .unwrap_or(2)
-                    .max(2);
-                server_count = number(payload.get("advertCount"));
-                if request.max_pages >= 2 {
-                    append_page(&mut cards, &payload)?;
-                } else {
-                    partial = true;
-                }
-            }
+        if request.max_pages == 1 {
+            // Do not fetch beyond the caller's limit just to discover pagination.
+            partial = true;
         } else {
-            total_pages = 1;
+            client.wait_between_pages();
+            let probe = parse_api(client.get(&search_url(
+                &city_slug, request.radius_km, 2, &filter_path, true,
+            ))?)?;
+            if let Some(payload) = probe {
+                fetched_pages += 1;
+                match payload.get("distanceSearched") {
+                    None => {
+                        radius_verified = false;
+                        partial = true;
+                    }
+                    Some(_) if !distance_matches(&payload, request.radius_km) => {
+                        radius_verified = false;
+                        partial = true;
+                        boundary_stopped = true;
+                    }
+                    _ => {}
+                }
+                if !boundary_stopped {
+                    total_pages = number(payload.pointer("/pagination/totalPages"))
+                        .unwrap_or(2).max(2);
+                    if let Some(count) = number(payload.get("advertCount")) {
+                        server_count = Some(count);
+                    }
+                    append_page(&mut cards, &payload)?;
+                }
+            } else {
+                total_pages = 1;
+            }
         }
-        start = 3;
+        next_page = 3;
     }
 
     if !boundary_stopped {
-        for page in start..=total_pages.min(request.max_pages) {
+        for page in next_page..=total_pages.min(request.max_pages) {
             client.wait_between_pages();
             let response = parse_api(client.get(&search_url(
-                &city_slug,
-                request.radius_km,
-                page,
-                &filter_path,
-                true,
+                &city_slug, request.radius_km, page, &filter_path, true,
             ))?)?;
             let Some(payload) = response else {
                 partial = true;
                 break;
             };
             fetched_pages += 1;
-            if !distance_matches(&payload, request.radius_km) {
-                boundary_stopped = true;
-                partial = true;
-                break;
+            match payload.get("distanceSearched") {
+                None => {
+                    radius_verified = false;
+                    partial = true;
+                }
+                Some(_) if !distance_matches(&payload, request.radius_km) => {
+                    radius_verified = false;
+                    partial = true;
+                    boundary_stopped = true;
+                    break;
+                }
+                _ => {}
             }
             append_page(&mut cards, &payload)?;
         }
@@ -348,10 +371,9 @@ fn fetch_search_using<T: Transport>(
 
     let mut ids = HashSet::new();
     cards.retain(|card| ids.insert(card.advert_id.clone()));
-    if server_count.is_some_and(|expected| cards.len() as u32 != expected) {
+    if server_count.is_some_and(|count| cards.len() as u32 != count) {
         partial = true;
     }
-
     Ok(DownloadedSearch {
         cards,
         city,
@@ -361,6 +383,7 @@ fn fetch_search_using<T: Transport>(
         fetched_pages,
         partial,
         radius_boundary_stopped: boundary_stopped,
+        radius_verified,
     })
 }
 
@@ -508,6 +531,74 @@ mod tests {
                 &json!({"content": card(2), "distanceSearched":"20", "pagination":{"totalPages":2}}).to_string()));
         let result = fetch_search_using(&fallback, &SearchRequest::for_test()).unwrap();
         assert_eq!(result.cards.len(), 2);
+    }
+
+
+    #[test]
+    fn total_pages_without_count_never_turns_invalid_card_markup_into_empty_results() {
+        let html = r#"<div class="ladies-card"><a class="unknown-card" href="/something"></a></div>
+            totalPages: Number.parseInt(replaceWithDefault("1", 1))"#;
+        let client = with_city(
+            Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, html)
+        );
+        assert!(matches!(
+            fetch_search_using(&client, &SearchRequest::for_test()),
+            Err(CoreError::Source(_))
+        ));
+    }
+
+    #[test]
+    fn explicit_zero_advert_count_can_be_empty() {
+        let html = r#"advertCount: Number.parseInt(replaceWithDefault("0", 0))
+          totalPages: Number.parseInt(replaceWithDefault("1", 1))
+          distanceSearched: Number.parseInt(replaceWithDefault("20", 20))"#;
+        let client = with_city(
+            Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, html)
+        );
+        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+        assert!(result.cards.is_empty());
+        assert!(!result.partial);
+        assert!(result.radius_verified);
+    }
+
+    #[test]
+    fn absent_radius_is_explicitly_unverified_and_incomplete() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"2\",1))",
+            card(1)
+        );
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":card(2)}).to_string(),
+                )
+        );
+        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+        assert_eq!(result.cards.len(), 2);
+        assert!(result.partial);
+        assert!(!result.radius_verified);
+    }
+
+    #[test]
+    fn html_api_parser_drift_does_not_commit_silent_missing_page() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"2\",1))
+             distanceSearched: Number.parseInt(replaceWithDefault(\"20\",1))",
+            card(1)
+        );
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":"<div class='unknown-listing'>New</div>","distanceSearched":20}).to_string(),
+                )
+        );
+        assert!(fetch_search_using(&client, &SearchRequest::for_test()).is_err());
     }
 
     #[test]
