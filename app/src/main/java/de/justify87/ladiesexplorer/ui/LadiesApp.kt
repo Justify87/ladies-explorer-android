@@ -58,7 +58,10 @@ fun LadiesApp(
                 tabs.forEachIndexed { index, tab ->
                     NavigationBarItem(
                         selected = selected == index,
-                        onClick = { selected = index },
+                        onClick = {
+                            selected = index
+                            if (tab == Tab.Settings) viewModel.refresh()
+                        },
                         icon = {
                             when (tab) {
                                 Tab.Discover -> Icon(Icons.Default.FavoriteBorder, contentDescription = null)

@@ -169,7 +169,13 @@ impl Transport for SourceHttp {
             "HTTP",
             format!("Response bytes={} status={status}", body.len()),
         );
-        check_redirect(&self.diagnostics, &requested_path, &redirected_path, status, &body)?;
+        check_redirect(
+            &self.diagnostics,
+            &requested_path,
+            &redirected_path,
+            status,
+            &body,
+        )?;
         if status >= 400 {
             self.diagnostics.html("http_error", &body);
         }
@@ -762,18 +768,24 @@ mod tests {
     #[test]
     fn rejected_redirect_logs_actual_response_body() {
         let directory = tempfile::tempdir().unwrap();
-        let log = Diagnostics::new(
-            directory.path().join("ladies.sqlite").to_str().unwrap()
-        );
+        let log = Diagnostics::new(directory.path().join("ladies.sqlite").to_str().unwrap());
         let html = "<html><body>Alter prüfen – Weiterleitung</body></html>";
         let result = check_redirect(&log, "/leipzig/sex-anzeigen", "/jugendschutz", 200, html);
         assert!(matches!(result, Err(CoreError::Source(_))));
-        let saved = std::fs::read_to_string(
-            directory.path().join("diagnostics/ladies-debug.log")
-        ).unwrap();
+        let saved =
+            std::fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
         assert!(saved.contains("BEGIN unexpected_redirect"));
         assert!(saved.contains(html));
-        assert!(check_redirect(&log, "/leipzig/sex-anzeigen", "/leipzig/sex-anzeigen", 200, html).is_ok());
+        assert!(
+            check_redirect(
+                &log,
+                "/leipzig/sex-anzeigen",
+                "/leipzig/sex-anzeigen",
+                200,
+                html
+            )
+            .is_ok()
+        );
     }
 
     #[test]
