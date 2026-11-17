@@ -69,7 +69,8 @@ pub(super) fn save_search(
                 json!({
                     "has_18plus": card.has_18plus,
                     "has_stars": card.has_stars,
-                }).to_string(),
+                })
+                .to_string(),
             ],
         )?;
         tx.execute(
@@ -192,7 +193,6 @@ pub(super) fn listing_target(
     ))
 }
 
-
 fn record_profile_identity_conflict(
     db: &Connection,
     person_id: i64,
@@ -207,7 +207,13 @@ fn record_profile_identity_conflict(
             WHERE listing_id = ?1 AND person_id = ?2
               AND candidate_person_id IS ?3 AND kind = ?4 AND value = ?5
         )",
-        params![listing_id, person_id, candidate_person_id, kind, external_id],
+        params![
+            listing_id,
+            person_id,
+            candidate_person_id,
+            kind,
+            external_id
+        ],
         |row| row.get(0),
     )?;
     if !already_recorded {
@@ -215,7 +221,13 @@ fn record_profile_identity_conflict(
             "INSERT INTO identity_evidence
              (listing_id, person_id, candidate_person_id, kind, value)
              VALUES (?1,?2,?3,?4,?5)",
-            params![listing_id, person_id, candidate_person_id, kind, external_id],
+            params![
+                listing_id,
+                person_id,
+                candidate_person_id,
+                kind,
+                external_id
+            ],
         )?;
     }
     Ok(())
@@ -245,21 +257,33 @@ fn link_source_profile_or_record_conflict(
 
     if let Some((_, another_person)) = existing.filter(|(_, owner)| *owner != person_id) {
         return record_profile_identity_conflict(
-            db, person_id, listing_id, external_id,
-            Some(another_person), "SOURCE_PROFILE_OWNER_CONFLICT",
+            db,
+            person_id,
+            listing_id,
+            external_id,
+            Some(another_person),
+            "SOURCE_PROFILE_OWNER_CONFLICT",
         );
     }
     if let (Some(current), Some((new_profile, _))) = (current_profile, existing) {
         if current != new_profile {
             return record_profile_identity_conflict(
-                db, person_id, listing_id, external_id,
-                None, "SOURCE_PROFILE_REASSIGNMENT_CONFLICT",
+                db,
+                person_id,
+                listing_id,
+                external_id,
+                None,
+                "SOURCE_PROFILE_REASSIGNMENT_CONFLICT",
             );
         }
     } else if current_profile.is_some() && existing.is_none() {
         return record_profile_identity_conflict(
-            db, person_id, listing_id, external_id,
-            None, "SOURCE_PROFILE_REASSIGNMENT_CONFLICT",
+            db,
+            person_id,
+            listing_id,
+            external_id,
+            None,
+            "SOURCE_PROFILE_REASSIGNMENT_CONFLICT",
         );
     }
     let profile_id = if let Some((id, _)) = existing {
@@ -434,10 +458,15 @@ pub(super) fn save_profile(
         "INSERT INTO listing_observations
          (listing_id, source, status, http_status, snapshot_id, details_json)
          VALUES (?1,'PROFILE','ACTIVE',200,?2,?3)",
-        params![listing_id, snapshot_id, json!({
-            "snapshot_changed": new_snapshot,
-            "fingerprint": fingerprint,
-        }).to_string()],
+        params![
+            listing_id,
+            snapshot_id,
+            json!({
+                "snapshot_changed": new_snapshot,
+                "fingerprint": fingerprint,
+            })
+            .to_string()
+        ],
     )?;
     tx.commit()?;
     Ok(ProfileResponse {
@@ -594,7 +623,6 @@ mod tests {
         assert_eq!(count, 2);
     }
 
-
     #[test]
     fn conflicting_source_identity_preserves_snapshots_and_person_ownership() {
         let core = core();
@@ -603,33 +631,49 @@ mod tests {
         let second = found.profiles[1].listing_id;
         let second_person = found.profiles[1].person_id;
         core.set_favorite(second_person, true).unwrap();
-        save_profile(&core, first, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        save_profile(
+            &core,
+            first,
+            &found.profiles[0].profile_url,
+            profile("Anna"),
+        )
+        .unwrap();
 
         let mut other = profile("Mia");
         other.advert_id = "102".into();
-        let saved = save_profile(&core, second, &found.profiles[1].profile_url, other.clone()).unwrap();
+        let saved =
+            save_profile(&core, second, &found.profiles[1].profile_url, other.clone()).unwrap();
         assert!(saved.new_snapshot);
         let again = save_profile(&core, second, &found.profiles[1].profile_url, other).unwrap();
         assert_eq!(saved.snapshot_id, again.snapshot_id);
         assert!(!again.new_snapshot);
 
         let db = core.connection().unwrap();
-        let (owner, link): (i64, Option<i64>) = db.query_row(
-            "SELECT person_id, source_profile_id FROM listings WHERE listing_id=?1",
-            [second], |r| Ok((r.get(0)?,r.get(1)?)),
-        ).unwrap();
+        let (owner, link): (i64, Option<i64>) = db
+            .query_row(
+                "SELECT person_id, source_profile_id FROM listings WHERE listing_id=?1",
+                [second],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
         assert_eq!(owner, second_person);
         assert!(link.is_none());
-        let snapshot_count: i64 = db.query_row(
-            "SELECT COUNT(*) FROM listing_snapshots WHERE listing_id=?1",
-            [second], |r| r.get(0),
-        ).unwrap();
+        let snapshot_count: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM listing_snapshots WHERE listing_id=?1",
+                [second],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(snapshot_count, 1);
-        let evidence: (i64, i64) = db.query_row(
-            "SELECT COUNT(*), MAX(candidate_person_id)
+        let evidence: (i64, i64) = db
+            .query_row(
+                "SELECT COUNT(*), MAX(candidate_person_id)
              FROM identity_evidence WHERE listing_id=?1 AND kind='SOURCE_PROFILE_OWNER_CONFLICT'",
-            [second], |r| Ok((r.get(0)?,r.get(1)?)),
-        ).unwrap();
+                [second],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
         assert_eq!(evidence, (1, found.profiles[0].person_id));
         drop(db);
         assert!(core.get_person(second_person).unwrap().unwrap().favorite);
@@ -640,8 +684,20 @@ mod tests {
         let core = core();
         let found = save_cards(&core, vec![card("101", "Anna")]);
         let listing = found.profiles[0].listing_id;
-        let first = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
-        let repeated = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        let first = save_profile(
+            &core,
+            listing,
+            &found.profiles[0].profile_url,
+            profile("Anna"),
+        )
+        .unwrap();
+        let repeated = save_profile(
+            &core,
+            listing,
+            &found.profiles[0].profile_url,
+            profile("Anna"),
+        )
+        .unwrap();
         assert_eq!(first.snapshot_id, repeated.snapshot_id);
         let db = core.connection().unwrap();
         let (count, changed): (i64,i64) = db.query_row(
@@ -649,7 +705,7 @@ mod tests {
              FROM listing_observations WHERE listing_id=?1 AND source='PROFILE'",
             [listing], |r| Ok((r.get(0)?,r.get(1)?)),
         ).unwrap();
-        assert_eq!((count, changed), (2,1));
+        assert_eq!((count, changed), (2, 1));
     }
 
     #[test]
@@ -660,12 +716,14 @@ mod tests {
         entry.has_stars = true;
         save_cards(&core, vec![entry]);
         let db = core.connection().unwrap();
-        let flags: (i64,i64) = db.query_row(
-            "SELECT json_extract(markers_json,'$.has_18plus'),
+        let flags: (i64, i64) = db
+            .query_row(
+                "SELECT json_extract(markers_json,'$.has_18plus'),
                     json_extract(markers_json,'$.has_stars') FROM search_results",
-            [], |r| Ok((r.get(0)?,r.get(1)?)),
-        ).unwrap();
-        assert_eq!(flags, (1,1));
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(flags, (1, 1));
     }
-
 }

@@ -214,9 +214,10 @@ fn distance_matches(payload: &Value, requested_radius: u32) -> bool {
     }
 }
 
-
 fn append_page(profiles: &mut Vec<Card>, payload: &Value) -> Result<(), CoreError> {
-    let content = payload.get("content").and_then(Value::as_str)
+    let content = payload
+        .get("content")
+        .and_then(Value::as_str)
         .ok_or_else(|| CoreError::Source("Search API page missing HTML content".into()))?;
     let parsed = parse::parse_cards(content);
     if parsed.is_empty() && !content.trim().is_empty() {
@@ -235,7 +236,6 @@ pub(super) fn fetch_search(
     fetch_search_using(client, request)
 }
 
-
 fn fetch_search_using<T: Transport>(
     client: &T,
     request: &SearchRequest,
@@ -244,7 +244,11 @@ fn fetch_search_using<T: Transport>(
     let filter_path = filter::filter_path(request)?;
     let (city_slug, city) = resolve_location(client, &request.city);
     let first = client.get(&search_url(
-        &city_slug, request.radius_km, 1, &filter_path, false,
+        &city_slug,
+        request.radius_km,
+        1,
+        &filter_path,
+        false,
     ))?;
     if first.status == 404 {
         return Ok(DownloadedSearch {
@@ -260,7 +264,10 @@ fn fetch_search_using<T: Transport>(
         });
     }
     if first.status != 200 {
-        return Err(CoreError::Source(format!("Search HTTP status {}", first.status)));
+        return Err(CoreError::Source(format!(
+            "Search HTTP status {}",
+            first.status
+        )));
     }
 
     let total_from_html = parse::parse_config(&first.body, "totalPages");
@@ -269,7 +276,8 @@ fn fetch_search_using<T: Transport>(
     if observed_radius.is_some_and(|radius| radius != request.radius_km) {
         return Err(CoreError::Source(format!(
             "Search radius was expanded by the source: requested {} km, returned {} km",
-            request.radius_km, observed_radius.unwrap_or_default()
+            request.radius_km,
+            observed_radius.unwrap_or_default()
         )));
     }
     let mut radius_verified = observed_radius == Some(request.radius_km);
@@ -307,7 +315,11 @@ fn fetch_search_using<T: Transport>(
         } else {
             client.wait_between_pages();
             let probe = parse_api(client.get(&search_url(
-                &city_slug, request.radius_km, 2, &filter_path, true,
+                &city_slug,
+                request.radius_km,
+                2,
+                &filter_path,
+                true,
             ))?)?;
             if let Some(payload) = probe {
                 fetched_pages += 1;
@@ -325,7 +337,8 @@ fn fetch_search_using<T: Transport>(
                 }
                 if !boundary_stopped {
                     total_pages = number(payload.pointer("/pagination/totalPages"))
-                        .unwrap_or(2).max(2);
+                        .unwrap_or(2)
+                        .max(2);
                     if let Some(count) = number(payload.get("advertCount")) {
                         server_count = Some(count);
                     }
@@ -342,7 +355,11 @@ fn fetch_search_using<T: Transport>(
         for page in next_page..=total_pages.min(request.max_pages) {
             client.wait_between_pages();
             let response = parse_api(client.get(&search_url(
-                &city_slug, request.radius_km, page, &filter_path, true,
+                &city_slug,
+                request.radius_km,
+                page,
+                &filter_path,
+                true,
             ))?)?;
             let Some(payload) = response else {
                 partial = true;
@@ -533,14 +550,12 @@ mod tests {
         assert_eq!(result.cards.len(), 2);
     }
 
-
     #[test]
     fn total_pages_without_count_never_turns_invalid_card_markup_into_empty_results() {
         let html = r#"<div class="ladies-card"><a class="unknown-card" href="/something"></a></div>
             totalPages: Number.parseInt(replaceWithDefault("1", 1))"#;
-        let client = with_city(
-            Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, html)
-        );
+        let client =
+            with_city(Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, html));
         assert!(matches!(
             fetch_search_using(&client, &SearchRequest::for_test()),
             Err(CoreError::Source(_))
@@ -552,9 +567,8 @@ mod tests {
         let html = r#"advertCount: Number.parseInt(replaceWithDefault("0", 0))
           totalPages: Number.parseInt(replaceWithDefault("1", 1))
           distanceSearched: Number.parseInt(replaceWithDefault("20", 20))"#;
-        let client = with_city(
-            Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, html)
-        );
+        let client =
+            with_city(Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, html));
         let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
         assert!(result.cards.is_empty());
         assert!(!result.partial);
@@ -574,7 +588,7 @@ mod tests {
                     &search_url("leipzig", 20, 2, "", true),
                     200,
                     &json!({"content":card(2)}).to_string(),
-                )
+                ),
         );
         let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
         assert_eq!(result.cards.len(), 2);
