@@ -580,7 +580,9 @@ mod tests {
 
     #[test]
     fn saved_search_string_ids_and_result_history_survive_reopening() {
-        let mut db = Connection::open_in_memory().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("saved_searches.sqlite");
+        let mut db = Connection::open(&path).unwrap();
         migrate(&mut db).unwrap();
         db.execute(
             "INSERT INTO saved_searches
@@ -597,6 +599,8 @@ mod tests {
             rusqlite::params!["uuid-abc-4711", "source-ad-id", "{\"ad\":1}"],
         )
         .unwrap();
+        drop(db);
+        let mut db = Connection::open(&path).unwrap();
         migrate(&mut db).unwrap();
         let row: (String, i64, i64) = db
             .query_row(
