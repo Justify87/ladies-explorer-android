@@ -340,6 +340,11 @@ pub(super) fn save_profile(
             profile.canonical_id.as_deref(),
         )?;
     }
+    let active_snapshot_before: Option<i64> = tx.query_row(
+        "SELECT current_snapshot_id FROM listings WHERE listing_id=?1",
+        [listing_id],
+        |row| row.get(0),
+    )?;
     let previous: Option<i64> = tx
         .query_row(
             "SELECT snapshot_id FROM listing_snapshots WHERE listing_id=?1 AND fingerprint=?2",
@@ -462,7 +467,8 @@ pub(super) fn save_profile(
             listing_id,
             snapshot_id,
             json!({
-                "snapshot_changed": new_snapshot,
+                "snapshot_changed": active_snapshot_before != Some(snapshot_id),
+                "new_snapshot_created": new_snapshot,
                 "fingerprint": fingerprint,
             })
             .to_string()
@@ -706,6 +712,31 @@ mod tests {
             [listing], |r| Ok((r.get(0)?,r.get(1)?)),
         ).unwrap();
         assert_eq!((count, changed), (2, 1));
+    }
+
+
+    #[test]
+    fn reverting_to_historical_snapshot_counts_as_actual_change() {
+        let core = core();
+        let found = save_cards(&core, vec![card("101", "Anna")]);
+        let listing = found.profiles[0].listing_id;
+        let url = &found.profiles[0].profile_url;
+        let original = save_profile(&core, listing, url, profile("Anna")).unwrap();
+        let changed = save_profile(&core, listing, url, profile("Anna 2")).unwrap();
+        let restored = save_profile(&core, listing, url, profile("Anna")).unwrap();
+        assert!(original.new_snapshot);
+        assert!(changed.new_snapshot);
+        assert!(!restored.new_snapshot);
+        assert_eq!(restored.snapshot_id, original.snapshot_id);
+        let db = core.connection().unwrap();
+        let last: (i64, i64, i64) = db.query_row(
+            "SELECT json_extract(details_json,'$.snapshot_changed'),
+                    json_extract(details_json,'$.new_snapshot_created'), snapshot_id
+             FROM listing_observations WHERE listing_id=?1 AND source='PROFILE'
+             ORDER BY observation_id DESC LIMIT 1",
+            [listing], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
+        ).unwrap();
+        assert_eq!(last, (1, 0, original.snapshot_id));
     }
 
     #[test]

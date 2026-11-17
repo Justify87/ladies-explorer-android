@@ -283,7 +283,8 @@ fn media_ref(
 
 fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
     let mut images: BTreeMap<u32, (String, String)> = BTreeMap::new();
-    let mut videos: BTreeMap<String, String> = BTreeMap::new();
+    let mut videos: Vec<(String, String)> = Vec::new();
+    let mut video_urls = HashSet::new();
 
     let mut collect = |raw: &str| {
         let Some(url) = media_url(raw) else { return };
@@ -293,7 +294,10 @@ fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
                 images.insert(number, (normalized, variant));
             }
         } else if let Some(variant) = video_variant(&url) {
-            videos.insert(url.to_string(), variant);
+            let key = url.to_string();
+            if video_urls.insert(key.clone()) {
+                videos.push((key, variant));
+            }
         }
     };
 
@@ -636,6 +640,20 @@ mod tests {
         assert_eq!(profile.media[1].kind, "VIDEO");
         assert_eq!(profile.media[1].position, 2);
         assert_eq!(profile.media[2].position, 3);
+    }
+
+
+    #[test]
+    fn fallback_video_order_follows_source_not_sorted_url() {
+        let html = r#"<h2 class="page-heading kuenstlername">Anna</h2>
+        <script>
+          let a="https://video2.ladies-cdn.de/z.webm";
+          let b="https://video1.ladies-cdn.de/a.mp4";
+        </script>"#;
+        let profile = parse_profile(html, &example_card()).unwrap();
+        assert_eq!(profile.media.len(), 2);
+        assert!(profile.media[0].url.contains("video2.ladies-cdn.de/z.webm"));
+        assert!(profile.media[1].url.contains("video1.ladies-cdn.de/a.mp4"));
     }
 
     #[test]
