@@ -357,7 +357,7 @@ mod tests {
     use std::io::Write;
     use zip::write::SimpleFileOptions;
 
-    fn fixture(root: &Path, missing_media: bool) -> (std::path::PathBuf, std::path::PathBuf) {
+    fn fixture(root: &Path, missing_media: bool, invalid_owner: bool) -> (std::path::PathBuf, std::path::PathBuf) {
         let source_file = root.join("source.sqlite3");
         let mut src = Connection::open(&source_file).unwrap();
         crate::schema::migrate(&mut src).unwrap();
@@ -428,6 +428,12 @@ mod tests {
         .unwrap();
         src.execute_batch("ALTER TABLE listing_snapshots ADD COLUMN whatsapp_url TEXT;")
             .unwrap();
+        if invalid_owner {
+            src.execute_batch(
+                "PRAGMA foreign_keys=OFF;
+                 UPDATE listings SET person_id=999, source_profile_id=NULL WHERE listing_id=21;"
+            ).unwrap();
+        }
         drop(src);
         let bundle = root.join("export.zip");
         let mut writer = zip::ZipWriter::new(File::create(&bundle).unwrap());
@@ -454,7 +460,7 @@ mod tests {
     #[test]
     fn imports_profiles_preferences_saved_searches_and_manual_prices() {
         let tmp = tempfile::tempdir().unwrap();
-        let (bundle, app) = fixture(tmp.path(), false);
+        let (bundle, app) = fixture(tmp.path(), false, false);
         let db = app.join("ladies.sqlite").to_string_lossy().into_owned();
         let core = LadiesCore::new(db).unwrap();
         let report = import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()).unwrap();
@@ -485,9 +491,24 @@ mod tests {
     }
 
     #[test]
+    fn inconsistent_source_foreign_keys_roll_back_after_partial_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (bundle, app) = fixture(tmp.path(), false, true);
+        let core = LadiesCore::new(
+            app.join("ladies.sqlite").to_string_lossy().into_owned()
+        ).unwrap();
+        assert!(matches!(
+            import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()),
+            Err(CoreError::Import(_))
+        ));
+        assert_eq!(core.status().unwrap().person_count, 0);
+        assert!(!app.join("ladies_data").exists());
+    }
+
+    #[test]
     fn missing_media_rolls_back_without_partial_database_changes() {
         let tmp = tempfile::tempdir().unwrap();
-        let (bundle, app) = fixture(tmp.path(), true);
+        let (bundle, app) = fixture(tmp.path(), true, false);
         let core =
             LadiesCore::new(app.join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
         assert!(matches!(
