@@ -138,8 +138,12 @@ pub(super) fn search_page_diagnostics(html: &str) -> String {
     let title: String = title.chars().take(90).collect();
     let lowered = html.to_ascii_lowercase();
     let page_kind = if [
-        "cf-chl", "challenge-platform", "checking your browser",
-        "just a moment", "verify you are human", "captcha",
+        "cf-chl",
+        "challenge-platform",
+        "checking your browser",
+        "just a moment",
+        "verify you are human",
+        "captcha",
     ]
     .iter()
     .any(|marker| lowered.contains(marker))
@@ -162,7 +166,11 @@ pub(super) fn search_page_diagnostics(html: &str) -> String {
             link.value()
                 .attr("data-ref-id")
                 .is_some_and(|id| !id.is_empty() && id.bytes().all(|c| c.is_ascii_digit()))
-                && link.value().attr("href").and_then(valid_profile_url).is_some()
+                && link
+                    .value()
+                    .attr("href")
+                    .and_then(valid_profile_url)
+                    .is_some()
         })
         .count();
     format!(
