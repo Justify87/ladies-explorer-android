@@ -422,7 +422,7 @@ fn fetch_search_using<T: Transport>(
                 &filter_path,
                 true,
             ))
-            .and_then(parse_api)
+            .and_then(|response| parse_api(response, client.diagnostics()))
             .map_err(|err| {
                 CoreError::Source(format!(
                     "Such-HTML unlesbar ({diagnostic}); API-Fallback fehlgeschlagen: {err}"
