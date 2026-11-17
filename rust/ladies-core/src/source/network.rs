@@ -746,8 +746,11 @@ mod tests {
     fn total_pages_without_count_never_turns_invalid_card_markup_into_empty_results() {
         let html = r#"<div class="ladies-card"><a class="unknown-card" href="/something"></a></div>
             totalPages: Number.parseInt(replaceWithDefault("1", 1))"#;
-        let client =
-            with_city(Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, html));
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, html)
+                .with(&search_url("leipzig", 20, 1, "", true), 404, ""),
+        );
         assert!(matches!(
             fetch_search_using(&client, &SearchRequest::for_test()),
             Err(CoreError::Source(_))
