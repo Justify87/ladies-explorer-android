@@ -365,6 +365,17 @@ fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
 
 pub(super) fn parse_profile(html: &str, fallback: &Card) -> Result<Profile, CoreError> {
     let doc = Html::parse_document(html);
+    if doc
+        .select(&selector(
+            "h2.page-heading.kuenstlername, .share-advert-name strong,              .einzelansicht-text, .auftrag-main-thumb[data-index]",
+        ))
+        .next()
+        .is_none()
+    {
+        return Err(CoreError::Source(
+            "Response is not a recognized Ladies profile page".into(),
+        ));
+    }
     if let Some(found_id) = Regex::new(r#"(?i)advertId:\s*replaceWithDefault\("(\d+)""#)
         .expect("advert regex")
         .captures(html)
@@ -536,6 +547,15 @@ mod tests {
         assert_eq!(p.media[1].kind, "VIDEO");
         assert_eq!(p.media[2].position, 3);
         assert!(p.traits_json.contains("Blond"));
+    }
+
+    #[test]
+    fn rejects_unrecognized_challenge_page_even_with_search_fallback() {
+        let html = "<html><body><h1>Checking your browser</h1></body></html>";
+        assert!(matches!(
+            parse_profile(html, &example_card()),
+            Err(CoreError::Source(_))
+        ));
     }
 
     #[test]
