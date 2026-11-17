@@ -80,6 +80,13 @@ impl Preference {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+pub struct DiagnosticStatus {
+    pub available: bool,
+    pub size_bytes: u64,
+    pub last_write_error: Option<String>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct CoreStatus {
     pub api_version: u32,
     pub schema_version: u32,
@@ -127,6 +134,7 @@ pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, Sea
 #[derive(uniffi::Object)]
 pub struct LadiesCore {
     db: Mutex<Connection>,
+    diagnostics: Arc<diagnostics::Diagnostics>,
     source_session: source::SourceSession,
 }
 
@@ -139,16 +147,18 @@ impl LadiesCore {
                 "Database path must not be empty".into(),
             ));
         }
-        diagnostics::initialize(&database_path);
-        diagnostics::event("CORE", "Opening SQLite");
+        let diagnostics = Arc::new(diagnostics::Diagnostics::new(&database_path));
+        diagnostics.event("CORE", "Opening SQLite");
         let mut db = Connection::open(database_path)?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
-        diagnostics::event("CORE", "SQLite schema ready");
+        diagnostics.event("CORE", "SQLite schema ready");
+        let source_session = source::SourceSession::new(Arc::clone(&diagnostics))?;
         Ok(Arc::new(Self {
             db: Mutex::new(db),
-            source_session: source::SourceSession::new()?,
+            diagnostics,
+            source_session,
         }))
     }
 
@@ -157,23 +167,44 @@ impl LadiesCore {
         bundle_path: String,
         app_files_directory: String,
     ) -> Result<ImportReport, CoreError> {
-        diagnostics::event("IMPORT", "Legacy data import requested");
+        self.diagnostics.event("IMPORT", "Legacy data import requested");
         let result = legacy_import::import_bundle(self, &bundle_path, &app_files_directory);
         match &result {
-            Ok(report) => diagnostics::event(
+            Ok(report) => self.diagnostics.event(
                 "IMPORT",
                 format!(
                     "Import completed: persons={} listings={} media={}",
                     report.persons, report.listings, report.media_files
                 ),
             ),
-            Err(error) => diagnostics::event("IMPORT", format!("Import failed: {error}")),
+            Err(error) => self.diagnostics.event("IMPORT", format!("Import failed: {error}")),
         }
         result
     }
 
     pub fn record_debug_event(&self, component: String, message: String) {
-        diagnostics::event(&component, message);
+        self.diagnostics.event(&component, message);
+    }
+
+    pub fn diagnostic_status(&self) -> Result<DiagnosticStatus, CoreError> {
+        let (available, size_bytes, last_write_error) = self
+            .diagnostics
+            .status()
+            .map_err(|error| CoreError::Storage(error.to_string()))?;
+        Ok(DiagnosticStatus {
+            available,
+            size_bytes,
+            last_write_error,
+        })
+    }
+
+    pub fn export_diagnostic_snapshot(&self, export_directory: String) -> Result<String, CoreError> {
+        let directory = std::path::Path::new(&export_directory);
+        let path = self
+            .diagnostics
+            .snapshot(directory)
+            .map_err(|error| CoreError::Storage(format!("Diagnostic export failed: {error}")))?;
+        Ok(path.to_string_lossy().into_owned())
     }
 
     pub fn search_source(&self, query: SearchRequest) -> Result<SearchResponse, CoreError> {
