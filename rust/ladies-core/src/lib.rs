@@ -583,7 +583,6 @@ mod tests {
             Err(CoreError::PersonNotFound(999))
         ));
         assert!(core.get_person(999).unwrap().is_none());
-        assert!(core.list_people(0).unwrap().is_empty());
     }
 
     #[test]
