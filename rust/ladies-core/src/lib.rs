@@ -79,6 +79,9 @@ impl LadiesCore {
         .map_err(|e| CoreError::Storage(e.to_string()))
     }
 
+}
+
+impl LadiesCore {
     fn connection(&self) -> Result<std::sync::MutexGuard<'_, Connection>, CoreError> {
         self.db
             .lock()
