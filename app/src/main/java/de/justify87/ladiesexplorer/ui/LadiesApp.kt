@@ -80,10 +80,7 @@ fun LadiesApp(viewModel: MainViewModel, onPickLegacyBundle: () -> Unit) {
                     title = "Entdecken",
                     detail = "Die Profildatenbank ist vorbereitet. Der Swipe-Stapel folgt in einem späteren Migrationsschritt.",
                 )
-                Tab.Search -> Placeholder(
-                    title = "Suche",
-                    detail = "Das Rust-Datenmodell ist vorhanden. Suche und HTML-Extraktion werden separat integriert.",
-                )
+                Tab.Search -> SearchSmokeScreen(viewModel)
                 Tab.Settings -> {
                     Text("Lokale Datenbasis", style = MaterialTheme.typography.headlineMedium)
                     Text(

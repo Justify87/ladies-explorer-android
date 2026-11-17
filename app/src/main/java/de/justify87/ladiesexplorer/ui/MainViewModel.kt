@@ -6,6 +6,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import de.justify87.ladiesexplorer.core.CoreStore
 import de.justify87.ladiesexplorer.core.ImportReport
+import de.justify87.ladiesexplorer.core.ProfileResponse
+import de.justify87.ladiesexplorer.core.SearchRequest
+import de.justify87.ladiesexplorer.core.SearchResponse
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,10 +28,81 @@ data class HomeUiState(
     val error: String? = null,
 )
 
+data class SearchUiState(
+    val city: String = "Leipzig",
+    val radiusKm: UInt = 20u,
+    val loading: Boolean = false,
+    val response: SearchResponse? = null,
+    val profile: ProfileResponse? = null,
+    val error: String? = null,
+)
+
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val core = CoreStore(app.applicationContext)
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
+
+    private val _searchUiState = MutableStateFlow(SearchUiState())
+    val searchUiState: StateFlow<SearchUiState> = _searchUiState
+
+    fun setSearchCity(city: String) {
+        _searchUiState.update { it.copy(city = city) }
+    }
+
+    fun setSearchRadius(radiusKm: UInt) {
+        _searchUiState.update { it.copy(radiusKm = radiusKm) }
+    }
+
+    fun startSearch() {
+        if (_searchUiState.value.loading || _uiState.value.loading) return
+        val input = _searchUiState.value
+        viewModelScope.launch {
+            _searchUiState.update { it.copy(loading = true, error = null, profile = null) }
+            try {
+                val request = SearchRequest(
+                    city = input.city.trim(),
+                    radiusKm = input.radiusKm,
+                    category = "",
+                    ageMin = 18u,
+                    ageMax = 60u,
+                    heightMin = 140u,
+                    heightMax = 200u,
+                    filtersJson = "{}",
+                    maxPages = 10u,
+                )
+                val result = core.search(request)
+                _searchUiState.update {
+                    it.copy(loading = false, response = result, error = null)
+                }
+                publishStatus()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                _searchUiState.update {
+                    it.copy(loading = false, error = failure.message ?: "Online-Suche fehlgeschlagen")
+                }
+            }
+        }
+    }
+
+    fun loadProfile(listingId: Long) {
+        if (_searchUiState.value.loading || _uiState.value.loading) return
+        viewModelScope.launch {
+            _searchUiState.update { it.copy(loading = true, error = null, profile = null) }
+            try {
+                val profile = core.loadProfile(listingId)
+                _searchUiState.update {
+                    it.copy(loading = false, profile = profile)
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                _searchUiState.update {
+                    it.copy(loading = false, error = failure.message ?: "Profil konnte nicht geladen werden")
+                }
+            }
+        }
+    }
 
     init {
         refresh()
@@ -51,7 +125,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun importBundle(uri: Uri) {
-        if (_uiState.value.loading) return
+        if (_uiState.value.loading || _searchUiState.value.loading) return
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, error = null) }
             try {
