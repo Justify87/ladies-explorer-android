@@ -5,6 +5,14 @@ mod storage;
 
 use crate::{CoreError, LadiesCore};
 
+pub(crate) struct SourceSession(network::SourceHttp);
+
+impl SourceSession {
+    pub(crate) fn new() -> Result<Self, CoreError> {
+        network::SourceHttp::new().map(Self)
+    }
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SearchRequest {
     pub city: String,
@@ -118,8 +126,7 @@ pub(crate) fn search(
     request: SearchRequest,
 ) -> Result<SearchResponse, CoreError> {
     filter::validate_request(&request)?;
-    let client = network::SourceHttp::new()?;
-    let downloaded = network::fetch_search(&client, &request)?;
+    let downloaded = network::fetch_search(&core.source_session.0, &request)?;
     storage::save_search(core, &request, downloaded)
 }
 
@@ -128,8 +135,7 @@ pub(crate) fn load_profile(
     listing_id: i64,
 ) -> Result<ProfileResponse, CoreError> {
     let (url, advert_id, name, city, category) = storage::listing_target(core, listing_id)?;
-    let client = network::SourceHttp::new()?;
-    let html = client.get_profile(&url)?;
+    let html = core.source_session.0.get_profile(&url)?;
     let fallback = Card {
         advert_id,
         name,

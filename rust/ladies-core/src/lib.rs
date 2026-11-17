@@ -126,6 +126,7 @@ pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, Sea
 #[derive(uniffi::Object)]
 pub struct LadiesCore {
     db: Mutex<Connection>,
+    source_session: source::SourceSession,
 }
 
 #[uniffi::export]
@@ -141,7 +142,10 @@ impl LadiesCore {
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
-        Ok(Arc::new(Self { db: Mutex::new(db) }))
+        Ok(Arc::new(Self {
+            db: Mutex::new(db),
+            source_session: source::SourceSession::new()?,
+        }))
     }
 
     pub fn import_legacy_bundle(
