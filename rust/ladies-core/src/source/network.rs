@@ -153,7 +153,11 @@ fn resolve_location<T: Transport>(client: &T, city: &str) -> (String, String) {
         if let Value::Object(map) = node {
             let get = |keys: &[&str]| -> Option<String> {
                 keys.iter()
-                    .find_map(|key| map.get(*key).and_then(Value::as_str))
+                    .find_map(|wanted| {
+                        map.iter()
+                            .find(|(key, _)| key.eq_ignore_ascii_case(wanted))
+                            .and_then(|(_, value)| value.as_str())
+                    })
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
                     .map(str::to_owned)
@@ -298,9 +302,9 @@ fn fetch_search_using<T: Transport>(
         )));
     }
 
-    let total_from_html = parse::parse_config(&first.body, "totalPages");
+    let mut total_from_html = parse::parse_config(&first.body, "totalPages");
     let mut server_count = parse::parse_config(&first.body, "advertCount");
-    let observed_radius = parse::parse_config(&first.body, "distanceSearched");
+    let mut observed_radius = parse::parse_config(&first.body, "distanceSearched");
     if observed_radius.is_some_and(|radius| radius != request.radius_km) {
         return Err(CoreError::Source(format!(
             "Search radius was expanded by the source: requested {} km, returned {} km",
@@ -308,18 +312,47 @@ fn fetch_search_using<T: Transport>(
             observed_radius.unwrap_or_default()
         )));
     }
-    let mut radius_verified = observed_radius == Some(request.radius_km);
-    let mut partial = !radius_verified;
     let mut cards = parse::parse_cards(&first.body);
-
-    if cards.is_empty() {
-        // Metadata-only HTML with an unreadable card DOM is not a valid empty search.
-        if server_count != Some(0) || total_from_html.is_some_and(|pages| pages > 1) {
+    if cards.is_empty() && (server_count != Some(0) || total_from_html.is_some_and(|pages| pages > 1)) {
+        // The browser HAR shows the same search cards in an API 'content' field.
+        // Try that first-page representation before treating HTML parser drift as fatal.
+        let diagnostic = parse::search_page_diagnostics(&first.body);
+        let first_api = client
+            .get(&search_url(&city_slug, request.radius_km, 1, &filter_path, true))
+            .and_then(parse_api)
+            .map_err(|err| CoreError::Source(format!(
+                "Such-HTML unlesbar ({diagnostic}); API-Fallback fehlgeschlagen: {err}"
+            )))?
+            .ok_or_else(|| CoreError::Source(format!(
+                "Such-HTML unlesbar ({diagnostic}); API-Seite 1 wurde nicht gefunden"
+            )))?;
+        let api_radius = number(first_api.get("distanceSearched"));
+        if api_radius != Some(request.radius_km) {
             return Err(CoreError::Source(format!(
-                "Die Suchseite enthält keine erkennbaren Anzeigenkarten. {}",
-                parse::search_page_diagnostics(&first.body)
+                "Such-HTML unlesbar ({diagnostic}); API-Radius nicht bestätigt"
             )));
         }
+        let api_html = first_api
+            .get("content")
+            .and_then(Value::as_str)
+            .ok_or_else(|| CoreError::Source(format!(
+                "Such-HTML unlesbar ({diagnostic}); API enthält kein Karten-HTML"
+            )))?;
+        let recovered = parse::parse_cards(api_html);
+        if recovered.is_empty() {
+            return Err(CoreError::Source(format!(
+                "Keine erkennbaren Anzeigenkarten in HTML oder API. HTML: {diagnostic}; API: {}",
+                parse::search_page_diagnostics(api_html)
+            )));
+        }
+        cards = recovered;
+        total_from_html = number(first_api.pointer("/pagination/totalPages"));
+        server_count = number(first_api.get("advertCount"));
+        observed_radius = api_radius;
+    }
+    let mut radius_verified = observed_radius == Some(request.radius_km);
+    let mut partial = !radius_verified;
+    if cards.is_empty() {
         return Ok(DownloadedSearch {
             cards,
             city,
@@ -480,6 +513,100 @@ mod tests {
             200,
             location(),
         )
+    }
+
+    #[test]
+    fn november_location_api_uses_title_case_keys() {
+        let client = Mock::default().with(
+            "https://www.ladies.de/api/location?searchString=Leipzi&searchAddAlleRegionen=false",
+            200,
+            r#"[{"Name":"Leipzig","Slug":"leipzig","Type":"top-ort","LocationId":42}]"#,
+        );
+        let (slug, display) = resolve_location(&client, "Leipzi");
+        assert_eq!(slug, "leipzig");
+        assert_eq!(display, "Leipzig");
+    }
+
+    #[test]
+    fn november_har_card_and_search_config_shapes_are_supported() {
+        // Synthetic IDs and names, exact HTML class and metadata shapes from the browser HAR.
+        let html = r#"<div class="card-gallery-premium ladies-card top-teaser">
+            <a class="card-link" data-owg-id="9988" data-ref-id="9988"
+               href="/fkk-saunaclubs/test-studio"></a>
+            <div class="card-name card-text"><span>Studio</span></div></div>
+            <div class="card-gallery-premium ladies-card">
+            <a class="card-link" data-owg-id="12345" data-ref-id="12345"
+               href="/sex-anzeigen/huren-hostessen/beispiel-12345"></a>
+            <div class="card-name card-text"><span>Beispiel</span></div>
+            <div class="card-city card-text"><span>Leipzig</span></div></div>
+            totalPages: Number.parseInt(replaceWithDefault("8", 1)),
+            advertCount: Number.parseInt(replaceWithDefault("203", 1)),
+            distanceSearched: Number.parseInt(replaceWithDefault("20", 1))"#;
+        let cards = parse::parse_cards(html);
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].advert_id, "12345");
+        assert_eq!(parse::parse_config(html, "totalPages"), Some(8));
+        assert_eq!(parse::parse_config(html, "advertCount"), Some(203));
+        assert_eq!(parse::parse_config(html, "distanceSearched"), Some(20));
+    }
+
+    #[test]
+    fn recovers_first_page_from_recorded_api_contract_if_html_has_no_cards() {
+        let mut request = SearchRequest::for_test();
+        request.max_pages = 1;
+        let payload = json!({
+            "pagination":{"currentPage":1,"totalPages":2},
+            "advertCount":2,
+            "distanceSearched":"20",
+            "content":card(12345),
+        });
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig",20,1,"",false),200,
+                      "<html><title>Search unavailable</title></html>")
+                .with(&search_url("leipzig",20,1,"",true),200,&payload.to_string()),
+        );
+        let result = fetch_search_using(&client, &request).unwrap();
+        assert_eq!(result.cards.len(), 1);
+        assert!(result.radius_verified);
+        assert!(result.partial);
+        assert_eq!(result.total_pages, 2);
+        assert_eq!(result.fetched_pages, 1);
+    }
+
+    #[test]
+    fn rejected_html_and_invalid_api_cannot_create_false_search_results() {
+        let payload = json!({
+            "pagination":{"currentPage":1,"totalPages":1},
+            "advertCount":5,
+            "distanceSearched":"20",
+            "content":"<div class='challenge'>Access check</div>",
+        });
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig",20,1,"",false),200,
+                      "<html><title>Checking your browser</title></html>")
+                .with(&search_url("leipzig",20,1,"",true),200,&payload.to_string()),
+        );
+        let err = fetch_search_using(&client, &SearchRequest::for_test())
+            .err().expect("invalid HTML must fail");
+        assert!(format!("{err}").contains("HTML oder API"));
+    }
+
+    #[test]
+    fn api_page_one_with_unverified_radius_is_rejected() {
+        let payload = json!({
+            "pagination":{"currentPage":1,"totalPages":1},
+            "advertCount":1,
+            "content":card(12345),
+        });
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig",20,1,"",false),200,
+                      "<html><title>Unavailable</title></html>")
+                .with(&search_url("leipzig",20,1,"",true),200,&payload.to_string()),
+        );
+        assert!(fetch_search_using(&client, &SearchRequest::for_test()).is_err());
     }
 
     #[test]
