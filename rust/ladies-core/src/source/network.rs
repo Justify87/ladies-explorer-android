@@ -361,8 +361,8 @@ fn fetch_search_using<T: Transport>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use serde_json::json;
+    use std::collections::HashMap;
 
     #[derive(Default)]
     struct Mock {
