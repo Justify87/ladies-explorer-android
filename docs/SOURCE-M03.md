@@ -36,7 +36,13 @@ als partial markiert. Die Suche dedupliziert über die originale
 externe Inserat-ID. Ein leeres Suchergebnis wird nur akzeptiert, wenn
 die Quelle ausdrücklich null Inserate meldet (oder HTTP 404 liefert).
 Nicht erkennbare HTML-Seiten werden als Parserfehler behandelt, nicht
-als gültige Null-Treffer-Suche.
+als gültige Null-Treffer-Suche. Ein anhand des dokumentierten
+`page-section`-/`affiliate-card`-Platzhalters und der
+`load-adverts-next-distance`-Schaltfläche eindeutig erkannter
+Radiusübergang auf einer API-Folgeseite beendet die Pagination
+ohne Parserfehler. Bis dahin erkannte Anzeigen bleiben erhalten; der
+Lauf ist ausdrücklich `partial`, da der Platzhalter selbst keine
+auswertbaren Inserate liefert. Abweichende Gesamtzahlen bleiben sichtbar.
 
 Wichtig: Wenn die Quelle einen größeren als den angeforderten Radius
 meldet, akzeptiert die neue App keine Daten aus dem erweiterten

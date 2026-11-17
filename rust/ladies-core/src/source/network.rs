@@ -318,17 +318,27 @@ fn distance_matches(payload: &Value, requested_radius: u32) -> bool {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum AppendPageOutcome {
+    Cards,
+    RadiusTransition,
+}
+
 fn append_page(
     profiles: &mut Vec<Card>,
     payload: &Value,
+    requested_radius: u32,
     logger: Option<&Diagnostics>,
-) -> Result<(), CoreError> {
+) -> Result<AppendPageOutcome, CoreError> {
     let content = payload
         .get("content")
         .and_then(Value::as_str)
         .ok_or_else(|| CoreError::Source("Search API page missing HTML content".into()))?;
     let parsed = parse::parse_cards(content);
     if parsed.is_empty() && !content.trim().is_empty() {
+        if parse::is_radius_transition_placeholder(content, requested_radius) {
+            return Ok(AppendPageOutcome::RadiusTransition);
+        }
         if let Some(log) = logger {
             log.html("api_page_unrecognized_cards", content);
         }
@@ -338,7 +348,7 @@ fn append_page(
         )));
     }
     profiles.extend(parsed);
-    Ok(())
+    Ok(AppendPageOutcome::Cards)
 }
 
 pub(super) fn fetch_search(
@@ -523,7 +533,20 @@ fn fetch_search_using<T: Transport>(
                     if let Some(count) = number(payload.get("advertCount")) {
                         server_count = Some(count);
                     }
-                    append_page(&mut cards, &payload, client.diagnostics())?;
+                    if append_page(
+                        &mut cards,
+                        &payload,
+                        request.radius_km,
+                        client.diagnostics(),
+                    )? == AppendPageOutcome::RadiusTransition
+                    {
+                        boundary_stopped = true;
+                        partial = true;
+                        client.log_event(
+                            "SEARCH",
+                            "Stopped at page=2 radius transition placeholder; search is partial",
+                        );
+                    }
                 }
             } else {
                 total_pages = 1;
@@ -563,7 +586,21 @@ fn fetch_search_using<T: Transport>(
                 }
                 _ => {}
             }
-            append_page(&mut cards, &payload, client.diagnostics())?;
+            if append_page(
+                &mut cards,
+                &payload,
+                request.radius_km,
+                client.diagnostics(),
+            )? == AppendPageOutcome::RadiusTransition
+            {
+                boundary_stopped = true;
+                partial = true;
+                client.log_event(
+                    "SEARCH",
+                    format!("Stopped at page={page} radius transition placeholder; search is partial"),
+                );
+                break;
+            }
         }
         if total_pages > request.max_pages {
             partial = true;
@@ -788,6 +825,118 @@ mod tests {
         );
     }
 
+
+    #[test]
+    fn radius_transition_preserves_previous_pages_as_partial() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"3\", 1)), \
+             advertCount: Number.parseInt(replaceWithDefault(\"5\", 1)), \
+             distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        let transition = r#"<div hidden id="page-section-3" data-page="3"></div>
+            <h3>3 Anzeigen im Umkreis bis 20 km</h3>
+            <div class="card-gallery-standard affiliate-card ladies-card">
+                <p class="card-name">&nbsp;</p><p class="card-city">&nbsp;</p>
+            </div>
+            <lds-button id="load-adverts-next-distance" data-next-distance="30"></lds-button>"#;
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":card(2), "distanceSearched":20}).to_string(),
+                )
+                .with(
+                    &search_url("leipzig", 20, 3, "", true),
+                    200,
+                    &json!({"content":transition, "distanceSearched":20}).to_string(),
+                ),
+        );
+        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+        assert_eq!(result.cards.len(), 2);
+        assert_eq!(result.server_count, Some(5));
+        assert_eq!(result.fetched_pages, 3);
+        assert_eq!(result.total_pages, 3);
+        assert!(result.partial);
+        assert!(result.radius_boundary_stopped);
+        assert!(result.radius_verified);
+    }
+
+    #[test]
+    fn radius_transition_in_page_two_probe_is_not_a_parser_error() {
+        let first = format!(
+            "{} distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        let transition = r#"<div hidden id="page-section-2" data-page="2"></div>
+            <div class="affiliate-card ladies-card"><p class="card-name">&nbsp;</p></div>
+            <lds-button id="load-adverts-next-distance" data-next-distance="30"></lds-button>"#;
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":transition, "distanceSearched":20,
+                            "pagination":{"totalPages":2}}).to_string(),
+                ),
+        );
+        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+        assert_eq!(result.cards.len(), 1);
+        assert_eq!(result.fetched_pages, 2);
+        assert!(result.partial && result.radius_boundary_stopped);
+    }
+
+    #[test]
+    fn unknown_markup_with_radius_button_still_fails_closed() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"2\", 1)), \
+             distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        let invalid = r#"<div hidden id="page-section-2" data-page="2"></div>
+            <div class="ladies-card"><a href="/sex-anzeigen/new-format">Changed card</a></div>
+            <lds-button id="load-adverts-next-distance" data-next-distance="30"></lds-button>"#;
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":invalid, "distanceSearched":20}).to_string(),
+                ),
+        );
+        assert!(fetch_search_using(&client, &SearchRequest::for_test()).is_err());
+    }
+
+    #[test]
+    fn real_cards_on_a_page_with_radius_button_are_not_dropped() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"2\", 1)), \
+             advertCount: Number.parseInt(replaceWithDefault(\"2\", 1)), \
+             distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        let html = format!(
+            "{}<lds-button id='load-adverts-next-distance' data-next-distance='30'></lds-button>",
+            card(2)
+        );
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":html, "distanceSearched":20}).to_string(),
+                ),
+        );
+        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+        assert_eq!(result.cards.len(), 2);
+        assert!(!result.partial);
+        assert!(!result.radius_boundary_stopped);
+    }
     #[test]
     fn exact_radius_pagination_deduplicates_and_is_complete() {
         let first = format!(

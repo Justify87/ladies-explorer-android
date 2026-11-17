@@ -132,12 +132,63 @@ pub(super) fn parse_cards(html: &str) -> Vec<Card> {
     profiles
 }
 
+pub(super) fn is_radius_transition_placeholder(html: &str, requested_radius: u32) -> bool {
+    let doc = Html::parse_fragment(html);
+    let Some(next_distance) = doc
+        .select(&selector(
+            "lds-button#load-adverts-next-distance[data-next-distance]",
+        ))
+        .next()
+        .and_then(|node| node.value().attr("data-next-distance"))
+        .and_then(|value| value.parse::<u32>().ok())
+    else {
+        return false;
+    };
+    if next_distance <= requested_radius
+        || doc
+            .select(&selector("[id^='page-section-'][data-page]"))
+            .next()
+            .is_none()
+    {
+        return false;
+    }
+    let cards = doc.select(&selector("div.ladies-card")).collect::<Vec<_>>();
+    !cards.is_empty()
+        && cards.into_iter().all(|card| {
+            card.value().classes().any(|class| class == "affiliate-card")
+                && card
+                    .select(&selector("a[href], [data-ref-id], img[src], source[srcset]"))
+                    .next()
+                    .is_none()
+                && card
+                    .select(&selector(".card-name, .card-city"))
+                    .all(|node| text(&node).trim().is_empty())
+        })
+}
+
 pub(super) fn search_page_diagnostics(html: &str) -> String {
     let doc = Html::parse_document(html);
     let title = first_text(&doc, "title").unwrap_or_else(|| "ohne Titel".into());
     let title: String = title.chars().take(90).collect();
     let lowered = html.to_ascii_lowercase();
-    let page_kind = if [
+    let containers = doc.select(&selector("div.ladies-card")).count();
+    let links = doc.select(&selector("a.card-link[data-ref-id]")).count();
+    let plausible_links = doc
+        .select(&selector("a.card-link[data-ref-id]"))
+        .filter(|link| {
+            link.value()
+                .attr("data-ref-id")
+                .is_some_and(|id| !id.is_empty() && id.bytes().all(|c| c.is_ascii_digit()))
+                && link
+                    .value()
+                    .attr("href")
+                    .and_then(valid_profile_url)
+                    .is_some()
+        })
+        .count();
+    let page_kind = if plausible_links > 0 {
+        "Suchseite mit Anzeigen"
+    } else if [
         "cf-chl",
         "challenge-platform",
         "checking your browser",
@@ -158,21 +209,6 @@ pub(super) fn search_page_diagnostics(html: &str) -> String {
     } else {
         "nicht erkannte HTML-Seite"
     };
-    let containers = doc.select(&selector("div.ladies-card")).count();
-    let links = doc.select(&selector("a.card-link[data-ref-id]")).count();
-    let plausible_links = doc
-        .select(&selector("a.card-link[data-ref-id]"))
-        .filter(|link| {
-            link.value()
-                .attr("data-ref-id")
-                .is_some_and(|id| !id.is_empty() && id.bytes().all(|c| c.is_ascii_digit()))
-                && link
-                    .value()
-                    .attr("href")
-                    .and_then(valid_profile_url)
-                    .is_some()
-        })
-        .count();
     format!(
         "Diagnose: Typ={page_kind}; Titel=\"{title}\"; Größe={} Bytes;          Kartencontainer={containers}; Anzeigenlinks={links}; gültige Links={plausible_links}.",
         html.len()
@@ -611,6 +647,46 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn november_debug_radius_transition_is_not_an_advert_card() {
+        let html = r#"<div hidden id="page-section-8" data-page="8"></div>
+<h3>5 Anzeigen im Umkreis bis 20 km</h3>
+<div property="advertCard" prefix="globals: globals" class="card-gallery-standard affiliate-card ladies-card">
+    <div class="card-thumb-image-container"></div>
+    <p property="globals:city" class="card-city card-text">&nbsp;</p>
+    <p property="globals:name" class="card-name card-location-name card-text">&nbsp;</p>
+</div>
+<lds-button id='load-adverts-next-distance' variant='primary' data-next-distance='30'>Umkreis bis 30 km</lds-button>"#;
+        assert!(parse_cards(html).is_empty());
+        assert!(is_radius_transition_placeholder(html, 20));
+        assert!(!is_radius_transition_placeholder(html, 30));
+        assert!(!is_radius_transition_placeholder(
+            &html.replace("data-next-distance='30'", "data-next-distance='bad'"),
+            20
+        ));
+    }
+
+    #[test]
+    fn radius_transition_does_not_hide_unknown_listing_markup() {
+        let html = r#"<div hidden id="page-section-2" data-page="2"></div>
+            <div class="ladies-card"><a href="/sex-anzeigen/new-format">Changed card</a></div>
+            <lds-button id="load-adverts-next-distance" data-next-distance="30"></lds-button>"#;
+        assert!(!is_radius_transition_placeholder(html, 20));
+        let missing_button = r#"<div hidden id="page-section-2" data-page="2"></div>
+            <div class="affiliate-card ladies-card"><p class="card-name">&nbsp;</p></div>"#;
+        assert!(!is_radius_transition_placeholder(missing_button, 20));
+    }
+
+    #[test]
+    fn search_diagnostics_prioritize_valid_cards_over_embedded_challenge_code() {
+        let html = r#"<html><title>Leipzig</title><script>const captcha = true;</script>
+            <div class="ladies-card"><a class="card-link" data-ref-id="1"
+            href="/sex-anzeigen/huren-hostessen/1"></a></div></html>"#;
+        let details = search_page_diagnostics(html);
+        assert!(details.contains("Typ=Suchseite mit Anzeigen"));
+        assert!(details.contains("gültige Links=1"));
+    }
     #[test]
     fn search_diagnostics_distinguish_challenge_from_rejected_card_links() {
         let challenge = "<html><head><title>Just a moment...</title></head>\
