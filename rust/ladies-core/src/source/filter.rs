@@ -57,9 +57,7 @@ pub(super) fn validate_request(request: &SearchRequest) -> Result<(), CoreError>
     if ![5, 10, 20, 30, 50, 70, 100].contains(&request.radius_km) {
         return Err(invalid("Radius must be 5, 10, 20, 30, 50, 70 or 100 km"));
     }
-    if !(18..=60).contains(&request.age_min)
-        || !(request.age_min..=60).contains(&request.age_max)
-    {
+    if !(18..=60).contains(&request.age_min) || !(request.age_min..=60).contains(&request.age_max) {
         return Err(invalid("Age range must be within 18–60"));
     }
     if !(140..=200).contains(&request.height_min)
@@ -85,10 +83,19 @@ pub(super) fn filter_path(request: &SearchRequest) -> Result<String, CoreError> 
     let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     if request.age_min > 18 || request.age_max < 60 {
-        groups.insert("alter".into(), vec![request.age_min.to_string(), request.age_max.to_string()]);
+        groups.insert(
+            "alter".into(),
+            vec![request.age_min.to_string(), request.age_max.to_string()],
+        );
     }
     if request.height_min > 140 || request.height_max < 200 {
-        groups.insert("groesse".into(), vec![request.height_min.to_string(), request.height_max.to_string()]);
+        groups.insert(
+            "groesse".into(),
+            vec![
+                request.height_min.to_string(),
+                request.height_max.to_string(),
+            ],
+        );
     }
     for (raw_group, selected) in chosen {
         if selected.is_empty() {
@@ -110,7 +117,9 @@ pub(super) fn filter_path(request: &SearchRequest) -> Result<String, CoreError> 
             } else if allowed.values().any(|known| known == &clean) {
                 clean.as_str()
             } else {
-                return Err(invalid(format!("Unknown filter value in {mapped}: {clean}")));
+                return Err(invalid(format!(
+                    "Unknown filter value in {mapped}: {clean}"
+                )));
             };
             if !output.iter().any(|existing| existing == value) {
                 output.push(value.to_owned());
@@ -120,7 +129,11 @@ pub(super) fn filter_path(request: &SearchRequest) -> Result<String, CoreError> 
     let segment = catalog
         .order
         .iter()
-        .filter_map(|group| groups.get(group).map(|values| format!("{group}:{}", values.join(","))))
+        .filter_map(|group| {
+            groups
+                .get(group)
+                .map(|values| format!("{group}:{}", values.join(",")))
+        })
         .collect::<Vec<_>>()
         .join(";");
     Ok([category.as_str(), segment.as_str()]
@@ -139,7 +152,9 @@ mod tests {
         let mut request = SearchRequest::for_test();
         request.category = "locations".into();
         request.age_min = 25;
-        request.filters_json = r#"{"service":["ZK","GV","ZK"],"treffpunkt":["Hausbesuche"],"figur":["schlank"]}"#.into();
+        request.filters_json =
+            r#"{"service":["ZK","GV","ZK"],"treffpunkt":["Hausbesuche"],"figur":["schlank"]}"#
+                .into();
         let path = filter_path(&request).unwrap();
         assert_eq!(
             path,

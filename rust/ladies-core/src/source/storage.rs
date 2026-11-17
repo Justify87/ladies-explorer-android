@@ -37,8 +37,12 @@ pub(super) fn save_search(
           metadata_json, finished_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
         params![
-            downloaded.city, downloaded.city_slug, request.radius_km,
-            filters.to_string(), downloaded.server_count, request.radius_km,
+            downloaded.city,
+            downloaded.city_slug,
+            request.radius_km,
+            filters.to_string(),
+            downloaded.server_count,
+            request.radius_km,
             metadata.to_string(),
         ],
     )?;
@@ -52,18 +56,29 @@ pub(super) fn save_search(
               has_video, is_premium, has_ai_content, markers_json)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'{}')",
             params![
-                run_id, listing_id, (position + 1) as i64,
-                card.name, card.city, card.thumbnail_url,
-                card.has_video, card.is_premium, card.has_ai_content,
+                run_id,
+                listing_id,
+                (position + 1) as i64,
+                card.name,
+                card.city,
+                card.thumbnail_url,
+                card.has_video,
+                card.is_premium,
+                card.has_ai_content,
             ],
         )?;
         tx.execute(
             "INSERT INTO listing_observations
              (listing_id, source, status, search_run_id, details_json)
              VALUES (?1,'SEARCH','SEEN',?2,?3)",
-            params![listing_id, run_id, json!({
-                "position": position + 1, "name": card.name, "city": card.city
-            }).to_string()],
+            params![
+                listing_id,
+                run_id,
+                json!({
+                    "position": position + 1, "name": card.name, "city": card.city
+                })
+                .to_string()
+            ],
         )?;
         profiles.push(SearchCard {
             listing_id,
@@ -157,8 +172,16 @@ pub(super) fn listing_target(
     };
     let url = url
         .and_then(|url| parse::valid_profile_url(&url))
-        .ok_or_else(|| CoreError::Source("Stored listing has no recognized source profile URL".into()))?;
-    Ok((url, advert_id, name.unwrap_or_default(), city.unwrap_or_default(), category.unwrap_or_default()))
+        .ok_or_else(|| {
+            CoreError::Source("Stored listing has no recognized source profile URL".into())
+        })?;
+    Ok((
+        url,
+        advert_id,
+        name.unwrap_or_default(),
+        city.unwrap_or_default(),
+        category.unwrap_or_default(),
+    ))
 }
 
 fn upsert_source_profile(
@@ -179,7 +202,8 @@ fn upsert_source_profile(
     let profile_id = if let Some((id, owner)) = existing {
         if owner != person_id {
             return Err(CoreError::IdentityConflict(
-                "Source profile belongs to another existing person; automatic merges are disabled".into()
+                "Source profile belongs to another existing person; automatic merges are disabled"
+                    .into(),
             ));
         }
         db.execute(
@@ -205,7 +229,7 @@ fn upsert_source_profile(
     )?;
     if prior.is_some_and(|id| id != profile_id) {
         return Err(CoreError::IdentityConflict(
-            "Listing already has a different source profile; refusing reassignment".into()
+            "Listing already has a different source profile; refusing reassignment".into(),
         ));
     }
     db.execute(
@@ -224,24 +248,33 @@ pub(super) fn save_profile(
     let fingerprint = parse::fingerprint(&profile);
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    let person_id: Option<i64> = tx.query_row(
-        "SELECT person_id FROM listings WHERE listing_id=?1 AND source='LADIES'
+    let person_id: Option<i64> = tx
+        .query_row(
+            "SELECT person_id FROM listings WHERE listing_id=?1 AND source='LADIES'
          AND external_listing_id=?2",
-        params![listing_id, profile.advert_id],
-        |row| row.get(0),
-    ).optional()?;
+            params![listing_id, profile.advert_id],
+            |row| row.get(0),
+        )
+        .optional()?;
     let Some(person_id) = person_id else {
         return Err(CoreError::ListingNotFound(listing_id));
     };
     if let Some(external_id) = profile.source_profile_id.as_deref() {
-        upsert_source_profile(&tx, person_id, listing_id, external_id,
-            profile.canonical_id.as_deref())?;
+        upsert_source_profile(
+            &tx,
+            person_id,
+            listing_id,
+            external_id,
+            profile.canonical_id.as_deref(),
+        )?;
     }
-    let previous: Option<i64> = tx.query_row(
-        "SELECT snapshot_id FROM listing_snapshots WHERE listing_id=?1 AND fingerprint=?2",
-        params![listing_id, fingerprint],
-        |row| row.get(0),
-    ).optional()?;
+    let previous: Option<i64> = tx
+        .query_row(
+            "SELECT snapshot_id FROM listing_snapshots WHERE listing_id=?1 AND fingerprint=?2",
+            params![listing_id, fingerprint],
+            |row| row.get(0),
+        )
+        .optional()?;
     let new_snapshot = previous.is_none();
     let snapshot_id = if let Some(id) = previous {
         id
@@ -255,10 +288,20 @@ pub(super) fn save_profile(
                 (SELECT category FROM listings WHERE listing_id=?1),
                 ?8,?9,?10,?11,?12,?13,?14,?15)",
             params![
-                listing_id, fingerprint, url, profile.name, profile.city,
-                profile.postal_code, profile.hidden_location, profile.description,
-                profile.published_at, profile.source_profile_id, profile.canonical_id,
-                profile.phone_display, profile.traits_json, profile.services_json,
+                listing_id,
+                fingerprint,
+                url,
+                profile.name,
+                profile.city,
+                profile.postal_code,
+                profile.hidden_location,
+                profile.description,
+                profile.published_at,
+                profile.source_profile_id,
+                profile.canonical_id,
+                profile.phone_display,
+                profile.traits_json,
+                profile.services_json,
                 profile.opening_times_json,
             ],
         )?;
@@ -312,8 +355,13 @@ pub(super) fn save_profile(
                   remote_variant,revision_token)
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
                 params![
-                    id, reference.position, reference.kind, reference.role,
-                    reference.url, media_base.as_str(), reference.variant,
+                    id,
+                    reference.position,
+                    reference.kind,
+                    reference.role,
+                    reference.url,
+                    media_base.as_str(),
+                    reference.variant,
                     reference.revision_token,
                 ],
             )?;
@@ -359,7 +407,7 @@ pub(super) fn save_profile(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source::{network::DownloadedSearch, SearchRequest, MediaReference};
+    use crate::source::{MediaReference, SearchRequest, network::DownloadedSearch};
     use std::sync::Arc;
 
     fn core() -> Arc<LadiesCore> {
@@ -367,34 +415,58 @@ mod tests {
     }
     fn card(id: &str, name: &str) -> Card {
         Card {
-            advert_id: id.into(), name: name.into(), city: "Leipzig".into(),
+            advert_id: id.into(),
+            name: name.into(),
+            city: "Leipzig".into(),
             category: "huren hostessen".into(),
             profile_url: format!("https://www.ladies.de/sex-anzeigen/huren-hostessen/{id}"),
-            thumbnail_url: None, has_video: false, is_premium: false, has_ai_content: false,
+            thumbnail_url: None,
+            has_video: false,
+            is_premium: false,
+            has_ai_content: false,
         }
     }
 
     fn save_cards(core: &LadiesCore, cards: Vec<Card>) -> SearchResponse {
-        save_search(core, &SearchRequest::for_test(), DownloadedSearch {
-            cards, city: "Leipzig".into(), city_slug: "leipzig".into(),
-            server_count: Some(1), total_pages: 1, fetched_pages: 1,
-            partial: false, radius_boundary_stopped: false,
-        }).unwrap()
+        save_search(
+            core,
+            &SearchRequest::for_test(),
+            DownloadedSearch {
+                cards,
+                city: "Leipzig".into(),
+                city_slug: "leipzig".into(),
+                server_count: Some(1),
+                total_pages: 1,
+                fetched_pages: 1,
+                partial: false,
+                radius_boundary_stopped: false,
+            },
+        )
+        .unwrap()
     }
 
     fn profile(name: &str) -> Profile {
         Profile {
-            advert_id: "101".into(), name: name.into(), city: "Leipzig".into(),
-            description: "Hello".into(), postal_code: Some("04229".into()),
-            hidden_location: None, source_profile_id: Some("source-id-101".into()),
-            canonical_id: None, phone_display: Some("+49 123".into()),
-            published_at: None, traits_json: r#"{"Figur":["Schlank"]}"#.into(),
+            advert_id: "101".into(),
+            name: name.into(),
+            city: "Leipzig".into(),
+            description: "Hello".into(),
+            postal_code: Some("04229".into()),
+            hidden_location: None,
+            source_profile_id: Some("source-id-101".into()),
+            canonical_id: None,
+            phone_display: Some("+49 123".into()),
+            published_at: None,
+            traits_json: r#"{"Figur":["Schlank"]}"#.into(),
             services_json: r#"{"Service":["ZK"]}"#.into(),
             opening_times_json: r#"{"Montag":"10-18"}"#.into(),
             media: vec![MediaReference {
-                url:"https://bilder1.ladies-cdn.de/Bilder/1/100-A1.JPG?h=1".into(),
-                position:1, kind:"IMAGE".into(), role:"PRIMARY".into(),
-                variant:Some("A".into()), revision_token:Some("1".into()),
+                url: "https://bilder1.ladies-cdn.de/Bilder/1/100-A1.JPG?h=1".into(),
+                position: 1,
+                kind: "IMAGE".into(),
+                role: "PRIMARY".into(),
+                variant: Some("A".into()),
+                revision_token: Some("1".into()),
             }],
         }
     }
@@ -405,14 +477,22 @@ mod tests {
         let first = save_cards(&core, vec![card("101", "Anna"), card("102", "Mia")]);
         assert_eq!(first.profiles.len(), 2);
         assert_eq!(core.status().unwrap().person_count, 2);
-        core.set_favorite(first.profiles[0].person_id, true).unwrap();
+        core.set_favorite(first.profiles[0].person_id, true)
+            .unwrap();
         let again = save_cards(&core, vec![card("101", "Anna new")]);
         assert_eq!(again.profiles[0].listing_id, first.profiles[0].listing_id);
         assert_eq!(again.profiles[0].person_id, first.profiles[0].person_id);
-        assert!(core.get_person(first.profiles[0].person_id).unwrap().unwrap().favorite);
+        assert!(
+            core.get_person(first.profiles[0].person_id)
+                .unwrap()
+                .unwrap()
+                .favorite
+        );
         assert_eq!(core.status().unwrap().person_count, 2);
         let db = core.connection().unwrap();
-        let count: i64 = db.query_row("SELECT COUNT(*) FROM search_runs",[],|r|r.get(0)).unwrap();
+        let count: i64 = db
+            .query_row("SELECT COUNT(*) FROM search_runs", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 2);
     }
 
@@ -421,26 +501,52 @@ mod tests {
         let core = core();
         let found = save_cards(&core, vec![card("101", "Anna")]);
         let listing = found.profiles[0].listing_id;
-        let first = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        let first = save_profile(
+            &core,
+            listing,
+            &found.profiles[0].profile_url,
+            profile("Anna"),
+        )
+        .unwrap();
         assert!(first.new_snapshot);
-        let same = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        let same = save_profile(
+            &core,
+            listing,
+            &found.profiles[0].profile_url,
+            profile("Anna"),
+        )
+        .unwrap();
         assert_eq!(same.snapshot_id, first.snapshot_id);
         assert!(!same.new_snapshot);
-        let changed = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna 2")).unwrap();
+        let changed = save_profile(
+            &core,
+            listing,
+            &found.profiles[0].profile_url,
+            profile("Anna 2"),
+        )
+        .unwrap();
         assert_ne!(first.snapshot_id, changed.snapshot_id);
         assert!(changed.new_snapshot);
         let db = core.connection().unwrap();
-        let count: i64 = db.query_row("SELECT COUNT(*) FROM snapshot_media",[],|r|r.get(0)).unwrap();
+        let count: i64 = db
+            .query_row("SELECT COUNT(*) FROM snapshot_media", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 2);
     }
 
     #[test]
     fn profile_source_identity_conflicts_fail_without_partial_writes() {
         let core = core();
-        let found = save_cards(&core, vec![card("101", "Anna"),card("102", "Mia")]);
+        let found = save_cards(&core, vec![card("101", "Anna"), card("102", "Mia")]);
         let first = found.profiles[0].listing_id;
         let second = found.profiles[1].listing_id;
-        save_profile(&core, first, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        save_profile(
+            &core,
+            first,
+            &found.profiles[0].profile_url,
+            profile("Anna"),
+        )
+        .unwrap();
         let mut other = profile("Mia");
         other.advert_id = "102".into();
         assert!(matches!(
@@ -448,7 +554,13 @@ mod tests {
             Err(CoreError::IdentityConflict(_))
         ));
         let db = core.connection().unwrap();
-        let count: i64 = db.query_row("SELECT COUNT(*) FROM listing_snapshots WHERE listing_id=?1",[second],|r|r.get(0)).unwrap();
+        let count: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM listing_snapshots WHERE listing_id=?1",
+                [second],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 0);
     }
 }

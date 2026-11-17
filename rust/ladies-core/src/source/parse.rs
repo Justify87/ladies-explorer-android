@@ -66,8 +66,16 @@ pub(super) fn parse_cards(html: &str) -> Vec<Card> {
         let Some(url) = link.value().attr("href").and_then(valid_profile_url) else {
             continue;
         };
-        let city = card.select(&selector(".card-city")).next().map(text).unwrap_or_default();
-        let name = card.select(&selector(".card-name")).next().map(text).unwrap_or_default();
+        let city = card
+            .select(&selector(".card-city"))
+            .next()
+            .map(text)
+            .unwrap_or_default();
+        let name = card
+            .select(&selector(".card-name"))
+            .next()
+            .map(text)
+            .unwrap_or_default();
         let thumbnail = card
             .select(&selector("img.card-thumb-image"))
             .next()
@@ -77,15 +85,28 @@ pub(super) fn parse_cards(html: &str) -> Vec<Card> {
             .map(|url| url.to_string());
         let classes = card.value().classes().collect::<Vec<_>>();
         let ai_markers = [
-            "ki-kennzeichnung", "ki-generiert", "ki-bearbeitet",
-            "ai-icon", "ai_icon", "basic-eu-ai", "eu-ai-icon",
-            "artificial-intelligence", "artificial_intelligence",
+            "ki-kennzeichnung",
+            "ki-generiert",
+            "ki-bearbeitet",
+            "ai-icon",
+            "ai_icon",
+            "basic-eu-ai",
+            "eu-ai-icon",
+            "artificial-intelligence",
+            "artificial_intelligence",
         ];
-        let has_ai_content = ai_markers.iter().any(|marker| card.html().to_lowercase().contains(marker));
-        let parts: Vec<_> = Url::parse(&url).ok().map(|parsed| {
-            parsed.path_segments().map(|segments| segments.map(str::to_owned).collect())
-                .unwrap_or_default()
-        }).unwrap_or_default();
+        let has_ai_content = ai_markers
+            .iter()
+            .any(|marker| card.html().to_lowercase().contains(marker));
+        let parts: Vec<_> = Url::parse(&url)
+            .ok()
+            .map(|parsed| {
+                parsed
+                    .path_segments()
+                    .map(|segments| segments.map(str::to_owned).collect())
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
         let category = parts
             .iter()
             .position(|segment| segment == "sex-anzeigen")
@@ -99,7 +120,10 @@ pub(super) fn parse_cards(html: &str) -> Vec<Card> {
             category,
             profile_url: url,
             thumbnail_url: thumbnail,
-            has_video: card.select(&selector(".card-videos-marker")).next().is_some(),
+            has_video: card
+                .select(&selector(".card-videos-marker"))
+                .next()
+                .is_some(),
             is_premium: classes.contains(&"card-gallery-premium"),
             has_ai_content,
         });
@@ -143,7 +167,11 @@ fn group_values(doc: &Html, root: &str, item: &str, heading: &str, value: &str) 
 fn opening_times(doc: &Html) -> String {
     let mut hours = BTreeMap::new();
     for row in doc.select(&selector(".opening-times")) {
-        let Some(day) = row.select(&selector(".attribute-heading strong")).next().map(text) else {
+        let Some(day) = row
+            .select(&selector(".attribute-heading strong"))
+            .next()
+            .map(text)
+        else {
             continue;
         };
         let full = text(row);
@@ -163,12 +191,22 @@ fn opening_times(doc: &Html) -> String {
             let value = row
                 .select(&selector(r#"[itemprop="description"]"#))
                 .next()
-                .map(|node| node.value().attr("content").map(clean).unwrap_or_else(|| text(node)))
+                .map(|node| {
+                    node.value()
+                        .attr("content")
+                        .map(clean)
+                        .unwrap_or_else(|| text(node))
+                })
                 .unwrap_or_default();
             let translated = match day {
-                "Monday" => "Montag", "Tuesday" => "Dienstag", "Wednesday" => "Mittwoch",
-                "Thursday" => "Donnerstag", "Friday" => "Freitag", "Saturday" => "Samstag",
-                "Sunday" => "Sonntag", _ => day,
+                "Monday" => "Montag",
+                "Tuesday" => "Dienstag",
+                "Wednesday" => "Mittwoch",
+                "Thursday" => "Donnerstag",
+                "Friday" => "Freitag",
+                "Saturday" => "Samstag",
+                "Sunday" => "Sonntag",
+                _ => day,
             };
             if !translated.is_empty() && !value.is_empty() {
                 hours.insert(translated.to_owned(), value);
@@ -179,7 +217,9 @@ fn opening_times(doc: &Html) -> String {
 }
 
 fn revision_token(url: &str) -> Option<String> {
-    Url::parse(url).ok()?.query_pairs()
+    Url::parse(url)
+        .ok()?
+        .query_pairs()
         .find(|(key, _)| key == "h")
         .map(|(_, val)| val.into_owned())
 }
@@ -198,12 +238,23 @@ fn media_url(raw: &str) -> Option<String> {
     Some(url.to_string())
 }
 
-fn media_ref(url: &str, kind: &str, position: u32, photo_no: Option<u32>, variant: &str) -> MediaReference {
+fn media_ref(
+    url: &str,
+    kind: &str,
+    position: u32,
+    photo_no: Option<u32>,
+    variant: &str,
+) -> MediaReference {
     MediaReference {
         url: url.to_owned(),
         kind: kind.to_owned(),
         position,
-        role: if photo_no == Some(1) { "PRIMARY" } else { "GALLERY" }.into(),
+        role: if photo_no == Some(1) {
+            "PRIMARY"
+        } else {
+            "GALLERY"
+        }
+        .into(),
         variant: Some(variant.to_owned()),
         revision_token: revision_token(url),
     }
@@ -214,13 +265,16 @@ fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
         r#"(?i)https://bilder\d+\.ladies-cdn\.de/Bilder/\d+/\d+-([AF])(\d+)\.JPG(?:\?[^\s"'<>)]*)?"#
     ).expect("photo regex");
     let video_re = Regex::new(
-        r#"(?i)https://video\d+\.ladies-cdn\.de/[^\s"'<>]+?\.(webm|mp4)(?:\?[^\s"'<>)]*)?"#
-    ).expect("video regex");
+        r#"(?i)https://video\d+\.ladies-cdn\.de/[^\s"'<>]+?\.(webm|mp4)(?:\?[^\s"'<>)]*)?"#,
+    )
+    .expect("video regex");
     let mut photos: BTreeMap<u32, (String, String)> = BTreeMap::new();
     for m in photo_re.captures_iter(html) {
         let url = m.get(0).unwrap().as_str().trim_end_matches([')', ',', ';']);
         let Some(url) = media_url(url) else { continue };
-        let Some(number) = m.get(2).and_then(|m| m.as_str().parse::<u32>().ok()) else { continue };
+        let Some(number) = m.get(2).and_then(|m| m.as_str().parse::<u32>().ok()) else {
+            continue;
+        };
         let variant = m.get(1).unwrap().as_str().to_ascii_uppercase();
         if variant == "A" || !photos.contains_key(&number) {
             photos.insert(number, (url, variant));
@@ -230,30 +284,54 @@ fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
     let mut used_photos = HashSet::new();
     let mut used_videos = HashSet::new();
     let mut add_photo = |candidate: &str, position: u32, ordered: &mut Vec<MediaReference>| {
-        let Some(found) = photo_re.captures(candidate) else { return };
-        let Some(no) = found.get(2).and_then(|m| m.as_str().parse::<u32>().ok()) else { return };
-        if !used_photos.insert(no) { return }
+        let Some(found) = photo_re.captures(candidate) else {
+            return;
+        };
+        let Some(no) = found.get(2).and_then(|m| m.as_str().parse::<u32>().ok()) else {
+            return;
+        };
+        if !used_photos.insert(no) {
+            return;
+        }
         if let Some((url, variant)) = photos.get(&no) {
             ordered.push(media_ref(url, "IMAGE", position, Some(no), variant));
         }
     };
-    if let Some(main) = doc.select(&selector(".auftrag-main-thumb[data-index]")).next() {
-        let position = main.value().attr("data-index")
+    if let Some(main) = doc
+        .select(&selector(".auftrag-main-thumb[data-index]"))
+        .next()
+    {
+        let position = main
+            .value()
+            .attr("data-index")
             .and_then(|value| value.parse::<u32>().ok())
-            .unwrap_or(0) + 1;
-        if let Some(src) = main.select(&selector("img")).next()
-            .and_then(|node| node.value().attr("src")) {
+            .unwrap_or(0)
+            + 1;
+        if let Some(src) = main
+            .select(&selector("img"))
+            .next()
+            .and_then(|node| node.value().attr("src"))
+        {
             add_photo(src, position, &mut ordered);
         }
     }
     for node in doc.select(&selector(".girl-galerie .gallery_item[data-index]")) {
-        let Some(position) = node.value().attr("data-index")
-            .and_then(|s| s.parse::<u32>().ok()).and_then(|n| n.checked_add(1)) else { continue };
-        let Some(href) = node.value().attr("href") else { continue };
+        let Some(position) = node
+            .value()
+            .attr("data-index")
+            .and_then(|s| s.parse::<u32>().ok())
+            .and_then(|n| n.checked_add(1))
+        else {
+            continue;
+        };
+        let Some(href) = node.value().attr("href") else {
+            continue;
+        };
         if let Some(found) = video_re.find(href) {
             let url = found.as_str().to_owned();
             if used_videos.insert(url.clone()) {
-                let variant = Url::parse(&url).ok()
+                let variant = Url::parse(&url)
+                    .ok()
                     .and_then(|parsed| parsed.path().rsplit('.').next().map(str::to_lowercase))
                     .unwrap_or_else(|| "mp4".into());
                 ordered.push(media_ref(&url, "VIDEO", position, None, &variant));
@@ -273,7 +351,11 @@ fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
         let url = found.as_str().trim_end_matches([')', ',', ';']).to_owned();
         if used_videos.insert(url.clone()) && media_url(&url).is_some() {
             position += 1;
-            let variant = if url.to_ascii_lowercase().contains(".webm") { "webm" } else { "mp4" };
+            let variant = if url.to_ascii_lowercase().contains(".webm") {
+                "webm"
+            } else {
+                "mp4"
+            };
             ordered.push(media_ref(&url, "VIDEO", position, None, variant));
         }
     }
@@ -284,35 +366,69 @@ fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
 pub(super) fn parse_profile(html: &str, fallback: &Card) -> Result<Profile, CoreError> {
     let doc = Html::parse_document(html);
     if let Some(found_id) = Regex::new(r#"(?i)advertId:\s*replaceWithDefault\("(\d+)""#)
-        .expect("advert regex").captures(html).and_then(|m| m.get(1)) {
+        .expect("advert regex")
+        .captures(html)
+        .and_then(|m| m.get(1))
+    {
         if found_id.as_str() != fallback.advert_id {
             return Err(CoreError::Source(format!(
                 "Profile advert ID mismatch: expected {} but got {}",
-                fallback.advert_id, found_id.as_str()
+                fallback.advert_id,
+                found_id.as_str()
             )));
         }
     }
     let name = first_text(&doc, "h2.page-heading.kuenstlername")
         .or_else(|| first_text(&doc, ".share-advert-name strong"))
         .unwrap_or_else(|| fallback.name.clone());
-    let city = first_text(&doc, ".address-details [itemprop='addressLocality'] .important")
-        .or_else(|| first_text(&doc, ".share-advert-place"))
-        .unwrap_or_else(|| fallback.city.clone());
+    let city = first_text(
+        &doc,
+        ".address-details [itemprop='addressLocality'] .important",
+    )
+    .or_else(|| first_text(&doc, ".share-advert-place"))
+    .unwrap_or_else(|| fallback.city.clone());
     if name.is_empty() && city.is_empty() {
-        return Err(CoreError::Source("Profile page is missing identifying content".into()));
+        return Err(CoreError::Source(
+            "Profile page is missing identifying content".into(),
+        ));
     }
     let description = first_text(&doc, ".einzelansicht-text > div:first-child").unwrap_or_default();
     let canonical_id = Regex::new(r#"(?i)canonicalId:\s*replaceWithDefault\("([^"]*)""#)
-        .expect("canonical regex").captures(html)
-        .and_then(|m| m.get(1)).map(|m| clean(m.as_str())).filter(|s| !s.is_empty());
-    let published_at = attr(&doc, r#"meta[property="article:published_time"]"#, "content")
-        .filter(|text| text.starts_with("20"));
-    let phone = doc.select(&selector(r#"[itemprop="telephone"]"#)).next()
-        .map(|node| node.value().attr("content").map(clean).unwrap_or_else(|| text(node)))
+        .expect("canonical regex")
+        .captures(html)
+        .and_then(|m| m.get(1))
+        .map(|m| clean(m.as_str()))
+        .filter(|s| !s.is_empty());
+    let published_at = attr(
+        &doc,
+        r#"meta[property="article:published_time"]"#,
+        "content",
+    )
+    .filter(|text| text.starts_with("20"));
+    let phone = doc
+        .select(&selector(r#"[itemprop="telephone"]"#))
+        .next()
+        .map(|node| {
+            node.value()
+                .attr("content")
+                .map(clean)
+                .unwrap_or_else(|| text(node))
+        })
         .filter(|value| !value.is_empty());
-    let traits = group_values(&doc, ".trait-attributes", ".attribute-items", "strong", ".col-xs-7 p");
-    let services = group_values(&doc, ".standard-attributes", ".list-group",
-        ".attribute-heading strong", ".attribute-item span");
+    let traits = group_values(
+        &doc,
+        ".trait-attributes",
+        ".attribute-items",
+        "strong",
+        ".col-xs-7 p",
+    );
+    let services = group_values(
+        &doc,
+        ".standard-attributes",
+        ".list-group",
+        ".attribute-heading strong",
+        ".attribute-item span",
+    );
     let media = gallery_media(&doc, html);
     Ok(Profile {
         advert_id: fallback.advert_id.clone(),

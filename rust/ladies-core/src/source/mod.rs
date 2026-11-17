@@ -108,7 +108,10 @@ struct Profile {
     media: Vec<MediaReference>,
 }
 
-pub(crate) fn search(core: &LadiesCore, request: SearchRequest) -> Result<SearchResponse, CoreError> {
+pub(crate) fn search(
+    core: &LadiesCore,
+    request: SearchRequest,
+) -> Result<SearchResponse, CoreError> {
     filter::validate_request(&request)?;
     let client = network::SourceHttp::new()?;
     let downloaded = network::fetch_search(&client, &request)?;
