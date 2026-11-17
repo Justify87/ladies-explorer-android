@@ -155,9 +155,13 @@ pub(super) fn is_radius_transition_placeholder(html: &str, requested_radius: u32
     let cards = doc.select(&selector("div.ladies-card")).collect::<Vec<_>>();
     !cards.is_empty()
         && cards.into_iter().all(|card| {
-            card.value().classes().any(|class| class == "affiliate-card")
+            card.value()
+                .classes()
+                .any(|class| class == "affiliate-card")
                 && card
-                    .select(&selector("a[href], [data-ref-id], img[src], source[srcset]"))
+                    .select(&selector(
+                        "a[href], [data-ref-id], img[src], source[srcset]",
+                    ))
                     .next()
                     .is_none()
                 && card
@@ -646,7 +650,6 @@ mod tests {
             has_stars: false,
         }
     }
-
 
     #[test]
     fn november_debug_radius_transition_is_not_an_advert_card() {

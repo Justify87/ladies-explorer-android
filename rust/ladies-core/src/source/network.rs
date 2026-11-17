@@ -597,7 +597,9 @@ fn fetch_search_using<T: Transport>(
                 partial = true;
                 client.log_event(
                     "SEARCH",
-                    format!("Stopped at page={page} radius transition placeholder; search is partial"),
+                    format!(
+                        "Stopped at page={page} radius transition placeholder; search is partial"
+                    ),
                 );
                 break;
             }
@@ -825,7 +827,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn radius_transition_preserves_previous_pages_as_partial() {
         let first = format!(
@@ -880,7 +881,8 @@ mod tests {
                     &search_url("leipzig", 20, 2, "", true),
                     200,
                     &json!({"content":transition, "distanceSearched":20,
-                            "pagination":{"totalPages":2}}).to_string(),
+                            "pagination":{"totalPages":2}})
+                    .to_string(),
                 ),
         );
         let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
