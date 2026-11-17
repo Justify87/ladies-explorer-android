@@ -3,6 +3,7 @@
 
 mod legacy_import;
 mod schema;
+mod source;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -29,6 +30,10 @@ pub enum CoreError {
     UnsupportedSchema(u32),
     #[error("Legacy import failed: {0}")]
     Import(String),
+    #[error("Ladies source request or parsing failed: {0}")]
+    Source(String),
+    #[error("No LADIES listing with id {0}")]
+    ListingNotFound(i64),
     #[error("Incompatible local database schema: {0}")]
     SchemaMismatch(String),
 }
@@ -116,6 +121,8 @@ pub struct ImportReport {
     pub media_files: u32,
 }
 
+pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
+
 #[derive(uniffi::Object)]
 pub struct LadiesCore {
     db: Mutex<Connection>,
@@ -143,6 +150,14 @@ impl LadiesCore {
         app_files_directory: String,
     ) -> Result<ImportReport, CoreError> {
         legacy_import::import_bundle(self, &bundle_path, &app_files_directory)
+    }
+
+    pub fn search_source(&self, query: SearchRequest) -> Result<SearchResponse, CoreError> {
+        source::search(self, query)
+    }
+
+    pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
+        source::load_profile(self, listing_id)
     }
 
     pub fn status(&self) -> Result<CoreStatus, CoreError> {

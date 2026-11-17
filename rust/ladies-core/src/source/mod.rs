@@ -46,7 +46,7 @@ pub struct SearchResponse {
     pub profiles: Vec<SearchCard>,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct MediaReference {
     pub url: String,
     pub kind: String,
