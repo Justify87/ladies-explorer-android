@@ -1,5 +1,6 @@
 package de.justify87.ladiesexplorer
 
+import android.content.ClipData
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -13,16 +14,17 @@ import androidx.lifecycle.lifecycleScope
 import de.justify87.ladiesexplorer.ui.LadiesApp
 import de.justify87.ladiesexplorer.ui.LadiesTheme
 import de.justify87.ladiesexplorer.ui.MainViewModel
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+
     private val pickLegacyBundle = registerForActivityResult(ActivityResultContracts.OpenDocument()) {
         uri -> uri?.let(viewModel::importBundle)
     }
+
     private val saveDiagnostics = registerForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri ->
@@ -30,47 +32,58 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
-                        val log = diagnosticFile()
-                        require(log.isFile) { "Noch kein Diagnoseprotokoll vorhanden." }
-                        val output = contentResolver.openOutputStream(uri, "wt")
-                            ?: error("Die Zieldatei konnte nicht geöffnet werden.")
-                        log.inputStream().use { source ->
-                            output.use { destination -> source.copyTo(destination) }
+                        val snapshot = viewModel.prepareDiagnosticSnapshot()
+                        try {
+                            val output = contentResolver.openOutputStream(uri, "wt")
+                                ?: error("Die Zieldatei konnte nicht geöffnet werden.")
+                            snapshot.inputStream().use { input ->
+                                output.use { destination -> input.copyTo(destination) }
+                            }
+                        } finally {
+                            snapshot.delete()
                         }
                     }
                 }
-                val message = result.fold(
+                toast(result.fold(
                     onSuccess = { "Debug-Protokoll gespeichert." },
                     onFailure = { "Export fehlgeschlagen: ${it.message}" },
-                )
-                toast(message)
+                ))
+                viewModel.refresh()
             }
         }
     }
-
-    private fun diagnosticFile(): File = File(filesDir, "diagnostics/ladies-debug.log")
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
     private fun shareDiagnostics() {
-        val log = diagnosticFile()
-        if (!log.isFile) {
-            toast("Noch kein Diagnoseprotokoll vorhanden. Bitte App neu öffnen.")
-            return
+        lifecycleScope.launch {
+            val snapshot = runCatching { viewModel.prepareDiagnosticSnapshot() }
+                .getOrElse { failure ->
+                    toast("Log-Snapshot fehlgeschlagen: ${failure.message}")
+                    viewModel.refresh()
+                    return@launch
+                }
+            try {
+                val uri = FileProvider.getUriForFile(this@MainActivity, "$packageName.fileprovider", snapshot)
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = ClipData.newUri(contentResolver, "Ladies Explorer Debug-Log", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(send, "Debug-Protokoll teilen").apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(chooser)
+                // Retain the immutable snapshot in cache while the receiving app reads it.
+            } catch (failure: Exception) {
+                snapshot.delete()
+                toast("Teilen fehlgeschlagen: ${failure.message}")
+            }
+            viewModel.refresh()
         }
-        val uri = FileProvider.getUriForFile(
-            this,
-            "$packageName.fileprovider",
-            log,
-        )
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        startActivity(Intent.createChooser(send, "Debug-Protokoll teilen"))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
