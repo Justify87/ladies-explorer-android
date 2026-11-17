@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,7 +49,11 @@ fun SearchSmokeScreen(viewModel: MainViewModel) {
             Text("Suche starten")
         }
         if (state.loading) CircularProgressIndicator()
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.error?.let { message ->
+            SelectionContainer {
+                Text(message, color = MaterialTheme.colorScheme.error)
+            }
+        }
         state.response?.let { response ->
             Text(
                 response.profiles.size.toString() + " Anzeigen · " +

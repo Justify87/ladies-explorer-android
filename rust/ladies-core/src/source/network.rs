@@ -31,7 +31,19 @@ pub(super) struct SourceHttp {
 impl SourceHttp {
     pub(super) fn new() -> Result<Self, CoreError> {
         let client = Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
+            .cookie_store(true)
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                let destination = attempt.url();
+                if attempt.previous().len() >= 5 {
+                    attempt.error("Too many source redirects")
+                } else if destination.scheme() == "https"
+                    && matches!(destination.host_str(), Some("www.ladies.de" | "ladies.de"))
+                {
+                    attempt.follow()
+                } else {
+                    attempt.error("Source redirected outside ladies.de")
+                }
+            }))
             .timeout(Duration::from_secs(25))
             .user_agent(
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
@@ -65,14 +77,29 @@ impl Transport for SourceHttp {
                 "HTTP is restricted to www.ladies.de".into(),
             ));
         }
+        let accept = if parsed.path().starts_with("/api/") {
+            "application/json, */*"
+        } else {
+            "text/html, application/xhtml+xml, */*"
+        };
+        let requested_path = parsed.path().to_owned();
         let mut response = self
             .client
             .get(parsed)
+            .header("Accept", accept)
             .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
+            .header("Referer", BASE)
             .header("DNT", "1")
             .send()
             .map_err(|e| CoreError::Source(format!("Source HTTP request failed: {e}")))?;
         let status = response.status().as_u16();
+        if status == 200 && response.url().path() != requested_path {
+            return Err(CoreError::Source(format!(
+                "Die Website hat statt der angeforderten Seite {} die Seite {} geliefert.",
+                requested_path,
+                response.url().path()
+            )));
+        }
         let mut bytes = Vec::new();
         response
             .by_ref()
@@ -221,9 +248,10 @@ fn append_page(profiles: &mut Vec<Card>, payload: &Value) -> Result<(), CoreErro
         .ok_or_else(|| CoreError::Source("Search API page missing HTML content".into()))?;
     let parsed = parse::parse_cards(content);
     if parsed.is_empty() && !content.trim().is_empty() {
-        return Err(CoreError::Source(
-            "Search API HTML contains content but no recognizable cards".into(),
-        ));
+        return Err(CoreError::Source(format!(
+            "Die Folgeseite enthält keine erkennbaren Anzeigenkarten. {}",
+            parse::search_page_diagnostics(content)
+        )));
     }
     profiles.extend(parsed);
     Ok(())
@@ -287,9 +315,10 @@ fn fetch_search_using<T: Transport>(
     if cards.is_empty() {
         // Metadata-only HTML with an unreadable card DOM is not a valid empty search.
         if server_count != Some(0) || total_from_html.is_some_and(|pages| pages > 1) {
-            return Err(CoreError::Source(
-                "Search returned no recognized cards without a confirmed zero advert count".into(),
-            ));
+            return Err(CoreError::Source(format!(
+                "Die Suchseite enthält keine erkennbaren Anzeigenkarten. {}",
+                parse::search_page_diagnostics(&first.body)
+            )));
         }
         return Ok(DownloadedSearch {
             cards,

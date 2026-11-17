@@ -132,6 +132,45 @@ pub(super) fn parse_cards(html: &str) -> Vec<Card> {
     profiles
 }
 
+pub(super) fn search_page_diagnostics(html: &str) -> String {
+    let doc = Html::parse_document(html);
+    let title = first_text(&doc, "title").unwrap_or_else(|| "ohne Titel".into());
+    let title: String = title.chars().take(90).collect();
+    let lowered = html.to_ascii_lowercase();
+    let page_kind = if [
+        "cf-chl", "challenge-platform", "checking your browser",
+        "just a moment", "verify you are human", "captcha",
+    ]
+    .iter()
+    .any(|marker| lowered.contains(marker))
+    {
+        "Bot-Verifizierung"
+    } else if lowered.contains("ich bin über 18 jahre")
+        || lowered.contains("enthält erotische inhalte")
+    {
+        "Altersabfrage oder Website-Startseite"
+    } else if lowered.contains("anzeigen für dich gefunden") {
+        "Suchseite mit Ergebnisüberschrift"
+    } else {
+        "nicht erkannte HTML-Seite"
+    };
+    let containers = doc.select(&selector("div.ladies-card")).count();
+    let links = doc.select(&selector("a.card-link[data-ref-id]")).count();
+    let plausible_links = doc
+        .select(&selector("a.card-link[data-ref-id]"))
+        .filter(|link| {
+            link.value()
+                .attr("data-ref-id")
+                .is_some_and(|id| !id.is_empty() && id.bytes().all(|c| c.is_ascii_digit()))
+                && link.value().attr("href").and_then(valid_profile_url).is_some()
+        })
+        .count();
+    format!(
+        "Diagnose: Typ={page_kind}; Titel=\"{title}\"; Größe={} Bytes;          Kartencontainer={containers}; Anzeigenlinks={links}; gültige Links={plausible_links}.",
+        html.len()
+    )
+}
+
 pub(super) fn parse_config(html: &str, field: &str) -> Option<u32> {
     let pattern = format!(
         r#"(?i){}\s*:\s*Number\.parseInt\(replaceWithDefault\("(-?\d+)""#,
@@ -562,6 +601,23 @@ mod tests {
             has_18plus: false,
             has_stars: false,
         }
+    }
+
+    #[test]
+    fn search_diagnostics_distinguish_challenge_from_rejected_card_links() {
+        let challenge = "<html><head><title>Just a moment...</title></head>\
+            <body><div id='cf-chl-widget'>Checking your browser</div></body></html>";
+        let details = search_page_diagnostics(challenge);
+        assert!(details.contains("Bot-Verifizierung"));
+        assert!(details.contains("Kartencontainer=0"));
+
+        let unrecognized_card = "<html><head><title>Anzeigen</title></head><body>\
+            <div class='ladies-card'><a class='card-link' data-ref-id='42' \
+            href='/unbekannt/42'>Test</a></div></body></html>";
+        let details = search_page_diagnostics(unrecognized_card);
+        assert!(details.contains("Kartencontainer=1"));
+        assert!(details.contains("Anzeigenlinks=1"));
+        assert!(details.contains("gültige Links=0"));
     }
 
     #[test]
