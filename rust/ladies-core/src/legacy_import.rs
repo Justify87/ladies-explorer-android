@@ -36,7 +36,12 @@ const TABLES: &[(&str, Option<&str>)] = &[
     ("encounters", None),
     ("encounter_services", None),
     ("price_lists", Some("source = 'USER_ENTERED'")),
-    ("price_items", Some("price_list_id IN (SELECT price_list_id FROM price_lists WHERE source = 'USER_ENTERED')")),
+    (
+        "price_items",
+        Some(
+            "price_list_id IN (SELECT price_list_id FROM price_lists WHERE source = 'USER_ENTERED')",
+        ),
+    ),
 ];
 
 fn error(message: impl Into<String>) -> CoreError {
@@ -53,7 +58,9 @@ fn identifier(value: &str) -> String {
 
 fn sqlite_columns(db: &Connection, table: &str) -> Result<Vec<String>, CoreError> {
     let mut q = db.prepare(&format!("PRAGMA table_info({})", identifier(table)))?;
-    let names: Vec<String> = q.query_map([], |row| row.get(1))?.collect::<rusqlite::Result<_>>()?;
+    let names: Vec<String> = q
+        .query_map([], |row| row.get(1))?
+        .collect::<rusqlite::Result<_>>()?;
     if names.is_empty() {
         return Err(error(format!("Required table missing: {table}")));
     }
@@ -90,13 +97,22 @@ fn copy_table(
     if columns.is_empty() {
         return Err(error(format!("No compatible columns in {table}")));
     }
-    let names = columns.iter().map(|col| identifier(col)).collect::<Vec<_>>().join(", ");
+    let names = columns
+        .iter()
+        .map(|col| identifier(col))
+        .collect::<Vec<_>>()
+        .join(", ");
     let selection = format!(
         "SELECT {names} FROM {}{}",
         identifier(table),
-        filter.map(|clause| format!(" WHERE {clause}")).unwrap_or_default()
+        filter
+            .map(|clause| format!(" WHERE {clause}"))
+            .unwrap_or_default()
     );
-    let bind_marks = (1..=columns.len()).map(|n| format!("?{n}")).collect::<Vec<_>>().join(", ");
+    let bind_marks = (1..=columns.len())
+        .map(|n| format!("?{n}"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let mut insertion = format!(
         "INSERT INTO {} ({names}) VALUES ({bind_marks})",
         identifier(table)
@@ -104,9 +120,12 @@ fn copy_table(
     if table == "person_user_state" {
         insertion.push_str(" ON CONFLICT(person_id) DO UPDATE SET ");
         insertion.push_str(
-            &columns.iter().filter(|col| col.as_str() != "person_id")
+            &columns
+                .iter()
+                .filter(|col| col.as_str() != "person_id")
                 .map(|col| format!("{}=excluded.{}", identifier(col), identifier(col)))
-                .collect::<Vec<_>>().join(", ")
+                .collect::<Vec<_>>()
+                .join(", "),
         );
     }
 
@@ -131,9 +150,12 @@ fn verified_relative_path(raw: &str) -> Result<&Path, CoreError> {
         Some(Component::Normal(first)) => first == "media" || first == "raw_profiles",
         _ => false,
     };
-    if !safe_root || !parts.clone().next().is_some() ||
-        path.components().any(|part| !matches!(part, Component::Normal(_))) ||
-        raw.contains('\\')
+    if !safe_root
+        || !parts.clone().next().is_some()
+        || path
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+        || raw.contains('\\')
     {
         return Err(error(format!("Invalid archived path: {raw}")));
     }
@@ -143,14 +165,16 @@ fn verified_relative_path(raw: &str) -> Result<&Path, CoreError> {
 fn required_files(source: &Connection) -> Result<BTreeMap<String, Option<String>>, CoreError> {
     let mut paths = BTreeMap::new();
     let mut query = source.prepare("SELECT local_path, sha256 FROM media_assets")?;
-    let media = query.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+    let media = query.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
     for item in media {
         let (path, digest) = item?;
         verified_relative_path(&path)?;
         paths.insert(path, Some(digest));
     }
     let mut query = source.prepare(
-        "SELECT DISTINCT raw_html_path FROM listing_snapshots WHERE raw_html_path IS NOT NULL"
+        "SELECT DISTINCT raw_html_path FROM listing_snapshots WHERE raw_html_path IS NOT NULL",
     )?;
     let raw = query.query_map([], |row| row.get::<_, String>(0))?;
     for item in raw {
@@ -170,21 +194,32 @@ fn unpack_media(
     let mut imported = 0;
     for (path, expected_hash) in referenced {
         let archive_name = format!("assets/{path}");
-        let mut entry = archive.by_name(&archive_name)
+        let mut entry = archive
+            .by_name(&archive_name)
             .map_err(|e| zip_error(&format!("Missing {archive_name}"), e))?;
         if entry.is_dir() {
-            return Err(error(format!("{archive_name} is a directory, not an asset")));
+            return Err(error(format!(
+                "{archive_name} is a directory, not an asset"
+            )));
         }
         let destination = staged_assets.join(verified_relative_path(&path)?);
-        fs::create_dir_all(destination.parent().ok_or_else(|| error("Missing parent directory"))?)?;
+        fs::create_dir_all(
+            destination
+                .parent()
+                .ok_or_else(|| error("Missing parent directory"))?,
+        )?;
         let mut file = File::create(&destination)?;
         let mut hash = Sha256::new();
         let mut buffer = [0u8; 64 * 1024];
         loop {
             let size = entry.read(&mut buffer)?;
-            if size == 0 { break; }
+            if size == 0 {
+                break;
+            }
             file.write_all(&buffer[..size])?;
-            if expected_hash.is_some() { hash.update(&buffer[..size]); }
+            if expected_hash.is_some() {
+                hash.update(&buffer[..size]);
+            }
         }
         file.flush()?;
         if let Some(expected) = expected_hash {
@@ -202,11 +237,15 @@ fn validate_legacy(source: &Connection) -> Result<(), CoreError> {
     let version: i64 = source.pragma_query_value(None, "user_version", |r| r.get(0))?;
     let application_id: i64 = source.pragma_query_value(None, "application_id", |r| r.get(0))?;
     if version != 1 || application_id != 0 {
-        return Err(error("Expected original web-app SQLite v1 database, not the Android DB"));
+        return Err(error(
+            "Expected original web-app SQLite v1 database, not the Android DB",
+        ));
     }
     let integrity: String = source.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
     if integrity != "ok" {
-        return Err(error(format!("Legacy SQLite integrity check failed: {integrity}")));
+        return Err(error(format!(
+            "Legacy SQLite integrity check failed: {integrity}"
+        )));
     }
     for (table, _) in TABLES {
         sqlite_columns(source, table)?;
@@ -235,17 +274,22 @@ pub(crate) fn import_bundle(
 ) -> Result<ImportReport, CoreError> {
     let files_dir = Path::new(app_files);
     if !files_dir.is_dir() {
-        return Err(error("Android application storage directory does not exist"));
+        return Err(error(
+            "Android application storage directory does not exist",
+        ));
     }
     let final_assets = files_dir.join("ladies_data");
     if final_assets.exists() {
-        return Err(error("An existing media archive was detected; refusing to overwrite it"));
+        return Err(error(
+            "An existing media archive was detected; refusing to overwrite it",
+        ));
     }
 
     let mut archive = ZipArchive::new(File::open(bundle_path)?)
         .map_err(|e| zip_error("Cannot open ZIP bundle", e))?;
     let mut marker = String::new();
-    archive.by_name("manifest.txt")
+    archive
+        .by_name("manifest.txt")
         .map_err(|e| zip_error("Missing bundle manifest", e))?
         .read_to_string(&mut marker)?;
     if marker.trim() != BUNDLE_MARKER {
@@ -255,7 +299,8 @@ pub(crate) fn import_bundle(
     let staging = tempfile::tempdir_in(files_dir)?;
     let source_file = staging.path().join("legacy.sqlite3");
     {
-        let mut input = archive.by_name("legacy.sqlite3")
+        let mut input = archive
+            .by_name("legacy.sqlite3")
             .map_err(|e| zip_error("Missing legacy SQLite backup", e))?;
         let mut output = File::create(&source_file)?;
         std::io::copy(&mut input, &mut output)?;
@@ -272,7 +317,9 @@ pub(crate) fn import_bundle(
     let media_file_count = unpack_media(&mut archive, &source, &staged_assets)?;
     let mut target = core.connection()?;
     if target_has_data(&target)? {
-        return Err(error("Target database is not empty; import is only allowed once"));
+        return Err(error(
+            "Target database is not empty; import is only allowed once",
+        ));
     }
     let tx = target.transaction()?;
     tx.execute_batch("PRAGMA defer_foreign_keys=ON;")?;
@@ -280,9 +327,7 @@ pub(crate) fn import_bundle(
     for (table, filter) in TABLES {
         counts.insert(*table, copy_table(&source, &tx, table, *filter)?);
     }
-    let invalid: bool = tx
-        .prepare("PRAGMA foreign_key_check")?
-        .exists([])?;
+    let invalid: bool = tx.prepare("PRAGMA foreign_key_check")?.exists([])?;
     if invalid {
         return Err(error("Imported database contains broken foreign keys"));
     }
@@ -319,57 +364,85 @@ mod tests {
         src.pragma_update(None, "application_id", 0).unwrap();
         let hash = format!("{:x}", Sha256::digest(b"sample image"));
         let local = format!("media/images/aa/{hash}.jpg");
-        src.execute("INSERT INTO persons (person_id, display_name) VALUES (1,'Alice')", []).unwrap();
+        src.execute(
+            "INSERT INTO persons (person_id, display_name) VALUES (1,'Alice')",
+            [],
+        )
+        .unwrap();
         src.execute(
             "INSERT INTO source_profiles (source_profile_id, person_id, source, external_profile_id)
              VALUES (11, 1, 'LADIES', 'p-1')", []
         ).unwrap();
         src.execute(
             "INSERT INTO listings (listing_id, person_id, source_profile_id, source,
-             external_listing_id) VALUES (21,1,11,'LADIES','ad-1')", []
-        ).unwrap();
+             external_listing_id) VALUES (21,1,11,'LADIES','ad-1')",
+            [],
+        )
+        .unwrap();
         src.execute(
             "INSERT INTO person_user_state (person_id, preference, favorite)
              VALUES (1,'LIKE',1)
-             ON CONFLICT(person_id) DO UPDATE SET preference='LIKE', favorite=1", []
-        ).unwrap();
+             ON CONFLICT(person_id) DO UPDATE SET preference='LIKE', favorite=1",
+            [],
+        )
+        .unwrap();
         src.execute(
             "INSERT INTO media_assets (media_asset_id, sha256, kind, local_path)
-             VALUES (31,?1,'IMAGE',?2)", rusqlite::params![hash, local]
-        ).unwrap();
+             VALUES (31,?1,'IMAGE',?2)",
+            rusqlite::params![hash, local],
+        )
+        .unwrap();
         src.execute(
             "INSERT INTO saved_searches (saved_search_id,name,filters_json)
-             VALUES ('uuid-leipzig','Leipzig','{}')", []
-        ).unwrap();
+             VALUES ('uuid-leipzig','Leipzig','{}')",
+            [],
+        )
+        .unwrap();
         src.execute(
             "INSERT INTO saved_search_results (saved_search_id,result_key,snapshot_json)
-             VALUES ('uuid-leipzig','ad-1','{}')", []
-        ).unwrap();
+             VALUES ('uuid-leipzig','ad-1','{}')",
+            [],
+        )
+        .unwrap();
         src.execute(
-            "INSERT INTO price_lists (price_list_id,person_id,source) VALUES (41,1,'USER_ENTERED')", []
-        ).unwrap();
-        src.execute(
-            "INSERT INTO price_items (price_item_id,price_list_id,amount_cents)
-             VALUES (51,41,10000)", []
-        ).unwrap();
-        src.execute(
-            "INSERT INTO price_lists (price_list_id,person_id,source) VALUES (42,1,'AUTOMATED')", []
-        ).unwrap();
+            "INSERT INTO price_lists (price_list_id,person_id,source) VALUES (41,1,'USER_ENTERED')",
+            [],
+        )
+        .unwrap();
         src.execute(
             "INSERT INTO price_items (price_item_id,price_list_id,amount_cents)
-             VALUES (52,42,9999)", []
-        ).unwrap();
+             VALUES (51,41,10000)",
+            [],
+        )
+        .unwrap();
+        src.execute(
+            "INSERT INTO price_lists (price_list_id,person_id,source) VALUES (42,1,'AUTOMATED')",
+            [],
+        )
+        .unwrap();
+        src.execute(
+            "INSERT INTO price_items (price_item_id,price_list_id,amount_cents)
+             VALUES (52,42,9999)",
+            [],
+        )
+        .unwrap();
         src.execute_batch("ALTER TABLE listing_snapshots ADD COLUMN whatsapp_url TEXT;")
             .unwrap();
         drop(src);
         let bundle = root.join("export.zip");
         let mut writer = zip::ZipWriter::new(File::create(&bundle).unwrap());
-        writer.start_file("manifest.txt", SimpleFileOptions::default()).unwrap();
+        writer
+            .start_file("manifest.txt", SimpleFileOptions::default())
+            .unwrap();
         writer.write_all(b"ladies-explorer-legacy-v1\n").unwrap();
-        writer.start_file("legacy.sqlite3", SimpleFileOptions::default()).unwrap();
+        writer
+            .start_file("legacy.sqlite3", SimpleFileOptions::default())
+            .unwrap();
         writer.write_all(&fs::read(&source_file).unwrap()).unwrap();
         if !missing_media {
-            writer.start_file(format!("assets/{local}"), SimpleFileOptions::default()).unwrap();
+            writer
+                .start_file(format!("assets/{local}"), SimpleFileOptions::default())
+                .unwrap();
             writer.write_all(b"sample image").unwrap();
         }
         writer.finish().unwrap();
@@ -384,9 +457,7 @@ mod tests {
         let (bundle, app) = fixture(tmp.path(), false);
         let db = app.join("ladies.sqlite").to_string_lossy().into_owned();
         let core = LadiesCore::new(db).unwrap();
-        let report = import_bundle(
-            &core, bundle.to_str().unwrap(), app.to_str().unwrap()
-        ).unwrap();
+        let report = import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()).unwrap();
         assert_eq!(report.persons, 1);
         assert_eq!(report.listings, 1);
         assert_eq!(report.saved_searches, 1);
@@ -396,9 +467,15 @@ mod tests {
         assert_eq!(person.preference, crate::Preference::Like);
         assert!(person.favorite);
         let db = core.connection().unwrap();
-        let manual: i64 = db.query_row("SELECT COUNT(*) FROM price_lists", [], |r| r.get(0)).unwrap();
+        let manual: i64 = db
+            .query_row("SELECT COUNT(*) FROM price_lists", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(manual, 1);
-        let saved: String = db.query_row("SELECT saved_search_id FROM saved_searches", [], |r| r.get(0)).unwrap();
+        let saved: String = db
+            .query_row("SELECT saved_search_id FROM saved_searches", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
         assert_eq!(saved, "uuid-leipzig");
         assert!(app.join("ladies_data/media").is_dir());
         assert!(matches!(
@@ -411,7 +488,8 @@ mod tests {
     fn missing_media_rolls_back_without_partial_database_changes() {
         let tmp = tempfile::tempdir().unwrap();
         let (bundle, app) = fixture(tmp.path(), true);
-        let core = LadiesCore::new(app.join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
+        let core =
+            LadiesCore::new(app.join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
         assert!(matches!(
             import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()),
             Err(CoreError::Import(_))

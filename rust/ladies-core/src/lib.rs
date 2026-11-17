@@ -1,8 +1,8 @@
 //! App-private Rust persistence and the typed UniFFI boundary.
 //! A person is distinct from its source profiles and individual listings.
 
-mod schema;
 mod legacy_import;
+mod schema;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -36,6 +36,12 @@ pub enum CoreError {
 impl From<rusqlite::Error> for CoreError {
     fn from(error: rusqlite::Error) -> Self {
         Self::Storage(error.to_string())
+    }
+}
+
+impl From<std::io::Error> for CoreError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Import(error.to_string())
     }
 }
 
