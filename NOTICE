@@ -1,0 +1,15 @@
+Ladies Explorer Android
+Copyright (c) 2026 project contributors
+
+Portions of the Android native build and UniFFI integration were adapted from:
+Artefact / ClearPDF (https://github.com/Chethan616/Artefact)
+Pinned source commit: d003a6a66cdc7bcb395dfb8e9390f90a119acc4c
+Copyright (c) 2026 Chethan616, ArtCraft Team and PdfCraft contributors
+Used under the Apache License, Version 2.0.
+
+Only the technical integration patterns and limited build support files
+were adapted. No document-processing or visual assets are included.
+
+UniFFI is licensed MPL-2.0; JNA is available under Apache-2.0; AndroidX
+and Compose components are licensed Apache-2.0. See upstream projects for
+full third-party licensing information.

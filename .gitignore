@@ -1,0 +1,19 @@
+# IDE, SDK and signing
+.gradle/
+.idea/
+local.properties
+*.iml
+.DS_Store
+key.properties
+*.jks
+*.keystore
+
+# Generated Android and Rust outputs
+**/build/
+rust/target/
+*.apk
+*.aab
+
+# Tool caches
+.cxx/
+.kotlin/
