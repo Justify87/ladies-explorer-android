@@ -55,7 +55,9 @@ impl Preference {
             "NONE" => Ok(Self::None),
             "LIKE" => Ok(Self::Like),
             "DISLIKE" => Ok(Self::Dislike),
-            _ => Err(CoreError::Storage(format!("Unknown preference value: {raw}"))),
+            _ => Err(CoreError::Storage(format!(
+                "Unknown preference value: {raw}"
+            ))),
         }
     }
 }
@@ -91,7 +93,9 @@ impl LadiesCore {
     #[uniffi::constructor]
     pub fn new(database_path: String) -> Result<Arc<Self>, CoreError> {
         if database_path.trim().is_empty() {
-            return Err(CoreError::InvalidInput("Database path must not be empty".into()));
+            return Err(CoreError::InvalidInput(
+                "Database path must not be empty".into(),
+            ));
         }
         let mut db = Connection::open(database_path)?;
         db.busy_timeout(Duration::from_secs(5))?;
@@ -122,12 +126,20 @@ impl LadiesCore {
 
     /// Allocate a person without assuming a relationship to other people.
     pub fn create_person(&self, display_name: Option<String>) -> Result<i64, CoreError> {
-        let name = display_name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
+        let name = display_name
+            .map(|n| n.trim().to_owned())
+            .filter(|n| !n.is_empty());
         let mut db = self.connection()?;
         let tx = db.transaction()?;
-        tx.execute("INSERT INTO persons (display_name) VALUES (?1)", params![name])?;
+        tx.execute(
+            "INSERT INTO persons (display_name) VALUES (?1)",
+            params![name],
+        )?;
         let id = tx.last_insert_rowid();
-        tx.execute("INSERT INTO person_user_state (person_id) VALUES (?1)", params![id])?;
+        tx.execute(
+            "INSERT INTO person_user_state (person_id) VALUES (?1)",
+            params![id],
+        )?;
         tx.commit()?;
         Ok(id)
     }
@@ -217,9 +229,10 @@ impl LadiesCore {
             )
             .optional()?;
         let id = if let Some((existing_id, owner, existing_profile)) = existing {
-            if owner != person_id || existing_profile.is_some_and(|p| {
-                source_profile_id.is_some_and(|new_profile| p != new_profile)
-            }) {
+            if owner != person_id
+                || existing_profile
+                    .is_some_and(|p| source_profile_id.is_some_and(|new_profile| p != new_profile))
+            {
                 return Err(CoreError::IdentityConflict(format!(
                     "Listing {source}/{external_listing_id} is already assigned"
                 )));
@@ -238,7 +251,13 @@ impl LadiesCore {
                 "INSERT INTO listings
                  (person_id, source_profile_id, source, external_listing_id, current_url)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![person_id, source_profile_id, source, external_listing_id, current_url],
+                params![
+                    person_id,
+                    source_profile_id,
+                    source,
+                    external_listing_id,
+                    current_url
+                ],
             )?;
             tx.last_insert_rowid()
         };
@@ -248,11 +267,9 @@ impl LadiesCore {
 
     pub fn get_person(&self, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
         let db = self.connection()?;
-        let raw = db.query_row(
-            PERSON_QUERY_BY_ID,
-            params![person_id],
-            parse_person_row,
-        ).optional()?;
+        let raw = db
+            .query_row(PERSON_QUERY_BY_ID, params![person_id], parse_person_row)
+            .optional()?;
         raw.map(PersonSummary::try_from).transpose()
     }
 
@@ -266,7 +283,8 @@ impl LadiesCore {
         rows.map(|row| {
             let raw = row?;
             PersonSummary::try_from(raw)
-        }).collect()
+        })
+        .collect()
     }
 
     pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
@@ -346,7 +364,9 @@ impl TryFrom<RawPerson> for PersonSummary {
 fn non_empty(value: String, field: &'static str) -> Result<String, CoreError> {
     let cleaned = value.trim().to_owned();
     if cleaned.is_empty() {
-        return Err(CoreError::InvalidInput(format!("{field} must not be empty")));
+        return Err(CoreError::InvalidInput(format!(
+            "{field} must not be empty"
+        )));
     }
     Ok(cleaned)
 }
@@ -366,7 +386,9 @@ fn ensure_person(db: &Connection, person_id: i64) -> Result<(), CoreError> {
 
 impl LadiesCore {
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, CoreError> {
-        self.db.lock().map_err(|e| CoreError::Storage(e.to_string()))
+        self.db
+            .lock()
+            .map_err(|e| CoreError::Storage(e.to_string()))
     }
 }
 
@@ -382,13 +404,34 @@ mod tests {
     fn person_profile_listing_and_preference_roundtrip() {
         let core = memory_core();
         let person_id = core.create_person(Some(" Example ".into())).unwrap();
-        let profile_id = core.add_source_profile(person_id, " LADIES ".into(), "abc".into()).unwrap();
-        let listing_id = core.add_listing(person_id, Some(profile_id), "LADIES".into(), "42".into(), None).unwrap();
+        let profile_id = core
+            .add_source_profile(person_id, " LADIES ".into(), "abc".into())
+            .unwrap();
+        let listing_id = core
+            .add_listing(
+                person_id,
+                Some(profile_id),
+                "LADIES".into(),
+                "42".into(),
+                None,
+            )
+            .unwrap();
         assert!(listing_id > 0);
-        assert_eq!(profile_id, core.add_source_profile(person_id, "LADIES".into(), "abc".into()).unwrap());
+        assert_eq!(
+            profile_id,
+            core.add_source_profile(person_id, "LADIES".into(), "abc".into())
+                .unwrap()
+        );
         assert_eq!(
             listing_id,
-            core.add_listing(person_id, Some(profile_id), "LADIES".into(), "42".into(), None).unwrap(),
+            core.add_listing(
+                person_id,
+                Some(profile_id),
+                "LADIES".into(),
+                "42".into(),
+                None
+            )
+            .unwrap(),
         );
         core.set_preference(person_id, Preference::Like).unwrap();
         core.set_favorite(person_id, true).unwrap();
@@ -407,8 +450,10 @@ mod tests {
         let core = memory_core();
         let first = core.create_person(Some("Same".into())).unwrap();
         let second = core.create_person(Some("Same".into())).unwrap();
-        core.add_listing(first, None, "LADIES".into(), "100".into(), None).unwrap();
-        core.add_listing(second, None, "LADIES".into(), "101".into(), None).unwrap();
+        core.add_listing(first, None, "LADIES".into(), "100".into(), None)
+            .unwrap();
+        core.add_listing(second, None, "LADIES".into(), "101".into(), None)
+            .unwrap();
         assert_eq!(core.status().unwrap().person_count, 2);
         assert_ne!(first, second);
     }
@@ -418,18 +463,27 @@ mod tests {
         let core = memory_core();
         let first = core.create_person(None).unwrap();
         let second = core.create_person(None).unwrap();
-        let profile = core.add_source_profile(first, "LADIES".into(), "profile".into()).unwrap();
+        let profile = core
+            .add_source_profile(first, "LADIES".into(), "profile".into())
+            .unwrap();
         assert!(matches!(
             core.add_source_profile(second, "LADIES".into(), "profile".into()),
             Err(CoreError::IdentityConflict(_))
         ));
-        core.add_listing(first, Some(profile), "LADIES".into(), "ad".into(), None).unwrap();
+        core.add_listing(first, Some(profile), "LADIES".into(), "ad".into(), None)
+            .unwrap();
         assert!(matches!(
             core.add_listing(second, None, "LADIES".into(), "ad".into(), None),
             Err(CoreError::IdentityConflict(_))
         ));
         assert!(matches!(
-            core.add_listing(second, Some(profile), "LADIES".into(), "another".into(), None),
+            core.add_listing(
+                second,
+                Some(profile),
+                "LADIES".into(),
+                "another".into(),
+                None
+            ),
             Err(CoreError::IdentityConflict(_))
         ));
     }
@@ -449,7 +503,10 @@ mod tests {
             core.add_source_profile(1, "".into(), "a".into()),
             Err(CoreError::InvalidInput(_))
         ));
-        assert!(matches!(core.set_favorite(999, true), Err(CoreError::PersonNotFound(999))));
+        assert!(matches!(
+            core.set_favorite(999, true),
+            Err(CoreError::PersonNotFound(999))
+        ));
         assert!(core.get_person(999).unwrap().is_none());
         assert!(core.list_people(0).unwrap().is_empty());
     }
@@ -457,7 +514,11 @@ mod tests {
     #[test]
     fn persistence_survives_reopening_database() {
         let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("ladies.sqlite").to_string_lossy().to_string();
+        let path = temp
+            .path()
+            .join("ladies.sqlite")
+            .to_string_lossy()
+            .to_string();
         let id;
         {
             let core = LadiesCore::new(path.clone()).unwrap();

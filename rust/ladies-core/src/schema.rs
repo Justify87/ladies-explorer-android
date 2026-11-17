@@ -343,7 +343,9 @@ pub fn migrate(db: &mut Connection) -> Result<(), CoreError> {
     }
 
     let transaction = db.transaction().map_err(CoreError::from)?;
-    transaction.execute_batch(VERSION_1).map_err(CoreError::from)?;
+    transaction
+        .execute_batch(VERSION_1)
+        .map_err(CoreError::from)?;
     transaction
         .execute_batch("DROP TABLE IF EXISTS scaffold_notes; PRAGMA user_version = 1;")
         .map_err(CoreError::from)?;
@@ -360,10 +362,16 @@ mod tests {
         let mut db = Connection::open_in_memory().unwrap();
         migrate(&mut db).unwrap();
         migrate(&mut db).unwrap();
-        let version: u32 = db.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        let version: u32 = db
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
         assert_eq!(version, VERSION);
         let count: i64 = db
-            .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='persons'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='persons'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(count, 1);
     }
@@ -371,21 +379,36 @@ mod tests {
     #[test]
     fn migrating_scaffold_drops_only_scaffold_data() {
         let mut db = Connection::open_in_memory().unwrap();
-        db.execute_batch("CREATE TABLE scaffold_notes (note_key TEXT PRIMARY KEY, note_value TEXT NOT NULL);
-            INSERT INTO scaffold_notes VALUES ('old', 'test');").unwrap();
+        db.execute_batch(
+            "CREATE TABLE scaffold_notes (note_key TEXT PRIMARY KEY, note_value TEXT NOT NULL);
+            INSERT INTO scaffold_notes VALUES ('old', 'test');",
+        )
+        .unwrap();
         migrate(&mut db).unwrap();
-        let count: i64 = db.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE name='scaffold_notes'", [], |r| r.get(0)
-        ).unwrap();
+        let count: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name='scaffold_notes'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 0);
     }
 
     #[test]
     fn rejects_unknown_schema_without_wiping() {
         let mut db = Connection::open_in_memory().unwrap();
-        db.execute_batch("CREATE TABLE important (value TEXT); INSERT INTO important VALUES ('keep');").unwrap();
-        assert!(matches!(migrate(&mut db), Err(CoreError::UnsupportedSchema(0))));
-        let value: String = db.query_row("SELECT value FROM important", [], |r| r.get(0)).unwrap();
+        db.execute_batch(
+            "CREATE TABLE important (value TEXT); INSERT INTO important VALUES ('keep');",
+        )
+        .unwrap();
+        assert!(matches!(
+            migrate(&mut db),
+            Err(CoreError::UnsupportedSchema(0))
+        ));
+        let value: String = db
+            .query_row("SELECT value FROM important", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(value, "keep");
     }
 
@@ -393,7 +416,10 @@ mod tests {
     fn rejects_newer_schema() {
         let mut db = Connection::open_in_memory().unwrap();
         db.pragma_update(None, "user_version", 99).unwrap();
-        assert!(matches!(migrate(&mut db), Err(CoreError::UnsupportedSchema(99))));
+        assert!(matches!(
+            migrate(&mut db),
+            Err(CoreError::UnsupportedSchema(99))
+        ));
     }
 
     #[test]
