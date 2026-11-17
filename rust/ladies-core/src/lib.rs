@@ -488,6 +488,16 @@ mod tests {
             ),
             Err(CoreError::IdentityConflict(_))
         ));
+        assert!(matches!(
+            core.add_listing(
+                first,
+                Some(profile),
+                "OTHER".into(),
+                "different".into(),
+                None
+            ),
+            Err(CoreError::IdentityConflict(_))
+        ));
     }
 
     #[test]
