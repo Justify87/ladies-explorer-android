@@ -313,19 +313,31 @@ fn fetch_search_using<T: Transport>(
         )));
     }
     let mut cards = parse::parse_cards(&first.body);
-    if cards.is_empty() && (server_count != Some(0) || total_from_html.is_some_and(|pages| pages > 1)) {
+    if cards.is_empty()
+        && (server_count != Some(0) || total_from_html.is_some_and(|pages| pages > 1))
+    {
         // The browser HAR shows the same search cards in an API 'content' field.
         // Try that first-page representation before treating HTML parser drift as fatal.
         let diagnostic = parse::search_page_diagnostics(&first.body);
         let first_api = client
-            .get(&search_url(&city_slug, request.radius_km, 1, &filter_path, true))
+            .get(&search_url(
+                &city_slug,
+                request.radius_km,
+                1,
+                &filter_path,
+                true,
+            ))
             .and_then(parse_api)
-            .map_err(|err| CoreError::Source(format!(
-                "Such-HTML unlesbar ({diagnostic}); API-Fallback fehlgeschlagen: {err}"
-            )))?
-            .ok_or_else(|| CoreError::Source(format!(
-                "Such-HTML unlesbar ({diagnostic}); API-Seite 1 wurde nicht gefunden"
-            )))?;
+            .map_err(|err| {
+                CoreError::Source(format!(
+                    "Such-HTML unlesbar ({diagnostic}); API-Fallback fehlgeschlagen: {err}"
+                ))
+            })?
+            .ok_or_else(|| {
+                CoreError::Source(format!(
+                    "Such-HTML unlesbar ({diagnostic}); API-Seite 1 wurde nicht gefunden"
+                ))
+            })?;
         let api_radius = number(first_api.get("distanceSearched"));
         if api_radius != Some(request.radius_km) {
             return Err(CoreError::Source(format!(
@@ -335,9 +347,11 @@ fn fetch_search_using<T: Transport>(
         let api_html = first_api
             .get("content")
             .and_then(Value::as_str)
-            .ok_or_else(|| CoreError::Source(format!(
-                "Such-HTML unlesbar ({diagnostic}); API enthält kein Karten-HTML"
-            )))?;
+            .ok_or_else(|| {
+                CoreError::Source(format!(
+                    "Such-HTML unlesbar ({diagnostic}); API enthält kein Karten-HTML"
+                ))
+            })?;
         let recovered = parse::parse_cards(api_html);
         if recovered.is_empty() {
             return Err(CoreError::Source(format!(
@@ -562,9 +576,16 @@ mod tests {
         });
         let client = with_city(
             Mock::default()
-                .with(&search_url("leipzig",20,1,"",false),200,
-                      "<html><title>Search unavailable</title></html>")
-                .with(&search_url("leipzig",20,1,"",true),200,&payload.to_string()),
+                .with(
+                    &search_url("leipzig", 20, 1, "", false),
+                    200,
+                    "<html><title>Search unavailable</title></html>",
+                )
+                .with(
+                    &search_url("leipzig", 20, 1, "", true),
+                    200,
+                    &payload.to_string(),
+                ),
         );
         let result = fetch_search_using(&client, &request).unwrap();
         assert_eq!(result.cards.len(), 1);
@@ -584,12 +605,20 @@ mod tests {
         });
         let client = with_city(
             Mock::default()
-                .with(&search_url("leipzig",20,1,"",false),200,
-                      "<html><title>Checking your browser</title></html>")
-                .with(&search_url("leipzig",20,1,"",true),200,&payload.to_string()),
+                .with(
+                    &search_url("leipzig", 20, 1, "", false),
+                    200,
+                    "<html><title>Checking your browser</title></html>",
+                )
+                .with(
+                    &search_url("leipzig", 20, 1, "", true),
+                    200,
+                    &payload.to_string(),
+                ),
         );
         let err = fetch_search_using(&client, &SearchRequest::for_test())
-            .err().expect("invalid HTML must fail");
+            .err()
+            .expect("invalid HTML must fail");
         assert!(format!("{err}").contains("HTML oder API"));
     }
 
@@ -602,9 +631,16 @@ mod tests {
         });
         let client = with_city(
             Mock::default()
-                .with(&search_url("leipzig",20,1,"",false),200,
-                      "<html><title>Unavailable</title></html>")
-                .with(&search_url("leipzig",20,1,"",true),200,&payload.to_string()),
+                .with(
+                    &search_url("leipzig", 20, 1, "", false),
+                    200,
+                    "<html><title>Unavailable</title></html>",
+                )
+                .with(
+                    &search_url("leipzig", 20, 1, "", true),
+                    200,
+                    &payload.to_string(),
+                ),
         );
         assert!(fetch_search_using(&client, &SearchRequest::for_test()).is_err());
     }
