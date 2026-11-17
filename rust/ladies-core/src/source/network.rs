@@ -86,6 +86,23 @@ impl SourceHttp {
     }
 }
 
+fn check_redirect(
+    log: &Diagnostics,
+    requested_path: &str,
+    response_path: &str,
+    status: u16,
+    body: &str,
+) -> Result<(), CoreError> {
+    if status == 200 && response_path != requested_path {
+        log.html("unexpected_redirect", body);
+        return Err(CoreError::Source(format!(
+            "Die Website hat statt der angeforderten Seite {} die Seite {} geliefert.",
+            requested_path, response_path
+        )));
+    }
+    Ok(())
+}
+
 impl Transport for SourceHttp {
     fn diagnostics(&self) -> Option<&Diagnostics> {
         Some(self.diagnostics.as_ref())
@@ -134,7 +151,6 @@ impl Transport for SourceHttp {
                 response.content_length()
             ),
         );
-        let unexpected_redirect = status == 200 && response.url().path() != requested_path;
         let redirected_path = response.url().path().to_owned();
         let mut bytes = Vec::new();
         response
@@ -153,13 +169,7 @@ impl Transport for SourceHttp {
             "HTTP",
             format!("Response bytes={} status={status}", body.len()),
         );
-        if unexpected_redirect {
-            self.diagnostics.html("unexpected_redirect", &body);
-            return Err(CoreError::Source(format!(
-                "Die Website hat statt der angeforderten Seite {} die Seite {} geliefert.",
-                requested_path, redirected_path
-            )));
-        }
+        check_redirect(&self.diagnostics, &requested_path, &redirected_path, status, &body)?;
         if status >= 400 {
             self.diagnostics.html("http_error", &body);
         }
@@ -747,6 +757,23 @@ mod tests {
                 ),
         );
         assert!(fetch_search_using(&client, &SearchRequest::for_test()).is_err());
+    }
+
+    #[test]
+    fn rejected_redirect_logs_actual_response_body() {
+        let directory = tempfile::tempdir().unwrap();
+        let log = Diagnostics::new(
+            directory.path().join("ladies.sqlite").to_str().unwrap()
+        );
+        let html = "<html><body>Alter prüfen – Weiterleitung</body></html>";
+        let result = check_redirect(&log, "/leipzig/sex-anzeigen", "/jugendschutz", 200, html);
+        assert!(matches!(result, Err(CoreError::Source(_))));
+        let saved = std::fs::read_to_string(
+            directory.path().join("diagnostics/ladies-debug.log")
+        ).unwrap();
+        assert!(saved.contains("BEGIN unexpected_redirect"));
+        assert!(saved.contains(html));
+        assert!(check_redirect(&log, "/leipzig/sex-anzeigen", "/leipzig/sex-anzeigen", 200, html).is_ok());
     }
 
     #[test]

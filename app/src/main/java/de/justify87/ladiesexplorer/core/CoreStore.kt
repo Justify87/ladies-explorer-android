@@ -21,6 +21,10 @@ class CoreStore(context: Context) {
     }
 
     suspend fun createDiagnosticSnapshot(): File = withContext(Dispatchers.IO) {
+        val oldestAllowed = System.currentTimeMillis() - 48L * 60L * 60L * 1_000L
+        diagnosticExports.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("ladies-debug-") && it.lastModified() < oldestAllowed }
+            ?.forEach(File::delete)
         File(engine.exportDiagnosticSnapshot(diagnosticExports.absolutePath))
     }
 
