@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use crate::CoreError;
 
 pub const VERSION: u32 = 1;
+const APPLICATION_ID: i32 = 0x4C44_5850; // LDXP: Ladies Explorer Android
 
 const VERSION_1: &str = r#"
 CREATE TABLE persons (
@@ -22,6 +23,12 @@ CREATE TABLE person_user_state (
     private_note TEXT,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+
+CREATE TRIGGER person_initial_user_state
+AFTER INSERT ON persons
+BEGIN
+    INSERT INTO person_user_state (person_id) VALUES (NEW.person_id);
+END;
 
 CREATE TABLE source_profiles (
     source_profile_id INTEGER PRIMARY KEY,
@@ -65,6 +72,41 @@ CREATE TABLE listings (
 CREATE INDEX idx_listing_person ON listings(person_id);
 CREATE INDEX idx_listing_source_profile ON listings(source_profile_id);
 CREATE INDEX idx_listing_status ON listings(current_status);
+CREATE INDEX idx_person_seen ON persons(last_seen_at DESC, person_id DESC);
+
+CREATE TRIGGER listing_source_profile_insert
+BEFORE INSERT ON listings
+WHEN NEW.source_profile_id IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'source profile belongs to a different person or source')
+    WHERE NOT EXISTS (
+        SELECT 1 FROM source_profiles p
+        WHERE p.source_profile_id = NEW.source_profile_id
+          AND p.person_id = NEW.person_id AND p.source = NEW.source
+    );
+END;
+
+CREATE TRIGGER listing_source_profile_update
+BEFORE UPDATE OF source_profile_id, person_id, source ON listings
+WHEN NEW.source_profile_id IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'source profile belongs to a different person or source')
+    WHERE NOT EXISTS (
+        SELECT 1 FROM source_profiles p
+        WHERE p.source_profile_id = NEW.source_profile_id
+          AND p.person_id = NEW.person_id AND p.source = NEW.source
+    );
+END;
+
+CREATE TRIGGER source_profile_identity_update
+BEFORE UPDATE OF person_id, source ON source_profiles
+BEGIN
+    SELECT RAISE(ABORT, 'source profile has listings with a different person or source')
+    WHERE EXISTS (
+        SELECT 1 FROM listings l WHERE l.source_profile_id = OLD.source_profile_id
+          AND (l.person_id != NEW.person_id OR l.source != NEW.source)
+    );
+END;
 
 CREATE TABLE person_identifiers (
     identifier_id INTEGER PRIMARY KEY,
@@ -208,12 +250,34 @@ CREATE TABLE listing_observations (
 CREATE INDEX idx_observation_listing_time ON listing_observations(listing_id, observed_at);
 
 CREATE TABLE saved_searches (
-    saved_search_id INTEGER PRIMARY KEY,
+    saved_search_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     filters_json TEXT NOT NULL,
+    definition_version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    last_run_at TEXT,
+    last_attempt_at TEXT,
+    last_error TEXT,
+    last_delta_json TEXT,
+    unread_new_results INTEGER NOT NULL DEFAULT 0 CHECK (unread_new_results IN (0,1)),
+    new_results_at TEXT
 );
+
+CREATE TABLE saved_search_results (
+    saved_search_id TEXT NOT NULL REFERENCES saved_searches(saved_search_id) ON DELETE CASCADE,
+    result_key TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    last_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    first_visible_at TEXT,
+    present INTEGER NOT NULL DEFAULT 1 CHECK (present IN (0,1)),
+    visible INTEGER NOT NULL DEFAULT 0 CHECK (visible IN (0,1)),
+    PRIMARY KEY(saved_search_id, result_key)
+);
+CREATE INDEX idx_saved_search_result_visible
+    ON saved_search_results(saved_search_id, visible, position);
 
 CREATE TABLE change_events (
     change_event_id INTEGER PRIMARY KEY,
@@ -314,42 +378,76 @@ CREATE TABLE app_settings (
 );
 "#;
 
+fn schema_manifest(db: &Connection) -> Result<Vec<(String, String, String)>, CoreError> {
+    let mut query = db.prepare(
+        "SELECT type, name, sql FROM sqlite_master
+         WHERE name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
+         ORDER BY type, name",
+    )?;
+    let rows = query.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+fn validate_schema(db: &Connection) -> Result<(), CoreError> {
+    let reference = Connection::open_in_memory()?;
+    reference.execute_batch(VERSION_1)?;
+    if schema_manifest(db)? != schema_manifest(&reference)? {
+        return Err(CoreError::SchemaMismatch(
+            "Database tables, indexes or triggers do not match schema v1".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn migrate(db: &mut Connection) -> Result<(), CoreError> {
-    db.execute_batch("PRAGMA foreign_keys = ON;")
-        .map_err(CoreError::from)?;
-    let current: u32 = db
-        .pragma_query_value(None, "user_version", |row| row.get(0))
-        .map_err(CoreError::from)?;
+    db.execute_batch("PRAGMA foreign_keys = ON;")?;
+    let version: u32 = db.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let application_id: i32 = db.pragma_query_value(None, "application_id", |row| row.get(0))?;
 
-    if current > VERSION {
-        return Err(CoreError::UnsupportedSchema(current));
+    if version > VERSION {
+        return Err(CoreError::UnsupportedSchema(version));
     }
-    if current == VERSION {
-        return Ok(());
+    if version == VERSION {
+        if application_id != APPLICATION_ID {
+            return Err(CoreError::SchemaMismatch(
+                "This SQLite database is not a Ladies Explorer Android database".into(),
+            ));
+        }
+        return validate_schema(db);
     }
-
-    // Only the previous technical scaffold is supported, not arbitrary web-app databases.
-    let unexpected_tables: i64 = db
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master
-             WHERE type='table' AND name NOT LIKE 'sqlite_%'
-               AND name != 'scaffold_notes'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(CoreError::from)?;
-    if unexpected_tables != 0 {
-        return Err(CoreError::UnsupportedSchema(current));
+    if application_id != 0 {
+        return Err(CoreError::SchemaMismatch(
+            "Unrecognized application ID for an unversioned database".into(),
+        ));
     }
 
-    let transaction = db.transaction().map_err(CoreError::from)?;
-    transaction
-        .execute_batch(VERSION_1)
-        .map_err(CoreError::from)?;
-    transaction
-        .execute_batch("DROP TABLE IF EXISTS scaffold_notes; PRAGMA user_version = 1;")
-        .map_err(CoreError::from)?;
-    transaction.commit().map_err(CoreError::from)?;
+    // Only a completely new database or the known technical demo may be upgraded.
+    let existing = schema_manifest(db)?;
+    let names: Vec<&str> = existing
+        .iter()
+        .filter(|(kind, _, _)| kind == "table")
+        .map(|(_, name, _)| name.as_str())
+        .collect();
+    if !names.is_empty() && names != ["scaffold_notes"] {
+        return Err(CoreError::UnsupportedSchema(version));
+    }
+    if names == ["scaffold_notes"] {
+        let mut query = db.prepare("PRAGMA table_info(scaffold_notes)")?;
+        let columns = query
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        if columns != ["note_key", "note_value"] || existing.len() != 1 {
+            return Err(CoreError::UnsupportedSchema(version));
+        }
+    }
+
+    let transaction = db.transaction()?;
+    transaction.execute_batch(VERSION_1)?;
+    transaction.execute_batch("DROP TABLE IF EXISTS scaffold_notes;")?;
+    transaction.pragma_update(None, "application_id", APPLICATION_ID)?;
+    transaction.pragma_update(None, "user_version", VERSION)?;
+    validate_schema(&transaction)?;
+    transaction.commit()?;
     Ok(())
 }
 
