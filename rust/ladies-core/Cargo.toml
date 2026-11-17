@@ -1,0 +1,16 @@
+[package]
+name = "ladies-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "ladies_core"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+uniffi = { version = "=0.32.2", default-features = false }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+thiserror = "2.0"
