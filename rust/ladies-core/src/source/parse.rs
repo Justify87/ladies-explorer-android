@@ -555,6 +555,8 @@ mod tests {
             has_video: false,
             is_premium: false,
             has_ai_content: false,
+            has_18plus: false,
+            has_stars: false,
         }
     }
 
