@@ -18,7 +18,7 @@ originate from Artefact's android/gradle wrapper setup. The versions catalog
 uses the validated Android/Compose/UniFFI/JNA dependency baseline from Artefact,
 but its contents are reduced to what this application actually uses.
 
-The Rust core, UniFFI-exposed API, SQLite demonstration, Compose screens,
+The Android/Compose/NDK/Gradle and UniFFI versions generally follow the pinned Artefact\nreference. Kotlin 2.3.20 is used instead of upstream 2.3.21 because the latter\nfailed plugin resolution in GitHub Actions. Android SDK 37.0 is installed by its\nactual SDK Manager package ID, not android-37.\n\nThe Rust core, UniFFI-exposed API, SQLite demonstration, Compose screens,
 Android lifecycle, app theme and project documentation are authored for
 Ladies Explorer, not copied from Artefact.
 

@@ -77,13 +77,13 @@ abstract class GenerateUniffiKotlin : DefaultTask() {
 
 android {
     namespace = "de.justify87.ladiesexplorer"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
         applicationId = "de.justify87.ladiesexplorer"
         minSdk = 29
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
         ndk { abiFilters.addAll(rustAbis) }
