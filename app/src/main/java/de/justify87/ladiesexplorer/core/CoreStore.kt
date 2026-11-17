@@ -38,4 +38,12 @@ class CoreStore(context: Context) {
     suspend fun importLegacyBundle(file: File): ImportReport = withContext(Dispatchers.IO) {
         engine.importLegacyBundle(file.absolutePath, appFiles.absolutePath)
     }
+
+    suspend fun search(query: SearchRequest): SearchResponse = withContext(Dispatchers.IO) {
+        engine.searchSource(query)
+    }
+
+    suspend fun loadProfile(listingId: Long): ProfileResponse = withContext(Dispatchers.IO) {
+        engine.loadSourceProfile(listingId)
+    }
 }
