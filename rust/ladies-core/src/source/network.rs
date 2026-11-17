@@ -207,7 +207,10 @@ fn number(value: Option<&Value>) -> Option<u32> {
 }
 
 fn distance_matches(payload: &Value, requested_radius: u32) -> bool {
-    number(payload.get("distanceSearched")).is_none_or(|value| value == requested_radius)
+    match payload.get("distanceSearched") {
+        None => true,
+        Some(value) => number(Some(value)) == Some(requested_radius),
+    }
 }
 
 fn append_page(profiles: &mut Vec<Card>, payload: &Value) -> Result<(), CoreError> {
@@ -345,6 +348,9 @@ fn fetch_search_using<T: Transport>(
 
     let mut ids = HashSet::new();
     cards.retain(|card| ids.insert(card.advert_id.clone()));
+    if server_count.is_some_and(|expected| cards.len() as u32 != expected) {
+        partial = true;
+    }
 
     Ok(DownloadedSearch {
         cards,
@@ -464,6 +470,27 @@ mod tests {
         let client =
             with_city(Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, &first));
         assert!(fetch_search_using(&client, &SearchRequest::for_test()).is_err());
+    }
+
+    #[test]
+    fn invalid_radius_metadata_never_silently_passes() {
+        assert!(!distance_matches(&json!({"distanceSearched":"unknown"}), 20));
+        assert!(!distance_matches(&json!({"distanceSearched":null}), 20));
+        assert!(distance_matches(&json!({"content":"ok"}), 20));
+    }
+
+    #[test]
+    fn server_count_mismatch_is_reported_as_partial() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"1\", 1)), advertCount: Number.parseInt(replaceWithDefault(\"2\", 1))",
+            card(1)
+        );
+        let client = with_city(
+            Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+        );
+        let found = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+        assert_eq!(found.cards.len(), 1);
+        assert!(found.partial);
     }
 
     #[test]
