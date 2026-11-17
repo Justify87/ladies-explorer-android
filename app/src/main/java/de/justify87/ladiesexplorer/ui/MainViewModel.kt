@@ -45,19 +45,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _searchUiState = MutableStateFlow(SearchUiState())
     val searchUiState: StateFlow<SearchUiState> = _searchUiState
 
+
     fun setSearchCity(city: String) {
-        _searchUiState.update { it.copy(city = city) }
+        _searchUiState.update {
+            it.copy(city = city, response = null, profile = null, error = null)
+        }
     }
 
     fun setSearchRadius(radiusKm: UInt) {
-        _searchUiState.update { it.copy(radiusKm = radiusKm) }
+        _searchUiState.update {
+            it.copy(radiusKm = radiusKm, response = null, profile = null, error = null)
+        }
     }
 
     fun startSearch() {
         if (_searchUiState.value.loading || _uiState.value.loading) return
         val input = _searchUiState.value
+        _searchUiState.update {
+            it.copy(loading = true, error = null, profile = null, response = null)
+        }
         viewModelScope.launch {
-            _searchUiState.update { it.copy(loading = true, error = null, profile = null) }
             try {
                 val request = SearchRequest(
                     city = input.city.trim(),
@@ -76,6 +83,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 publishStatus()
             } catch (cancellation: CancellationException) {
+                _searchUiState.update { it.copy(loading = false) }
                 throw cancellation
             } catch (failure: Exception) {
                 _searchUiState.update {
@@ -87,14 +95,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadProfile(listingId: Long) {
         if (_searchUiState.value.loading || _uiState.value.loading) return
+        _searchUiState.update { it.copy(loading = true, error = null, profile = null) }
         viewModelScope.launch {
-            _searchUiState.update { it.copy(loading = true, error = null, profile = null) }
             try {
                 val profile = core.loadProfile(listingId)
                 _searchUiState.update {
                     it.copy(loading = false, profile = profile)
                 }
             } catch (cancellation: CancellationException) {
+                _searchUiState.update { it.copy(loading = false) }
                 throw cancellation
             } catch (failure: Exception) {
                 _searchUiState.update {

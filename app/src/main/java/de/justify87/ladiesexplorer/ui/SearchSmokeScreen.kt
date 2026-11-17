@@ -55,6 +55,12 @@ fun SearchSmokeScreen(viewModel: MainViewModel) {
                     response.fetchedPages.toString() + "/" + response.totalPages.toString() + " Seiten",
                 style = MaterialTheme.typography.titleMedium,
             )
+            if (!response.radiusVerified && response.profiles.isNotEmpty()) {
+                Text(
+                    "Der tatsächliche Suchradius konnte nicht vollständig bestätigt werden.",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             if (response.partial) {
                 Text(
                     "Unvollständige Suche: Seitenlimit, vorzeitiges Seitenende oder Radiusabweichung.",

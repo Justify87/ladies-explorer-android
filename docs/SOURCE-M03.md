@@ -33,7 +33,10 @@ die zweite API-Seite ab. Weitere Seiten werden über die Quell-API
 angefordert. Die maximal zu ladenden Seiten sind pro Anfrage
 begrenzt (1–50); ein abgebrochener Lauf ist im Ergebnis ausdrücklich
 als partial markiert. Die Suche dedupliziert über die originale
-externe Inserat-ID.
+externe Inserat-ID. Ein leeres Suchergebnis wird nur akzeptiert, wenn
+die Quelle ausdrücklich null Inserate meldet (oder HTTP 404 liefert).
+Nicht erkennbare HTML-Seiten werden als Parserfehler behandelt, nicht
+als gültige Null-Treffer-Suche.
 
 Wichtig: Wenn die Quelle einen größeren als den angeforderten Radius
 meldet, akzeptiert die neue App keine Daten aus dem erweiterten
@@ -42,6 +45,11 @@ auf Folgeseiten ein explizit unvollständiges Suchergebnis.
 Die alte Web-App konnte dagegen automatisch auf den größeren Radius
 wechseln. Das Verhalten weicht hier absichtlich zugunsten eines
 klaren Radiusvertrags ab.
+
+Fehlt die Radiusangabe der Quelle, wird die Suche ausdrücklich als
+unvollständig und der Radius als nicht bestätigt ausgewiesen. Der
+Datenbankwert `distance_searched` bleibt dann NULL, statt den
+angeforderten Radius fälschlich als beobachteten zu speichern.
 
 Der HTTP-Client hat 25 Sekunden Timeout pro Anfrage, ein 8-MiB-Limit
 pro Antwort, 350 ms Abstand zwischen Seiten, keine HTTP-Redirects,
@@ -59,19 +67,25 @@ mit der erwarteten Inserat-ID abgeglichen.
 Der HTML-Parser liest sichtbaren Namen, Ort, Beschreibung,
 Postleitzahl, verstecktes Ortsattribut, Profil-ID, Canonical-ID,
 Telefon, Merkmale, Dienstleistungen, Öffnungszeiten sowie die
-Galerie-Referenzen. Hauptbild und Galerie behalten ihre gemischte
-Bild-/Video-Reihenfolge; bei gleicher Foto-ID wird die A- statt
-der F-Variante bevorzugt. Die Kontakte werden nur als
+Galerie-Referenzen. Relative und protokollrelative Links, CSS-Bildquellen
+und der reine HTML-Text werden vor der URL-Klassifikation verarbeitet.
+Hauptbild und Galerie behalten ihre gemischte Bild-/Video-Reihenfolge;
+bei gleicher Foto-ID wird die A- statt der F-Variante bevorzugt.
+18+- und Sterne-Markierungen werden in der Suchhistorie persistiert. Die Kontakte werden nur als
 Profilinformationen gelesen – kein WhatsApp-Client.
 
 Profil-Snapshots werden in der vorhandenen SQLite-Datenbank
 anhand eines Inhalts-Fingerprints dedupliziert. Vorhandene
 Personenzuordnungen und LIKE/DISLIKE/Favoriten bleiben erhalten.
-Eine bereits einem anderen Menschen zugeordnete Quellprofil-ID
-wird **nicht** stillschweigend zusammengeführt; stattdessen schlägt
-der Vorgang kontrolliert fehl. Die aktive Ansicht wird auf den
-aktuellen Snapshot gesetzt. Die Datenbank-Suche/Profilaktualisierung
-ist jeweils transaktional.
+Eine bereits einer anderen Person zugeordnete Quellprofil-ID wird
+**nicht** automatisch zusammengeführt. Der neue Snapshot bleibt
+vollständig erhalten; der Konflikt wird dedupliziert als
+`identity_evidence` mit der Kandidatenperson dokumentiert. Dies
+vermeidet Datenverlust ohne verfrühten Identitätsabgleich.
+Jeder erfolgreiche Profilabruf wird außerdem als `PROFILE`-Beobachtung
+vermerkt, auch wenn sich der Inhalts-Fingerprint nicht verändert.
+Die aktive Ansicht wird auf den aktuellen Snapshot gesetzt.
+Datenbank-Suche und Profilaktualisierung sind jeweils transaktional.
 
 Die Bilder/Videos werden in M03 **nur als Remote-Referenzen**
 gespeichert. Download, medienbasierte Identitätsprüfung, ChangeEvent-
@@ -90,9 +104,10 @@ WhatsApp-Synchronisierung bleiben ausgeschlossen.
 ## Prüfungen
 
 Rust-Unit-Tests verwenden vollständig lokale HTML- und API-Mocks:
-Filter/Aliase, Pagination, Server-Radius, 404, Karten-Parser,
-Galerie-Reihenfolge, Konfliktschutz, SQLite-Idempotenz und
-bestehende Nutzerentscheidungen.
+Filter/Aliase, Pagination, sichere Null-Treffer-Erkennung,
+Radiusbestätigung/Unsicherheit, Kartenmarker, CSS- und relative
+Galerie-URLs, Identitätsevidenz bei Konflikten, Beobachtungen,
+SQLite-Idempotenz und bestehende Nutzerentscheidungen.
 
 Die vollständige CI kompiliert Rust, generiert UniFFI-Kotlin-
 Bindings und baut die Android-ARM64-Debug-APK.
