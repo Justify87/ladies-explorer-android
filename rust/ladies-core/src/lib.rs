@@ -78,7 +78,6 @@ impl LadiesCore {
         .optional()
         .map_err(|e| CoreError::Storage(e.to_string()))
     }
-
 }
 
 impl LadiesCore {
