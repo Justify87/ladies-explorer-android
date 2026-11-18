@@ -291,6 +291,15 @@ fun SearchScreen(
                 }
             }
             if (state.editingSavedSearchId != null) {
+                val imported = state.savedSearches.firstOrNull { it.searchId == state.editingSavedSearchId }
+                if (imported?.localFilterSummary?.isNotBlank() == true) {
+                    item {
+                        Text(
+                            "Importierte lokale Filter bleiben beim Bearbeiten erhalten: ${imported.localFilterSummary}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
                 item {
                     TextButton(onClick = {
                         onNewPreset()
@@ -316,6 +325,9 @@ fun SearchScreen(
                             if (saved.unreadNewResults) {
                                 Text("Neu",color=MaterialTheme.colorScheme.primary)
                             }
+                        }
+                        if (saved.localFilterSummary.isNotBlank()) {
+                            Text("Lokale Filter: ${saved.localFilterSummary}",style=MaterialTheme.typography.bodySmall)
                         }
                         saved.lastError?.let {
                             Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
