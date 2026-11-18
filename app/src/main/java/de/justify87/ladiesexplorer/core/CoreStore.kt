@@ -56,7 +56,7 @@ class CoreStore(context: Context) {
         } else {
             "$operation failed duration_ms=$durationMs type=${failure.javaClass.simpleName}"
         }
-        if (failure == null) logger.i { message } else logger.e { message }
+        if (failure == null) logger.i { message } else logger.e(failure) { message }
         // The bounded bridge never blocks a Compose callback or an OkHttp hot path.
         logBridge.execute {
             runCatching { engine.recordKotlinEvent("ANDROID", message, false) }
@@ -83,7 +83,7 @@ class CoreStore(context: Context) {
         imageCaptureMode = CaptureMode.OFF
         engine.setHttpCaptureMode(CaptureMode.OFF)
         // Drain any already queued events before removing the session.
-        logBridge.submit { }.get()
+        logBridge.submit(Runnable { }).get()
         engine.clearHttpCapture()
     }
 
