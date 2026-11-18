@@ -214,7 +214,10 @@ fn request(core: &LadiesCore, id: &str) -> Result<SearchRequest, CoreError> {
     Ok(decode_definition(&definition(core, id)?.0)?.query)
 }
 
-pub(crate) fn load_definition(core: &LadiesCore, id: String) -> Result<SavedSearchDefinition, CoreError> {
+pub(crate) fn load_definition(
+    core: &LadiesCore,
+    id: String,
+) -> Result<SavedSearchDefinition, CoreError> {
     let (stored, _) = definition(core, &id)?;
     decode_definition(&stored)
 }
@@ -495,7 +498,9 @@ fn persist_results_with_control(
     Ok(())
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Record)]
+#[derive(
+    Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Record,
+)]
 pub struct LocalVisibility {
     pub video_only: bool,
     pub photos_only: bool,
@@ -600,12 +605,16 @@ pub(crate) fn apply_local_visibility(
     rules: LocalVisibility,
 ) -> Result<(), CoreError> {
     let db = core.connection()?;
-    let mut person_query =
-        db.prepare("SELECT preference FROM person_user_state WHERE person_id=?1")?;
+    let mut person_query = db.prepare(
+        "SELECT l.person_id,u.preference FROM listings l
+         JOIN person_user_state u ON u.person_id=l.person_id WHERE l.listing_id=?1",
+    )?;
     let mut visible = Vec::new();
     validate_local(&rules)?;
-    for card in response.profiles.drain(..) {
-        let preference: String = person_query.query_row([card.person_id], |r| r.get(0))?;
+    for mut card in response.profiles.drain(..) {
+        let (person_id, preference): (i64, String) =
+            person_query.query_row([card.listing_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        card.person_id = person_id;
         if rules.allows(
             card.has_video,
             card.thumbnail_url.is_some(),
@@ -727,6 +736,43 @@ mod tests {
         let imported = list(&core).unwrap();
         assert!(!imported[0].definition_supported);
         assert!(load(&core, "unsupported".into()).is_err());
+    }
+
+    #[test]
+    fn explicit_local_rules_round_trip_and_change_definition_version() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let query = SearchRequest::for_test();
+        let rules = LocalVisibility {
+            hide_dislikes: true,
+            ..LocalVisibility::default()
+        };
+        let id = save_with_local(&core, "Test".into(), query.clone(), rules.clone()).unwrap();
+        let (_, initial) = definition(&core, &id).unwrap();
+        assert_eq!(load_definition(&core, id.clone()).unwrap().local, rules);
+        update_with_local(
+            &core,
+            id.clone(),
+            "Renamed".into(),
+            query.clone(),
+            Some(rules.clone()),
+        )
+        .unwrap();
+        let (_, renamed) = definition(&core, &id).unwrap();
+        assert_eq!(initial, renamed);
+        let changed = LocalVisibility {
+            hide_likes: true,
+            ..rules
+        };
+        update_with_local(
+            &core,
+            id.clone(),
+            "Renamed".into(),
+            query,
+            Some(changed.clone()),
+        )
+        .unwrap();
+        assert_eq!(load_definition(&core, id.clone()).unwrap().local, changed);
+        assert_eq!(definition(&core, &id).unwrap().1, initial + 1);
     }
 
     #[test]

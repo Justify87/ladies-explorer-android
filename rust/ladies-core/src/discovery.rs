@@ -15,6 +15,7 @@ pub struct DiscoveryCard {
     pub favorite: bool,
     pub has_video: bool,
     pub has_ai_content: bool,
+    pub is_premium: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -185,7 +186,7 @@ pub(crate) fn page(
                  LIMIT 1) AS local_path,
                 s.description,u.preference,u.favorite,
                 COALESCE(r.has_video,0),COALESCE(r.has_ai_content,0),
-                l.last_seen_at
+                l.last_seen_at,COALESCE(r.is_premium,0)
          FROM ranked k
          JOIN listings l ON l.listing_id=k.listing_id
          JOIN persons p ON p.person_id=l.person_id
@@ -230,6 +231,7 @@ pub(crate) fn page(
                 r.get::<_, i64>(9)?,
                 r.get::<_, i64>(10)?,
                 r.get::<_, String>(11)?,
+                r.get::<_, bool>(12)?,
             ))
         },
     )?;
@@ -248,6 +250,7 @@ pub(crate) fn page(
                 video,
                 ai,
                 last_seen_at,
+                is_premium,
             ) = row?;
             let local_path = relative.and_then(|relative| {
                 let path = core.media_root.as_ref()?.join(relative);
@@ -266,6 +269,7 @@ pub(crate) fn page(
                     favorite: favorite != 0,
                     has_video: video != 0,
                     has_ai_content: ai != 0,
+                    is_premium,
                 },
                 last_seen_at,
             ))
@@ -304,7 +308,7 @@ pub(crate) fn active_search_cards(
                  WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
                  ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position
                  LIMIT 1),
-                s.description,u.preference,u.favorite,r.has_video,r.has_ai_content
+                s.description,u.preference,u.favorite,r.has_video,r.has_ai_content,r.is_premium
          FROM search_results r
          JOIN listings l ON l.listing_id=r.listing_id
          JOIN person_user_state u ON u.person_id=l.person_id
@@ -324,13 +328,31 @@ pub(crate) fn active_search_cards(
             r.get::<_, bool>(8)?,
             r.get::<_, bool>(9)?,
             r.get::<_, bool>(10)?,
+            r.get::<_, bool>(11)?,
         ))
     })?;
     let mut cards = Vec::new();
     for row in rows {
-        let (listing_id, person_id, name, city, thumbnail_url, relative,
-            description, preference, favorite, has_video, has_ai_content) = row?;
-        if !local.allows(has_video, thumbnail_url.is_some(), has_ai_content, &preference) {
+        let (
+            listing_id,
+            person_id,
+            name,
+            city,
+            thumbnail_url,
+            relative,
+            description,
+            preference,
+            favorite,
+            has_video,
+            has_ai_content,
+            is_premium,
+        ) = row?;
+        if !local.allows(
+            has_video,
+            thumbnail_url.is_some(),
+            has_ai_content,
+            &preference,
+        ) {
             continue;
         }
         let local_path = relative.and_then(|relative| {
@@ -349,6 +371,7 @@ pub(crate) fn active_search_cards(
             favorite,
             has_video,
             has_ai_content,
+            is_premium,
         });
     }
     Ok(cards)
@@ -357,6 +380,69 @@ pub(crate) fn active_search_cards(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn active_run_keeps_membership_and_order_and_projects_current_preferences() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let a = core.create_person(Some("A".into())).unwrap();
+        let b = core.create_person(Some("B".into())).unwrap();
+        let outside = core.create_person(Some("Outside".into())).unwrap();
+        let la = core
+            .add_listing(a, None, "LADIES".into(), "1".into(), None)
+            .unwrap();
+        let lb = core
+            .add_listing(b, None, "LADIES".into(), "2".into(), None)
+            .unwrap();
+        let lc = core
+            .add_listing(outside, None, "LADIES".into(), "3".into(), None)
+            .unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute("INSERT INTO search_runs (search_run_id) VALUES (1),(2)", [])
+                .unwrap();
+            db.execute(
+                "INSERT INTO search_results
+                 (search_run_id,listing_id,position,name,thumbnail_url,has_video,has_ai_content,is_premium)
+                 VALUES (1,?1,2,'A',NULL,0,0,0),(1,?2,1,'B','fixture.png',1,1,1),
+                        (2,?3,1,'Outside',NULL,0,0,0)",
+                params![la, lb, lc],
+            )
+            .unwrap();
+        }
+        let all = crate::saved_search::LocalVisibility::default();
+        let rows = active_search_cards(&core, 1, &all).unwrap();
+        assert_eq!(
+            rows.iter().map(|c| c.listing_id).collect::<Vec<_>>(),
+            vec![lb, la]
+        );
+        assert!(rows[0].is_premium);
+        core.set_preference(b, Preference::Dislike).unwrap();
+        core.set_favorite(b, true).unwrap();
+        let rows = active_search_cards(&core, 1, &all).unwrap();
+        assert_eq!(rows[0].preference, Preference::Dislike);
+        assert!(rows[0].favorite);
+        let hidden = crate::saved_search::LocalVisibility {
+            hide_dislikes: true,
+            ..all.clone()
+        };
+        let rows = active_search_cards(&core, 1, &hidden).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].listing_id, la);
+        let media = crate::saved_search::LocalVisibility {
+            video_only: true,
+            photos_only: true,
+            image_mode: "AI".into(),
+            ..all.clone()
+        };
+        let rows = active_search_cards(&core, 1, &media).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].listing_id, lb);
+        let unsupported = crate::saved_search::LocalVisibility {
+            image_mode: "STUDIO".into(),
+            ..all
+        };
+        assert!(active_search_cards(&core, 1, &unsupported).is_err());
+    }
 
     #[test]
     fn discovery_deduplicates_people_and_preserves_favorites() {

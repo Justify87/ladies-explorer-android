@@ -87,12 +87,26 @@ pub(crate) fn frequent(core: &crate::LadiesCore) -> Result<Vec<FrequentFilter>, 
     let mut result: Vec<_> = counts
         .into_iter()
         .filter_map(|((group, slug), count)| {
-            let value = catalog.values.get(&group)?.iter()
-                .find(|(_, v)| *v == &slug)?.0.clone();
-            Some(FrequentFilter { group, value, count })
+            let value = catalog
+                .values
+                .get(&group)?
+                .iter()
+                .find(|(_, v)| *v == &slug)?
+                .0
+                .clone();
+            Some(FrequentFilter {
+                group,
+                value,
+                count,
+            })
         })
         .collect();
-    result.sort_by(|a, b| b.count.cmp(&a.count).then(a.group.cmp(&b.group)).then(a.value.cmp(&b.value)));
+    result.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then(a.group.cmp(&b.group))
+            .then(a.value.cmp(&b.value))
+    });
     result.truncate(5);
     Ok(result)
 }
@@ -285,6 +299,33 @@ pub(super) fn filter_path(request: &SearchRequest) -> Result<String, CoreError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frequent_counts_only_committed_runs_once_per_canonical_filter() {
+        let core = crate::LadiesCore::new(":memory:".into()).unwrap();
+        {
+            let db = core.connection().unwrap();
+            for (filters, finished) in [
+                (r#"{"selected":{"treff":["Hausbesuche","treffen-haus"],"treffpunkt":["Hausbesuche"],"figur":["schlank"]}}"#, true),
+                (r#"{"selected":{"treffpunkt":["treffen-haus"],"figur":["mittel"]}}"#, true),
+                (r#"{"selected":{"figur":["mollig"]}}"#, false),
+                ("malformed", true),
+            ] {
+                db.execute(
+                    "INSERT INTO search_runs (filters_json,finished_at) VALUES (?1,CASE WHEN ?2 THEN '2026-11-18T12:00:00Z' END)",
+                    rusqlite::params![filters, finished],
+                )
+                .unwrap();
+            }
+        }
+        let result = frequent(&core).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].group, "treff");
+        assert_eq!(result[0].value, "Hausbesuche");
+        assert_eq!(result[0].count, 2);
+        assert_eq!(result[1].value, "mittel");
+        assert_eq!(result[2].value, "schlank");
+    }
 
     #[test]
     fn category_aliases_and_legacy_filter_slugs() {

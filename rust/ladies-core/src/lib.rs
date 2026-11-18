@@ -148,10 +148,13 @@ pub use map::{MapOverview, MapProfile};
 pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
 pub use saved_search::{
-    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchInfo, SavedSearchResultPage,
+    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchInfo,
+    SavedSearchResultPage,
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
-pub use source::{MediaReference, ProfileResponse, SearchCard, SearchPreview, SearchRequest, SearchResponse};
+pub use source::{
+    MediaReference, ProfileResponse, SearchCard, SearchPreview, SearchRequest, SearchResponse,
+};
 
 #[derive(uniffi::Object)]
 pub struct LadiesCore {
