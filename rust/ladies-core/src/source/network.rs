@@ -90,10 +90,14 @@ impl SourceHttp {
         })
     }
 
-    pub(super) fn get_profile(&self, url: &str) -> Result<String, CoreError> {
+    pub(super) fn get_profile(
+        &self,
+        url: &str,
+        control: Option<&RequestControl>,
+    ) -> Result<String, CoreError> {
         let url = parse::valid_profile_url(url)
             .ok_or_else(|| CoreError::InvalidInput("Invalid Ladies profile URL".into()))?;
-        let response = self.get(&url)?;
+        let response = self.get_cancellable(&url, control)?;
         if response.status != 200 {
             return Err(CoreError::Source(format!(
                 "Profile HTTP status {}",
