@@ -155,7 +155,7 @@ fun SearchScreen(
                 }
             }
         }
-        if (state.loading) item {
+        if (state.loading && !editorVisible) item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator()
                 TextButton(onClick = onCancelSearch) { Text("Suche abbrechen") }
@@ -371,7 +371,7 @@ fun SearchScreen(
                         onClick={
                             onSave(presetName)
                         },
-                        enabled=!state.saving && presetName.isNotBlank(),
+                        enabled=!state.saving && !state.loading && presetName.isNotBlank(),
                     ) { Text(if (state.editingSavedSearchId == null) "Speichern" else "Aktualisieren") }
                 }
             }
@@ -422,7 +422,7 @@ fun SearchScreen(
                                 enabled=saved.definitionSupported && !state.loading,
                                 onClick={ onLoadSaved(saved.searchId) },
                             ) { Text("Bearbeiten") }
-                            TextButton(onClick={onShowSavedResults(saved.searchId)}) {
+                            TextButton(onClick={onShowSavedResults(saved.searchId)}, enabled = !state.loading) {
                                 Text("Ergebnisse")
                             }
                             TextButton(
@@ -539,10 +539,11 @@ private fun SearchResultRow(card: DiscoveryCard, onProfile: (Long,Long) -> Unit)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                 Text(card.name.ifBlank { "Inserat ${card.listingId}" },style=MaterialTheme.typography.titleMedium)
                 Text(card.city,style=MaterialTheme.typography.bodySmall)
-                if (card.hasVideo || card.hasAiContent) {
+                if (card.hasVideo || card.isPremium || card.hasAiContent) {
                     Text(
                         listOfNotNull(
                             "Video".takeIf { card.hasVideo },
+                            "Premium".takeIf { card.isPremium },
                             "KI".takeIf { card.hasAiContent },
                         ).joinToString(" · "),
                         style=MaterialTheme.typography.labelSmall,

@@ -51,6 +51,7 @@ import de.justify87.ladiesexplorer.core.Preference
 @Composable
 fun DiscoverScreen(
     state: DiscoverUiState,
+    searchLoading: Boolean = false,
     onRefresh: () -> Unit,
     onSkip: (Long) -> Unit,
     onChoose: (Long, Preference) -> Unit,
@@ -72,7 +73,7 @@ fun DiscoverScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(onClick = onRefresh, enabled = !state.busy) { Text("Aktualisieren") }
+            TextButton(onClick = onRefresh, enabled = !state.busy && !searchLoading) { Text("Aktualisieren") }
         }
         if (state.loading) {
             CircularProgressIndicator()
@@ -92,8 +93,8 @@ fun DiscoverScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .graphicsLayer { translationX = drag; rotationZ = drag / 45f }
-                    .pointerInput(card.personId, state.busy) {
-                        if (!state.busy) {
+                    .pointerInput(card.personId, state.busy, searchLoading) {
+                        if (!state.busy && !searchLoading) {
                             detectHorizontalDragGestures(
                                 onHorizontalDrag = { change, delta ->
                                     change.consume()
@@ -130,7 +131,7 @@ fun DiscoverScreen(
                                 modifier = Modifier.weight(1f),
                                 onClick = { onProfile(card.listingId, card.personId) },
                             ) { Text("Profil ansehen") }
-                            IconButton(onClick = { onFavorite(card.personId) }, enabled = !state.busy) {
+                            IconButton(onClick = { onFavorite(card.personId) }, enabled = !state.busy && !searchLoading) {
                                 Icon(
                                     if (card.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                     contentDescription = if (card.favorite) "Favorit entfernen" else "Zu Favoriten",
@@ -146,17 +147,17 @@ fun DiscoverScreen(
             ) {
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
-                    enabled = !state.busy,
+                    enabled = !state.busy && !searchLoading,
                     onClick = { onChoose(card.personId, Preference.DISLIKE) },
                 ) { Text("Nein") }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
-                    enabled = !state.busy,
+                    enabled = !state.busy && !searchLoading,
                     onClick = { onSkip(card.personId) },
                 ) { Text("Später") }
                 Button(
                     modifier = Modifier.weight(1f),
-                    enabled = !state.busy,
+                    enabled = !state.busy && !searchLoading,
                     onClick = { onChoose(card.personId, Preference.LIKE) },
                 ) { Text("Gefällt") }
             }

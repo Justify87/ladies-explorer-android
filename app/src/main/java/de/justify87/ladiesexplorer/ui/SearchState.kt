@@ -1,6 +1,9 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.LocalVisibility
+import de.justify87.ladiesexplorer.core.SearchRequest
+import org.json.JSONArray
+import org.json.JSONObject
 
 internal fun defaultLocalVisibility() = LocalVisibility(
     videoOnly = false, photosOnly = false, hideDislikes = true,
@@ -29,3 +32,23 @@ internal fun withAvailability(filters: Map<String, Set<String>>, mode: Availabil
     mode.value?.let(times::add)
     return if (times.isEmpty()) filters - "zeiten" else filters + ("zeiten" to times.toSet())
 }
+
+internal fun decodeSelectedFilters(json: String): Map<String, Set<String>> {
+    val selected = JSONObject(json)
+    return selected.keys().asSequence().associateWith { key ->
+        val array = selected.getJSONArray(key)
+        (0 until array.length()).map { array.getString(it) }.toSet()
+    }
+}
+
+internal fun encodeSelectedFilters(filters: Map<String, Set<String>>): String =
+    JSONObject().apply {
+        filters.toSortedMap().forEach { (group, values) -> put(group, JSONArray(values.sorted())) }
+    }.toString()
+
+internal fun SearchRequest.withAvailabilityMode(mode: AvailabilityMode): SearchRequest =
+    copy(filtersJson = encodeSelectedFilters(withAvailability(decodeSelectedFilters(filtersJson), mode)))
+
+internal fun SearchUiState.headerAvailability(): AvailabilityMode =
+    response?.query?.let { availabilityMode(decodeSelectedFilters(it.filtersJson)) }
+        ?: availabilityMode(selectedFilters)
