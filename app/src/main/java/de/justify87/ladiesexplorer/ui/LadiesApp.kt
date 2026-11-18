@@ -104,6 +104,7 @@ fun LadiesApp(
             ProfileDetailScreen(
                 state=search,
                 onFavorite=viewModel::toggleFavorite,
+                onPreference=viewModel::choosePreference,
                 onConfirmIdentity=viewModel::confirmIdentity,
                 onCancelArchive=viewModel::cancelMediaArchive,
                 modifier=modifier,
