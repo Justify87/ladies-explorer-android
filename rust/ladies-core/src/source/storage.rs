@@ -634,6 +634,14 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM snapshot_media", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 2);
+        let events: (i64,i64,i64) = db.query_row(
+            "SELECT COUNT(*),
+                SUM(CASE WHEN event_type='PROFILE_CREATED' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN event_type='FIELD_CHANGED' AND field_key='name' THEN 1 ELSE 0 END)
+             FROM change_events WHERE listing_id=?1",
+            [listing], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))
+        ).unwrap();
+        assert_eq!(events, (2,1,1));
     }
 
     #[test]
@@ -746,6 +754,11 @@ mod tests {
             )
             .unwrap();
         assert_eq!(last, (1, 0, original.snapshot_id));
+        let history=core.list_change_events(found.profiles[0].person_id,50).unwrap();
+        let changes=history.iter().filter(|event| event.event_type=="FIELD_CHANGED"
+            && event.field_key.as_deref()==Some("name")).count();
+        assert_eq!(changes,2);
+        assert_eq!(history.first().unwrap().new_json.as_deref(),Some("\"Anna\""));
     }
 
     #[test]

@@ -88,8 +88,10 @@ See [docs/DEBUG-LOG.md](docs/DEBUG-LOG.md) for details and privacy notes.
 
 ## What comes next
 
-Media archiving, complete profile UI, person
-identity/history, swipe discovery and MapLibre will be implemented separately.
+M04 adds transition-based profile history, explicit identity candidates/merging,
+local SHA-256/dHash image archiving and optional video archiving. See
+[docs/M04-IDENTITY-MEDIA-HISTORY.md](docs/M04-IDENTITY-MEDIA-HISTORY.md).
+The full profile UI, swipe discovery and MapLibre follow in M05/M06.
 WhatsApp is an external-open button only; integrated messaging and AI price
 extraction are explicitly excluded.
 
