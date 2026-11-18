@@ -466,29 +466,21 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let recorder = HttpRecorder::new(&root.path().join("ladies.sqlite").to_string_lossy());
         recorder.set_mode(CaptureMode::Text);
-        // Explicitly prefill with valid records, as a near-capacity resumed session.
-        let path = root.path().join("diagnostics/ladies-http.jsonl");
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let event = serde_json::to_string(&sample()).unwrap() + "\n";
-        let mut file = File::create(&path).unwrap();
-        while file.metadata().unwrap().len() + event.len() as u64 < MAX_SESSION_BYTES - 300 {
-            file.write_all(event.as_bytes()).unwrap();
+        recorder.record(sample());
+        {
+            let mut state = recorder.state.lock().unwrap();
+            // Near the cap, the next entry cannot fit even after body omission.
+            state.bytes = MAX_SESSION_BYTES - 1;
         }
-        drop(file);
-        let resumed = HttpRecorder::new(&root.path().join("ladies.sqlite").to_string_lossy());
-        resumed.set_mode(CaptureMode::Text);
-        let existing = resumed.status().entries;
-        let mut too_large = sample();
-        too_large.body = Some("a".repeat(2000));
-        resumed.record(too_large);
-        let after = resumed.status();
-        assert!(after.bytes <= MAX_SESSION_BYTES);
-        assert!(after.entries >= existing);
-        if after.stopped {
-            assert!(after.last_error.as_deref().unwrap_or("").contains("25 MiB"));
-        }
-        let har: Value = serde_json::from_slice(&fs::read(resumed.export(root.path()).unwrap()).unwrap()).unwrap();
-        assert_eq!(har["log"]["entries"].as_array().unwrap().len(), after.entries as usize);
+        recorder.record(sample());
+        let status = recorder.status();
+        assert!(status.stopped);
+        assert!(status.last_error.as_deref().unwrap_or("").contains("25 MiB"));
+        assert_eq!(status.entries, 1);
+        let har: Value = serde_json::from_slice(
+            &fs::read(recorder.export(root.path()).unwrap()).unwrap(),
+        ).unwrap();
+        assert_eq!(har["log"]["entries"].as_array().unwrap().len(), 1);
     }
 
     #[test]
