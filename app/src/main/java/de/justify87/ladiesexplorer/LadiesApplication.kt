@@ -105,7 +105,7 @@ private class ImageHttpListener(private val recorder: CoreStore, private val epo
 
     override fun callFailed(call: Call, ioe: IOException) {
         if (pending != null) {
-            complete("network_error", error = ioe.message)
+            complete("network_error", error = ioe.toString())
         } else {
             // Connection/DNS failures can happen before requestHeadersEnd is invoked.
             if (!networkAttempted) return
@@ -125,7 +125,7 @@ private class ImageHttpListener(private val recorder: CoreStore, private val epo
                 bodyElapsedMs = 0uL,
                 body = null,
                 isMedia = true,
-                error = ioe.message,
+                error = ioe.toString(),
                 bodyOmitted = "network_error",
             ), epoch)
         }
