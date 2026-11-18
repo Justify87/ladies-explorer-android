@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import coil3.compose.AsyncImage
@@ -114,6 +116,25 @@ private fun HeroButton(
     }
 }
 
+@Composable
+private fun MediaTapZone(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
+    Box(modifier.fillMaxWidth(.25f).fillMaxHeight(.65f)
+        .semantics { contentDescription = label }
+        .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, color = Color.Black.copy(alpha = .65f)) {
+            Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = if (enabled) 1f else .4f),
+                modifier = Modifier.padding(10.dp).size(28.dp))
+        }
+    }
+}
+
 /** Shared media hero; deck navigation is added by M05.4, not by this component. */
 @Composable
 internal fun ProfileMediaHero(
@@ -159,10 +180,10 @@ internal fun ProfileMediaHero(
                     }
                 }
             }
-            HeroButton({ selected = mediaIndex(index - 1, media.size) }, "Vorheriges Medium",
-                Icons.Default.ChevronLeft, Modifier.align(Alignment.CenterStart).padding(8.dp))
-            HeroButton({ selected = mediaIndex(index + 1, media.size) }, "Nächstes Medium",
-                Icons.Default.ChevronRight, Modifier.align(Alignment.CenterEnd).padding(8.dp))
+            MediaTapZone("Vorheriges Medium", Icons.Default.ChevronLeft, index > 0,
+                Modifier.align(Alignment.CenterStart)) { selected = index - 1 }
+            MediaTapZone("Nächstes Medium", Icons.Default.ChevronRight, index < media.lastIndex,
+                Modifier.align(Alignment.CenterEnd)) { selected = index + 1 }
         }
         onBack?.let {
             HeroButton(it, "Zurück", Icons.Default.ArrowBack,
