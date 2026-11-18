@@ -120,29 +120,53 @@ fn hashes(db: &Connection, snapshot_id: i64) -> Result<Vec<u64>, CoreError> {
         .collect())
 }
 
-fn compare_images(new_hashes: &[u64], old_hashes: &[u64]) -> (u32, u32, Option<u32>) {
-    let mut candidate = 0;
-    let mut strong = 0;
-    let mut best: Option<u32> = None;
-    // An old picture cannot count as two independent strong image matches.
-    let mut matched_old = HashSet::new();
-    for new_hash in new_hashes {
-        let nearest = old_hashes
-            .iter()
-            .enumerate()
-            .map(|(index, old)| ((new_hash ^ old).count_ones(), index))
-            .min();
-        if let Some((distance, index)) = nearest {
-            best = Some(best.map_or(distance, |current| current.min(distance)));
-            if distance <= CANDIDATE_DISTANCE {
-                candidate += 1;
-                if distance <= STRONG_DISTANCE && matched_old.insert(index) {
-                    strong += 1;
-                }
-            }
+fn augment(new_index: usize, edges: &[Vec<usize>], seen: &mut [bool], matched: &mut [Option<usize>]) -> bool {
+    for &old_index in &edges[new_index] {
+        if seen[old_index] {
+            continue;
+        }
+        seen[old_index] = true;
+        let previous = matched[old_index];
+        if previous.is_none_or(|other| augment(other, edges, seen, matched)) {
+            matched[old_index] = Some(new_index);
+            return true;
         }
     }
-    (candidate, strong, best)
+    false
+}
+
+fn independent_pairs(new_hashes: &[u64], old_hashes: &[u64], threshold: u32) -> u32 {
+    let edges = new_hashes.iter().map(|hash| {
+        let mut neighbors = old_hashes.iter().enumerate()
+            .filter_map(|(index, old)| {
+                let distance = (hash ^ old).count_ones();
+                (distance <= threshold).then_some((distance, index))
+            }).collect::<Vec<_>>();
+        neighbors.sort_unstable();
+        neighbors.into_iter().map(|(_, index)| index).collect::<Vec<_>>()
+    }).collect::<Vec<_>>();
+    let mut order = (0..edges.len()).collect::<Vec<_>>();
+    order.sort_unstable_by_key(|&index| (edges[index].len(), index));
+    let mut matched = vec![None; old_hashes.len()];
+    let mut count = 0;
+    for index in order {
+        let mut seen = vec![false; old_hashes.len()];
+        if augment(index, &edges, &mut seen, &mut matched) {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn compare_images(new_hashes: &[u64], old_hashes: &[u64]) -> (u32, u32, Option<u32>) {
+    let best = new_hashes.iter()
+        .flat_map(|new| old_hashes.iter().map(move |old| (new ^ old).count_ones()))
+        .min();
+    (
+        independent_pairs(new_hashes, old_hashes, CANDIDATE_DISTANCE),
+        independent_pairs(new_hashes, old_hashes, STRONG_DISTANCE),
+        best,
+    )
 }
 
 fn decision(e: &Evidence) -> &'static str {
@@ -368,14 +392,24 @@ pub(crate) fn confirm(core: &LadiesCore, listing_id: i64, target_id: i64) -> Res
         [source_id],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
     )?;
-    let (target_pref, target_note): (String, Option<String>) = tx
+    let (target_pref, target_interest, target_note): (String, String, Option<String>) = tx
         .query_row(
-            "SELECT preference,private_note FROM person_user_state WHERE person_id=?1",
+            "SELECT preference,repeat_interest,private_note FROM person_user_state WHERE person_id=?1",
             [target_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()?
         .ok_or(CoreError::PersonNotFound(target_id))?;
+    if pref != "NONE" && target_pref != "NONE" && pref != target_pref {
+        return Err(CoreError::IdentityConflict(
+            "Conflicting LIKE/DISLIKE decisions require explicit resolution".into(),
+        ));
+    }
+    if interest != "UNKNOWN" && target_interest != "UNKNOWN" && interest != target_interest {
+        return Err(CoreError::IdentityConflict(
+            "Conflicting repeat-interest decisions require explicit resolution".into(),
+        ));
+    }
     let combined_note = [target_note.as_deref(), note.as_deref()]
         .into_iter()
         .flatten()
@@ -519,6 +553,12 @@ mod tests {
         assert_eq!(normalize_phone(Some("")).as_deref(), None);
     }
     #[test]
+    fn augmenting_paths_recover_independent_picture_matches() {
+        assert_eq!(compare_images(&[1, 0], &[0, 63]).1, 2);
+        assert_eq!(compare_images(&[1, 0], &[0, 63]).0, 2);
+    }
+
+    #[test]
     fn image_evidence_needs_independent_pictures() {
         assert_eq!(compare_images(&[0, 0], &[0]).1, 1);
         assert_eq!(compare_images(&[0, 1], &[0, 1]).1, 2);
@@ -560,6 +600,35 @@ mod tests {
         }
         assert_eq!(core.list_identity_candidates(listing).unwrap().len(), 2);
         assert_eq!(core.status().unwrap().person_count, 3);
+    }
+
+    #[test]
+    fn conflicting_user_decisions_prevent_merge_without_data_loss() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let source = core.create_person(Some("Source".into())).unwrap();
+        let target = core.create_person(Some("Target".into())).unwrap();
+        let listing = core.add_listing(source, None, "LADIES".into(), "44".into(), None).unwrap();
+        let target_listing = core.add_listing(target, None, "LADIES".into(), "45".into(), None).unwrap();
+        core.set_preference(source, crate::Preference::Like).unwrap();
+        core.set_preference(target, crate::Preference::Dislike).unwrap();
+        {
+            let db = core.connection().unwrap();
+            record_phone(&db, source, listing, Some("0170 5556677")).unwrap();
+            record_phone(&db, target, target_listing, Some("0170 5556677")).unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,normalized_phone)
+                 VALUES (?1,'conflict','+491705556677')", [listing],
+            ).unwrap();
+            db.execute("UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), listing]).unwrap();
+        }
+        assert!(matches!(
+            core.confirm_identity_match(listing, target),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert_eq!(core.status().unwrap().person_count, 2);
+        assert_eq!(core.get_person(source).unwrap().unwrap().preference, crate::Preference::Like);
+        assert_eq!(core.get_person(target).unwrap().unwrap().preference, crate::Preference::Dislike);
     }
 
     #[test]
@@ -606,5 +675,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!(owner, (target, target));
+        let event_previous: i64 = db.query_row(
+            "SELECT previous_person_id FROM identity_events WHERE listing_id=?1",
+            [listing], |row| row.get(0)
+        ).unwrap();
+        assert_eq!(event_previous, source);
     }
 }
