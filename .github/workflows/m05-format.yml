@@ -1,0 +1,36 @@
+name: M05 Rust format maintenance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - ".github/workflows/m05-format.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  rustfmt:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/m05-native-discovery-search-ui'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.0"
+          components: rustfmt
+      - name: Canonical Rust formatting
+        working-directory: rust
+        run: cargo fmt --all
+      - name: Commit canonical formatting
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add rust
+            git commit -m "style(m05): canonical rustfmt output"
+            git push origin HEAD:"${{ github.head_ref }}"
+          fi
