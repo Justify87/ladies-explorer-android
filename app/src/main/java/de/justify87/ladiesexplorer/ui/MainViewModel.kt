@@ -747,12 +747,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             var committed = false
             try {
-                val owner = core.profileIdentity(listingId).personId
-                check(owner == card.personId) { "Personenzuordnung geändert; bitte aktualisieren." }
-                val previous = core.person(owner)?.preference ?: error("Person nicht gefunden")
-                core.setPreference(owner, preference)
+                val previous = core.setSwipePreference(listingId, card.personId, null, preference)
                 committed = true
-                swipeSession.visit(SwipeStep(listingId, owner, previous, preference))
+                swipeSession.visit(SwipeStep(listingId, card.personId, previous, preference))
                 val page = discoveryPage()
                 val favorites = core.discoveryCards(favoritesOnly = true)
                 publishDiscovery(epoch, page, favorites)
@@ -779,15 +776,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             var restored = false
             try {
-                check(core.profileIdentity(step.listingId).personId == step.personId) {
-                    "Personenzuordnung geändert; Undo nicht möglich. Deck zurücksetzen."
-                }
                 val previous = step.before
                 if (previous != null) {
-                    check(core.person(step.personId)?.preference == step.after) {
-                        "Präferenz inzwischen geändert; Undo nicht möglich."
+                    core.setSwipePreference(step.listingId, step.personId, step.after, previous)
+                } else {
+                    check(core.profileIdentity(step.listingId).personId == step.personId) {
+                        "Personenzuordnung geändert; Undo nicht möglich. Deck zurücksetzen."
                     }
-                    core.setPreference(step.personId, previous)
                 }
                 swipeSession.undo(step)
                 restored = true
@@ -1041,7 +1036,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun importBundle(uri: Uri) {
-        if (_uiState.value.loading || _searchUiState.value.loading) return
+        if (_uiState.value.loading || _searchUiState.value.loading || _discoverState.value.busy) return
         viewModelScope.launch {
             _uiState.update { it.copy(loading=true,error=null) }
             try {
