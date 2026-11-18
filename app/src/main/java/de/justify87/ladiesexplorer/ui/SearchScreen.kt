@@ -79,6 +79,8 @@ fun SearchScreen(
     onRunSaved: (String) -> Unit,
     onDeleteSaved: (String) -> Unit,
     onAcknowledge: (String) -> Unit,
+    onShowSavedResults: (String) -> Unit,
+    onCloseSavedResults: () -> Unit,
     onProfile: (Long,Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -113,7 +115,44 @@ fun SearchScreen(
         state.error?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error) }
         }
-        if (resultsVisible && state.response != null) {
+        if (state.showingSavedSearchId != null) {
+            item {
+                Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Text("Gespeicherte Ergebnisse",style=MaterialTheme.typography.titleLarge)
+                    Text("${state.savedResultCards.size} bekannte Treffer",style=MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick=onCloseSavedResults) { Text("Zurück zur Suche") }
+                }
+            }
+            if (state.savedResultCards.isEmpty()) {
+                item { Text("Für diese Suche sind noch keine vollständigen Ergebnisse gespeichert.") }
+            }
+            items(state.savedResultCards,key={it.resultKey}) { card ->
+                Card(modifier=Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier=Modifier.padding(12.dp),
+                        horizontalArrangement=Arrangement.spacedBy(12.dp),
+                        verticalAlignment=Alignment.CenterVertically,
+                    ) {
+                        ProfileThumbnail(
+                            url=card.thumbnailUrl,
+                            modifier=Modifier.size(90.dp).clip(RoundedCornerShape(12.dp)),
+                        )
+                        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                            Text(card.name,style=MaterialTheme.typography.titleMedium)
+                            Text(card.city,style=MaterialTheme.typography.bodySmall)
+                            Text("Erstmals: ${card.firstSeenAt.take(16)}",style=MaterialTheme.typography.labelSmall)
+                            val listing = card.listingId
+                            val person = card.personId
+                            if (listing != null && person != null) {
+                                TextButton(onClick={onProfile(listing,person)}) { Text("Profil öffnen") }
+                            } else {
+                                Text("Profil lokal noch nicht verfügbar",style=MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (resultsVisible && state.response != null) {
             val response = state.response
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -286,6 +325,9 @@ fun SearchScreen(
                                 enabled=saved.definitionSupported && !state.loading,
                                 onClick={ onLoadSaved(saved.searchId) },
                             ) { Text("Bearbeiten") }
+                            TextButton(onClick={onShowSavedResults(saved.searchId)}) {
+                                Text("Ergebnisse")
+                            }
                             TextButton(
                                 enabled=saved.definitionSupported && !state.loading,
                                 onClick={ onRunSaved(saved.searchId) },
