@@ -43,14 +43,6 @@ jobs:
         with:
           workspaces: rust -> target
 
-      - name: Generate Cargo.lock for initial review
-        working-directory: rust
-        run: |
-          cargo generate-lockfile
-          echo "LADIES_CARGO_LOCK_BEGIN"
-          cat Cargo.lock
-          echo "LADIES_CARGO_LOCK_END"
-
       - name: Export script syntax
         run: bash -n tools/export-legacy.sh
 
