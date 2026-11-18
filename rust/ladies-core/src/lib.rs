@@ -223,10 +223,6 @@ impl LadiesCore {
         result
     }
 
-    pub fn record_debug_event(&self, component: String, message: String) {
-        self.diagnostics.event(&component, message);
-    }
-
     pub fn record_kotlin_event(&self, component: String, message: String, detailed: bool) {
         if detailed {
             self.diagnostics.debug(&component, message);
@@ -1046,7 +1042,7 @@ mod tests {
             .map(|(core, label)| {
                 thread::spawn(move || {
                     for n in 0..200 {
-                        core.record_debug_event("TEST".into(), format!("{label}-{n}"));
+                        core.record_kotlin_event("TEST".into(), format!("{label}-{n}"), false);
                     }
                 })
             })
