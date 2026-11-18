@@ -41,7 +41,7 @@ Das Android-Schema ist keine binäre Kopie der Legacy-Datenbank. Die alte SQLAlc
 - Native v1 muss vor dem Upgrade dem kanonischen Schema entsprechen; jede spätere Öffnung prüft v2-Tabellen, Indizes und Trigger. Fremde IDs, unbekannte unversionierte Tabellen, Schemaabweichungen und zukünftige Versionen erzeugen typisierte Fehler. Nur eine frische DB, die exakt bekannte technische Demo mit `scaffold_notes` oder gültige native v1 werden migriert. Die Demo-Tabelle wird transaktional entfernt; echte Personen/Historie werden nicht implizit gelöscht.
 - `PRAGMA foreign_keys=ON` je Verbindung. App-private DB unter `filesDir/ladies.sqlite`; öffentliche Schreiboperationen verwenden SQLite-Parameter und Transaktionen.
 - Ein Personen-INSERT erzeugt den Nutzerstatus per DB-Trigger auch beim direkten Import. Trigger verhindern bei INSERT/UPDATE Verknüpfungen eines Inserats mit einer fremden Person oder Quelle. Sichtungen von Quellprofil/Inserat aktualisieren last_seen der Person; Inseratereignisse auch das zugehörige Quellprofil.
-- Der Personenfeed nutzt Keyset-Pagination über `last_seen_at` und `person_id` mit deterministischem Tie-Breaker und validierter Seitengröße 1–100. Die SQLite-Verbindung liegt hinter einem Rust-Mutex; Kotlin ruft die Bindings über `Dispatchers.IO` auf.
+- Die allgemeine Personenabfrage (`PersonCursor` in lib.rs) nutzt Keyset-Pagination über `last_seen_at` und `person_id`. Der davon getrennte Discovery-/Favoritenfeed nutzt `DiscoveryCursor` (`favorite`, Inserat-`last_seen_at`, `listing_id`), entsprechend seiner Sortierung absteigend. Beide validieren die Seitengröße 1–100. Die SQLite-Verbindung liegt hinter einem Rust-Mutex; Kotlin ruft die Bindings über `Dispatchers.IO` auf.
 
 ## Profilhistorie und Identität
 
@@ -59,7 +59,7 @@ Das Android-Schema ist keine binäre Kopie der Legacy-Datenbank. Die alte SQLAlc
 
 ## Native Oberfläche
 
-- Entdecken: ein aktuelles Inserat pro Person, LIKE/DISLIKE per Swipe oder Buttons, „Später“ nur für die aktuelle Sitzung; Dislikes werden nicht erneut angeboten. Favoriten sind unabhängig von der Swipe-Präferenz. Beide Feeds paginieren getrennt per stabilen SQLite-Cursorn; übersprungene Personen werden vor dem Paging ausgeschlossen.
+- Entdecken: ein aktuelles Inserat pro Person, LIKE/DISLIKE per Swipe oder Buttons, „Später“ nur für die aktuelle Sitzung. Entdecken enthält ausschließlich Personen mit Präferenz NONE, also weder LIKE noch DISLIKE. Favoriten sind unabhängig von der Swipe-Präferenz. Beide Feeds paginieren getrennt mit dem oben beschriebenen Discovery-Cursor; die für Entdecken sitzungsbezogen übersprungenen Personen werden vor dem Paging ausgeschlossen.
 - Suche: Ort, Radius, Rubrik, Alter, Größe, Seitenlimit, Rust-Filterkatalog; LazyColumn und sichtbarer Hinweis für unvollständige Suche. Gespeicherte Suchen: siehe [SOURCE.md](SOURCE.md).
 - Profil: Galerie, Merkmale, Services, Zeiten, Telefon, externer WhatsApp-Aufruf, Verlauf, explizite Identitätsbestätigung. Zunächst aktuelle Quelldaten; bei einem Abruffehler stellt Rust den aktiven lokalen Snapshot inkl. Medienreferenzen wieder her. UI zeigt den Fehler an und archiviert nicht erneut aus dem Netz. Nie gespeicherte Profile zeigen den Abruffehler.
 - Einstellungen: Import, DB-Status und lokale Diagnose. Karte: [MAP.md](MAP.md).
