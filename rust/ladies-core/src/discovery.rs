@@ -100,7 +100,7 @@ pub(crate) fn list(
              WHERE sr.listing_id=l.listing_id ORDER BY sr.search_run_id DESC LIMIT 1
          )
          WHERE k.rank=1 AND (?1=0 OR u.favorite=1)
-           AND (?1=1 OR u.preference!='DISLIKE')
+           AND (?1=1 OR u.preference='NONE')
          ORDER BY CASE WHEN u.favorite=1 THEN 0 ELSE 1 END,
                   l.last_seen_at DESC,l.listing_id DESC
          LIMIT ?2"
@@ -166,6 +166,8 @@ mod tests {
         assert_eq!(list(&core, false, 100).unwrap().len(), 2);
         core.set_preference(first, Preference::Dislike).unwrap();
         assert_eq!(list(&core, false, 100).unwrap().len(), 1);
+        core.set_preference(second, Preference::Like).unwrap();
+        assert!(list(&core, false, 100).unwrap().is_empty());
         core.set_favorite(first, true).unwrap();
         let favorites = list(&core, true, 100).unwrap();
         assert_eq!(favorites.len(), 1);
