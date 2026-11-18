@@ -6,7 +6,15 @@ Keine realen Profile, Cookies, HARs oder Bilder. Der Generator verwendet ausschl
 python3 tools/m05-reference.py /tmp/m05-reference --clock 2026-11-18T12:00:00+00:00
 ```
 
-Ausgabe: SQLite-v1-Datei, `m05-synthetic.zip` für die reguläre Android-Importfunktion und `scenarios.json` mit denselben Personen/Inseraten, stabilen IDs und Testfällen. Für die Live-Watchlist-Prüfung den Zeitpunkt weglassen (aktuelle UTC-Zeit). Statische Screenshots mit fixem Zeitpunkt; bei exakt 36 h auf die Fortschreibung der Gerätezeit achten. Ein Verzeichnis muss neu sein; keine bestehende DB wird überschrieben. Für Android nur einen frischen Debug-App-Datenbestand verwenden, nicht private Daten löschen oder ersetzen. Flugmodus für Cache-/Fehlerszenarien, keine Live-Suche auf synthetischen IDs.
+Ausgabe: acht Personen, neun Anzeigen, 18 Snapshots, sechs Präferenz/Favorit-Kombinationen, SQLite-v1-Datei, `m05-synthetic.zip` für die reguläre Android-Importfunktion und `scenarios.json` mit denselben Personen/Inseraten, stabilen IDs und Testfällen. Für die Live-Watchlist-Prüfung den Zeitpunkt weglassen (aktuelle UTC-Zeit). Statische Screenshots mit fixem Zeitpunkt; bei exakt 36 h auf die Fortschreibung der Gerätezeit achten. Ein Verzeichnis muss neu sein; keine bestehende DB wird überschrieben. Für Android nur einen frischen Debug-App-Datenbestand verwenden, nicht private Daten löschen oder ersetzen. Flugmodus für Cache-/Fehlerszenarien, keine Live-Suche auf synthetischen IDs.
+
+Der bestehende CI-Job erzeugt das Archiv und ruft zusätzlich den gezielten Rust-Importtest auf:
+
+```sh
+(cd rust && M05_REFERENCE_BUNDLE=/tmp/m05-reference/m05-synthetic.zip cargo test --workspace --locked m05_reference_bundle_import -- --ignored)
+```
+
+Der Test ist bewusst opt-in (erfordert das erzeugte Archiv) und wird in CI explizit ausgeführt. Er prüft Import, Medienpfad, Präferenz, Notiz, Snapshot-Anzahl und Fremdschlüssel; noch keine Geräte-UI.
 
 ## Abnahmeverfahren
 

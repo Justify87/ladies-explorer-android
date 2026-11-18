@@ -45,6 +45,7 @@ def generate(out, now):
         (5, "NONE", True, "ACTIVE", 3, "IMAGE"),
         (6, "DISLIKE", False, "UNKNOWN", 72, "NONE"),
         (7, "NONE", False, "ACTIVE", 96, "IMAGE"),
+        (8, "LIKE", False, "UNKNOWN", 96, "NONE"),
     ]
     with sqlite3.connect(db_path) as db:
         db.executescript(schema)
@@ -59,7 +60,7 @@ def generate(out, now):
                        (pref, int(fav), "Synthetische Personennotiz" if pid == 1 else None, change, pid))
             db.execute("INSERT INTO source_profiles(source_profile_id,person_id,external_profile_id) VALUES(?,?,?)",
                        (pid, pid, f"fixture-person-{pid}"))
-            for lid in ([101, 108] if pid == 1 else [100 + pid]):
+            for lid in ([101, 108] if pid == 1 else [109] if pid == 8 else [100 + pid]):
                 advert = f"fixture-{lid}"
                 url = f"https://example.invalid/{advert}"
                 db.execute("INSERT INTO listings(listing_id,person_id,source_profile_id,external_listing_id,current_url,current_status,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?)",
@@ -71,8 +72,8 @@ def generate(out, now):
                     db.execute("INSERT INTO listing_snapshots(snapshot_id,listing_id,fingerprint,name,city,description,traits_json,services_json,opening_times_json,captured_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
                                (snap, lid, f"fixture-{snap}", name, "Leipzig", desc, traits, "{}", "{}", captured))
                 db.execute("UPDATE listings SET current_snapshot_id=? WHERE listing_id=?", (sid, lid))
-                db.execute("INSERT INTO change_events(person_id,listing_id,from_snapshot_id,to_snapshot_id,event_type,field_key,created_at) VALUES(?,?,?,?,?,?,?)",
-                           (pid, lid, old, sid, "FIELD_CHANGED", "description", change))
+                db.execute("INSERT INTO change_events(person_id,listing_id,from_snapshot_id,to_snapshot_id,event_type,field_key,old_json,new_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                           (pid, lid, old, sid, "FIELD_CHANGED", "description", json.dumps("Synthetischer früherer Text"), json.dumps("Synthetischer aktueller Text"), change))
                 thumbnail = None
                 if media != "NONE":
                     data = png((140 + pid * 10, 80 + pid * 12, 145))
@@ -92,7 +93,7 @@ def generate(out, now):
                                      image_asset=rel if thumbnail else None, ai_marker=pid == 5))
         filters = dict(city="Leipzig", radius=20, category="", ageMin=18, ageMax=60,
                        heightMin=140, heightMax=200, selected={})
-        for run, cards in [(1, []), (2, profiles[:1]), (3, profiles[:-1])]:
+        for run, cards in [(1, []), (2, profiles[:1]), (3, profiles[:-2])]:
             db.execute("INSERT INTO search_runs(search_run_id,city,radius_km,advert_count,distance_searched,filters_json) VALUES(?,?,?,?,?,?)",
                        (run, "Leipzig", 20, len(cards), 20, json.dumps(filters)))
             for pos, card in enumerate(cards):
@@ -106,10 +107,12 @@ def generate(out, now):
                        ("fixture-supported", card["advert_id"], json.dumps(card), pos))
         assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
         assert not db.execute("PRAGMA foreign_key_check").fetchall()
-        assert db.execute("SELECT COUNT(*) FROM persons").fetchone() == (7,)
-        assert db.execute("SELECT COUNT(*) FROM listings").fetchone() == (8,)
+        assert db.execute("SELECT COUNT(*) FROM persons").fetchone() == (8,)
+        assert db.execute("SELECT COUNT(*) FROM listings").fetchone() == (9,)
         assert db.execute("SELECT COUNT(*) FROM search_results WHERE search_run_id=3").fetchone() == (7,)
-        assert db.execute("SELECT COUNT(*) FROM listing_snapshots").fetchone() == (16,)
+        assert db.execute("SELECT COUNT(*) FROM listing_snapshots").fetchone() == (18,)
+        assert db.execute("SELECT COUNT(*) FROM (SELECT DISTINCT preference,favorite FROM person_user_state)").fetchone() == (6,)
+    db.close()
     bundle = out / "m05-synthetic.zip"
     with ZipFile(bundle, "w", ZIP_DEFLATED) as z:
         z.writestr("manifest.txt", "ladies-explorer-legacy-v1\n")
@@ -137,7 +140,7 @@ def generate(out, now):
         }
     }
     (out / "scenarios.json").write_text(json.dumps(scenarios, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"Generated {bundle} and scenarios.json: 7 persons, 8 listings, 16 snapshots, 3 search runs")
+    print(f"Generated {bundle} and scenarios.json: 8 persons, 9 listings, 18 snapshots, 3 search runs")
 
 
 if __name__ == "__main__":
