@@ -66,10 +66,26 @@ fun SearchSmokeScreen(viewModel: MainViewModel) {
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+            val expectedCount = response.serverCount
             if (response.partial) {
+                val reason = when {
+                    expectedCount != null && expectedCount != response.profiles.size.toUInt() ->
+                        "Unvollständige Suche: ${response.profiles.size} Anzeigen gespeichert, " +
+                            "die Website meldet $expectedCount."
+                    !response.radiusVerified ->
+                        "Der Suchradius konnte nicht vollständig bestätigt werden."
+                    response.radiusBoundaryStopped ->
+                        "Radiusgrenze erreicht, aber die Vollständigkeit ist nicht bestätigt."
+                    response.fetchedPages < response.totalPages ->
+                        "Unvollständige Suche: Nicht alle Ergebnisseiten wurden abgerufen."
+                    else -> "Die Vollständigkeit der Suche konnte nicht bestätigt werden."
+                }
+                Text(reason, color = MaterialTheme.colorScheme.error)
+            }
+            if (response.radiusBoundaryStopped) {
                 Text(
-                    "Unvollständige Suche: Seitenlimit, vorzeitiges Seitenende oder Radiusabweichung.",
-                    color = MaterialTheme.colorScheme.error,
+                    "Weitere Ergebnisse würden den gewählten Umkreis erweitern und wurden nicht übernommen.",
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
             for (card in response.profiles.take(30)) {
