@@ -82,3 +82,9 @@ internal fun SearchUiState.applyDraftChange(next: SearchUiState): SearchUiState 
     next.copy(response = response, activeCards = activeCards, error = null,
         showingSavedSearchId = null, savedResultCards = emptyList(),
         savedResultCursor = null, savedResultsLoadingMore = false)
+
+/** Own the first page before awaiting I/O so the previous cursor cannot be reused. */
+internal fun SearchUiState.beginSavedResults(id: String): SearchUiState = copy(
+    showingSavedSearchId = id, savedResultCards = emptyList(), savedResultCursor = null,
+    savedResultsLoadingMore = true, error = null,
+)
