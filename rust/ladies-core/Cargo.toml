@@ -24,5 +24,6 @@ zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 sha2 = "0.10.9"
 tempfile = "3"
 tracing = "=0.1.44"
+time = { version = "=0.3.55", features = ["formatting"] }
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "std"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
