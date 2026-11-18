@@ -213,7 +213,7 @@ pub(crate) fn load_profile(
 
 #[cfg(test)]
 impl SearchRequest {
-    fn for_test() -> Self {
+    pub(crate) fn for_test() -> Self {
         Self {
             city: "Leipzig".into(),
             radius_km: 20,
