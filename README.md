@@ -4,8 +4,8 @@ A native, on-device Android application scaffold with **Kotlin**, **Jetpack Comp
 Material 3 Expressive**, **Rust**, **UniFFI** and **SQLite**.
 
 This is a staged native migration, not yet a complete Ladies Explorer replacement.
-The Android app can import a legacy SQLite/media bundle locally, but discovery, scraping,
-swiping and maps are not implemented yet. No personal records are stored in this repository.
+The Android app imports legacy SQLite/media bundles locally and provides a native Rust
+search/profile extraction engine. Full swipe discovery and maps are not implemented yet. No personal records are stored in this repository.
 
 ## Architecture
 
@@ -68,9 +68,27 @@ See [docs/DATA-IMPORT.md](docs/DATA-IMPORT.md) for prerequisites, exact
 inclusion/exclusion rules, integrity checks and caveats. The generated ZIP
 contains personal records; never commit or upload it to GitHub.
 
+## Live source search and profile parsing
+
+M03 adds a typed Rust/UniFFI search API: configured location, source filter
+mapping, radius-aware pagination, deduplicated results, SQLite search runs and
+profile snapshot extraction. The Compose Search tab has a minimal smoke-test UI.
+Source HTML may change and must be verified on-device with real pages.
+
+See [docs/SOURCE-M03.md](docs/SOURCE-M03.md) for behavior, compatibility
+choices, offline tests and what is explicitly deferred to M04/M05.
+
+## Debug log export
+
+The native source service records bounded local diagnostics, including request
+metadata, parser failures, Rust/SQLite outcomes and a limited HTML excerpt when
+parsing fails. Under Settings, choose **Debug-Log als Datei speichern** or
+**Debug-Log teilen** to export the TXT file through Android's system UI.
+See [docs/DEBUG-LOG.md](docs/DEBUG-LOG.md) for details and privacy notes.
+
 ## What comes next
 
-Search and profile extraction, media browsing, person
+Media archiving, complete profile UI, person
 identity/history, swipe discovery and MapLibre will be implemented separately.
 WhatsApp is an external-open button only; integrated messaging and AI price
 extraction are explicitly excluded.

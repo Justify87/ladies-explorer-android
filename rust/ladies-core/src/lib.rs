@@ -1,8 +1,10 @@
 //! App-private Rust persistence and the typed UniFFI boundary.
 //! A person is distinct from its source profiles and individual listings.
 
+mod diagnostics;
 mod legacy_import;
 mod schema;
+mod source;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -29,6 +31,10 @@ pub enum CoreError {
     UnsupportedSchema(u32),
     #[error("Legacy import failed: {0}")]
     Import(String),
+    #[error("Ladies source request or parsing failed: {0}")]
+    Source(String),
+    #[error("No LADIES listing with id {0}")]
+    ListingNotFound(i64),
     #[error("Incompatible local database schema: {0}")]
     SchemaMismatch(String),
 }
@@ -74,6 +80,13 @@ impl Preference {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+pub struct DiagnosticStatus {
+    pub available: bool,
+    pub size_bytes: u64,
+    pub last_write_error: Option<String>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct CoreStatus {
     pub api_version: u32,
     pub schema_version: u32,
@@ -116,9 +129,13 @@ pub struct ImportReport {
     pub media_files: u32,
 }
 
+pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
+
 #[derive(uniffi::Object)]
 pub struct LadiesCore {
     db: Mutex<Connection>,
+    diagnostics: Arc<diagnostics::Diagnostics>,
+    source_session: source::SourceSession,
 }
 
 #[uniffi::export]
@@ -130,11 +147,19 @@ impl LadiesCore {
                 "Database path must not be empty".into(),
             ));
         }
+        let diagnostics = Arc::new(diagnostics::Diagnostics::new(&database_path));
+        diagnostics.event("CORE", "Opening SQLite");
         let mut db = Connection::open(database_path)?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
-        Ok(Arc::new(Self { db: Mutex::new(db) }))
+        diagnostics.event("CORE", "SQLite schema ready");
+        let source_session = source::SourceSession::new(Arc::clone(&diagnostics))?;
+        Ok(Arc::new(Self {
+            db: Mutex::new(db),
+            diagnostics,
+            source_session,
+        }))
     }
 
     pub fn import_legacy_bundle(
@@ -142,7 +167,58 @@ impl LadiesCore {
         bundle_path: String,
         app_files_directory: String,
     ) -> Result<ImportReport, CoreError> {
-        legacy_import::import_bundle(self, &bundle_path, &app_files_directory)
+        self.diagnostics
+            .event("IMPORT", "Legacy data import requested");
+        let result = legacy_import::import_bundle(self, &bundle_path, &app_files_directory);
+        match &result {
+            Ok(report) => self.diagnostics.event(
+                "IMPORT",
+                format!(
+                    "Import completed: persons={} listings={} media={}",
+                    report.persons, report.listings, report.media_files
+                ),
+            ),
+            Err(error) => self
+                .diagnostics
+                .event("IMPORT", format!("Import failed: {error}")),
+        }
+        result
+    }
+
+    pub fn record_debug_event(&self, component: String, message: String) {
+        self.diagnostics.event(&component, message);
+    }
+
+    pub fn diagnostic_status(&self) -> Result<DiagnosticStatus, CoreError> {
+        let (available, size_bytes, last_write_error) = self
+            .diagnostics
+            .status()
+            .map_err(|error| CoreError::Storage(error.to_string()))?;
+        Ok(DiagnosticStatus {
+            available,
+            size_bytes,
+            last_write_error,
+        })
+    }
+
+    pub fn export_diagnostic_snapshot(
+        &self,
+        export_directory: String,
+    ) -> Result<String, CoreError> {
+        let directory = std::path::Path::new(&export_directory);
+        let path = self
+            .diagnostics
+            .snapshot(directory)
+            .map_err(|error| CoreError::Storage(format!("Diagnostic export failed: {error}")))?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub fn search_source(&self, query: SearchRequest) -> Result<SearchResponse, CoreError> {
+        source::search(self, query)
+    }
+
+    pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
+        source::load_profile(self, listing_id)
     }
 
     pub fn status(&self) -> Result<CoreStatus, CoreError> {
