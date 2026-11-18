@@ -968,16 +968,17 @@ mod tests {
     }
 
     #[test]
-    fn rejected_redirect_logs_actual_response_body() {
+    fn rejected_redirect_does_not_leak_response_html_to_debug_log() {
         let directory = tempfile::tempdir().unwrap();
         let log = Diagnostics::new(directory.path().join("ladies.sqlite").to_str().unwrap());
+        log.set_debug(true);
         let html = "<html><body>Alter prüfen – Weiterleitung</body></html>";
         let result = check_redirect(&log, "/leipzig/sex-anzeigen", "/jugendschutz", 200, html);
         assert!(matches!(result, Err(CoreError::Source(_))));
         let saved =
             std::fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
-        assert!(saved.contains("BEGIN unexpected_redirect"));
-        assert!(saved.contains(html));
+        assert!(saved.contains("body discarded stage=unexpected_redirect"));
+        assert!(!saved.contains(html));
         assert!(
             check_redirect(
                 &log,
