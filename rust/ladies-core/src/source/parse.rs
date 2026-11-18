@@ -314,12 +314,18 @@ fn revision_token(url: &str) -> Option<String> {
 
 fn media_url(raw: &str) -> Option<Url> {
     let base = Url::parse("https://www.ladies.de/").ok()?;
-    let url = base.join(
-        raw.trim()
-            .trim_matches(['"', '\''])
-            .trim_end_matches([')', ',', ';']),
-    ).ok()?;
-    let kind = if video_variant(&url).is_some() { "VIDEO" } else { "IMAGE" };
+    let url = base
+        .join(
+            raw.trim()
+                .trim_matches(['"', '\''])
+                .trim_end_matches([')', ',', ';']),
+        )
+        .ok()?;
+    let kind = if video_variant(&url).is_some() {
+        "VIDEO"
+    } else {
+        "IMAGE"
+    };
     crate::media::validate_media_url(url.as_str(), kind).ok()
 }
 
