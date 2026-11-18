@@ -231,7 +231,9 @@ impl HttpRecorder {
     }
 
     pub(crate) fn mode_epoch(&self) -> (CaptureMode, u64) {
-        self.state.lock().map(|state| (state.mode, state.epoch))
+        self.state
+            .lock()
+            .map(|state| (state.mode, state.epoch))
             .unwrap_or((CaptureMode::Off, 0))
     }
 
@@ -274,8 +276,10 @@ impl HttpRecorder {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
-        if state.mode == CaptureMode::Off || state.stopped
-            || epoch.is_some_and(|expected| state.epoch != expected) {
+        if state.mode == CaptureMode::Off
+            || state.stopped
+            || epoch.is_some_and(|expected| state.epoch != expected)
+        {
             return;
         };
         let Some(path) = self.path.as_ref() else {
