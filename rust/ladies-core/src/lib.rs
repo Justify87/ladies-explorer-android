@@ -245,6 +245,13 @@ impl LadiesCore {
         source::load_profile(self, listing_id)
     }
 
+    pub fn cached_source_profile(
+        &self,
+        listing_id: i64,
+    ) -> Result<Option<ProfileResponse>, CoreError> {
+        discovery::cached_profile(self, listing_id)
+    }
+
     pub fn archive_profile_media(
         &self,
         snapshot_id: i64,
