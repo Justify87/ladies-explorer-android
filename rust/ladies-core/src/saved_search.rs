@@ -289,19 +289,16 @@ pub(crate) fn results(
     )?;
     let cursor_position = cursor.as_ref().map(|c| c.position);
     let cursor_key = cursor.as_ref().map(|c| c.result_key.as_str());
-    let rows = query.query_map(
-        params![id, cursor_position, cursor_key, limit + 1],
-        |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, Option<i64>>(4)?,
-                row.get::<_, Option<i64>>(5)?,
-            ))
-        },
-    )?;
+    let rows = query.query_map(params![id, cursor_position, cursor_key, limit + 1], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, Option<i64>>(4)?,
+            row.get::<_, Option<i64>>(5)?,
+        ))
+    })?;
     let mut records = rows
         .map(|row| {
             let (position, result_key, snapshot, first_seen_at, listing_id, person_id) = row?;

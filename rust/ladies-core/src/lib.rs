@@ -143,7 +143,9 @@ pub use history::ChangeRecord;
 pub use identity::IdentityCandidate;
 pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
-pub use saved_search::{SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage};
+pub use saved_search::{
+    SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage,
+};
 pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 
