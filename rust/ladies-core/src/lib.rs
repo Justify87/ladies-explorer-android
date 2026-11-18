@@ -136,7 +136,7 @@ pub struct ImportReport {
 
 pub use history::ChangeRecord;
 pub use identity::IdentityCandidate;
-pub use media::MediaArchiveReport;
+pub use media::{MediaArchiveControl, MediaArchiveReport};
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 
 #[derive(uniffi::Object)]
@@ -243,8 +243,9 @@ impl LadiesCore {
         &self,
         snapshot_id: i64,
         include_videos: bool,
+        control: Arc<MediaArchiveControl>,
     ) -> Result<MediaArchiveReport, CoreError> {
-        media::archive(self, snapshot_id, include_videos)
+        media::archive(self, snapshot_id, include_videos, &control)
     }
 
     pub fn list_identity_candidates(

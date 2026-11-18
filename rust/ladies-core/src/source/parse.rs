@@ -313,22 +313,7 @@ fn revision_token(url: &str) -> Option<String> {
 }
 
 fn media_url(raw: &str) -> Option<Url> {
-    let base = Url::parse("https://www.ladies.de/").ok()?;
-    let url = base
-        .join(
-            raw.trim()
-                .trim_matches(['"', '\''])
-                .trim_end_matches([')', ',', ';']),
-        )
-        .ok()?;
-    if url.scheme() != "https" || url.username() != "" || url.password().is_some() {
-        return None;
-    }
-    let host = url.host_str()?;
-    let source_host = matches!(host, "www.ladies.de" | "m.ladies.de");
-    let image_cdn = host.starts_with("bilder") && host.ends_with(".ladies-cdn.de");
-    let video_cdn = host.starts_with("video") && host.ends_with(".ladies-cdn.de");
-    (source_host || image_cdn || video_cdn).then_some(url)
+    crate::media::validate_media_url(raw, None).ok()
 }
 
 fn image_number(url: &Url) -> Option<(u32, String)> {
