@@ -116,7 +116,7 @@ Legacy bleibt bei `9c514af6ce3659089807fefd4ed5040599975a5a`, native Referenz be
 
 ## M05.2 – Umsetzungsabgleich (PR #15)
 
-Die Ausgangsmatrix oben bleibt historische Referenz. Aktueller Codebeleg bis `31784150`, technische Abnahme des abschließenden PR-Heads noch REVIEW; native Sicht-/Geräteprüfung DEVICE_PENDING.
+Die Ausgangsmatrix oben bleibt historische Referenz. Aktueller Codebeleg bis `31784150`, technische Abnahme des abschließenden PR-Heads erfolgreich (CI 44396660869, PR #15 gemergt); native Sicht-/Geräteprüfung DEVICE_PENDING.
 
 | IDs | Implementierungsbeleg | Verbleibende Grenze |
 | --- | --- | --- |
@@ -127,3 +127,14 @@ Die Ausgangsmatrix oben bleibt historische Referenz. Aktueller Codebeleg bis `31
 | P12/P13 | saved_search.rs: LocalVisibility::allows, validate_local, Versions-/Importtests; discovery.rs: aktive Projektion | Studio/FaceApp/Business mangels nativer Evidenz nicht ausführbar; Replay M05.4. |
 | P39 (Bestandsregression) | SearchState.kt: beginSavedResults, MainViewModel.kt: showSavedResults/loadMoreSavedResults, SearchRunStateTest | Neuer Listenwechsel besitzt eigenen Cursor vor I/O; eigenständiges Grid/Delta-UI unverändert M05.8. |
 
+
+## M05.3 – Umsetzungsabgleich
+
+| IDs | Native Implementierungsbelege | Grenze |
+| --- | --- | --- |
+| P15/P16 | ProfileComponents.kt: ProfileMediaHero/ProfileImage; alte Galerie in ProfileDetailScreen entfernt | Responsive Hero, Story/Zähler, Vor/Zurück, lokales Modell vor Remote, Video extern; Gerätebeleg offen; voller Swipe in T4. |
+| P17 | source/mod.rs: profile_identity; MainViewModel.kt: kanonische Person; ProfileIdentityHeader | Neu 36h, bekannt bei mehreren Anzeigen, gespeicherter Status, Video, Alter aus explizitem Trait; kein unbelegtes Heute-online. |
+| P18 | ProfileActionRail, ProfileMediaHero Mehr-Menü; MainViewModel Präferenz/Favorit/Identitätsguard | Externe Intents, keine Anfragen/Chat-Infrastruktur; Gerätestart der Intents offen. |
+| P19 | ProfileDetailScreen.kt: profileContent; DiscoveryScreen.kt nutzt ProfileImage/ProfileIdentityHeader | Standalone vollständig integriert; Swipe-Vollprofil T4, Tabs T6. |
+
+Full-CI und G3 technische Abnahme offen; DEVICE_PENDING.
