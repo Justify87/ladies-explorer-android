@@ -137,4 +137,4 @@ Die Ausgangsmatrix oben bleibt historische Referenz. Aktueller Codebeleg bis `31
 | P18 | ProfileActionRail, ProfileMediaHero Mehr-Menü; MainViewModel Präferenz/Favorit/Identitätsguard | Externe Intents, keine Anfragen/Chat-Infrastruktur; Gerätestart der Intents offen. |
 | P19 | ProfileDetailScreen.kt: profileContent; DiscoveryScreen.kt nutzt ProfileImage/ProfileIdentityHeader | Standalone vollständig integriert; Swipe-Vollprofil T4, Tabs T6. |
 
-Full-CI und G3 technische Abnahme offen; DEVICE_PENDING.
+Technische Abnahme G3 bestanden: [Full-CI #321](https://github.com/Justify87/ladies-explorer-android/actions/runs/44399925013) auf `1174eeec` (143 reguläre Rust-Tests, gezielter Importtest, Rustfmt, Clippy, JVM-Tests, Lint, APK/Upload). Review-Korrekturen: Publikationsdatum aus aktivem Snapshot, expliziter Archivstatus, isolierte Coil-Fallback-Versuche, invalidierte Feed-Generationen bei Identitätsmutation. P15–P19 technisch umgesetzt; manuelle native Layout-, Gesten-, Offline- und Intent-Abnahme DEVICE_PENDING. PR #16 noch nicht integriert; T4/T6 bewusst nicht vorgezogen.
