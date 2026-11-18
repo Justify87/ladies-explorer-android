@@ -57,9 +57,9 @@ internal val ladiesDarkColors = darkColorScheme(
 )
 
 private val ladiesShapes = Shapes(
-    extraSmall = RoundedCornerShape(7.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(18.dp),
+    extraSmall = RoundedCornerShape(18.dp),
+    small = RoundedCornerShape(18.dp),
+    medium = RoundedCornerShape(22.dp),
     large = RoundedCornerShape(22.dp),
     extraLarge = RoundedCornerShape(24.dp),
 )

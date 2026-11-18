@@ -79,6 +79,7 @@ data class SearchUiState(
     val saving: Boolean = false,
     val response: SearchResponse? = null,
     val profileOpen: Boolean = false,
+    val profileSessionId: Long = 0L,
     val profile: ProfileResponse? = null,
     val selectedPersonId: Long? = null,
     val selectedPerson: PersonSummary? = null,
@@ -153,6 +154,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateProfileRequest()
         _searchUiState.update {
             it.copy(profileOpen = false, profile = null, selectedPersonId = null,
+                savedResultsLoadingMore = false,
                 selectedPerson = null, profileMedia = emptyList(), loading = false,
                 archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
                 actionBusy = false, actionError = null, error = null)
@@ -703,7 +705,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateProfileRequest()
         val requestId = profileRequestId
         _searchUiState.update {
-            it.copy(profileOpen=true,selectedPersonId=personId,selectedPerson=null,
+            it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
+                savedResultsLoadingMore=false,
                 loading=true,profile=null,profileMedia=emptyList(),changeEvents=emptyList(),
                 identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false)

@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -99,13 +100,14 @@ fun LadiesApp(
 
     val savedResultsOpen = route.root == RootDestination.Search && search.showingSavedSearchId != null
     fun back() {
-        when {
-            search.profileOpen -> viewModel.closeProfile()
-            savedResultsOpen -> viewModel.closeSavedResults()
-            else -> route = route.back()
+        when (route.backAction(search.profileOpen, savedResultsOpen)) {
+            BackAction.CloseProfile -> viewModel.closeProfile()
+            BackAction.CloseSavedResults -> viewModel.closeSavedResults()
+            BackAction.Navigate -> route = route.back()
+            BackAction.System -> Unit
         }
     }
-    BackHandler(enabled = search.profileOpen || savedResultsOpen || route.canGoBack) { back() }
+    BackHandler(enabled = route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
 
     Scaffold(
         topBar = {
@@ -116,12 +118,14 @@ fun LadiesApp(
                     } else if (savedResultsOpen) {
                         Text("Gespeicherte Ergebnisse", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     } else {
-                        Column {
-                            Text("Ladies Explorer", color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(route.root.title, style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                        }
+                        Text(
+                            if (route.root == RootDestination.Discover) "Ladies Explorer" else route.root.title,
+                            color = if (route.root == RootDestination.Discover) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 },
                 navigationIcon = {
@@ -160,7 +164,7 @@ fun LadiesApp(
                                     RootDestination.Discover -> Icon(Icons.Default.FavoriteBorder, contentDescription = null)
                                     RootDestination.Search -> BadgedBox(badge = {
                                         if (search.savedSearches.any { it.unreadNewResults }) {
-                                            Badge { } // unread indicator, not a count
+                                            Badge() // unread indicator, not a count
                                         }
                                     }) { Icon(Icons.Default.Search, contentDescription =
                                         if (search.savedSearches.any { it.unreadNewResults }) "Neue gespeicherte Suchergebnisse" else null) }
@@ -177,85 +181,86 @@ fun LadiesApp(
     ) { padding ->
         val modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
         if (search.profileOpen) {
-            ProfileDetailScreen(
-                state=search,
-                onFavorite=viewModel::toggleFavorite,
-                onPreference=viewModel::choosePreference,
-                onConfirmIdentity=viewModel::confirmIdentity,
-                onCancelArchive=viewModel::cancelMediaArchive,
-                modifier=modifier,
-            )
+            key(search.profileSessionId) {
+                ProfileDetailScreen(
+                    state = search,
+                    onFavorite = viewModel::toggleFavorite,
+                    onPreference = viewModel::choosePreference,
+                    onConfirmIdentity = viewModel::confirmIdentity,
+                    onCancelArchive = viewModel::cancelMediaArchive,
+                    modifier = modifier,
+                )
+            }
         } else {
             stateHolder.SaveableStateProvider(route.stateKey) {
                 when (route.root) {
-                RootDestination.Discover -> Column(modifier = modifier) {
-                    DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
-                    if (route.discovery == DiscoverMode.Swipe) {
-                        DiscoverScreen(
-                    state=discovery,
-                    onRefresh=viewModel::refreshDiscovery,
-                    onSkip=viewModel::skipCard,
-                    onChoose=viewModel::choosePreference,
-                    onFavorite=viewModel::toggleFavorite,
-                    onProfile=viewModel::loadProfile,
-                    modifier=Modifier.weight(1f),
-                        )
-                    } else {
-                        MapScreen(
-                            state = map,
-                            onRefresh = viewModel::refreshMap,
-                            onResolve = viewModel::resolveMapLocations,
-                            onCancel = viewModel::cancelMapResolution,
-                            onFavoritesOnly = viewModel::setMapFavoritesOnly,
-                            onProfile = viewModel::loadProfile,
-                            modifier = Modifier.weight(1f),
-                        )
+                    RootDestination.Discover -> Column(modifier = modifier) {
+                        DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
+                        if (route.discovery == DiscoverMode.Swipe) {
+                            DiscoverScreen(
+                                state = discovery,
+                                onRefresh = viewModel::refreshDiscovery,
+                                onSkip = viewModel::skipCard,
+                                onChoose = viewModel::choosePreference,
+                                onFavorite = viewModel::toggleFavorite,
+                                onProfile = viewModel::loadProfile,
+                                modifier = Modifier.weight(1f),
+                            )
+                        } else {
+                            MapScreen(
+                                state = map,
+                                onRefresh = viewModel::refreshMap,
+                                onResolve = viewModel::resolveMapLocations,
+                                onCancel = viewModel::cancelMapResolution,
+                                onFavoritesOnly = viewModel::setMapFavoritesOnly,
+                                onProfile = viewModel::loadProfile,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
-                }
-                RootDestination.Search -> SearchScreen(
-                    state=search,
-                    onCity=viewModel::setSearchCity,
-                    onRadius=viewModel::setSearchRadius,
-                    onCategory=viewModel::setCategory,
-                    onAge=viewModel::setAgeRange,
-                    onHeight=viewModel::setHeightRange,
-                    onPages=viewModel::setMaxPages,
-                    onToggleFilter=viewModel::toggleFilter,
-                    onSearch={viewModel.startSearch()},
-                    onCancelSearch=viewModel::cancelActiveSearch,
-                    onSave=viewModel::saveCurrentSearch,
-                    onNewPreset=viewModel::createNewSavedSearch,
-                    onLoadSaved=viewModel::loadSavedSearch,
-                    onRunSaved={viewModel.startSearch(it)},
-                    onDeleteSaved=viewModel::deleteSavedSearch,
-                    onAcknowledge=viewModel::acknowledgeSavedSearch,
-                    onShowSavedResults=viewModel::showSavedResults,
-                    onCloseSavedResults=viewModel::closeSavedResults,
-                    onLoadMoreSavedResults=viewModel::loadMoreSavedResults,
-                    onProfile=viewModel::loadProfile,
-                    modifier=modifier,
-                )
-                RootDestination.Saved -> FavoritesScreen(
-                    state=discovery,
-                    onRefresh=viewModel::refreshDiscovery,
-                    onProfile=viewModel::loadProfile,
-                    onFavorite=viewModel::toggleFavorite,
-                    onLoadMore=viewModel::loadMoreFavorites,
-                    modifier=modifier,
-                )
-                RootDestination.Settings -> SettingsScreen(
-                    state=home,
-                    onRefresh=viewModel::refresh,
-                    onPickLegacyBundle=onPickLegacyBundle,
-                    onSaveDiagnostics=onSaveDiagnostics,
-                    onShareDiagnostics=onShareDiagnostics,
-                    onDebugLogging=viewModel::setDebugLoggingEnabled,
-                    onCaptureMode=viewModel::setHttpCaptureMode,
-                    onClearHar=viewModel::clearHttpCapture,
-                    onSaveHar=onSaveHar,
-                    onShareHar=onShareHar,
-                    modifier=modifier,
-                )
+                    RootDestination.Search -> SearchScreen(
+                        state=search,
+                        onCity=viewModel::setSearchCity,
+                        onRadius=viewModel::setSearchRadius,
+                        onCategory=viewModel::setCategory,
+                        onAge=viewModel::setAgeRange,
+                        onHeight=viewModel::setHeightRange,
+                        onPages=viewModel::setMaxPages,
+                        onToggleFilter=viewModel::toggleFilter,
+                        onSearch={viewModel.startSearch()},
+                        onCancelSearch=viewModel::cancelActiveSearch,
+                        onSave=viewModel::saveCurrentSearch,
+                        onNewPreset=viewModel::createNewSavedSearch,
+                        onLoadSaved=viewModel::loadSavedSearch,
+                        onRunSaved={viewModel.startSearch(it)},
+                        onDeleteSaved=viewModel::deleteSavedSearch,
+                        onAcknowledge=viewModel::acknowledgeSavedSearch,
+                        onShowSavedResults=viewModel::showSavedResults,
+                        onLoadMoreSavedResults=viewModel::loadMoreSavedResults,
+                        onProfile=viewModel::loadProfile,
+                        modifier=modifier,
+                    )
+                    RootDestination.Saved -> FavoritesScreen(
+                        state=discovery,
+                        onRefresh=viewModel::refreshDiscovery,
+                        onProfile=viewModel::loadProfile,
+                        onFavorite=viewModel::toggleFavorite,
+                        onLoadMore=viewModel::loadMoreFavorites,
+                        modifier=modifier,
+                    )
+                    RootDestination.Settings -> SettingsScreen(
+                        state=home,
+                        onRefresh=viewModel::refresh,
+                        onPickLegacyBundle=onPickLegacyBundle,
+                        onSaveDiagnostics=onSaveDiagnostics,
+                        onShareDiagnostics=onShareDiagnostics,
+                        onDebugLogging=viewModel::setDebugLoggingEnabled,
+                        onCaptureMode=viewModel::setHttpCaptureMode,
+                        onClearHar=viewModel::clearHttpCapture,
+                        onSaveHar=onSaveHar,
+                        onShareHar=onShareHar,
+                        modifier=modifier,
+                    )
                 }
             }
         }

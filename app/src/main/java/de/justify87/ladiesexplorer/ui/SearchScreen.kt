@@ -84,7 +84,6 @@ fun SearchScreen(
     onDeleteSaved: (String) -> Unit,
     onAcknowledge: (String) -> Unit,
     onShowSavedResults: (String) -> Unit,
-    onCloseSavedResults: () -> Unit,
     onLoadMoreSavedResults: () -> Unit,
     onProfile: (Long,Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -132,11 +131,10 @@ fun SearchScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item {
+        if (state.showingSavedSearchId == null) item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Filter", style = MaterialTheme.typography.titleMedium)
-                }
+                Text(if (resultsVisible && state.response != null) "Ergebnisse" else "Filter",
+                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 if (state.response != null) {
                     TextButton(onClick = { resultsVisible = !resultsVisible }) {
                         Text(if (resultsVisible) "Filter ändern" else "Ergebnisse")
@@ -156,9 +154,7 @@ fun SearchScreen(
         if (state.showingSavedSearchId != null) {
             item {
                 Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Text("Gespeicherte Ergebnisse",style=MaterialTheme.typography.titleLarge)
                     Text("${state.savedResultCards.size} bekannte Treffer",style=MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick=onCloseSavedResults) { Text("Zurück zur Suche") }
                 }
             }
             if (state.savedResultCards.isEmpty()) {

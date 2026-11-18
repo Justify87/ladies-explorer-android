@@ -27,6 +27,14 @@ class ShellRouteTest {
         assertEquals(swipe, swipe.back())
     }
 
+    @Test fun backClosesOverlaysBeforeChangingRoot() {
+        val search = ShellRoute().select(RootDestination.Search)
+        assertEquals(BackAction.CloseProfile, search.backAction(true, true))
+        assertEquals(BackAction.CloseSavedResults, search.backAction(false, true))
+        assertEquals(BackAction.Navigate, search.backAction(false, false))
+        assertEquals(BackAction.System, ShellRoute().backAction(false, false))
+    }
+
     @Test fun unknownSavedRouteHasSafeDefault() {
         assertEquals(ShellRoute(), ShellRoute.decode(listOf("old", "missing")))
         assertEquals(ShellRoute(), ShellRoute.decode(emptyList()))

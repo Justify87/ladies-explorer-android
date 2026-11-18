@@ -89,7 +89,7 @@ fun MapScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text("Lokaler Datenbestand", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text("Lokaler Bestand", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Text("Nur Favoriten", style = MaterialTheme.typography.labelMedium)
             Switch(checked = state.favoritesOnly, onCheckedChange = onFavoritesOnly)
         }

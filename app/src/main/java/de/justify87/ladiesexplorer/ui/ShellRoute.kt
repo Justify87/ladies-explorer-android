@@ -13,6 +13,8 @@ internal enum class DiscoverMode(val title: String) {
     Map("Karte"),
 }
 
+internal enum class BackAction { CloseProfile, CloseSavedResults, Navigate, System }
+
 internal data class ShellRoute(
     val root: RootDestination = RootDestination.Discover,
     val discovery: DiscoverMode = DiscoverMode.Swipe,
@@ -27,6 +29,13 @@ internal data class ShellRoute(
         root != RootDestination.Discover -> copy(root = RootDestination.Discover)
         discovery != DiscoverMode.Swipe -> copy(discovery = DiscoverMode.Swipe)
         else -> this
+    }
+
+    fun backAction(profileOpen: Boolean, savedResultsOpen: Boolean) = when {
+        profileOpen -> BackAction.CloseProfile
+        savedResultsOpen -> BackAction.CloseSavedResults
+        canGoBack -> BackAction.Navigate
+        else -> BackAction.System
     }
 
     fun encode() = arrayListOf(root.name, discovery.name)
