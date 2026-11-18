@@ -419,5 +419,4 @@ mod profile_identity_tests {
         }
         assert!(!profile_identity(&core, listing).unwrap().listing_new);
     }
-
 }
