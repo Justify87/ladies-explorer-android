@@ -4,6 +4,7 @@
 mod diagnostics;
 mod discovery;
 mod history;
+mod http_capture;
 mod identity;
 mod legacy_import;
 mod media;
@@ -140,6 +141,7 @@ pub struct ImportReport {
 
 pub use discovery::{DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem};
 pub use history::ChangeRecord;
+pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
 pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
@@ -153,6 +155,7 @@ pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, Sea
 pub struct LadiesCore {
     db: Mutex<Connection>,
     diagnostics: Arc<diagnostics::Diagnostics>,
+    recorder: Arc<http_capture::HttpRecorder>,
     source_session: source::SourceSession,
     media_root: Option<std::path::PathBuf>,
 }
@@ -175,16 +178,18 @@ impl LadiesCore {
                 .map(|parent| parent.join("ladies_data"))
         };
         let diagnostics = Arc::new(diagnostics::Diagnostics::new(&database_path));
+        let recorder = Arc::new(http_capture::HttpRecorder::new(&database_path));
         diagnostics.event("CORE", "Opening SQLite");
         let mut db = Connection::open(database_path)?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
         diagnostics.event("CORE", "SQLite schema ready");
-        let source_session = source::SourceSession::new(Arc::clone(&diagnostics))?;
+        let source_session = source::SourceSession::new(Arc::clone(&diagnostics), Arc::clone(&recorder))?;
         Ok(Arc::new(Self {
             db: Mutex::new(db),
             diagnostics,
+            recorder,
             source_session,
             media_root,
         }))
@@ -257,6 +262,30 @@ impl LadiesCore {
             .snapshot(directory)
             .map_err(|error| CoreError::Storage(format!("Diagnostic export failed: {error}")))?;
         Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub fn set_http_capture_mode(&self, mode: CaptureMode) -> CaptureStatus {
+        self.recorder.set_mode(mode);
+        self.recorder.status()
+    }
+
+    pub fn http_capture_status(&self) -> CaptureStatus {
+        self.recorder.status()
+    }
+
+    pub fn record_image_http(&self, mut event: HttpObservation) {
+        event.is_media = true;
+        self.recorder.record(event);
+    }
+
+    pub fn clear_http_capture(&self) -> Result<(), CoreError> {
+        self.recorder.clear().map_err(|e| CoreError::Storage(e.to_string()))
+    }
+
+    pub fn export_http_har(&self, directory: String) -> Result<String, CoreError> {
+        self.recorder.export(std::path::Path::new(&directory))
+            .map(|p| p.to_string_lossy().into_owned())
+            .map_err(|e| CoreError::Storage(format!("HAR export failed: {e}")))
     }
 
     pub fn search_source(
