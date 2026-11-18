@@ -96,7 +96,10 @@ impl Fetcher for HttpFetcher {
             return Err(CoreError::Media("Media archive cancelled".into()));
         }
         let started = Instant::now();
-        let request = self.client.get(url).timeout(timeout)
+        let request = self
+            .client
+            .get(url)
+            .timeout(timeout)
             .header("Referer", "https://www.ladies.de/")
             .build()
             .map_err(|error| CoreError::Media(format!("Media request failed: {error}")))?;
