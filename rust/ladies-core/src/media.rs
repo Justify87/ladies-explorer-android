@@ -603,7 +603,9 @@ fn display_image_with(
         .as_deref()
         .is_some_and(|value| !value.starts_with("image/") && value != "application/octet-stream")
     {
-        return Err(CoreError::Media("Unexpected display image content type".into()));
+        return Err(CoreError::Media(
+            "Unexpected display image content type".into(),
+        ));
     }
     Ok(DisplayImage {
         bytes: response.bytes,
@@ -648,11 +650,13 @@ mod tests {
         let control = RequestControl::new();
         assert!(display_image_with("https://example.org/a.jpg", &NeverFetch, &control).is_err());
         assert!(
-            display_image_with("https://video1.ladies-cdn.de/a.mp4", &NeverFetch, &control).is_err()
+            display_image_with("https://video1.ladies-cdn.de/a.mp4", &NeverFetch, &control)
+                .is_err()
         );
         control.cancel();
         assert!(
-            display_image_with("https://bilder1.ladies-cdn.de/a.jpg", &NeverFetch, &control).is_err()
+            display_image_with("https://bilder1.ladies-cdn.de/a.jpg", &NeverFetch, &control)
+                .is_err()
         );
     }
 
@@ -660,12 +664,9 @@ mod tests {
     fn display_image_reuses_transport_and_rejects_non_image() {
         let control = RequestControl::new();
         let url = "https://bilder1.ladies-cdn.de/a.jpg";
-        let image = display_image_with(
-            url,
-            &FixtureFetcher(vec![0xff, 0xd8, 0xff, 0xe0]),
-            &control,
-        )
-        .unwrap();
+        let image =
+            display_image_with(url, &FixtureFetcher(vec![0xff, 0xd8, 0xff, 0xe0]), &control)
+                .unwrap();
         assert_eq!(image.mime, "image/jpeg");
         assert_eq!(image.bytes, vec![0xff, 0xd8, 0xff, 0xe0]);
         assert!(display_image_with(url, &FixtureFetcher(b"<html>".to_vec()), &control).is_err());
