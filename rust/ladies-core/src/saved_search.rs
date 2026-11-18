@@ -36,7 +36,7 @@ pub(crate) fn save(
     name: String,
     request: SearchRequest,
 ) -> Result<String, CoreError> {
-    source::filter::validate_request(&request)?;
+    let request = source::filter::canonicalize_request(request)?;
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {
         return Err(CoreError::InvalidInput(
@@ -67,7 +67,7 @@ pub(crate) fn update(
     name: String,
     request: SearchRequest,
 ) -> Result<(), CoreError> {
-    source::filter::validate_request(&request)?;
+    let request = source::filter::canonicalize_request(request)?;
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {
         return Err(CoreError::InvalidInput(
@@ -120,15 +120,14 @@ pub(crate) fn update(
 }
 
 fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreError> {
-    if let Ok(parsed) = serde_json::from_str::<SavedSearchDefinition>(definition) {
-        source::filter::validate_request(&parsed.query)?;
+    if let Ok(mut parsed) = serde_json::from_str::<SavedSearchDefinition>(definition) {
+        parsed.query = source::filter::canonicalize_request(parsed.query)?;
         validate_local(&parsed.local)?;
         return Ok(parsed);
     }
     if let Ok(request) = serde_json::from_str::<SearchRequest>(definition) {
-        source::filter::validate_request(&request)?;
         return Ok(SavedSearchDefinition {
-            query: request,
+            query: source::filter::canonicalize_request(request)?,
             local: LocalVisibility::default(),
         });
     }
@@ -171,9 +170,8 @@ fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreErro
             .map_or_else(|| "{}".into(), |v| v.to_string()),
         max_pages: 50,
     };
-    source::filter::validate_request(&request)?;
     Ok(SavedSearchDefinition {
-        query: request,
+        query: source::filter::canonicalize_request(request)?,
         local,
     })
 }
@@ -718,6 +716,26 @@ mod tests {
         update(&core, "legacy".into(), "Edited".into(), changed).unwrap();
         let (raw, _) = definition(&core, "legacy").unwrap();
         assert_eq!(decode_definition(&raw).unwrap().local, renamed.local);
+    }
+
+    #[test]
+    fn imported_slug_filters_are_visible_and_stable_when_saved_again() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let legacy = r#"{"city":"Leipzig","radius":20,"category":"locations","selected":{"treffpunkt":["treffen-haus"],"service":["zungenkuss"]}}"#;
+        core.connection().unwrap().execute(
+            "INSERT INTO saved_searches (saved_search_id,name,filters_json) VALUES ('aliases','Legacy',?1)",
+            [legacy],
+        ).unwrap();
+        let shown = load(&core, "aliases".into()).unwrap();
+        assert_eq!(shown.category, "bordelle-laufhaeuser");
+        let selected: serde_json::Value = serde_json::from_str(&shown.filters_json).unwrap();
+        assert_eq!(selected["treff"], serde_json::json!(["Hausbesuche"]));
+        assert_eq!(selected["service"], serde_json::json!(["ZK"]));
+        update(&core, "aliases".into(), "Renamed".into(), shown.clone()).unwrap();
+        let stored = load(&core, "aliases".into()).unwrap();
+        assert_eq!(stored.filters_json, shown.filters_json);
+        assert_eq!(stored.category, shown.category);
+        assert!(list(&core).unwrap()[0].definition_supported);
     }
 
     #[test]
