@@ -421,4 +421,99 @@ mod tests {
         assert_eq!(recorder.status().mode, CaptureMode::Off);
         assert!(recorder.export(root.path()).is_err());
     }
+    #[test]
+    fn parallel_exports_keep_valid_har_snapshots() {
+        use std::sync::Arc;
+        use std::thread;
+        let root = tempfile::tempdir().unwrap();
+        let recorder = Arc::new(HttpRecorder::new(
+            &root.path().join("ladies.sqlite").to_string_lossy(),
+        ));
+        recorder.set_mode(CaptureMode::Metadata);
+        let writer = Arc::clone(&recorder);
+        let job = thread::spawn(move || {
+            for _ in 0..200 {
+                writer.record(sample());
+            }
+        });
+        for _ in 0..10 {
+            if recorder.status().entries > 0 {
+                let har: Value = serde_json::from_slice(
+                    &fs::read(recorder.export(root.path()).unwrap()).unwrap(),
+                ).unwrap();
+                assert!(har["log"]["entries"].as_array().is_some());
+            }
+        }
+        job.join().unwrap();
+        assert_eq!(recorder.status().entries, 200);
+        assert_eq!(recorder.status().mode, CaptureMode::Metadata);
+    }
+
+    #[test]
+    fn write_failure_is_visible_and_does_not_panic() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("diagnostics"), "file not folder").unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("ladies.sqlite").to_string_lossy());
+        recorder.set_mode(CaptureMode::Text);
+        recorder.record(sample());
+        let status = recorder.status();
+        assert_eq!(status.entries, 0);
+        assert!(status.last_error.is_some());
+    }
+
+    #[test]
+    fn session_limit_stops_and_keeps_existing_export_valid() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("ladies.sqlite").to_string_lossy());
+        recorder.set_mode(CaptureMode::Text);
+        // Explicitly prefill with valid records, as a near-capacity resumed session.
+        let path = root.path().join("diagnostics/ladies-http.jsonl");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let event = serde_json::to_string(&sample()).unwrap() + "\n";
+        let mut file = File::create(&path).unwrap();
+        while file.metadata().unwrap().len() + event.len() as u64 < MAX_SESSION_BYTES - 300 {
+            file.write_all(event.as_bytes()).unwrap();
+        }
+        drop(file);
+        let resumed = HttpRecorder::new(&root.path().join("ladies.sqlite").to_string_lossy());
+        resumed.set_mode(CaptureMode::Text);
+        let existing = resumed.status().entries;
+        let mut too_large = sample();
+        too_large.body = Some("a".repeat(2000));
+        resumed.record(too_large);
+        let after = resumed.status();
+        assert!(after.bytes <= MAX_SESSION_BYTES);
+        assert!(after.entries >= existing);
+        if after.stopped {
+            assert!(after.last_error.as_deref().unwrap_or("").contains("25 MiB"));
+        }
+        let har: Value = serde_json::from_slice(&fs::read(resumed.export(root.path()).unwrap()).unwrap()).unwrap();
+        assert_eq!(har["log"]["entries"].as_array().unwrap().len(), after.entries as usize);
+    }
+
+    #[test]
+    fn redirect_and_error_are_recorded_with_no_fabricated_server_phases() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("ladies.sqlite").to_string_lossy());
+        recorder.set_mode(CaptureMode::Metadata);
+        let mut redirected = sample();
+        redirected.final_url = "https://www.ladies.de/profile".into();
+        redirected.response_headers.push(HttpHeader {
+            name: "Location".into(), value: "/profile".into()
+        });
+        recorder.record(redirected);
+        let mut error = sample();
+        error.status = None;
+        error.error = Some("timeout".into());
+        recorder.record(error);
+        let har: Value = serde_json::from_slice(&fs::read(recorder.export(root.path()).unwrap()).unwrap()).unwrap();
+        let entries = har["log"]["entries"].as_array().unwrap();
+        assert_eq!(entries[0]["_diagnostics"]["final_url"], "https://www.ladies.de/profile");
+        assert_eq!(entries[0]["response"]["redirectURL"], "/profile");
+        assert_eq!(entries[1]["response"]["status"], 0);
+        assert_eq!(entries[1]["_diagnostics"]["error"], "timeout");
+        assert_eq!(entries[1]["timings"]["dns"], -1);
+        assert_eq!(entries[1]["timings"]["connect"], -1);
+    }
+
 }
