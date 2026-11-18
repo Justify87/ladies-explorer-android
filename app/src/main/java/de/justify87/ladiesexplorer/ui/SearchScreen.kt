@@ -73,6 +73,7 @@ fun SearchScreen(
     onPages: (UInt) -> Unit,
     onToggleFilter: (String,String) -> Unit,
     onSearch: () -> Unit,
+    onCancelSearch: () -> Unit,
     onSave: (String) -> Unit,
     onNewPreset: () -> Unit,
     onLoadSaved: (String) -> Unit,
@@ -111,7 +112,12 @@ fun SearchScreen(
                 }
             }
         }
-        if (state.loading) item { CircularProgressIndicator() }
+        if (state.loading) item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator()
+                TextButton(onClick = onCancelSearch) { Text("Suche abbrechen") }
+            }
+        }
         state.error?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error) }
         }

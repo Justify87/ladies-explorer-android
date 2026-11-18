@@ -537,6 +537,7 @@ pub(crate) fn run(
             Ok(response)
         }
         Err(error) => {
+            if let Some(control) = control { control.check()?; }
             core.connection()?.execute(
                 "UPDATE saved_searches
                  SET last_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'), last_error=?2

@@ -74,13 +74,13 @@ class CoreStore(context: Context) {
         }
     }
 
-    suspend fun search(query: SearchRequest): SearchResponse = withContext(Dispatchers.IO) {
+    suspend fun search(query: SearchRequest, control: RequestControl): SearchResponse = withContext(Dispatchers.IO) {
         recorded("search city=${query.city} radius=${query.radiusKm}") {
-            engine.searchSource(query)
+            engine.searchSource(query, control)
         }
     }
 
-    suspend fun archiveProfileMedia(snapshotId: Long, control: MediaArchiveControl): MediaArchiveReport =
+    suspend fun archiveProfileMedia(snapshotId: Long, control: RequestControl): MediaArchiveReport =
         withContext(Dispatchers.IO) {
             recorded("archiveProfileMedia snapshotId=$snapshotId") {
                 engine.archiveProfileMedia(snapshotId, false, control)
@@ -140,8 +140,8 @@ class CoreStore(context: Context) {
     suspend fun savedSearchResults(id: String): List<SavedSearchCard> =
         withContext(Dispatchers.IO) { engine.savedSearchResults(id) }
 
-    suspend fun runSavedSearch(id: String): SearchResponse =
-        withContext(Dispatchers.IO) { recorded("runSavedSearch") { engine.runSavedSearch(id) } }
+    suspend fun runSavedSearch(id: String, control: RequestControl): SearchResponse =
+        withContext(Dispatchers.IO) { recorded("runSavedSearch") { engine.runSavedSearch(id, control) } }
 
     suspend fun deleteSavedSearch(id: String) =
         withContext(Dispatchers.IO) { engine.deleteSavedSearch(id) }

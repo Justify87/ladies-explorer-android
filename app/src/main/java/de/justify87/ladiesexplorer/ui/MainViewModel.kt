@@ -83,7 +83,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _searchUiState = MutableStateFlow(SearchUiState())
     val searchUiState: StateFlow<SearchUiState> = _searchUiState
 
-    private var archiveControl: MediaArchiveControl? = null
+    private var archiveControl: RequestControl? = null
+    private var searchControl: RequestControl? = null
     private var profileRequestId = 0L
     private var discoveryEpoch = 0L
     private var searchEpoch = 0L
@@ -95,6 +96,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshSearchDefinitions()
     }
 
+    private fun invalidateActiveSearch() {
+        searchEpoch++
+        searchControl?.cancel()
+        searchControl = null
+    }
+
+    fun cancelActiveSearch() {
+        invalidateActiveSearch()
+        _searchUiState.update { it.copy(loading = false, error = null) }
+    }
+
     private fun invalidateProfileRequest() {
         profileRequestId++
         archiveControl?.cancel()
@@ -102,6 +114,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        invalidateActiveSearch()
         invalidateProfileRequest()
         super.onCleared()
     }
@@ -122,7 +135,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun invalidateSearchResults() {
-        searchEpoch++
+        invalidateActiveSearch()
         invalidateProfileRequest()
         _searchUiState.update {
             it.copy(response = null, profileOpen = false, profile = null, loading = false, error = null,
@@ -205,7 +218,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun createNewSavedSearch() {
-        searchEpoch++
+        invalidateActiveSearch()
         _searchUiState.update { it.copy(editingSavedSearchId = null) }
     }
 
@@ -232,7 +245,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadSavedSearch(id: String) {
         if (_searchUiState.value.loading) return
-        val epoch = ++searchEpoch
+        invalidateActiveSearch()
+        val epoch = searchEpoch
         viewModelScope.launch {
             try {
                 val q = core.loadSavedSearch(id)
@@ -261,7 +275,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteSavedSearch(id: String) {
-        searchEpoch++
+        invalidateActiveSearch()
         viewModelScope.launch {
             try {
                 core.deleteSavedSearch(id)
@@ -276,12 +290,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeSavedResults() {
-        searchEpoch++
+        invalidateActiveSearch()
         _searchUiState.update { it.copy(showingSavedSearchId = null, savedResultCards = emptyList()) }
     }
 
     fun showSavedResults(id: String) {
-        val epoch = ++searchEpoch
+        invalidateActiveSearch()
+        val epoch = searchEpoch
         viewModelScope.launch {
             try {
                 val results = core.savedSearchResults(id)
@@ -307,7 +322,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startSearch(savedId: String? = null) {
         if (_searchUiState.value.loading || _uiState.value.loading) return
         val input = _searchUiState.value
-        val epoch = ++searchEpoch
+        invalidateActiveSearch()
+        val epoch = searchEpoch
+        val control = RequestControl()
+        searchControl = control
         invalidateProfileRequest()
         _searchUiState.update {
             it.copy(loading = true, error = null, profile = null, profileOpen = false,
@@ -315,7 +333,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             try {
-                val result = if (savedId == null) core.search(request(input)) else core.runSavedSearch(savedId)
+                val result = if (savedId == null) core.search(request(input), control)
+                else core.runSavedSearch(savedId, control)
                 if (epoch != searchEpoch) return@launch
                 skippedPeople.clear()
                 val saved = core.savedSearches()
@@ -334,6 +353,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         it.copy(loading = false, error = failure.message ?: "Online-Suche fehlgeschlagen")
                     }
                 }
+            } finally {
+                if (searchControl === control) searchControl = null
             }
         }
     }
@@ -522,7 +543,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadProfile(listingId: Long, personId: Long) {
-        searchEpoch++
+        invalidateActiveSearch()
         invalidateProfileRequest()
         val requestId = profileRequestId
         _searchUiState.update {
@@ -557,7 +578,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         mediaWarning=refreshError,archiving=!showingArchive)
                 }
                 if (showingArchive) return@launch
-                val control = MediaArchiveControl()
+                val control = RequestControl()
                 archiveControl = control
                 try {
                     val report = core.archiveProfileMedia(profile.snapshotId,control)

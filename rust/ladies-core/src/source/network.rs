@@ -743,7 +743,7 @@ mod tests {
             200,
             r#"[{"Name":"Leipzig","Slug":"leipzig","Type":"top-ort","LocationId":42}]"#,
         );
-        let (slug, display) = resolve_location(&client, "Leipzi");
+        let (slug, display) = resolve_location(&client, "Leipzi", None);
         assert_eq!(slug, "leipzig");
         assert_eq!(display, "Leipzig");
     }
