@@ -716,6 +716,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun skipCard(personId: Long) {
+        if (_discoverState.value.busy) return
         if (_searchUiState.value.loading && !_searchUiState.value.profileOpen) return
         skippedPeople.add(personId)
         _discoverState.update { it.copy(cards = it.cards.filterNot { card -> card.personId == personId }) }
@@ -860,13 +861,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val active = _searchUiState.value
         if (_discoverState.value.busy || active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
         val requestId = profileRequestId
+        val epoch = ++discoveryEpoch
         archiveControl?.cancel()
         // The mutation outlives the detail screen. Keep the shared write guard until
         // it finishes even if Back clears the screen's own actionBusy flag.
-        _discoverState.update { it.copy(busy = true, error = null) }
+        _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
+            favoritesLoadingMore = false, error = null) }
         _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
         viewModelScope.launch {
             var committed = false
+            var profileUpdated = false
+            var projectionUpdated = false
             try {
                 core.confirmIdentityMatch(listingId, targetPersonId)
                 committed = true
@@ -882,14 +887,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         } else it
                     }
                 }
+                profileUpdated = true
+                val cards = discoveryPage()
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                publishDiscovery(epoch, cards, favorites)
+                projectionUpdated = true
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
-                val message = if (committed) "Zusammenführung gespeichert; Profil konnte nicht aktualisiert werden."
+                val message = if (committed) "Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
                     else failure.message ?: "Zusammenführung fehlgeschlagen"
                 if (requestId == profileRequestId) {
                     _searchUiState.update {
-                        if (committed) it.copy(actionError = message, selectedPersonId = null,
+                        if (committed && !profileUpdated) it.copy(actionError = message, selectedPersonId = null,
                             selectedPerson = null, profileIdentity = null, identityCandidates = emptyList(),
                             changeEvents = emptyList())
                         else it.copy(actionError = message)
@@ -899,9 +909,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } finally {
                 if (requestId == profileRequestId) _searchUiState.update { it.copy(actionBusy = false) }
-                _discoverState.update { it.copy(busy = false) }
+                if (epoch == discoveryEpoch && !projectionUpdated) {
+                    _discoverState.update {
+                        if (committed) it.copy(busy = false, cards = emptyList(), favorites = emptyList(),
+                            nextCursor = null, favoritesNextCursor = null, activeVisibleCount = 0)
+                        else it.copy(busy = false)
+                    }
+                    if (committed) {
+                        _searchUiState.update { it.copy(activeCards = emptyList()) }
+                        refreshDiscovery()
+                    }
+                }
                 if (committed) {
-                    refreshDiscovery()
                     refreshMap()
                     refresh()
                 }
