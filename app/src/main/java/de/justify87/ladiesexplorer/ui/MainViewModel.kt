@@ -201,6 +201,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun createNewSavedSearch() {
+        searchEpoch++
         _searchUiState.update { it.copy(editingSavedSearchId = null) }
     }
 
@@ -227,6 +228,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadSavedSearch(id: String) {
         if (_searchUiState.value.loading) return
+        val epoch = ++searchEpoch
         viewModelScope.launch {
             try {
                 val q = core.loadSavedSearch(id)
@@ -236,6 +238,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val array = selected.getJSONArray(key)
                     values[key] = (0 until array.length()).map { array.getString(it) }.toSet()
                 }
+                if (epoch != searchEpoch) return@launch
                 invalidateSearchResults()
                 _searchUiState.update {
                     it.copy(city=q.city,radiusKm=q.radiusKm,category=q.category,
@@ -246,12 +249,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
-                _searchUiState.update { it.copy(error = failure.message ?: "Suche konnte nicht geladen werden") }
+                if (epoch == searchEpoch) {
+                    _searchUiState.update { it.copy(error = failure.message ?: "Suche konnte nicht geladen werden") }
+                }
             }
         }
     }
 
     fun deleteSavedSearch(id: String) {
+        searchEpoch++
         viewModelScope.launch {
             try {
                 core.deleteSavedSearch(id)
@@ -266,22 +272,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeSavedResults() {
+        searchEpoch++
         _searchUiState.update { it.copy(showingSavedSearchId = null, savedResultCards = emptyList()) }
     }
 
     fun showSavedResults(id: String) {
+        val epoch = ++searchEpoch
         viewModelScope.launch {
             try {
                 val results = core.savedSearchResults(id)
-                core.acknowledgeSavedSearch(id)
+                if (epoch != searchEpoch) return@launch
                 _searchUiState.update {
-                    it.copy(showingSavedSearchId=id,savedResultCards=results,
-                        savedSearches=core.savedSearches(),error=null)
+                    it.copy(showingSavedSearchId=id,savedResultCards=results,error=null)
+                }
+                core.acknowledgeSavedSearch(id)
+                val saved = core.savedSearches()
+                if (epoch == searchEpoch) {
+                    _searchUiState.update { it.copy(savedSearches = saved) }
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
-                _searchUiState.update { it.copy(error=failure.message ?: "Gespeicherte Ergebnisse konnten nicht geladen werden") }
+                if (epoch == searchEpoch) {
+                    _searchUiState.update { it.copy(error=failure.message ?: "Gespeicherte Ergebnisse konnten nicht geladen werden") }
+                }
             }
         }
     }
@@ -413,6 +427,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadProfile(listingId: Long, personId: Long) {
+        searchEpoch++
         invalidateProfileRequest()
         val requestId = profileRequestId
         _searchUiState.update {
