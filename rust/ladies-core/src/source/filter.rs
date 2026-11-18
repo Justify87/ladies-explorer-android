@@ -87,7 +87,7 @@ pub(super) fn slugify_city(input: &str) -> String {
     }
 }
 
-pub(super) fn validate_request(request: &SearchRequest) -> Result<(), CoreError> {
+pub(crate) fn validate_request(request: &SearchRequest) -> Result<(), CoreError> {
     if request.city.trim().is_empty() || request.city.chars().count() > 120 {
         return Err(invalid("City must contain 1–120 characters"));
     }
