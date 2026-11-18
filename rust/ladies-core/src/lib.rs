@@ -335,8 +335,18 @@ impl LadiesCore {
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
         self.diagnostics
             .timed("PROFILE", "load_source_profile", || {
-                source::load_profile(self, listing_id)
+                source::load_profile(self, listing_id, None)
             })
+    }
+
+    pub fn load_swipe_profile(
+        &self,
+        listing_id: i64,
+        control: Arc<RequestControl>,
+    ) -> Result<ProfileResponse, CoreError> {
+        self.diagnostics.timed("PROFILE", "load_swipe_profile", || {
+            source::load_profile(self, listing_id, Some(&control))
+        })
     }
 
     pub fn cached_source_profile(
