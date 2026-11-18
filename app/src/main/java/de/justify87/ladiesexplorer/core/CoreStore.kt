@@ -210,6 +210,9 @@ class CoreStore(context: Context) {
             recorded("resolveMapLocations") { engine.resolveMapLocations(favoritesOnly, 15u, control) }
         }
 
+    suspend fun profileIdentity(listingId: Long): ProfileIdentity =
+        withContext(Dispatchers.IO) { engine.profileIdentity(listingId) }
+
     suspend fun profileMedia(snapshotId: Long): List<ProfileMediaItem> =
         withContext(Dispatchers.IO) { engine.profileMedia(snapshotId) }
 

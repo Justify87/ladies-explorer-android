@@ -89,6 +89,8 @@ data class SearchUiState(
     val profileOpen: Boolean = false,
     val profileSessionId: Long = 0L,
     val profile: ProfileResponse? = null,
+    val profileIdentity: ProfileIdentity? = null,
+    val profileFromArchive: Boolean = false,
     val selectedPersonId: Long? = null,
     val selectedPerson: PersonSummary? = null,
     val profileMedia: List<ProfileMediaItem> = emptyList(),
@@ -168,7 +170,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun closeProfile() {
         invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(profileOpen = false, profile = null, selectedPersonId = null,
+            it.copy(profileOpen = false, profile = null, profileIdentity = null, profileFromArchive = false, selectedPersonId = null,
                 savedResultsLoadingMore = false,
                 selectedPerson = null, profileMedia = emptyList(), loading = false,
                 archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
@@ -715,6 +717,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun skipCard(personId: Long) {
+        if (_discoverState.value.busy) return
         if (_searchUiState.value.loading && !_searchUiState.value.profileOpen) return
         skippedPeople.add(personId)
         _discoverState.update { it.copy(cards = it.cards.filterNot { card -> card.personId == personId }) }
@@ -722,26 +725,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun choosePreference(personId: Long, preference: Preference) {
-        if (_discoverState.value.busy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
+        if (_discoverState.value.busy || _searchUiState.value.actionBusy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
         val epoch = ++discoveryEpoch
         _discoverState.update { it.copy(busy = true, error = null) }
+        _searchUiState.update { it.copy(actionError = null) }
         viewModelScope.launch {
             try {
                 core.setPreference(personId, preference)
                 skippedPeople.remove(personId)
-                val cards = discoveryPage()
-                val favorites = core.discoveryCards(favoritesOnly = true)
-                publishDiscovery(epoch, cards, favorites)
                 val updatedPerson = core.person(personId)
                 _searchUiState.update {
                     if (it.selectedPersonId == personId) it.copy(selectedPerson = updatedPerson) else it
                 }
+                val cards = discoveryPage()
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                publishDiscovery(epoch, cards, favorites)
             } catch (cancellation: CancellationException) {
                 if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
                 throw cancellation
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
-                    _discoverState.update { it.copy(busy = false, error = failure.message ?: "Entscheidung nicht gespeichert") }
+                    val message = failure.message ?: "Entscheidung nicht gespeichert"
+                    _discoverState.update { it.copy(busy = false, error = message) }
+                    _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
                 }
             }
         }
@@ -750,31 +756,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleFavorite(personId: Long) {
         if (_discoverState.value.busy || _searchUiState.value.actionBusy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
         val epoch = ++discoveryEpoch
-        _discoverState.update { it.copy(busy = true) }
+        _discoverState.update { it.copy(busy = true, error = null) }
+        _searchUiState.update { it.copy(actionError = null) }
         viewModelScope.launch {
             try {
                 val person = core.person(personId) ?: error("Person nicht gefunden")
                 core.setFavorite(personId, !person.favorite)
-                val cards = discoveryPage()
-                val favorites = core.discoveryCards(favoritesOnly = true)
-                publishDiscovery(epoch, cards, favorites)
-                refreshMap()
                 val personState = core.person(personId)
                 _searchUiState.update {
                     if (it.selectedPersonId == personId) it.copy(selectedPerson = personState) else it
                 }
+                val cards = discoveryPage()
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                publishDiscovery(epoch, cards, favorites)
+                refreshMap()
             } catch (cancellation: CancellationException) {
                 if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
                 throw cancellation
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
-                    _discoverState.update { it.copy(busy = false, error = failure.message ?: "Favorit konnte nicht geändert werden") }
+                    val message = failure.message ?: "Favorit konnte nicht geändert werden"
+                    _discoverState.update { it.copy(busy = false, error = message) }
+                    _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
                 }
             }
         }
     }
 
     fun loadProfile(listingId: Long, personId: Long) {
+        if (_discoverState.value.busy) return
         cancelPreview()
         invalidateActiveSearch()
         invalidateProfileRequest()
@@ -782,7 +792,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update {
             it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
                 savedResultsLoadingMore=false,
-                loading=true,profile=null,profileMedia=emptyList(),changeEvents=emptyList(),
+                loading=true,profile=null,profileIdentity=null,profileFromArchive=false,profileMedia=emptyList(),changeEvents=emptyList(),
                 identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false)
         }
@@ -802,12 +812,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 if (requestId != profileRequestId) return@launch
                 val items = core.profileMedia(profile.snapshotId)
-                val person = core.person(personId)
-                val changes = core.changeEvents(personId)
+                val identity = core.profileIdentity(listingId)
+                val person = core.person(identity.personId)
+                val changes = core.changeEvents(identity.personId)
                 val candidates = core.identityCandidates(listingId)
                 if (requestId != profileRequestId) return@launch
                 _searchUiState.update {
-                    it.copy(loading=false,profile=profile,selectedPerson=person,
+                    it.copy(loading=false,profile=profile,profileIdentity=identity,profileFromArchive=showingArchive,
+                        selectedPersonId=identity.personId,selectedPerson=person,
                         profileMedia=items,changeEvents=changes,identityCandidates=candidates,
                         mediaWarning=refreshError,archiving=!showingArchive)
                 }
@@ -848,37 +860,70 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun confirmIdentity(listingId: Long, targetPersonId: Long) {
         val active = _searchUiState.value
-        if (active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
+        if (_discoverState.value.busy || active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
         val requestId = profileRequestId
+        val epoch = ++discoveryEpoch
         archiveControl?.cancel()
-        _searchUiState.update { it.copy(actionBusy=true,actionError=null) }
+        // The mutation outlives the detail screen. Keep the shared write guard until
+        // it finishes even if Back clears the screen's own actionBusy flag.
+        _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
+            favoritesLoadingMore = false, error = null) }
+        _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
         viewModelScope.launch {
+            var committed = false
+            var profileUpdated = false
+            var projectionUpdated = false
             try {
-                core.confirmIdentityMatch(listingId,targetPersonId)
-                val history = core.changeEvents(targetPersonId)
+                core.confirmIdentityMatch(listingId, targetPersonId)
+                committed = true
+                val identity = core.profileIdentity(listingId)
+                val history = core.changeEvents(identity.personId)
                 val candidates = core.identityCandidates(listingId)
-                val person = core.person(targetPersonId)
+                val person = core.person(identity.personId)
                 if (requestId == profileRequestId) {
                     _searchUiState.update {
                         if (it.profile?.listingId == listingId) {
-                            it.copy(actionBusy=false,selectedPersonId=targetPersonId,
-                                selectedPerson=person,changeEvents=history,identityCandidates=candidates)
+                            it.copy(selectedPersonId = identity.personId, profileIdentity = identity,
+                                selectedPerson = person, changeEvents = history, identityCandidates = candidates)
                         } else it
                     }
                 }
-                refreshDiscovery()
-                refreshMap()
-                refresh()
+                profileUpdated = true
+                val cards = discoveryPage()
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                publishDiscovery(epoch, cards, favorites)
+                projectionUpdated = true
             } catch (cancellation: CancellationException) {
-                if (requestId == profileRequestId) {
-                    _searchUiState.update { it.copy(actionBusy=false) }
-                }
                 throw cancellation
             } catch (failure: Exception) {
+                val message = if (committed) "Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
+                    else failure.message ?: "Zusammenführung fehlgeschlagen"
                 if (requestId == profileRequestId) {
                     _searchUiState.update {
-                        it.copy(actionBusy=false,actionError=failure.message ?: "Zusammenführung fehlgeschlagen")
+                        if (committed && !profileUpdated) it.copy(actionError = message, selectedPersonId = null,
+                            selectedPerson = null, profileIdentity = null, identityCandidates = emptyList(),
+                            changeEvents = emptyList())
+                        else it.copy(actionError = message)
                     }
+                } else {
+                    _discoverState.update { it.copy(error = message) }
+                }
+            } finally {
+                if (requestId == profileRequestId) _searchUiState.update { it.copy(actionBusy = false) }
+                if (epoch == discoveryEpoch && !projectionUpdated) {
+                    _discoverState.update {
+                        if (committed) it.copy(busy = false, cards = emptyList(), favorites = emptyList(),
+                            nextCursor = null, favoritesNextCursor = null, activeVisibleCount = 0)
+                        else it.copy(busy = false)
+                    }
+                    if (committed) {
+                        _searchUiState.update { it.copy(activeCards = emptyList()) }
+                        refreshDiscovery()
+                    }
+                }
+                if (committed) {
+                    refreshMap()
+                    refresh()
                 }
             }
         }

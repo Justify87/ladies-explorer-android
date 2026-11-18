@@ -122,11 +122,9 @@ fun LadiesApp(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            if (!search.profileOpen) TopAppBar(
                 title = {
-                    if (search.profileOpen) {
-                        Text("Profil", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    } else if (savedResultsOpen) {
+                    if (savedResultsOpen) {
                         Text("Gespeicherte Ergebnisse", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     } else {
                         Text(
@@ -140,14 +138,14 @@ fun LadiesApp(
                     }
                 },
                 navigationIcon = {
-                    if (search.profileOpen || savedResultsOpen) {
+                    if (savedResultsOpen) {
                         IconButton(onClick = { back() }) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Zurück")
                         }
                     }
                 },
                 actions = {
-                    if (!search.profileOpen && route.root == RootDestination.Discover) {
+                    if (route.root == RootDestination.Discover) {
                         IconButton(onClick = { selectRoot(RootDestination.Search) }) {
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
                         }
@@ -199,6 +197,8 @@ fun LadiesApp(
                     onPreference = viewModel::choosePreference,
                     onConfirmIdentity = viewModel::confirmIdentity,
                     onCancelArchive = viewModel::cancelMediaArchive,
+                    onBack = viewModel::closeProfile,
+                    actionsBusy = discovery.busy,
                     modifier = modifier,
                 )
             }

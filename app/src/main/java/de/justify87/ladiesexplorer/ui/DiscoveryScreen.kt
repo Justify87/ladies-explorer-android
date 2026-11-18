@@ -1,19 +1,14 @@
 package de.justify87.ladiesexplorer.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -36,16 +31,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
-import java.io.File
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
-import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.Preference
 
 @Composable
@@ -121,8 +112,7 @@ fun DiscoverScreen(
                         Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Text(card.name, style = MaterialTheme.typography.headlineSmall)
-                        Text(card.city, style = MaterialTheme.typography.bodyLarge)
+                        ProfileIdentityHeader(card.name, card.city, hasVideo = card.hasVideo)
                         card.description?.takeIf { it.isNotBlank() }?.let {
                             Text(it.take(190), maxLines = 3, style = MaterialTheme.typography.bodyMedium)
                         }
@@ -233,17 +223,5 @@ fun FavoritesScreen(
 
 @Composable
 fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: String? = null) {
-    if (url.isNullOrBlank() && localPath == null) {
-        Box(
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) { Text("Kein Bild",style = MaterialTheme.typography.bodySmall) }
-    } else {
-        AsyncImage(
-            model = localPath?.let(::File) ?: url,
-            contentDescription = "Profilbild",
-            contentScale = ContentScale.Crop,
-            modifier = modifier,
-        )
-    }
+    ProfileImage(url = url, localPath = localPath, modifier = modifier)
 }

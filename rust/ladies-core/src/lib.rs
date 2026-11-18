@@ -153,7 +153,8 @@ pub use saved_search::{
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
 pub use source::{
-    MediaReference, ProfileResponse, SearchCard, SearchPreview, SearchRequest, SearchResponse,
+    MediaReference, ProfileIdentity, ProfileResponse, SearchCard, SearchPreview, SearchRequest,
+    SearchResponse,
 };
 
 #[derive(uniffi::Object)]
@@ -403,6 +404,10 @@ impl LadiesCore {
         self.diagnostics.timed("MAP", "resolve_map_locations", || {
             map::resolve(self, favorites_only, max_requests, &control)
         })
+    }
+
+    pub fn profile_identity(&self, listing_id: i64) -> Result<ProfileIdentity, CoreError> {
+        source::profile_identity(self, listing_id)
     }
 
     pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
