@@ -24,31 +24,50 @@ pub struct ProfileMediaItem {
     pub position: u32,
 }
 
-pub(crate) fn media(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
+pub(crate) fn media(
+    core: &LadiesCore,
+    snapshot_id: i64,
+) -> Result<Vec<ProfileMediaItem>, CoreError> {
     let db = core.connection()?;
     let mut query = db.prepare(
         "SELECT sm.kind,sm.remote_url,a.local_path,sm.position
          FROM snapshot_media sm
          LEFT JOIN media_assets a ON a.media_asset_id=sm.media_asset_id
-         WHERE sm.snapshot_id=?1 ORDER BY sm.position,sm.snapshot_media_id"
+         WHERE sm.snapshot_id=?1 ORDER BY sm.position,sm.snapshot_media_id",
     )?;
     let rows = query.query_map([snapshot_id], |r| {
-        Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,
-            r.get::<_,Option<String>>(2)?,r.get::<_,u32>(3)?))
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, Option<String>>(2)?,
+            r.get::<_, u32>(3)?,
+        ))
     })?;
     rows.map(|row| {
-        let (kind,url,relative,position) = row?;
+        let (kind, url, relative, position) = row?;
         let local_path = relative.and_then(|relative| {
             let path = core.media_root.as_ref()?.join(relative);
             path.is_file().then(|| path.to_string_lossy().into_owned())
         });
-        Ok(ProfileMediaItem { kind,url,local_path,position })
-    }).collect()
+        Ok(ProfileMediaItem {
+            kind,
+            url,
+            local_path,
+            position,
+        })
+    })
+    .collect()
 }
 
-pub(crate) fn list(core: &LadiesCore, favorites_only: bool, limit: u32) -> Result<Vec<DiscoveryCard>, CoreError> {
+pub(crate) fn list(
+    core: &LadiesCore,
+    favorites_only: bool,
+    limit: u32,
+) -> Result<Vec<DiscoveryCard>, CoreError> {
     if !(1..=200).contains(&limit) {
-        return Err(CoreError::InvalidInput("Discovery limit must be between 1 and 200".into()));
+        return Err(CoreError::InvalidInput(
+            "Discovery limit must be between 1 and 200".into(),
+        ));
     }
     let db = core.connection()?;
     // One latest listing per person. A person's preference belongs to the person, not the ad.
@@ -87,19 +106,46 @@ pub(crate) fn list(core: &LadiesCore, favorites_only: bool, limit: u32) -> Resul
          LIMIT ?2"
     )?;
     let rows = query.query_map(params![favorites_only, limit], |r| {
-        Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,
-            r.get::<_,String>(3)?,r.get::<_,Option<String>>(4)?,
-            r.get::<_,Option<String>>(5)?,r.get::<_,String>(6)?,
-            r.get::<_,i64>(7)?,r.get::<_,i64>(8)?,r.get::<_,i64>(9)?))
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, i64>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+            r.get::<_, Option<String>>(4)?,
+            r.get::<_, Option<String>>(5)?,
+            r.get::<_, String>(6)?,
+            r.get::<_, i64>(7)?,
+            r.get::<_, i64>(8)?,
+            r.get::<_, i64>(9)?,
+        ))
     })?;
     rows.map(|row| {
-        let (listing_id,person_id,name,city,thumbnail_url,description,preference,favorite,video,ai) = row?;
+        let (
+            listing_id,
+            person_id,
+            name,
+            city,
+            thumbnail_url,
+            description,
+            preference,
+            favorite,
+            video,
+            ai,
+        ) = row?;
         Ok(DiscoveryCard {
-            listing_id,person_id,name,city,thumbnail_url,description,
-            preference: Preference::from_db(&preference)?,favorite: favorite!=0,
-            has_video: video!=0,has_ai_content: ai!=0,
+            listing_id,
+            person_id,
+            name,
+            city,
+            thumbnail_url,
+            description,
+            preference: Preference::from_db(&preference)?,
+            favorite: favorite != 0,
+            has_video: video != 0,
+            has_ai_content: ai != 0,
         })
-    }).collect()
+    })
+    .collect()
 }
 
 #[cfg(test)]
@@ -111,23 +157,26 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let first = core.create_person(Some("Anna".into())).unwrap();
         let second = core.create_person(Some("Eva".into())).unwrap();
-        core.add_listing(first,None,"LADIES".into(),"1".into(),None).unwrap();
-        core.add_listing(first,None,"LADIES".into(),"2".into(),None).unwrap();
-        core.add_listing(second,None,"LADIES".into(),"3".into(),None).unwrap();
-        assert_eq!(list(&core,false,100).unwrap().len(),2);
-        core.set_preference(first,Preference::Dislike).unwrap();
-        assert_eq!(list(&core,false,100).unwrap().len(),1);
-        core.set_favorite(first,true).unwrap();
-        let favorites = list(&core,true,100).unwrap();
-        assert_eq!(favorites.len(),1);
-        assert_eq!(favorites[0].person_id,first);
+        core.add_listing(first, None, "LADIES".into(), "1".into(), None)
+            .unwrap();
+        core.add_listing(first, None, "LADIES".into(), "2".into(), None)
+            .unwrap();
+        core.add_listing(second, None, "LADIES".into(), "3".into(), None)
+            .unwrap();
+        assert_eq!(list(&core, false, 100).unwrap().len(), 2);
+        core.set_preference(first, Preference::Dislike).unwrap();
+        assert_eq!(list(&core, false, 100).unwrap().len(), 1);
+        core.set_favorite(first, true).unwrap();
+        let favorites = list(&core, true, 100).unwrap();
+        assert_eq!(favorites.len(), 1);
+        assert_eq!(favorites[0].person_id, first);
         assert!(favorites[0].favorite);
     }
 
     #[test]
     fn discovery_limit_is_bounded() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
-        assert!(list(&core,false,0).is_err());
-        assert!(list(&core,false,201).is_err());
+        assert!(list(&core, false, 0).is_err());
+        assert!(list(&core, false, 201).is_err());
     }
 }

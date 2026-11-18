@@ -8,8 +8,8 @@ mod identity;
 mod legacy_import;
 mod media;
 mod media_url;
-mod schema;
 mod saved_search;
+mod schema;
 mod source;
 
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -139,10 +139,10 @@ pub struct ImportReport {
 
 pub use discovery::{DiscoveryCard, ProfileMediaItem};
 pub use history::ChangeRecord;
-pub use saved_search::SavedSearchInfo;
-pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
 pub use identity::IdentityCandidate;
 pub use media::{MediaArchiveControl, MediaArchiveReport};
+pub use saved_search::SavedSearchInfo;
+pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 
 #[derive(uniffi::Object)]
@@ -277,7 +277,11 @@ impl LadiesCore {
         history::list(self, person_id, limit)
     }
 
-    pub fn discovery_cards(&self, favorites_only: bool, limit: u32) -> Result<Vec<DiscoveryCard>, CoreError> {
+    pub fn discovery_cards(
+        &self,
+        favorites_only: bool,
+        limit: u32,
+    ) -> Result<Vec<DiscoveryCard>, CoreError> {
         discovery::list(self, favorites_only, limit)
     }
 
@@ -289,7 +293,11 @@ impl LadiesCore {
         source::filter::available()
     }
 
-    pub fn save_native_search(&self, name: String, request: SearchRequest) -> Result<String, CoreError> {
+    pub fn save_native_search(
+        &self,
+        name: String,
+        request: SearchRequest,
+    ) -> Result<String, CoreError> {
         saved_search::save(self, name, request)
     }
 
