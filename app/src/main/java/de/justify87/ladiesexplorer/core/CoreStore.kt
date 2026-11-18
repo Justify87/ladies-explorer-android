@@ -151,6 +151,13 @@ class CoreStore(context: Context) {
         }
     }
 
+    suspend fun preview(query: SearchRequest, control: RequestControl): SearchPreview =
+        withContext(Dispatchers.IO) {
+            recorded("preview city=${query.city} radius=${query.radiusKm}") {
+                engine.previewSource(query, control)
+            }
+        }
+
     suspend fun search(query: SearchRequest, control: RequestControl): SearchResponse = withContext(Dispatchers.IO) {
         recorded("search city=${query.city} radius=${query.radiusKm}") {
             engine.searchSource(query, control)

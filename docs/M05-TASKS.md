@@ -15,7 +15,7 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | T2.2 | 2.1 | P06,P07 | Gemeinsamer Filtereditor: Standort, Radius, Alter, Größe, Kategorien, Treffpunkt, Gruppierung, Chips, Filtertext, Reset, Footer. | Katalog-Aliase korrekt; Suche in Optionen, kein unbeabsichtigter Reset | TODO | — |
 | T2.3 | 2.2 | P08 | Top-5 häufige Filter aus gesicherten tatsächlichen Suchnutzungen ableiten; keine unnötige Datenbank neben Rust. | Tests: Sortierung, Gleichstand, nicht verwendete Filter, Neustart | TODO | — |
 | T2.4 | 2.2 | P09 | Verfügbarkeitsmodus kanonisieren, andere Zeiten erhalten; Editor vs Header unterschiedliche Ausführung. | Tests: Alle/Jetzt/Heute/Aliase, kein doppelter Run | TODO | — |
-| T2.5 | 2.1,2.2,2.4 | P10,P11 | Leichtgewichtige Rust-Vorschau prüfen/ergänzen, Debounce, Cancellation/Epoch, Quellzahl und lokal gefilterte Zahl unterscheiden; Radiusvertrag strikt. | Mock-Fixtures: 0/Fehler/Radiusabweichung/veraltete Antwort; keine Suchpersistenz | TODO | — |
+| T2.5 | 2.1,2.2,2.4 | P10,P11 | Leichtgewichtige Rust-Vorschau prüfen/ergänzen, Debounce, Cancellation/Epoch, Quellzahl und lokal gefilterte Zahl unterscheiden; Radiusvertrag strikt. | Mock-Fixtures: 0/Fehler/Radiusabweichung/veraltete Antwort; keine Suchpersistenz | IN_PROGRESS | Rust first-page preview API and Mock-Transport tests; Kotlin binding/UI pending |
 | T2.6 | 2.1,2.2 | P12,P13 | Lokale Filter über existierende Rust-Regeln verbinden; Präferenz/Media/AI; STUDIO/FACEAPP/Business nur nach belegter Datenlage, andernfalls UI-Grenze/Abweichung. | Fixtures für Filterkombinationen und unsupported Import; keine falsche Klassifikation | TODO | — |
 | T2.7 | 2.3,2.4,2.5,2.6 | P14 | Suche erfolgreich → Entdecken; Teilresultat sichtbar; Abbruch/Fehler ohne alten Zustand zu verfälschen. | Quellen-Pagination/Radius/Delta-Regression, Back und Fehler | TODO | — |
 | T3.1 | 2.7 | P15 | Gemeinsame responsive Medienhero-UI, Zähler, Story-Balken, Tippzonen, Back/Mehr. | 0/1/viele Medien, kleine Displays, Gesten | TODO | — |
@@ -53,7 +53,7 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | --- | --- | --- | --- | --- | --- |
 | G0 | T0.1–T0.3 | — | Referenz, vollständige Zuordnung, Grenzen, reproduzierbare Fixtures | DONE | G0 technisch abgenommen: P01–P41, Fixture, Import und Full-CI [44390396359](https://github.com/Justify87/ladies-explorer-android/actions/runs/44390396359) auf fb27b6a1; DEVICE_PENDING (G9); Mergefreigabe ausstehend |
 | G1 | T1.1–T1.4 | G0 | Design, Back/Insets, keine verlorenen Root-Funktionen | DONE | G1 technisch abgenommen: [Full-CI 44391756592](https://github.com/Justify87/ladies-explorer-android/actions/runs/44391756592) auf 673042c4; DEVICE_PENDING (G9); Mergefreigabe ausstehend |
-| G2 | T2.1–T2.7 | G1 | Aktive Suche, lokale Filter, Radius/Pagination/Delta | TODO | — |
+| G2 | T2.1–T2.7 | G1 | Aktive Suche, lokale Filter, Radius/Pagination/Delta | IN_PROGRESS | M05.2 on integrated main a5148cf7 |
 | G3 | T3.1–T3.5 | G2 | Gemeinsames Profil/Medien, Archiv/Offline/Intents | TODO | — |
 | G4 | T4.1–T4.4 | G3 | Queue, Undo/Skip/Reset, Gesten, Prefetch | TODO | — |
 | G5 | T5.1–T5.3 | G4 | Grid, Ansichtswechsel, ein Ergebniszustand | TODO | — |

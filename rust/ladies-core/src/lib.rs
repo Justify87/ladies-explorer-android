@@ -151,7 +151,7 @@ pub use saved_search::{
     SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage,
 };
 pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
-pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
+pub use source::{MediaReference, ProfileResponse, SearchCard, SearchPreview, SearchRequest, SearchResponse};
 
 #[derive(uniffi::Object)]
 pub struct LadiesCore {
@@ -292,6 +292,16 @@ impl LadiesCore {
             .export(std::path::Path::new(&directory))
             .map(|p| p.to_string_lossy().into_owned())
             .map_err(|e| CoreError::Storage(format!("HAR export failed: {e}")))
+    }
+
+    pub fn preview_source(
+        &self,
+        query: SearchRequest,
+        control: Arc<RequestControl>,
+    ) -> Result<SearchPreview, CoreError> {
+        self.diagnostics.timed("SEARCH", "preview_source", || {
+            source::preview(self, query, &control)
+        })
     }
 
     pub fn search_source(

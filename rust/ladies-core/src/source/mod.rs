@@ -52,6 +52,12 @@ pub struct SearchCard {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+pub struct SearchPreview {
+    pub server_count: Option<u32>,
+    pub radius_verified: bool,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct SearchResponse {
     pub search_run_id: i64,
     pub city: String,
@@ -127,6 +133,14 @@ struct Profile {
     services_json: String,
     opening_times_json: String,
     media: Vec<MediaReference>,
+}
+
+pub(crate) fn preview(
+    core: &LadiesCore,
+    request: SearchRequest,
+    control: &RequestControl,
+) -> Result<SearchPreview, CoreError> {
+    network::preview_search(&core.source_session.0, &request, control)
 }
 
 pub(crate) fn search(
