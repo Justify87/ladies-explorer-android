@@ -201,7 +201,6 @@ fun LadiesApp(
                     onCancelArchive = viewModel::cancelMediaArchive,
                     onBack = viewModel::closeProfile,
                     actionsBusy = discovery.busy,
-                    actionError = discovery.error,
                     modifier = modifier,
                 )
             }
