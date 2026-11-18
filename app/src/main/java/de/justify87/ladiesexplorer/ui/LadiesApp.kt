@@ -135,6 +135,8 @@ fun LadiesApp(
                     onRunSaved={viewModel.startSearch(it)},
                     onDeleteSaved=viewModel::deleteSavedSearch,
                     onAcknowledge=viewModel::acknowledgeSavedSearch,
+                    onShowSavedResults=viewModel::showSavedResults,
+                    onCloseSavedResults=viewModel::closeSavedResults,
                     onProfile=viewModel::loadProfile,
                     modifier=modifier,
                 )
