@@ -52,7 +52,7 @@ The Gradle build automatically runs:
 - cargo fmt --all -- --check (in rust/)
 - cargo test --workspace (in rust/)
 - ./gradlew :app:assembleDebug -Pladies.abis=arm64-v8a
-- Install the APK and open Einstellungen; check schema v1 and refresh the domain counts.
+- Install the APK and open Einstellungen; check schema v2 and refresh the domain counts.
 
 The GitHub Actions run is the authoritative verification of the Android build.
 Do not claim installation on a physical device until it has actually been tested.

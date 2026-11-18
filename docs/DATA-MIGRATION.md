@@ -58,20 +58,19 @@ tables, preserving foreign keys, evidence, historical records and media.
 
 ## Migration and safety semantics
 
-- SQLite schema version is `PRAGMA user_version = 1`. The separate Android
-  `PRAGMA application_id` is `0x4C445850` (LDXP). The former web-app database
-  also uses `user_version = 1`; it must never be opened as the new schema.
+- The native database uses `PRAGMA user_version = 2` and the distinct
+  `PRAGMA application_id = 0x4C445850` (LDXP). The legacy web-app database
+  is a separate format; its version 1 must never be opened as native SQLite.
 - Migration runs transactionally on the **Rust side** before exposing the store.
-- A new DB installs the version 1 schema in one transaction, recording both
-  the application ID and the schema version. On all subsequent opens, the Rust
-  core verifies the complete SQLite tables/indexes/triggers signature against
-  the canonical v1 definition, even when the version number already matches.
+- Fresh databases install the domain schema and migrate historical identity
+  references to v2 in one transaction. Existing native v1 databases must
+  match their canonical schema before the v1→v2 migration; every subsequent
+  opening validates the canonical v2 tables, indexes and triggers.
 - The obsolete `scaffold_notes` technical-demo table is dropped within the
   migration transaction; real people or history are never implicitly deleted.
-- Unknown unversioned tables, foreign application IDs, mismatched v1 schemas
-  and future schema versions cause typed errors, not silent replacement or
-  destructive recreation. Only an empty DB or the exact old technical
-  `scaffold_notes` demo shape can be upgraded automatically.
+- Unknown unversioned tables, foreign application IDs, noncanonical schemas and
+  future versions cause typed errors. Only a fresh database, the exact
+  technical `scaffold_notes` demo, or valid native v1 can be migrated.
 - `PRAGMA foreign_keys=ON` is enabled for every new connection.
 - The database is stored privately in `filesDir/ladies.sqlite`.
 - Public write operations use SQLite parameters and transactions.

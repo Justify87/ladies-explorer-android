@@ -37,10 +37,10 @@ protocol, Python runtime, automatic price extraction, swipe UI or maps.
 
 ## Data model
 
-All M04 tables and columns are already present in schema v1:
-\`listing_snapshots\`, \`snapshot_media\`, \`media_assets\`, \`media_sources\`,
-\`person_identifiers\`, \`identity_evidence\`, \`identity_events\`, and
-\`change_events\`. There is **no schema version bump**.
+All M04 domain tables originate in schema v1, but schema v2 changes the
+foreign-key semantics of historical `identity_events` person IDs. New databases
+and validated existing native Android v1 databases upgrade transactionally to v2.
+Previously nullified IDs are recovered from recorded event JSON when available.
 
 Changes are compared against the **active** snapshot rather than the most
 recently inserted historical row, so a return to an older fingerprint still
