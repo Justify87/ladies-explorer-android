@@ -162,8 +162,7 @@ fn known_age(traits_json: Option<&str>) -> Option<String> {
         return None;
     }
     if let Some(unit) = parts.next() {
-        if !matches!(unit.to_ascii_lowercase().as_str(), "jahr" | "jahre")
-            || parts.next().is_some()
+        if !matches!(unit.to_ascii_lowercase().as_str(), "jahr" | "jahre") || parts.next().is_some()
         {
             return None;
         }
@@ -421,10 +420,7 @@ mod tests {
             known_age(Some(r#"{"Alter":["32 Jahre"]}"#)).as_deref(),
             Some("32")
         );
-        assert_eq!(
-            known_age(Some(r#"{"alter":"28"}"#)).as_deref(),
-            Some("28")
-        );
+        assert_eq!(known_age(Some(r#"{"alter":"28"}"#)).as_deref(), Some("28"));
         assert!(known_age(Some(r#"{"Alter":["28","30"]}"#)).is_none());
         assert!(known_age(Some(r#"{"Alter":["ca. 30"]}"#)).is_none());
         assert!(known_age(None).is_none());
