@@ -15,6 +15,8 @@ class CoreStore(context: Context) {
     private val appFiles = context.filesDir
     private val preferences = context.getSharedPreferences("diagnostics", Context.MODE_PRIVATE)
     private val logger = Logger.withTag("LadiesExplorer")
+    @Volatile var imageCaptureMode: CaptureMode = CaptureMode.OFF
+        private set
     private val logBridge = ThreadPoolExecutor(
         1, 1, 0L, TimeUnit.MILLISECONDS, LinkedBlockingQueue<Runnable>(128),
         ThreadPoolExecutor.DiscardPolicy(),
@@ -59,6 +61,37 @@ class CoreStore(context: Context) {
         logBridge.execute {
             runCatching { engine.recordKotlinEvent("ANDROID", message, false) }
         }
+    }
+
+    fun enqueueImageObservation(observation: HttpObservation) {
+        if (imageCaptureMode == CaptureMode.OFF) return
+        logBridge.execute {
+            runCatching { engine.recordImageHttp(observation) }
+        }
+    }
+
+    suspend fun httpCaptureStatus(): CaptureStatus = withContext(Dispatchers.IO) {
+        engine.httpCaptureStatus().also { imageCaptureMode = it.mode }
+    }
+
+    suspend fun setHttpCaptureMode(mode: CaptureMode): CaptureStatus = withContext(Dispatchers.IO) {
+        engine.setHttpCaptureMode(mode).also { imageCaptureMode = it.mode }
+    }
+
+    suspend fun clearHttpCapture() = withContext(Dispatchers.IO) {
+        // Serialize with all pending image observations before deleting the session.
+        logBridge.queue.clear()
+        engine.setHttpCaptureMode(CaptureMode.OFF)
+        imageCaptureMode = CaptureMode.OFF
+        engine.clearHttpCapture()
+    }
+
+    suspend fun createHarSnapshot(): File = withContext(Dispatchers.IO) {
+        val oldestAllowed = System.currentTimeMillis() - 48L * 60L * 60L * 1_000L
+        diagnosticExports.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("ladies-http-") && it.lastModified() < oldestAllowed }
+            ?.forEach(File::delete)
+        File(engine.exportHttpHar(diagnosticExports.absolutePath))
     }
 
     private inline fun <T> recorded(operation: String, work: () -> T): T {
