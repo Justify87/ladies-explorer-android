@@ -47,6 +47,51 @@ pub(crate) fn save(
     .map_err(Into::into)
 }
 
+pub(crate) fn update(
+    core: &LadiesCore,
+    id: String,
+    name: String,
+    request: SearchRequest,
+) -> Result<(), CoreError> {
+    source::filter::validate_request(&request)?;
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > 100 {
+        return Err(CoreError::InvalidInput("Search name must have 1–100 characters".into()));
+    }
+    let definition = serde_json::to_string(&request)
+        .map_err(|e| CoreError::Storage(e.to_string()))?;
+    let mut db = core.connection()?;
+    let tx = db.transaction()?;
+    let previous: String = tx.query_row(
+        "SELECT filters_json FROM saved_searches WHERE saved_search_id=?1",
+        [&id], |r| r.get(0)
+    ).optional()?.ok_or_else(|| CoreError::InvalidInput("Saved search not found".into()))?;
+    // Filter changes invalidate the old result baseline, but renaming never does.
+    let changed = decode_definition(&previous)
+        .map_or(true, |old| serde_json::to_value(old).ok() != serde_json::to_value(&request).ok());
+    if changed {
+        tx.execute("DELETE FROM saved_search_results WHERE saved_search_id=?1",[&id])?;
+        tx.execute(
+            "UPDATE saved_searches SET name=?2,filters_json=?3,
+             definition_version=definition_version+1,
+             last_run_at=NULL,last_attempt_at=NULL,last_error=NULL,last_delta_json=NULL,
+             unread_new_results=0,new_results_at=NULL,
+             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE saved_search_id=?1",
+            params![id,name,definition],
+        )?;
+    } else {
+        tx.execute(
+            "UPDATE saved_searches SET name=?2,filters_json=?3,
+             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE saved_search_id=?1",
+            params![id,name,definition],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 fn decode_definition(definition: &str) -> Result<SearchRequest, CoreError> {
     if let Ok(request) = serde_json::from_str::<SearchRequest>(definition) {
         source::filter::validate_request(&request)?;
