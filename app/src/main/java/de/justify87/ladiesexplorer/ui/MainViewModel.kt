@@ -8,6 +8,8 @@ import de.justify87.ladiesexplorer.core.*
 import de.justify87.ladiesexplorer.LadiesApplication
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -40,6 +42,8 @@ data class DiscoverUiState(
     val cards: List<DiscoveryCard> = emptyList(),
     val favorites: List<DiscoveryCard> = emptyList(),
     val nextCursor: DiscoveryCursor? = null,
+    val activeRunId: Long? = null,
+    val activeVisibleCount: Int = 0,
     val favoritesNextCursor: DiscoveryCursor? = null,
     val loadingMore: Boolean = false,
     val favoritesLoadingMore: Boolean = false,
@@ -69,6 +73,12 @@ data class SearchUiState(
     val maxPages: UInt = 10u,
     val selectedFilters: Map<String, Set<String>> = emptyMap(),
     val filterCatalog: SourceFilterCatalog? = null,
+    val local: LocalVisibility = defaultLocalVisibility(),
+    val frequentFilters: List<FrequentFilter> = emptyList(),
+    val preview: SearchPreview? = null,
+    val previewLoading: Boolean = false,
+    val previewError: String? = null,
+    val activeCards: List<DiscoveryCard> = emptyList(),
     val savedSearches: List<SavedSearchInfo> = emptyList(),
     val showingSavedSearchId: String? = null,
     val savedResultCards: List<SavedSearchCard> = emptyList(),
@@ -110,6 +120,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var archiveControl: RequestControl? = null
     private var searchControl: RequestControl? = null
+    private var previewControl: RequestControl? = null
+    private var previewJob: Job? = null
+    private var previewEpoch = 0L
+    private var previewVisible = false
     private var profileRequestId = 0L
     private var discoveryEpoch = 0L
     private var searchEpoch = 0L
@@ -130,6 +144,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelActiveSearch() {
         invalidateActiveSearch()
         _searchUiState.update { it.copy(loading = false, error = null) }
+        schedulePreview()
     }
 
     private fun invalidateProfileRequest() {
@@ -140,6 +155,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         cancelMapResolution()
+        cancelPreview()
         invalidateActiveSearch()
         invalidateProfileRequest()
         super.onCleared()
@@ -161,61 +177,101 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun invalidateSearchResults() {
-        invalidateActiveSearch()
-        invalidateProfileRequest()
-        _searchUiState.update {
-            it.copy(response = null, profileOpen = false, profile = null, loading = false, error = null,
-                showingSavedSearchId = null, savedResultCards = emptyList(),
-                savedResultCursor = null, savedResultsLoadingMore = false,
-                mediaArchive = null, mediaWarning = null, archiving = false)
+    private fun cancelPreview() {
+        previewEpoch++
+        previewControl?.cancel()
+        previewControl = null
+        previewJob?.cancel()
+        previewJob = null
+        _searchUiState.update { it.copy(previewLoading = false) }
+    }
+
+    fun setPreviewVisible(visible: Boolean) {
+        if (previewVisible == visible) return
+        previewVisible = visible
+        if (visible) schedulePreview() else cancelPreview()
+    }
+
+    private fun schedulePreview() {
+        cancelPreview()
+        _searchUiState.update { it.copy(preview = null, previewError = null) }
+        val input = _searchUiState.value
+        if (!previewVisible || input.loading || input.city.isBlank()) return
+        val epoch = previewEpoch
+        val control = RequestControl()
+        previewControl = control
+        _searchUiState.update { it.copy(previewLoading = true) }
+        previewJob = viewModelScope.launch {
+            try {
+                delay(350)
+                val result = core.preview(request(input), control)
+                if (epoch == previewEpoch) _searchUiState.update {
+                    it.copy(preview = result, previewLoading = false)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (epoch == previewEpoch) _searchUiState.update {
+                    it.copy(previewLoading = false, previewError = failure.message ?: "Vorschau nicht verfügbar")
+                }
+            } finally {
+                if (epoch == previewEpoch) previewControl = null
+            }
         }
     }
 
-    fun setSearchCity(value: String) {
-        invalidateSearchResults()
-        _searchUiState.update { it.copy(city = value) }
-    }
-
-    fun setSearchRadius(value: UInt) {
-        invalidateSearchResults()
-        _searchUiState.update { it.copy(radiusKm = value) }
-    }
-
-    fun setCategory(value: String) {
-        invalidateSearchResults()
-        _searchUiState.update { it.copy(category = value) }
-    }
-
-    fun setAgeRange(min: UInt, max: UInt) {
-        invalidateSearchResults()
-        _searchUiState.update { it.copy(ageMin = min, ageMax = max) }
-    }
-
-    fun setHeightRange(min: UInt, max: UInt) {
-        invalidateSearchResults()
-        _searchUiState.update { it.copy(heightMin = min, heightMax = max) }
-    }
-
-    fun setMaxPages(value: UInt) {
-        invalidateSearchResults()
-        _searchUiState.update { it.copy(maxPages = value.coerceIn(1u,50u)) }
-    }
-
-    fun toggleFilter(group: String, value: String) {
-        invalidateSearchResults()
+    private fun editDraft(change: (SearchUiState) -> SearchUiState) {
+        if (_searchUiState.value.loading) return
+        // Cancel only pending operations, not the previous committed active run.
+        invalidateActiveSearch()
         _searchUiState.update {
-            val updated = it.selectedFilters.toMutableMap()
-            val selected = (updated[group] ?: emptySet()).toMutableSet()
+            change(it).copy(error = null, showingSavedSearchId = null, savedResultCards = emptyList(),
+                savedResultCursor = null, savedResultsLoadingMore = false)
+        }
+        schedulePreview()
+    }
+
+    fun setSearchCity(value: String) = editDraft { it.copy(city = value) }
+    fun setSearchRadius(value: UInt) = editDraft { it.copy(radiusKm = value) }
+    fun setCategory(value: String) = editDraft { it.copy(category = value) }
+    fun setAgeRange(min: UInt, max: UInt) = editDraft { it.copy(ageMin = min, ageMax = max) }
+    fun setHeightRange(min: UInt, max: UInt) = editDraft { it.copy(heightMin = min, heightMax = max) }
+    fun setMaxPages(value: UInt) {
+        if (!_searchUiState.value.loading) _searchUiState.update { it.copy(maxPages = value.coerceIn(1u, 50u)) }
+    }
+
+    fun setLocalVisibility(value: LocalVisibility) {
+        if (!_searchUiState.value.loading) _searchUiState.update { it.copy(local = value) }
+    }
+
+    fun resetSearchDraft() = editDraft {
+        it.copy(city = "Leipzig", radiusKm = 20u, category = "", ageMin = 18u, ageMax = 60u,
+            heightMin = 140u, heightMax = 200u, maxPages = 10u, selectedFilters = emptyMap(),
+            local = defaultLocalVisibility())
+    }
+
+    fun setAvailability(mode: AvailabilityMode, run: Boolean = false) {
+        if (_searchUiState.value.loading) return
+        editDraft { it.copy(selectedFilters = withAvailability(it.selectedFilters, mode)) }
+        if (run) startSearch()
+    }
+
+    fun toggleFilter(group: String, value: String) = editDraft {
+        if (group == "zeiten" && value in setOf("jetzt geöffnet", "jetzt-offen", "heute geöffnet", "heute-offen")) {
+            val target = if (value.startsWith("jetzt")) AvailabilityMode.Now else AvailabilityMode.Today
+            it.copy(selectedFilters = withAvailability(it.selectedFilters,
+                if (availabilityMode(it.selectedFilters) == target) AvailabilityMode.All else target))
+        } else {
+            val selected = it.selectedFilters[group].orEmpty().toMutableSet()
             if (!selected.add(value)) selected.remove(value)
-            if (selected.isEmpty()) updated.remove(group) else updated[group] = selected
-            it.copy(selectedFilters = updated)
+            it.copy(selectedFilters = if (selected.isEmpty()) it.selectedFilters - group
+                else it.selectedFilters + (group to selected.toSet()))
         }
     }
 
     private fun request(input: SearchUiState): SearchRequest {
         val filters = JSONObject()
-        input.selectedFilters.forEach { (group, values) ->
+        input.selectedFilters.toSortedMap().forEach { (group, values) ->
             filters.put(group, JSONArray(values.sorted()))
         }
         return SearchRequest(
@@ -236,7 +292,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val catalog = core.sourceFilterCatalog()
                 val saved = core.savedSearches()
-                _searchUiState.update { it.copy(filterCatalog = catalog, savedSearches = saved) }
+                val frequent = core.frequentFilters()
+                _searchUiState.update { it.copy(filterCatalog = catalog, savedSearches = saved, frequentFilters = frequent) }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
@@ -257,9 +314,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 if (input.editingSavedSearchId != null) {
-                    core.updateSavedSearch(input.editingSavedSearchId, name, request(input))
+                    core.updateSavedSearch(input.editingSavedSearchId, name, request(input), input.local)
                 } else {
-                    core.saveSearch(name, request(input))
+                    core.saveSearch(name, request(input), input.local)
                 }
                 _searchUiState.update { it.copy(savedSearches = core.savedSearches(), saving = false) }
             } catch (cancellation: CancellationException) {
@@ -277,7 +334,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val epoch = searchEpoch
         viewModelScope.launch {
             try {
-                val q = core.loadSavedSearch(id)
+                val definition = core.loadSavedSearch(id)
+                val q = definition.query
                 val selected = JSONObject(q.filtersJson)
                 val values = mutableMapOf<String,Set<String>>()
                 for (key in selected.keys()) {
@@ -285,12 +343,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     values[key] = (0 until array.length()).map { array.getString(it) }.toSet()
                 }
                 if (epoch != searchEpoch) return@launch
-                invalidateSearchResults()
-                _searchUiState.update {
+                editDraft {
                     it.copy(city=q.city,radiusKm=q.radiusKm,category=q.category,
                         ageMin=q.ageMin,ageMax=q.ageMax,heightMin=q.heightMin,
                         heightMax=q.heightMax,maxPages=q.maxPages,selectedFilters=values,
-                        editingSavedSearchId=id)
+                        local=definition.local, editingSavedSearchId=id)
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -390,8 +447,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startSearch(savedId: String? = null) {
-        if (_searchUiState.value.loading || _uiState.value.loading) return
+        if (_searchUiState.value.loading || _uiState.value.loading || _discoverState.value.busy) return
         val input = _searchUiState.value
+        cancelPreview()
         invalidateActiveSearch()
         val epoch = searchEpoch
         val control = RequestControl()
@@ -399,21 +457,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateProfileRequest()
         _searchUiState.update {
             it.copy(loading = true, error = null, profile = null, profileOpen = false,
-                response = null, showingSavedSearchId = null, savedResultCards = emptyList(),
+                showingSavedSearchId = null, savedResultCards = emptyList(),
                 savedResultCursor = null, savedResultsLoadingMore = false)
         }
         viewModelScope.launch {
             try {
-                val result = if (savedId == null) core.search(request(input), control)
+                val result = if (savedId == null) core.search(request(input), input.local, control)
                 else core.runSavedSearch(savedId, control)
                 if (epoch != searchEpoch) return@launch
-                skippedPeople.clear()
-                val saved = core.savedSearches()
+                val cards = core.activeSearchCards(result.searchRunId, result.local)
                 if (epoch != searchEpoch) return@launch
+                skippedPeople.clear()
                 _searchUiState.update {
-                    it.copy(loading = false, response = result, savedSearches = saved)
+                    it.copy(loading = false, response = result, activeCards = cards)
                 }
                 refreshDiscovery()
+                refreshSearchDefinitions()
                 refreshMap()
                 refresh()
             } catch (cancellation: CancellationException) {
@@ -426,7 +485,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             } finally {
-                if (searchControl === control) searchControl = null
+                if (searchControl === control) {
+                    searchControl = null
+                    if (_searchUiState.value.loading.not()) schedulePreview()
+                }
             }
         }
     }
@@ -524,6 +586,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private suspend fun discoveryPage(): DiscoveryPage {
+        val active = _searchUiState.value.response
+        if (active == null) {
+            return core.discoveryCards(excludedPeople = skippedPeople.toList())
+        }
+        val visible = core.activeSearchCards(active.searchRunId, active.local)
+        if (_searchUiState.value.response?.searchRunId == active.searchRunId) {
+            _searchUiState.update { it.copy(activeCards = visible) }
+        }
+        // M05.4 introduces replay and undo; until then the existing neutral-only deck remains.
+        return DiscoveryPage(visible.filter { it.preference == Preference.NONE }.distinctBy { it.personId }, null)
+    }
+
     fun refreshDiscovery() {
         if (_discoverState.value.busy) return
         val epoch = ++discoveryEpoch
@@ -532,12 +607,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(loading = true, loadingMore = false, favoritesLoadingMore = false)
             }
             try {
-                val cards = core.discoveryCards(excludedPeople = skippedPeople.toList())
+                val cards = discoveryPage()
                 val favorites = core.discoveryCards(favoritesOnly = true)
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
                         it.copy(
                             cards = cards.cards.filterNot { card -> card.personId in skippedPeople },
+                            activeRunId = _searchUiState.value.response?.searchRunId,
+                            activeVisibleCount = _searchUiState.value.activeCards.size,
                             nextCursor = cards.nextCursor,
                             favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
                             loading = false, error = null,
@@ -624,25 +701,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun skipCard(personId: Long) {
+        if (_searchUiState.value.loading && !_searchUiState.value.profileOpen) return
         skippedPeople.add(personId)
         _discoverState.update { it.copy(cards = it.cards.filterNot { card -> card.personId == personId }) }
         if (_discoverState.value.cards.size < 10) loadMoreDiscovery()
     }
 
     fun choosePreference(personId: Long, preference: Preference) {
-        if (_discoverState.value.busy) return
+        if (_discoverState.value.busy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
         val epoch = ++discoveryEpoch
         _discoverState.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             try {
                 core.setPreference(personId, preference)
                 skippedPeople.remove(personId)
-                val cards = core.discoveryCards(excludedPeople = skippedPeople.toList())
+                val cards = discoveryPage()
                 val favorites = core.discoveryCards(favoritesOnly = true)
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
                         it.copy(
                             cards = cards.cards.filterNot { card -> card.personId in skippedPeople },
+                            activeRunId = _searchUiState.value.response?.searchRunId,
+                            activeVisibleCount = _searchUiState.value.activeCards.size,
                             nextCursor = cards.nextCursor,
                             favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
                             busy = false, loadingMore = false, favoritesLoadingMore = false,
@@ -665,19 +745,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun toggleFavorite(personId: Long) {
-        if (_discoverState.value.busy || _searchUiState.value.actionBusy) return
+        if (_discoverState.value.busy || _searchUiState.value.actionBusy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
         val epoch = ++discoveryEpoch
         _discoverState.update { it.copy(busy = true) }
         viewModelScope.launch {
             try {
                 val person = core.person(personId) ?: error("Person nicht gefunden")
                 core.setFavorite(personId, !person.favorite)
-                val cards = core.discoveryCards(excludedPeople = skippedPeople.toList())
+                val cards = discoveryPage()
                 val favorites = core.discoveryCards(favoritesOnly = true)
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
                         it.copy(
                             cards = cards.cards.filterNot { card -> card.personId in skippedPeople },
+                            activeRunId = _searchUiState.value.response?.searchRunId,
+                            activeVisibleCount = _searchUiState.value.activeCards.size,
                             nextCursor = cards.nextCursor,
                             favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
                             busy = false, loadingMore = false, favoritesLoadingMore = false, error = null,
