@@ -367,8 +367,9 @@ mod tests {
     ) -> (std::path::PathBuf, std::path::PathBuf) {
         let source_file = root.join("source.sqlite3");
         let mut src = Connection::open(&source_file).unwrap();
-        crate::schema::migrate(&mut src).unwrap();
-        src.pragma_update(None, "application_id", 0).unwrap();
+        src.execute_batch(crate::schema::VERSION_1).unwrap();
+        src.execute_batch("PRAGMA foreign_keys=ON").unwrap();
+        src.pragma_update(None, "user_version", 1).unwrap();
         let hash = format!("{:x}", Sha256::digest(b"sample image"));
         let local = format!("media/images/aa/{hash}.jpg");
         src.execute(

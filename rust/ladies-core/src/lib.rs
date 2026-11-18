@@ -6,6 +6,7 @@ mod history;
 mod identity;
 mod legacy_import;
 mod media;
+mod media_url;
 mod schema;
 mod source;
 

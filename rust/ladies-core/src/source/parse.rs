@@ -317,7 +317,7 @@ fn media_url(raw: &str) -> Option<Url> {
         .trim()
         .trim_matches(['"', '\''])
         .trim_end_matches([')', ',', ';']);
-    crate::media::validate_media_url(cleaned, None).ok()
+    crate::media_url::validate_media_url(cleaned, None).ok()
 }
 
 fn image_number(url: &Url) -> Option<(u32, String)> {

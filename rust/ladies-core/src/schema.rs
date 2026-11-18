@@ -5,7 +5,7 @@ use crate::CoreError;
 pub const VERSION: u32 = 2;
 const APPLICATION_ID: i32 = 0x4C44_5850; // LDXP: Ladies Explorer Android
 
-const VERSION_1: &str = r#"
+pub(crate) const VERSION_1: &str = r#"
 CREATE TABLE persons (
     person_id INTEGER PRIMARY KEY,
     display_name TEXT,
