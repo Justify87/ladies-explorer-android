@@ -53,34 +53,65 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val saveHar = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            lifecycleScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val snapshot = viewModel.prepareHarSnapshot()
+                        try {
+                            val output = contentResolver.openOutputStream(uri, "wt")
+                                ?: error("Die Zieldatei konnte nicht geöffnet werden.")
+                            snapshot.inputStream().use { input ->
+                                output.use { destination -> input.copyTo(destination) }
+                            }
+                        } finally {
+                            snapshot.delete()
+                        }
+                    }
+                }
+                toast(result.fold(
+                    onSuccess = { "HAR gespeichert." },
+                    onFailure = { "HAR-Export fehlgeschlagen: \${it.message}" },
+                ))
+                viewModel.refresh()
+            }
+        }
+    }
+
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
-    private fun shareDiagnostics() {
+    private fun shareSnapshot(
+        title: String,
+        mime: String,
+        create: suspend () -> java.io.File,
+    ) {
         lifecycleScope.launch {
-            val snapshot = runCatching { viewModel.prepareDiagnosticSnapshot() }
+            val snapshot = runCatching { create() }
                 .getOrElse { failure ->
-                    toast("Log-Snapshot fehlgeschlagen: ${failure.message}")
+                    toast("Export fehlgeschlagen: \${failure.message}")
                     viewModel.refresh()
                     return@launch
                 }
             try {
                 val uri = FileProvider.getUriForFile(this@MainActivity, "$packageName.fileprovider", snapshot)
                 val send = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
+                    type = mime
                     putExtra(Intent.EXTRA_STREAM, uri)
-                    clipData = ClipData.newUri(contentResolver, "Ladies Explorer Debug-Log", uri)
+                    clipData = ClipData.newUri(contentResolver, title, uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                val chooser = Intent.createChooser(send, "Debug-Protokoll teilen").apply {
+                startActivity(Intent.createChooser(send, title).apply {
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                startActivity(chooser)
-                // Retain the immutable snapshot in cache while the receiving app reads it.
+                })
+                // Keep snapshot in the bounded temporary directory while a receiver reads it.
             } catch (failure: Exception) {
                 snapshot.delete()
-                toast("Teilen fehlgeschlagen: ${failure.message}")
+                toast("Teilen fehlgeschlagen: \${failure.message}")
             }
             viewModel.refresh()
         }
@@ -105,7 +136,15 @@ class MainActivity : ComponentActivity() {
                     onSaveDiagnostics = {
                         saveDiagnostics.launch("ladies-debug-${System.currentTimeMillis()}.txt")
                     },
-                    onShareDiagnostics = ::shareDiagnostics,
+                    onShareDiagnostics = {
+                        shareSnapshot("Debug-Protokoll teilen", "text/plain", viewModel::prepareDiagnosticSnapshot)
+                    },
+                    onSaveHar = {
+                        saveHar.launch("ladies-http-${System.currentTimeMillis()}.har")
+                    },
+                    onShareHar = {
+                        shareSnapshot("HAR teilen", "application/json", viewModel::prepareHarSnapshot)
+                    },
                 )
             }
         }
