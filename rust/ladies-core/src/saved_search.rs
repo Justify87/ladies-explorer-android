@@ -199,6 +199,54 @@ pub(crate) fn list(core: &LadiesCore) -> Result<Vec<SavedSearchInfo>, CoreError>
     .collect()
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavedSearchCard {
+    pub result_key: String,
+    pub listing_id: Option<i64>,
+    pub person_id: Option<i64>,
+    pub name: String,
+    pub city: String,
+    pub thumbnail_url: Option<String>,
+    pub first_seen_at: String,
+}
+
+pub(crate) fn results(core: &LadiesCore, id: String) -> Result<Vec<SavedSearchCard>, CoreError> {
+    let db = core.connection()?;
+    let exists: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM saved_searches WHERE saved_search_id=?1)",
+        [&id], |row| row.get(0)
+    )?;
+    if !exists {
+        return Err(CoreError::InvalidInput("Saved search not found".into()));
+    }
+    let mut query = db.prepare(
+        "SELECT r.result_key,r.snapshot_json,r.first_seen_at,
+                l.listing_id,l.person_id
+         FROM saved_search_results r
+         LEFT JOIN listings l ON l.source='LADIES' AND l.external_listing_id=r.result_key
+         WHERE r.saved_search_id=?1 AND r.present=1 AND r.visible=1
+         ORDER BY r.position ASC LIMIT 1000"
+    )?;
+    let rows = query.query_map([id],|row| {
+        Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,
+            row.get::<_,String>(2)?,row.get::<_,Option<i64>>(3)?,
+            row.get::<_,Option<i64>>(4)?))
+    })?;
+    rows.map(|row| {
+        let (result_key,snapshot,first_seen_at,listing_id,person_id)=row?;
+        let value = serde_json::from_str::<serde_json::Value>(&snapshot).unwrap_or_default();
+        Ok(SavedSearchCard {
+            name: value.get("name").and_then(|v| v.as_str())
+                .unwrap_or(&result_key).to_owned(),
+            city: value.get("city").and_then(|v| v.as_str())
+                .unwrap_or_default().to_owned(),
+            thumbnail_url: value.get("thumbnail_url")
+                .and_then(|v| v.as_str()).map(str::to_owned),
+            result_key,listing_id,person_id,first_seen_at,
+        })
+    }).collect()
+}
+
 pub(crate) fn delete(core: &LadiesCore, id: String) -> Result<(), CoreError> {
     let db = core.connection()?;
     db.execute("DELETE FROM saved_searches WHERE saved_search_id=?1", [id])?;
