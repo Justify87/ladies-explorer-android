@@ -735,12 +735,8 @@ mod tests {
         let control = RequestControl::default();
         control.cancel();
         assert!(
-            fetch_search_controlled(
-                &Mock::default(),
-                &SearchRequest::for_test(),
-                Some(&control)
-            )
-            .is_err()
+            fetch_search_controlled(&Mock::default(), &SearchRequest::for_test(), Some(&control))
+                .is_err()
         );
     }
 
