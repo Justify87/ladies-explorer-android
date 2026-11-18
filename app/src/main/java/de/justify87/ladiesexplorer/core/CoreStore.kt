@@ -122,6 +122,9 @@ class CoreStore(context: Context) {
     suspend fun saveSearch(name: String, request: SearchRequest): String =
         withContext(Dispatchers.IO) { engine.saveNativeSearch(name, request) }
 
+    suspend fun updateSavedSearch(id: String, name: String, request: SearchRequest) =
+        withContext(Dispatchers.IO) { engine.updateNativeSearch(id, name, request) }
+
     suspend fun loadSavedSearch(id: String): SearchRequest =
         withContext(Dispatchers.IO) { engine.loadSavedSearch(id) }
 
