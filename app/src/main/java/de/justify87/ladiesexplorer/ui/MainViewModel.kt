@@ -226,10 +226,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun prepareDiagnosticSnapshot(): File = core.createDiagnosticSnapshot()
 
-    override fun onCleared() {
-        super.onCleared()
-    }
-
     private suspend fun publishStatus() {
         val status = core.status()
         val diagnostic = core.diagnosticStatus()
