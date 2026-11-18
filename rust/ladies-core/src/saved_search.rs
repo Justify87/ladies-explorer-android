@@ -171,7 +171,10 @@ fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreErro
         max_pages: 50,
     };
     source::filter::validate_request(&request)?;
-    Ok(SavedSearchDefinition { query: request, local })
+    Ok(SavedSearchDefinition {
+        query: request,
+        local,
+    })
 }
 
 fn definition(core: &LadiesCore, id: &str) -> Result<(String, i64), CoreError> {
@@ -215,7 +218,9 @@ pub(crate) fn list(core: &LadiesCore) -> Result<Vec<SavedSearchInfo>, CoreError>
         Ok(SavedSearchInfo {
             search_id,
             name,
-            city: parsed.as_ref().map_or(String::new(), |r| r.query.city.clone()),
+            city: parsed
+                .as_ref()
+                .map_or(String::new(), |r| r.query.city.clone()),
             radius_km: parsed.as_ref().map_or(0, |r| r.query.radius_km),
             last_run_at,
             last_error,
@@ -605,7 +610,11 @@ mod tests {
         assert!(renamed.local.video_only);
         assert!(renamed.local.hide_dislikes);
         assert_eq!(renamed.local.image_mode, "AI");
-        assert!(list(&core).unwrap()[0].local_filter_summary.contains("Nur Video"));
+        assert!(
+            list(&core).unwrap()[0]
+                .local_filter_summary
+                .contains("Nur Video")
+        );
         let mut changed = loaded;
         changed.radius_km = 30;
         update(&core, "legacy".into(), "Edited".into(), changed).unwrap();
@@ -616,9 +625,7 @@ mod tests {
     #[test]
     fn unsupported_image_classifiers_cannot_be_applied_to_unclassified_cards() {
         for mode in ["STUDIO", "FACEAPP"] {
-            let legacy = format!(
-                r#"{{"city":"Leipzig","local":{{"imageMode":"{mode}"}}}}"#
-            );
+            let legacy = format!(r#"{{"city":"Leipzig","local":{{"imageMode":"{mode}"}}}}"#);
             assert!(decode_definition(&legacy).is_err(), "{mode}");
         }
     }
