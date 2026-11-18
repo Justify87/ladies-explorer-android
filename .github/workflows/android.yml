@@ -69,6 +69,9 @@ jobs:
           unzip -p "$tmp/export.zip" legacy.sqlite3 > "$tmp/restored.sqlite3"
           test "$(sqlite3 "$tmp/restored.sqlite3" "SELECT COUNT(*) FROM media_assets;")" = 1
 
+      - name: Generate synthetic M05 reference
+        run: python3 tools/m05-reference.py "$RUNNER_TEMP/m05-reference" --clock 2026-11-18T12:00:00+00:00
+
       - name: Rust unit tests and formatting
         working-directory: rust
         run: |
