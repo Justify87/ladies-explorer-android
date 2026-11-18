@@ -75,4 +75,23 @@ class SearchRunStateTest {
         search.invalidate()
         assertFalse(search.isCurrent(firstSearch))
     }
+
+    @Test fun switchingSavedResultsDropsPreviousCursorBeforeFirstPage() {
+        val active = SearchUiState().acceptRun(response(1), listOf(card(1)))
+        val previous = active.copy(showingSavedSearchId = "old",
+            savedResultCursor = de.justify87.ladiesexplorer.core.SavedResultCursor(5L, "old-key"),
+            savedResultsLoadingMore = true)
+        val generation = RequestGeneration()
+        val oldTicket = generation.value
+        generation.invalidate()
+        val next = previous.beginSavedResults("new")
+        assertFalse(generation.isCurrent(oldTicket))
+        assertEquals("new", next.showingSavedSearchId)
+        assertEquals(null, next.savedResultCursor)
+        assertTrue(next.savedResultCards.isEmpty())
+        assertTrue(next.savedResultsLoadingMore)
+        assertEquals(active.response, next.response)
+        assertEquals(active.activeCards, next.activeCards)
+    }
+
 }
