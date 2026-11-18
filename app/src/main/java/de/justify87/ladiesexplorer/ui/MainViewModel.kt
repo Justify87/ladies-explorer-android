@@ -23,6 +23,7 @@ data class HomeUiState(
     val sourceProfileCount: String = "0",
     val listingCount: String = "0",
     val lastImport: ImportReport? = null,
+    val debugLoggingEnabled: Boolean = false,
     val diagnosticAvailable: Boolean = false,
     val diagnosticSizeBytes: Long = 0,
     val diagnosticLastError: String? = null,
@@ -710,6 +711,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         personCount=status.personCount.toString(),sourceProfileCount=status.sourceProfileCount.toString(),
                         listingCount=status.listingCount.toString(),diagnosticAvailable=diagnostic.available,
                         diagnosticSizeBytes=diagnostic.sizeBytes.toLong(),
+                        debugLoggingEnabled=core.isDebugLoggingEnabled(),
                         diagnosticLastError=diagnostic.lastWriteError)
                 }
             } catch (cancellation: CancellationException) {
@@ -748,6 +750,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (failure: Exception) {
                 _uiState.update { it.copy(loading=false,error=failure.message ?: "Datenimport fehlgeschlagen") }
             }
+        }
+    }
+
+    fun setDebugLoggingEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            runCatching { core.setDebugLoggingEnabled(enabled) }
+                .onSuccess { _uiState.update { it.copy(debugLoggingEnabled = enabled) } }
+                .onFailure { failure -> _uiState.update { state -> state.copy(error = failure.message) } }
         }
     }
 
