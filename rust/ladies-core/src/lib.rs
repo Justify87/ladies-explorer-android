@@ -2,12 +2,14 @@
 //! A person is distinct from its source profiles and individual listings.
 
 mod diagnostics;
+mod discovery;
 mod history;
 mod identity;
 mod legacy_import;
 mod media;
 mod media_url;
 mod schema;
+mod saved_search;
 mod source;
 
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -135,7 +137,10 @@ pub struct ImportReport {
     pub media_files: u32,
 }
 
+pub use discovery::DiscoveryCard;
 pub use history::ChangeRecord;
+pub use saved_search::SavedSearchInfo;
+pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
 pub use identity::IdentityCandidate;
 pub use media::{MediaArchiveControl, MediaArchiveReport};
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
@@ -270,6 +275,38 @@ impl LadiesCore {
         limit: u32,
     ) -> Result<Vec<ChangeRecord>, CoreError> {
         history::list(self, person_id, limit)
+    }
+
+    pub fn discovery_cards(&self, favorites_only: bool, limit: u32) -> Result<Vec<DiscoveryCard>, CoreError> {
+        discovery::list(self, favorites_only, limit)
+    }
+
+    pub fn source_filter_catalog(&self) -> SourceFilterCatalog {
+        source::filter::available()
+    }
+
+    pub fn save_native_search(&self, name: String, request: SearchRequest) -> Result<String, CoreError> {
+        saved_search::save(self, name, request)
+    }
+
+    pub fn list_saved_searches(&self) -> Result<Vec<SavedSearchInfo>, CoreError> {
+        saved_search::list(self)
+    }
+
+    pub fn load_saved_search(&self, id: String) -> Result<SearchRequest, CoreError> {
+        saved_search::load(self, id)
+    }
+
+    pub fn delete_saved_search(&self, id: String) -> Result<(), CoreError> {
+        saved_search::delete(self, id)
+    }
+
+    pub fn acknowledge_saved_search(&self, id: String) -> Result<(), CoreError> {
+        saved_search::acknowledge(self, id)
+    }
+
+    pub fn run_saved_search(&self, id: String) -> Result<SearchResponse, CoreError> {
+        saved_search::run(self, id)
     }
 
     pub fn status(&self) -> Result<CoreStatus, CoreError> {
