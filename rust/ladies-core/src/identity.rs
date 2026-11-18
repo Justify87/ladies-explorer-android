@@ -621,7 +621,7 @@ mod tests {
     #[test]
     fn image_matching_finds_maximum_independent_pairs() {
         // New 0 matches both old 0 and old 1; new 1 matches only old 0.
-        assert_eq!(compare_images(&[0, 31], &[1, 2]).1, 2);
+        assert_eq!(compare_images(&[0, 32], &[0, 31]).1, 2);
     }
 
     #[test]
