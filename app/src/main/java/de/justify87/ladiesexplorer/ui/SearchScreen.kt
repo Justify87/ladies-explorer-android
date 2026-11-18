@@ -74,6 +74,7 @@ fun SearchScreen(
     onToggleFilter: (String,String) -> Unit,
     onSearch: () -> Unit,
     onSave: (String) -> Unit,
+    onNewPreset: () -> Unit,
     onLoadSaved: (String) -> Unit,
     onRunSaved: (String) -> Unit,
     onDeleteSaved: (String) -> Unit,
@@ -84,6 +85,9 @@ fun SearchScreen(
     var resultsVisible by rememberSaveable { mutableStateOf(false) }
     var presetName by rememberSaveable { mutableStateOf("") }
     var categoryMenu by remember { mutableStateOf(false) }
+    LaunchedEffect(state.editingSavedSearchId) {
+        presetName = state.savedSearches.firstOrNull { it.searchId == state.editingSavedSearchId }?.name.orEmpty()
+    }
     LaunchedEffect(state.response?.searchRunId) {
         if (state.response != null) resultsVisible = true
     }
@@ -242,10 +246,17 @@ fun SearchScreen(
                     Button(
                         onClick={
                             onSave(presetName)
-                            presetName=""
                         },
                         enabled=!state.saving && presetName.isNotBlank(),
-                    ) { Text("Speichern") }
+                    ) { Text(if (state.editingSavedSearchId == null) "Speichern" else "Aktualisieren") }
+                }
+            }
+            if (state.editingSavedSearchId != null) {
+                item {
+                    TextButton(onClick = {
+                        onNewPreset()
+                        presetName = ""
+                    }) { Text("Als neue Suche speichern") }
                 }
             }
             if (state.savedSearches.isEmpty()) {
