@@ -249,7 +249,7 @@ private fun SettingsScreen(
             }
         }
         Text(
-            "Aufzeichnung: \${state.httpCaptureEntries} Requests · \${state.httpCaptureBytes} Bytes / 25 MiB",
+            "Aufzeichnung: ${state.httpCaptureEntries} Requests · ${state.httpCaptureBytes} Bytes / 25 MiB",
             style=MaterialTheme.typography.bodySmall,
         )
         if (state.httpCaptureStopped) Text(
