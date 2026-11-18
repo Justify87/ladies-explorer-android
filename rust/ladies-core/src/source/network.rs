@@ -935,8 +935,10 @@ mod tests {
             advertCount: Number.parseInt(replaceWithDefault("203", 1)),
             distanceSearched: Number.parseInt(replaceWithDefault("20", 1))"#;
         let cards = parse::parse_cards(html);
-        assert_eq!(cards.len(), 1);
-        assert_eq!(cards[0].advert_id, "12345");
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].advert_id, "9988");
+        assert_eq!(cards[0].category, "fkk saunaclubs");
+        assert_eq!(cards[1].advert_id, "12345");
         assert_eq!(parse::parse_config(html, "totalPages"), Some(8));
         assert_eq!(parse::parse_config(html, "advertCount"), Some(203));
         assert_eq!(parse::parse_config(html, "distanceSearched"), Some(20));
