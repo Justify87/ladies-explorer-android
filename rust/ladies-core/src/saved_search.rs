@@ -379,14 +379,17 @@ fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
     let Some(local_value) = parsed.get("local") else {
         return Ok(LocalVisibility::default());
     };
-    let local = local_value.as_object().ok_or_else(|| {
-        CoreError::InvalidInput("Unsupported local saved-search filters".into())
-    })?;
+    let local = local_value
+        .as_object()
+        .ok_or_else(|| CoreError::InvalidInput("Unsupported local saved-search filters".into()))?;
     for (key, value) in local {
         let supported = match key.as_str() {
             "videoOnly" | "photosOnly" | "hideDislikes" | "hideLikes" => value.is_boolean(),
             "imageMode" => value.as_str().is_some_and(|mode| {
-                matches!(mode.to_ascii_uppercase().as_str(), "ALL" | "AI" | "NATURAL" | "STUDIO" | "FACEAPP")
+                matches!(
+                    mode.to_ascii_uppercase().as_str(),
+                    "ALL" | "AI" | "NATURAL" | "STUDIO" | "FACEAPP"
+                )
             }),
             _ => false,
         };
