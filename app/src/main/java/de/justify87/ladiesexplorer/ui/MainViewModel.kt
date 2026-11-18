@@ -49,6 +49,7 @@ data class SearchUiState(
     val selectedFilters: Map<String, Set<String>> = emptyMap(),
     val filterCatalog: SourceFilterCatalog? = null,
     val savedSearches: List<SavedSearchInfo> = emptyList(),
+    val editingSavedSearchId: String? = null,
     val loading: Boolean = false,
     val saving: Boolean = false,
     val response: SearchResponse? = null,
@@ -193,13 +194,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun createNewSavedSearch() {
+        _searchUiState.update { it.copy(editingSavedSearchId = null) }
+    }
+
     fun saveCurrentSearch(name: String) {
         if (_searchUiState.value.saving) return
         val input = _searchUiState.value
         _searchUiState.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
             try {
-                core.saveSearch(name,request(input))
+                if (input.editingSavedSearchId != null) {
+                    core.updateSavedSearch(input.editingSavedSearchId, name, request(input))
+                } else {
+                    core.saveSearch(name, request(input))
+                }
                 _searchUiState.update { it.copy(savedSearches = core.savedSearches(), saving = false) }
             } catch (cancellation: CancellationException) {
                 _searchUiState.update { it.copy(saving = false) }
@@ -225,7 +234,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _searchUiState.update {
                     it.copy(city=q.city,radiusKm=q.radiusKm,category=q.category,
                         ageMin=q.ageMin,ageMax=q.ageMax,heightMin=q.heightMin,
-                        heightMax=q.heightMax,maxPages=q.maxPages,selectedFilters=values)
+                        heightMax=q.heightMax,maxPages=q.maxPages,selectedFilters=values,
+                        editingSavedSearchId=id)
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -239,7 +249,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 core.deleteSavedSearch(id)
-                _searchUiState.update { it.copy(savedSearches = core.savedSearches()) }
+                _searchUiState.update { it.copy(savedSearches = core.savedSearches(),
+                    editingSavedSearchId = if (it.editingSavedSearchId == id) null else it.editingSavedSearchId) }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
