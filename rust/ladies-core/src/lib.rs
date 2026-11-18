@@ -146,7 +146,6 @@ pub struct LadiesCore {
     diagnostics: Arc<diagnostics::Diagnostics>,
     source_session: source::SourceSession,
     media_root: Option<std::path::PathBuf>,
-    media_epoch: std::sync::atomic::AtomicU64,
 }
 
 #[uniffi::export]
@@ -179,7 +178,6 @@ impl LadiesCore {
             diagnostics,
             source_session,
             media_root,
-            media_epoch: std::sync::atomic::AtomicU64::new(0),
         }))
     }
 
@@ -240,11 +238,6 @@ impl LadiesCore {
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
         source::load_profile(self, listing_id)
-    }
-
-    pub fn cancel_media_archive(&self) {
-        self.media_epoch
-            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     }
 
     pub fn archive_profile_media(
