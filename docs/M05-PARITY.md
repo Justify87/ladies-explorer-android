@@ -157,3 +157,11 @@ G4 REVIEW, Full-CI und manuelle Geräte-/Live-Quellprüfung offen (DEVICE_PENDIN
 | P42 | Alle app-internen HTTP-Abrufe von ladies.de und Medien-CDNs ausschließlich Rust | RustImageNetworkClient/CoreStore/load_display_image; keine direkte Coil-OkHttp-Anbindung; Full-CI #333 grün, DEVICE_PENDING | T4a.1–T4a.3 |
 | P43 | Coil-Cache, Offline, Prefetch und HAR ohne direkten Android-Transport | Standard-Coil-Netzwerkcache mit Rust-Adapter; Rust-HAR; Full-CI #333 grün, DEVICE_PENDING | T4a.3–T4a.5 |
 | P44 | CI schützt die Quellen-HTTP-Grenze; MapLibre und externe Intents ausgenommen | tools/check-source-http.py in Android-CI; Full-CI #333 grün | T4a.6 |
+
+## M05.5 – native Grid-Evidenz (Review)
+
+| ID | Code / Tests | Rest |
+|---|---|---|
+| P24 | DiscoveryGridScreen.kt / ProfileGridCard, discovery.rs (bekanntes Snapshot-Alter; keine Schätzung) | Geräte-Layout/Scroll und CI offen |
+| P25 | MainViewModel.toggleGridLike / Rust setSwipePreference, SearchRunStateTest | Legacy blendet Hinzufügen von Likes unabhängig von Hide-Likes aus; native Ansicht folgt bewusst der ausgeführten Rust-Filterprojektion; Bestätigung offen |
+| P26 | ShellRoute, LadiesApp, ShellRouteTest, SearchRunStateTest | Geräteposition und Moduswechsel offen; Kartenvertrag unverändert |

@@ -16,6 +16,7 @@ pub struct DiscoveryCard {
     pub has_video: bool,
     pub has_ai_content: bool,
     pub is_premium: bool,
+    pub age: Option<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -143,6 +144,33 @@ pub struct DiscoveryPage {
     pub next_cursor: Option<DiscoveryCursor>,
 }
 
+/// Only explicit, unambiguous source traits from an existing snapshot.
+fn known_age(traits_json: Option<&str>) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(traits_json?).ok()?;
+    let (_, age) = value
+        .as_object()?
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case("Alter"))?;
+    let text = match age {
+        serde_json::Value::String(text) => text.as_str(),
+        serde_json::Value::Array(values) if values.len() == 1 => values[0].as_str()?,
+        _ => return None,
+    };
+    let mut parts = text.split_whitespace();
+    let digits = parts.next()?;
+    if digits.len() != 2 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    if let Some(unit) = parts.next() {
+        if !matches!(unit.to_ascii_lowercase().as_str(), "jahr" | "jahre")
+            || parts.next().is_some()
+        {
+            return None;
+        }
+    }
+    Some(digits.to_owned())
+}
+
 pub(crate) fn page(
     core: &LadiesCore,
     favorites_only: bool,
@@ -186,7 +214,7 @@ pub(crate) fn page(
                  LIMIT 1) AS local_path,
                 s.description,u.preference,u.favorite,
                 COALESCE(r.has_video,0),COALESCE(r.has_ai_content,0),
-                l.last_seen_at,COALESCE(r.is_premium,0)
+                l.last_seen_at,COALESCE(r.is_premium,0),s.traits_json
          FROM ranked k
          JOIN listings l ON l.listing_id=k.listing_id
          JOIN persons p ON p.person_id=l.person_id
@@ -232,6 +260,7 @@ pub(crate) fn page(
                 r.get::<_, i64>(10)?,
                 r.get::<_, String>(11)?,
                 r.get::<_, bool>(12)?,
+                r.get::<_, Option<String>>(13)?,
             ))
         },
     )?;
@@ -251,6 +280,7 @@ pub(crate) fn page(
                 ai,
                 last_seen_at,
                 is_premium,
+                traits_json,
             ) = row?;
             let local_path = relative.and_then(|relative| {
                 let path = core.media_root.as_ref()?.join(relative);
@@ -270,6 +300,7 @@ pub(crate) fn page(
                     has_video: video != 0,
                     has_ai_content: ai != 0,
                     is_premium,
+                    age: known_age(traits_json.as_deref()),
                 },
                 last_seen_at,
             ))
@@ -308,7 +339,7 @@ pub(crate) fn active_search_cards(
                  WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
                  ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position
                  LIMIT 1),
-                s.description,u.preference,u.favorite,r.has_video,r.has_ai_content,r.is_premium
+                s.description,u.preference,u.favorite,r.has_video,r.has_ai_content,r.is_premium,s.traits_json
          FROM search_results r
          JOIN listings l ON l.listing_id=r.listing_id
          JOIN person_user_state u ON u.person_id=l.person_id
@@ -329,6 +360,7 @@ pub(crate) fn active_search_cards(
             r.get::<_, bool>(9)?,
             r.get::<_, bool>(10)?,
             r.get::<_, bool>(11)?,
+            r.get::<_, Option<String>>(12)?,
         ))
     })?;
     let mut cards = Vec::new();
@@ -346,6 +378,7 @@ pub(crate) fn active_search_cards(
             has_video,
             has_ai_content,
             is_premium,
+            traits_json,
         ) = row?;
         if !local.allows(
             has_video,
@@ -372,6 +405,7 @@ pub(crate) fn active_search_cards(
             has_video,
             has_ai_content,
             is_premium,
+            age: known_age(traits_json.as_deref()),
         });
     }
     Ok(cards)
@@ -380,6 +414,21 @@ pub(crate) fn active_search_cards(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grid_age_uses_only_an_unambiguous_persisted_trait() {
+        assert_eq!(
+            known_age(Some(r#"{"Alter":["32 Jahre"]}"#)).as_deref(),
+            Some("32")
+        );
+        assert_eq!(
+            known_age(Some(r#"{"alter":"28"}"#)).as_deref(),
+            Some("28")
+        );
+        assert!(known_age(Some(r#"{"Alter":["28","30"]}"#)).is_none());
+        assert!(known_age(Some(r#"{"Alter":["ca. 30"]}"#)).is_none());
+        assert!(known_age(None).is_none());
+    }
 
     #[test]
     fn active_run_keeps_membership_and_order_and_projects_current_preferences() {

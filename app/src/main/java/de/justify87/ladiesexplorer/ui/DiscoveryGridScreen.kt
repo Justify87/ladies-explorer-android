@@ -65,7 +65,7 @@ internal fun DiscoveryGridScreen(
         item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (active) "Aktive Suche · ${cards.size} sichtbar" else "Lokaler Bestand · neutrale Profile",
+                    if (active) "Aktive Suche · ${cards.size} sichtbar" else "Lokaler Bestand · neutrale Deckprofile",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f),
                 )
@@ -91,7 +91,7 @@ internal fun DiscoveryGridScreen(
         items(cards, key = { it.listingId }) { card ->
             ProfileGridCard(
                 name = card.name,
-                age = null,
+                age = card.age,
                 thumbnailUrl = card.thumbnailUrl,
                 localPath = card.localPath,
                 liked = card.preference == Preference.LIKE,

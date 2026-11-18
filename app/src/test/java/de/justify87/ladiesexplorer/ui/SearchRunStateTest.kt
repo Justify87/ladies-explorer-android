@@ -29,7 +29,7 @@ class SearchRunStateTest {
         listingId = id, personId = id, name = "Fixture", city = "Leipzig",
         thumbnailUrl = null, localPath = null, description = null,
         preference = Preference.NONE, favorite = false, hasVideo = false,
-        hasAiContent = false, isPremium = false,
+        hasAiContent = false, isPremium = false, age = null,
     )
 
     @Test fun draftChangesAndCancellationKeepExecutedResult() {
@@ -62,6 +62,31 @@ class SearchRunStateTest {
         assertTrue(state.response!!.partial)
         assertFalse(state.response!!.radiusVerified)
         assertFalse(state.loading)
+    }
+
+    @Test fun activeGridIsNotTheConsumedSwipeQueue() {
+        val rows = listOf(card(1), card(2), card(3).copy(preference = Preference.LIKE))
+        val search = SearchUiState().acceptRun(response(1), rows)
+        val swipe = SwipeSession().apply {
+            visit(SwipeStep(1, 1))
+            replayLikes = false
+        }
+        val discovery = DiscoverUiState(cards = swipe.queue(rows, true), activeRunId = 1)
+        assertEquals(listOf(2L), discovery.cards.map { it.listingId })
+        assertEquals(rows, gridCards(discovery, search))
+        // Neither a draft edit nor a cancelled replacement changes the grid's source.
+        assertEquals(rows, gridCards(discovery, search.beginRun().endRun()))
+        assertEquals(discovery.cards, gridCards(discovery, SearchUiState()))
+    }
+
+    @Test fun gridHeartTogglesOnlyLikeWithoutTouchingFavoriteOrSwipeHistory() {
+        assertEquals(Preference.LIKE, gridLikeTarget(Preference.NONE))
+        assertEquals(Preference.LIKE, gridLikeTarget(Preference.DISLIKE))
+        assertEquals(Preference.NONE, gridLikeTarget(Preference.LIKE))
+        val original = card(1).copy(favorite = true)
+        val updated = original.copy(preference = gridLikeTarget(original.preference))
+        assertTrue(updated.favorite)
+        assertEquals(Preference.LIKE, updated.preference)
     }
 
     @Test fun generationsForPreviewAndFullSearchAreIndependent() {

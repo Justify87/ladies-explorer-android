@@ -33,9 +33,9 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | T4a.4 | 4a.3 | P43 | Kotlin-HTTP-Recorder und redundante Abhängigkeit entfernen. | Rust-HAR inkl. Anzeigeabruf; Kermit bleibt | DONE | PR #18 gemergt; Full-CI 44406432843 inklusive Architekturcheck grün; DEVICE_PENDING |
 | T4a.5 | 4a.3 | P43 | Begrenzte Parallelität, Abbruch, Cache/Revision, doppelte Archiv-/Anzeigeabrufe prüfen. | Gezielte Tests, Gerätebelege separat | DONE | PR #18 gemergt; Full-CI 44406432843 inklusive Architekturcheck grün; DEVICE_PENDING |
 | T4a.6 | 4a.4, 4a.5 | P44 | Architekturcheck in vorhandener CI, Regression und Gesamtreview. | Full-CI, kein direkter Quellenpfad, DEVICE_PENDING separat | DONE | PR #18 gemergt; Full-CI 44406432843 inklusive Architekturcheck grün; DEVICE_PENDING |
-| T5.1 | 4a.6 | P24 | Gemeinsame LazyVerticalGrid-Karte: zwei Spalten, Bild-Cover, Gradient, Name/Alter, Placeholder. | Synthetische Screenshot-/Scrollprüfung und stabile IDs | IN_PROGRESS | Grid-UI und lokale Ergebnisprojektion auf integriertem G4a |
-| T5.2 | 5.1 | P25 | Grid-Like unabhängig von Profilöffnung; gemeinsame Zustandsänderung/Filter-Aktualisierung. | Konsistenz Grid/Deck/Gespeichert, Fehler/Rollback | IN_PROGRESS | Direkte Rust-Präferenzmutation / native Navigation |
-| T5.3 | 5.2,1.4 | P26 | Swipe/Grid/Karte wechseln, Position und aktive Suche behalten; Karte nur bestehender Vertrag. | Kein unbeabsichtigter Netzwerk-Run, Kartenlifecycle | IN_PROGRESS | Direkte Rust-Präferenzmutation / native Navigation |
+| T5.1 | 4a.6 | P24 | Gemeinsame LazyVerticalGrid-Karte: zwei Spalten, Bild-Cover, Gradient, Name/Alter, Placeholder. | Synthetische Screenshot-/Scrollprüfung und stabile IDs | REVIEW | Native Grid, Rust-Präferenzmutation, Navigation und Regressionen; CI/DEVICE_PENDING |
+| T5.2 | 5.1 | P25 | Grid-Like unabhängig von Profilöffnung; gemeinsame Zustandsänderung/Filter-Aktualisierung. | Konsistenz Grid/Deck/Gespeichert, Fehler/Rollback | REVIEW | Native Grid, Rust-Präferenzmutation, Navigation und Regressionen; CI/DEVICE_PENDING |
+| T5.3 | 5.2,1.4 | P26 | Swipe/Grid/Karte wechseln, Position und aktive Suche behalten; Karte nur bestehender Vertrag. | Kein unbeabsichtigter Netzwerk-Run, Kartenlifecycle | REVIEW | Native Grid, Rust-Präferenzmutation, Navigation und Regressionen; CI/DEVICE_PENDING |
 | T6.1 | 5.3 | P27 | Profil-Tabs auf gemeinsamen Inhalt umstellen; aktive Tab pro Person/Route. | Swipe/Standalone zeigen gleiche Daten, keine Phantom-Tabs | TODO | — |
 | T6.2 | 6.1 | P28 | Info-Raster, Merkmale, Öffnungszeiten, einklappbare Beschreibung; responsive. | Leere/lange Texte, Font Scale, gleiche Daten wie Rust | TODO | — |
 | T6.3 | 6.2 | P29 | Dienste und Filterbeleg Ja/Nein/Unbekannt, keine Ableitung aus fehlendem Feld. | Fixture: positiv/negativ/fehlend/Mehrfachwerte | TODO | — |
@@ -63,7 +63,7 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | G3 | T3.1–T3.5 | G2 | Gemeinsames Profil/Medien, Archiv/Offline/Intents | DONE | Full-CI 44399925013 auf 1174eeec grün; DEVICE_PENDING; Mergefreigabe ausstehend |
 | G4 | T4.1–T4.4 | G3 | Queue, Undo/Skip/Reset, Gesten, Prefetch | DONE | PR #17, CI 44404319220; DEVICE_PENDING |
 | G4a | T4a.1–T4a.6 | G4 | Rust-Quellentransport, Coil, Diagnose, Architekturcheck | DONE | PR #18, CI 44406432843; DEVICE_PENDING |
-| G5 | T5.1–T5.3 | G4a | Grid, Ansichtswechsel, ein Ergebniszustand | TODO | — |
+| G5 | T5.1–T5.3 | G4a | Grid, Ansichtswechsel, ein Ergebniszustand | REVIEW | PR angelegt; Full-CI und Geräteabnahme ausstehend |
 | G6 | T6.1–T6.6 | G5 | Tabs, Notizen, Historie, Identitätsintegrität | TODO | — |
 | G7 | T7.1–T7.4 | G6 | Listen, Status, Sortierung und Watchlist | TODO | — |
 | G8 | T8.1–T8.4 | G7 | Gemeinsamer Editor/Grid, Delta, UX-Konsistenz | TODO | — |
@@ -149,3 +149,7 @@ Statisches Netzwerk-Inventar auf PR #17: source/network.rs (Suche/Vorschau/Profi
 ### G4/G4a – Technische Abnahme und Integration
 
 PR #17 auf `fb6b4b55`: [Full-CI #329](https://github.com/Justify87/ladies-explorer-android/actions/runs/44404319220) vollständig grün, Merge `3985807d`. PR #18 auf `24f4ad13`: [Full-CI #333](https://github.com/Justify87/ladies-explorer-android/actions/runs/44406432843) inklusive Quellen-HTTP-Architekturprüfung vollständig grün, Merge `cbbb1651`. Nutzerfreigabe zum Merge und zur Weiterarbeit erteilt. Echte Gerätebelege (Swipe, Offline, Cache, Live-HAR/Quellkompatibilität) bleiben DEVICE_PENDING und Bestandteil G9. Keine visuelle oder Live-Abnahme behauptet.
+
+### G5 – Review (M05.5)
+
+P24: native LazyVerticalGrid mit 2 Spalten, .77 Seitenverhältnis, 23 dp Radius, Cover, Kontrastgradient, stabilen Listing-Keys, 48 dp Herz und lokalem/Remote-Fallback via ProfileImage (Rust-Transport seit G4a). Alter aus ausdrücklich vorhandener, eindeutiger Snapshot-Eigenschaft; bei unbekanntem Alter keine Schätzung oder Einzelprofil-Netzabfrage. P25: Grid-Like über bestehende atomare Rust-Owner-/Expected-Preference-Mutation, danach gemeinsame Projektion, keine Swipe-Visit-/Undo-Änderung, keine Profil-/Suchanfrage. Abweichung vom Legacy-Sonderfall: erfolgreiche Likes bleiben sichtbar, wenn ausgeführter Filter Hide-Likes deaktiviert ist; keine zweite versteckte Ergebnisliste/DOM-Overlay eingeführt. Diese Abweichung bleibt ausdrücklich zu bestätigen; G9-Entscheidung offen. P26: drei echte Modi, getrennte SaveableStateProvider-Keys, aktiver Run/Scroll innerhalb desselben Runs, neue Suche setzt Grid-Scroll zurück; kein Kartenvertragsumbau. Lokaler Bestand bleibt als neutraler Deckbestand gekennzeichnet. Tests für Moduswechsel, Run-Mitgliedschaft vs. konsumierte Swipe-Queue, Präferenzziel und Alters-Evidenz; manuelle visuelle, Cache-/Live- und Positionsprüfung DEVICE_PENDING. Kein Browserwerkzeug, kein neuer HTTP-Pfad, keine Schemaänderung.
