@@ -8,6 +8,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
+import de.justify87.ladiesexplorer.core.DiscoveryCursor
+import de.justify87.ladiesexplorer.core.DiscoveryPage
 
 class SearchRunStateTest {
     private fun response(id: Long, partial: Boolean = false) = SearchResponse(
@@ -79,14 +82,69 @@ class SearchRunStateTest {
         assertEquals(discovery.cards, gridCards(discovery, SearchUiState()))
     }
 
-    @Test fun gridHeartTogglesOnlyLikeWithoutTouchingFavoriteOrSwipeHistory() {
+    @Test fun gridLikeHidesOnlyGridUntilSuccessfulNewRunAndRestoresOnFailure() {
+        val rows = listOf(card(1), card(2).copy(favorite = true))
+        val initial = SearchUiState().acceptRun(response(1), rows)
+        val swipe = SwipeSession().apply { visit(SwipeStep(1, 1)) }
+        val last = swipe.last
+        val deck = DiscoverUiState(cards = swipe.queue(rows, true))
+        val pending = initial.hideGridLike(2)
+        assertEquals(listOf(1L), gridCards(deck, pending).map { it.listingId })
+        assertEquals(rows, pending.activeCards)
+        assertEquals(last, swipe.last)
+        assertEquals(rows, gridCards(deck, pending.restoreGridLike(2)))
+        assertEquals(pending.gridHiddenLikes, pending.beginRun().endRun().gridHiddenLikes)
+        assertEquals(pending.gridHiddenLikes, pending.applyDraftChange(SearchUiState()).gridHiddenLikes)
+        assertTrue(pending.acceptRun(response(2), rows).gridHiddenLikes.isEmpty())
         assertEquals(Preference.LIKE, gridLikeTarget(Preference.NONE))
         assertEquals(Preference.LIKE, gridLikeTarget(Preference.DISLIKE))
         assertEquals(Preference.NONE, gridLikeTarget(Preference.LIKE))
-        val original = card(1).copy(favorite = true)
-        val updated = original.copy(preference = gridLikeTarget(original.preference))
-        assertTrue(updated.favorite)
-        assertEquals(Preference.LIKE, updated.preference)
+    }
+
+    @Test fun reprojectKeepsLoadedWindowAndUpdatedCursor() = runBlocking {
+        val next = DiscoveryCursor(false, "2026-01-01", 2)
+        val end = DiscoveryCursor(false, "2026-01-01", 4)
+        val seen = mutableListOf<DiscoveryCursor?>()
+        val result = readDiscoveryWindow(4) { cursor ->
+            seen += cursor
+            if (cursor == null) DiscoveryPage(listOf(card(1), card(2)), next)
+            else DiscoveryPage(listOf(card(3), card(4).copy(favorite = true)), end)
+        }
+        assertEquals(listOf(null, next), seen)
+        assertEquals(listOf(1L, 2L, 3L, 4L), result.cards.map { it.listingId })
+        assertEquals(end, result.nextCursor)
+        assertTrue(result.cards.last().favorite)
+    }
+
+    @Test fun mutationFailureRestoresGridAndReprojectsWithoutRepeatingWrite() = runBlocking {
+        val events = mutableListOf<String>()
+        val result = writeAndProject(
+            write = { events += "write"; error("conflict") },
+            project = { events += "projection" },
+            onWriteFailure = { events += "restore" },
+        )
+        assertTrue(result is DiscoveryMutationOutcome.WriteFailed)
+        assertEquals(listOf("write", "restore", "projection"), events)
+    }
+
+    @Test fun committedMutationWithFailedProjectionNeverRollsBackGridOrRetriesWrite() = runBlocking {
+        val events = mutableListOf<String>()
+        val result = writeAndProject(
+            write = { events += "write" },
+            project = { events += "projection"; error("read failed") },
+            onWriteFailure = { events += "restore" },
+        )
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true), result)
+        assertEquals(listOf("write", "projection"), events)
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(false), writeAndProject(
+            write = {}, afterWrite = { error("detail read failed") }, project = {},
+        ))
+    }
+
+    @Test fun paginationDoesNotFireBeforeLayoutOrUntilNearEnd() {
+        assertFalse(nearGridEnd(-1, 0))
+        assertFalse(nearGridEnd(1, 50))
+        assertTrue(nearGridEnd(47, 50))
     }
 
     @Test fun generationsForPreviewAndFullSearchAreIndependent() {

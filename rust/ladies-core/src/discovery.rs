@@ -145,7 +145,7 @@ pub struct DiscoveryPage {
 }
 
 /// Only explicit, unambiguous source traits from an existing snapshot.
-fn known_age(traits_json: Option<&str>) -> Option<String> {
+pub(crate) fn known_age(traits_json: Option<&str>) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(traits_json?).ok()?;
     let mut ages = value
         .as_object()?

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,13 +26,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.Preference
-
-/** Active membership always comes from Rust, never from the traversed swipe queue. */
-internal fun gridCards(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
-    if (search.response != null) search.activeCards else discovery.cards
-
-internal fun gridLikeTarget(preference: Preference): Preference =
-    if (preference == Preference.LIKE) Preference.NONE else Preference.LIKE
 
 @Composable
 internal fun DiscoveryGridScreen(
@@ -48,10 +42,14 @@ internal fun DiscoveryGridScreen(
     val enabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy
     val listState = rememberLazyGridState()
     val nextCursor = if (active) null else discovery.nextCursor
-    LaunchedEffect(listState, nextCursor, cards.size, enabled) {
-        if (nextCursor != null && enabled) {
-            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-                .collect { if (it >= (cards.size - 2).coerceAtLeast(0)) onLoadMore() }
+    val canPage = nextCursor != null && enabled && !discovery.loadingMore
+    LaunchedEffect(listState, nextCursor, canPage, discovery.error) {
+        if (canPage && discovery.error == null) {
+            snapshotFlow {
+                val layout = listState.layoutInfo
+                nearGridEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
+            }.first { it }
+            onLoadMore()
         }
     }
     LazyVerticalGrid(
@@ -107,7 +105,7 @@ internal fun DiscoveryGridScreen(
                         CircularProgressIndicator(Modifier.size(24.dp))
                     }
                 } else {
-                    TextButton(onClick = onLoadMore, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onLoadMore, enabled = canPage, modifier = Modifier.fillMaxWidth()) {
                         Text("Weitere Profile")
                     }
                 }

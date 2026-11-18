@@ -84,6 +84,12 @@ fun LadiesApp(
             }
         }
     }
+    // Swipe prefetch can persist snapshots while its UI is visible. Re-read the local
+    // projection on grid entry, not the online search; preserve scroll and loaded window.
+    val gridVisible = route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid && !search.profileOpen
+    LaunchedEffect(gridVisible) {
+        if (gridVisible) viewModel.refreshDiscovery()
+    }
     val mapVisible = route.mapVisible && !search.profileOpen
     LaunchedEffect(mapVisible) {
         if (mapVisible) viewModel.refreshMap()

@@ -136,14 +136,10 @@ internal fun ProfileHeader(
     media: List<ProfileMediaItem>,
     fromArchive: Boolean,
 ) {
-    val age = remember(profile.traitsJson) {
-        jsonRows(profile.traitsJson).firstOrNull { it.first.equals("Alter", true) }
-            ?.second?.let { Regex("""^([0-9]{2})(?:\s*Jahre?)?$""").matchEntire(it.trim())?.groupValues?.get(1) }
-    }
     ProfileIdentityHeader(
         name = profile.name,
         place = listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
-        age = age, identity = identity, person = person,
+        age = identity?.age, identity = identity, person = person,
         hasVideo = media.any { it.kind == "VIDEO" }, fromArchive = fromArchive,
     )
     profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
