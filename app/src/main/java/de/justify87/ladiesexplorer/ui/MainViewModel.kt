@@ -361,6 +361,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val cards = core.discoveryCards().filterNot { it.personId in skippedPeople }
                 val favorites = core.discoveryCards(true)
                 if (epoch == discoveryEpoch) _discoverState.update { it.copy(cards=cards,favorites=favorites,busy=false) }
+                val updatedPerson = core.person(personId)
+                _searchUiState.update {
+                    if (it.selectedPersonId == personId) it.copy(selectedPerson=updatedPerson) else it
+                }
             } catch (cancellation: CancellationException) {
                 _discoverState.update { it.copy(busy=false) }
                 throw cancellation
