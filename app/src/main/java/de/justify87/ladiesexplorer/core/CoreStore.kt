@@ -3,8 +3,8 @@ package de.justify87.ladiesexplorer.core
 import android.content.Context
 import android.os.SystemClock
 import co.touchlab.kermit.Logger
-import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,10 +19,6 @@ class CoreStore(context: Context) {
     fun replayLikes(): Boolean = explorerPreferences.getBoolean("replay_likes", true)
     fun setReplayLikes(value: Boolean) { explorerPreferences.edit().putBoolean("replay_likes", value).apply() }
     private val logger = Logger.withTag("LadiesExplorer")
-    @Volatile var imageCaptureMode: CaptureMode = CaptureMode.OFF
-        private set
-    private val captureEpoch = AtomicLong(0)
-    fun currentCaptureEpoch(): Long = captureEpoch.get()
     // Only best-effort events are bounded. Control barriers are never rejected.
     private val logBridge = DiagnosticEventQueue()
     private val captureControls = Mutex()
@@ -62,44 +58,22 @@ class CoreStore(context: Context) {
             "$operation failed duration_ms=$durationMs type=${failure.javaClass.simpleName}"
         }
         if (failure == null) logger.i { message } else logger.e(failure) { message }
-        // The bounded bridge never blocks a Compose callback or an OkHttp hot path.
+        // The bounded bridge never blocks a Compose callback.
         logBridge.offer {
             runCatching { engine.recordKotlinEvent("ANDROID", message, false) }
         }
     }
 
-    fun enqueueImageObservation(observation: HttpObservation, epoch: Long) {
-        if (imageCaptureMode == CaptureMode.OFF || epoch != captureEpoch.get()) return
-        logBridge.offer {
-            // In-flight image calls from a previous recording session cannot leak into the new one.
-            if (epoch == captureEpoch.get()) {
-                runCatching { engine.recordImageHttp(observation) }
-            }
-        }
-    }
-
     suspend fun httpCaptureStatus(): CaptureStatus = withContext(Dispatchers.IO) {
-        captureControls.withLock {
-            engine.httpCaptureStatus().also { imageCaptureMode = it.mode }
-        }
+        captureControls.withLock { engine.httpCaptureStatus() }
     }
 
     suspend fun setHttpCaptureMode(mode: CaptureMode): CaptureStatus = withContext(Dispatchers.IO) {
-        captureControls.withLock {
-            captureEpoch.incrementAndGet()
-            engine.setHttpCaptureMode(mode).also { imageCaptureMode = it.mode }
-        }
+        captureControls.withLock { engine.setHttpCaptureMode(mode) }
     }
 
     suspend fun clearHttpCapture() = withContext(Dispatchers.IO) {
-        captureControls.withLock {
-            // Old in-flight requests are invalidated before the queue is drained.
-            captureEpoch.incrementAndGet()
-            imageCaptureMode = CaptureMode.OFF
-            engine.setHttpCaptureMode(CaptureMode.OFF)
-            logBridge.barrier()
-            engine.clearHttpCapture()
-        }
+        captureControls.withLock { engine.clearHttpCapture() }
     }
 
     suspend fun createHarSnapshot(): File = withContext(Dispatchers.IO) {
@@ -108,9 +82,24 @@ class CoreStore(context: Context) {
             diagnosticExports.listFiles()
                 ?.filter { it.isFile && it.name.startsWith("ladies-http-") && it.lastModified() < oldestAllowed }
                 ?.forEach(File::delete)
-            // Snapshot includes every image event queued before this barrier.
-            logBridge.barrier()
             File(engine.exportHttpHar(diagnosticExports.absolutePath))
+        }
+    }
+
+    // Limit concurrent blocking native image requests, independently of profile/search work.
+    private val displayImageDispatcher = Dispatchers.IO.limitedParallelism(4)
+
+    suspend fun loadDisplayImage(url: String): DisplayImage = withContext(displayImageDispatcher) {
+        suspendCancellableCoroutine { continuation ->
+            val control = RequestControl()
+            continuation.invokeOnCancellation { control.cancel() }
+            if (continuation.isActive) {
+                try {
+                    continuation.resumeWith(Result.success(engine.loadDisplayImage(url, control)))
+                } catch (failure: Exception) {
+                    continuation.resumeWith(Result.failure(failure))
+                }
+            }
         }
     }
 

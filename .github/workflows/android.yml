@@ -45,6 +45,9 @@ jobs:
         with:
           workspaces: rust -> target
 
+      - name: Verify Rust-only source HTTP boundary
+        run: python3 tools/check-source-http.py
+
       - name: Export script syntax
         run: bash -n tools/export-legacy.sh
 

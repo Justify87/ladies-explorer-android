@@ -42,7 +42,7 @@ App-Shell + Navigation; klar getrennte UI-State-Verantwortung für Suche, Entdec
 
 ## Reihenfolge und Gates
 
-M05.0 Referenzinventar → .1 Design/Shell → .2 Suche → .3 gemeinsame Profile/Medien → .4 Swipe → .5 Grid → .6 Details/Notizen/Verlauf → .7 Gespeichert → .8 gespeicherte Suchen/UI-Konsistenz → .9 Gesamtabnahme. Konkrete Aufgaben und Abhängigkeiten ausschließlich in [M05-TASKS](M05-TASKS.md). Pro Meilenstein begrenzter PR, Review vor Merge, nächster auf integriertem Stand. Bei tausenden Zeilen sinnvolle kleinere PRs mit eindeutigen IDs, keine überlappenden State-Schreibarbeiten.
+M05.0 Referenzinventar → .1 Design/Shell → .2 Suche → .3 gemeinsame Profile/Medien → .4 Swipe → .4a Rust-Quellentransport → .5 Grid → .6 Details/Notizen/Verlauf → .7 Gespeichert → .8 gespeicherte Suchen/UI-Konsistenz → .9 Gesamtabnahme. Konkrete Aufgaben und Abhängigkeiten ausschließlich in [M05-TASKS](M05-TASKS.md). Pro Meilenstein begrenzter PR, Review vor Merge, nächster auf integriertem Stand. Bei tausenden Zeilen sinnvolle kleinere PRs mit eindeutigen IDs, keine überlappenden State-Schreibarbeiten.
 
 Gates:
 - G0 Referenz: jede Matrixzeile mit Quellenbeleg, finalem Legacy-Verhalten und Scope; repräsentative synthetische native Fixtures und statische Legacy-Referenz; fehlende manuelle Android-Gerätebelege explizit DEVICE_PENDING. Keine Browser-Testautomatisierung.
@@ -56,3 +56,7 @@ Je Aufgabe gezielte Rust-Fixtures/SQLite-Tests oder JVM-State-Tests; bei UI Gest
 Synthetische Referenzfälle: 0/1/viele Suchtreffer, vollständige/partielle/unbestätigte Radiusläufe, mehrere Inserate einer Person, neue/alte/geänderte/aktive/inaktive/unbekannte Profile, Like/Dislike/Favorit-Kombinationen, Bilder/Video/fehlende Medien, Offline-Cache/Timeout, importierte Notizen und gespeicherte Definitionen. Keine privaten Daten in Git. UI prüfen auf 360/390/430 dp und größer (z. B. 600 dp), Schriftgröße normal/erhöht, hell/dunkel, Rotation/Back/Systemleisten, Tastatur, TalkBack/Touch-Ziele, schnelle Navigation, App-Neustart; Gestalterischer Vergleich mit den belegten Legacy-CSS-/Layout-Vorgaben; keine Browser-Testwerkzeuge. Native visuelle Abnahme manuell. Belege in PR/Tasks als konkrete Datei, Testname, Kommando/CI-Lauf, Screenshot-Link oder Geräteprotokoll; keine privaten Bilder.
 
 Abschluss: Design, Suche inkl. Vorschau, gemeinsame Ergebnismenge, Deck/Undo, Grid, Profilnotizen/Verlauf/Offline, gespeicherte Personen/Status und gespeicherte Suchen vollständig prüfen. Kein Datenverlust, keine unbemerkte Änderung von Radius-/Pagination-/Identitäts-/Delta-Verträgen, keine M06/M07-Scope-Erweiterung.
+
+## M05.4a – verbindliche Quellen-HTTP-Grenze
+
+Vor G5 muss G4a technisch nachgewiesen sein. Alle app-internen HTTP(S)-Abrufe von ladies.de, APIs und zugehörigen Medien-CDNs laufen ausschließlich über Rust/CoreStore/UniFFI. Coil bleibt für Cache, Dekodierung und Lifecycle; sein Transport delegiert ausschließlich an Rust. Anzeigeabrufe verändern weder Archiv noch SQLite. Bestehende Rust-Medienvalidierung, Limits, Abbruch und HAR wiederverwenden; keine Kotlin-Fallback-Netzwerkbibliothek. MapLibre und ausdrücklich gestartete externe Intents bleiben unverändert. Siehe T4a.1–T4a.6/P42–P44. Keine Browserwerkzeuge oder neuen Testserver.
