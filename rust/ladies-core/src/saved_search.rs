@@ -244,7 +244,29 @@ pub struct SavedSearchCard {
     pub first_seen_at: String,
 }
 
-pub(crate) fn results(core: &LadiesCore, id: String) -> Result<Vec<SavedSearchCard>, CoreError> {
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavedResultCursor {
+    pub position: i64,
+    pub result_key: String,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavedSearchResultPage {
+    pub cards: Vec<SavedSearchCard>,
+    pub next_cursor: Option<SavedResultCursor>,
+}
+
+pub(crate) fn results(
+    core: &LadiesCore,
+    id: String,
+    limit: u32,
+    cursor: Option<SavedResultCursor>,
+) -> Result<SavedSearchResultPage, CoreError> {
+    if !(1..=200).contains(&limit) {
+        return Err(CoreError::InvalidInput(
+            "Saved-result page size must be between 1 and 200".into(),
+        ));
+    }
     let db = core.connection()?;
     let exists: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM saved_searches WHERE saved_search_id=?1)",
@@ -255,47 +277,74 @@ pub(crate) fn results(core: &LadiesCore, id: String) -> Result<Vec<SavedSearchCa
         return Err(CoreError::InvalidInput("Saved search not found".into()));
     }
     let mut query = db.prepare(
-        "SELECT r.result_key,r.snapshot_json,r.first_seen_at,
+        "SELECT r.position,r.result_key,r.snapshot_json,r.first_seen_at,
                 l.listing_id,l.person_id
          FROM saved_search_results r
          LEFT JOIN listings l ON l.source='LADIES' AND l.external_listing_id=r.result_key
          WHERE r.saved_search_id=?1 AND r.present=1 AND r.visible=1
-         ORDER BY r.position ASC LIMIT 1000",
+           AND (?2 IS NULL OR r.position > ?2
+                OR (r.position=?2 AND r.result_key > ?3))
+         ORDER BY r.position ASC,r.result_key ASC
+         LIMIT ?4",
     )?;
-    let rows = query.query_map([id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, Option<i64>>(3)?,
-            row.get::<_, Option<i64>>(4)?,
-        ))
-    })?;
-    rows.map(|row| {
-        let (result_key, snapshot, first_seen_at, listing_id, person_id) = row?;
-        let value = serde_json::from_str::<serde_json::Value>(&snapshot).unwrap_or_default();
-        Ok(SavedSearchCard {
-            name: value
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&result_key)
-                .to_owned(),
-            city: value
-                .get("city")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_owned(),
-            thumbnail_url: value
-                .get("thumbnail_url")
-                .and_then(|v| v.as_str())
-                .map(str::to_owned),
-            result_key,
-            listing_id,
-            person_id,
-            first_seen_at,
+    let cursor_position = cursor.as_ref().map(|c| c.position);
+    let cursor_key = cursor.as_ref().map(|c| c.result_key.as_str());
+    let rows = query.query_map(
+        params![id, cursor_position, cursor_key, limit + 1],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+                row.get::<_, Option<i64>>(5)?,
+            ))
+        },
+    )?;
+    let mut records = rows
+        .map(|row| {
+            let (position, result_key, snapshot, first_seen_at, listing_id, person_id) = row?;
+            let value = serde_json::from_str::<serde_json::Value>(&snapshot).unwrap_or_default();
+            Ok((
+                SavedSearchCard {
+                    name: value
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(&result_key)
+                        .to_owned(),
+                    city: value
+                        .get("city")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_owned(),
+                    thumbnail_url: value
+                        .get("thumbnail_url")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned),
+                    result_key,
+                    listing_id,
+                    person_id,
+                    first_seen_at,
+                },
+                position,
+            ))
         })
+        .collect::<Result<Vec<_>, CoreError>>()?;
+    let has_more = records.len() > limit as usize;
+    records.truncate(limit as usize);
+    let next_cursor = if has_more {
+        records.last().map(|(card, position)| SavedResultCursor {
+            position: *position,
+            result_key: card.result_key.clone(),
+        })
+    } else {
+        None
+    };
+    Ok(SavedSearchResultPage {
+        cards: records.into_iter().map(|(card, _)| card).collect(),
+        next_cursor,
     })
-    .collect()
 }
 
 pub(crate) fn delete(core: &LadiesCore, id: String) -> Result<(), CoreError> {
@@ -695,7 +744,7 @@ mod tests {
         result.profiles = vec![card(lb, b, "102"), card(lc, c, "103")];
         let (stored_definition, version) = definition(&core, &id).unwrap();
         persist_results(&core, &id, &result, &stored_definition, version).unwrap();
-        let stored = results(&core, id.clone()).unwrap();
+        let stored = results(&core, id.clone(), 100, None).unwrap().cards;
         assert_eq!(stored.len(), 2);
         assert_eq!(stored[0].listing_id, Some(lb));
         let db = core.connection().unwrap();
@@ -766,6 +815,34 @@ mod tests {
             .unwrap();
         assert_eq!(count, 0);
         assert_eq!(last_run, None);
+    }
+
+    #[test]
+    fn saved_results_can_be_paged_beyond_the_previous_fixed_limit() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let id = save(&core, "Paging".into(), SearchRequest::for_test()).unwrap();
+        let db = core.connection().unwrap();
+        for position in 0..1105 {
+            db.execute(
+                "INSERT INTO saved_search_results
+                 (saved_search_id,result_key,snapshot_json,position,present,visible)
+                 VALUES (?1,?2,'{}',?3,1,1)",
+                params![id, format!("item-{position:04}"), position],
+            )
+            .unwrap();
+        }
+        drop(db);
+        let mut cursor = None;
+        let mut count = 0;
+        loop {
+            let page = results(&core, id.clone(), 100, cursor).unwrap();
+            count += page.cards.len();
+            match page.next_cursor {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        assert_eq!(count, 1105);
     }
 
     #[test]

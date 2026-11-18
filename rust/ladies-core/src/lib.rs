@@ -143,7 +143,7 @@ pub use history::ChangeRecord;
 pub use identity::IdentityCandidate;
 pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
-pub use saved_search::{SavedSearchCard, SavedSearchInfo};
+pub use saved_search::{SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage};
 pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 
@@ -329,8 +329,13 @@ impl LadiesCore {
         saved_search::list(self)
     }
 
-    pub fn saved_search_results(&self, id: String) -> Result<Vec<SavedSearchCard>, CoreError> {
-        saved_search::results(self, id)
+    pub fn saved_search_results(
+        &self,
+        id: String,
+        limit: u32,
+        cursor: Option<SavedResultCursor>,
+    ) -> Result<SavedSearchResultPage, CoreError> {
+        saved_search::results(self, id, limit, cursor)
     }
 
     pub fn load_saved_search(&self, id: String) -> Result<SearchRequest, CoreError> {
