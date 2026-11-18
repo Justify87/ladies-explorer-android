@@ -16,6 +16,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Proxy
 
 class LadiesApplication : Application(), SingletonImageLoader.Factory {
     val coreStore: CoreStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { CoreStore(this) }
@@ -44,8 +46,24 @@ private class ImageHttpListener(private val recorder: CoreStore, private val epo
     private var startedMs = 0L
     private var startedNanos = 0L
     private var headersNanos = 0L
+    private var networkAttempted = false
+
+    override fun callStart(call: Call) {
+        request = call.request()
+        startedMs = System.currentTimeMillis()
+        startedNanos = SystemClock.elapsedRealtimeNanos()
+    }
+
+    override fun dnsStart(call: Call, domainName: String) {
+        networkAttempted = true
+    }
+
+    override fun connectStart(call: Call, inetSocketAddress: InetSocketAddress, proxy: Proxy) {
+        networkAttempted = true
+    }
 
     override fun requestHeadersStart(call: Call) {
+        networkAttempted = true
         // OkHttp invokes this again for the next exchange after an HTTP redirect or retry.
         complete("body_not_observed")
         startedMs = System.currentTimeMillis()
@@ -89,7 +107,9 @@ private class ImageHttpListener(private val recorder: CoreStore, private val epo
         if (pending != null) {
             complete("network_error", error = ioe.message)
         } else {
-            val outgoing = request ?: return
+            // Connection/DNS failures can happen before requestHeadersEnd is invoked.
+            if (!networkAttempted) return
+            val outgoing = request ?: call.request()
             recorder.enqueueImageObservation(HttpObservation(
                 method = outgoing.method,
                 url = outgoing.url.toString(),
