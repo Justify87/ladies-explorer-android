@@ -299,8 +299,8 @@ pub(crate) fn profile_identity(
     ) = db.query_row(
         "SELECT l.person_id,l.current_status,l.current_url,
                 COALESCE(unixepoch('now')-unixepoch(p.first_seen_at) BETWEEN 0 AND 129599,0),
-                COALESCE(unixepoch('now')-unixepoch(COALESCE(l.published_at,l.first_seen_at))
-                    BETWEEN 0 AND 129599,0),
+                COALESCE(unixepoch('now')-COALESCE(unixepoch(s.published_at),
+                    unixepoch(l.published_at),unixepoch(l.first_seen_at)) BETWEEN 0 AND 129599,0),
                 CASE WHEN l.current_snapshot_id IS NOT NULL THEN EXISTS(
                     SELECT 1 FROM snapshot_media m WHERE m.snapshot_id=l.current_snapshot_id
                     AND m.kind='VIDEO')
@@ -308,9 +308,19 @@ pub(crate) fn profile_identity(
                     WHERE r.listing_id=l.listing_id
                     ORDER BY r.observed_at DESC,r.search_result_id DESC LIMIT 1),0) END
          FROM listings l JOIN persons p ON p.person_id=l.person_id
+         LEFT JOIN listing_snapshots s ON s.snapshot_id=l.current_snapshot_id
          WHERE l.listing_id=?1",
         [listing_id],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+        |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        },
     )?;
     Ok(ProfileIdentity {
         person_id,
@@ -364,4 +374,50 @@ mod profile_identity_tests {
             Some("https://www.ladies.de/sex-anzeigen/42")
         );
     }
+
+    #[test]
+    fn listing_new_uses_snapshot_publication_and_not_first_local_sighting() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "43".into(), None)
+            .unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,published_at)
+                 VALUES (?1,'fixture','2000-01-01T00:00:00Z')",
+                [listing],
+            )
+            .unwrap();
+            let snapshot = db.last_insert_rowid();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                rusqlite::params![snapshot, listing],
+            )
+            .unwrap();
+        }
+        assert!(!profile_identity(&core, listing).unwrap().listing_new);
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listing_snapshots SET published_at=datetime('now','+1 day')
+                 WHERE listing_id=?1",
+                [listing],
+            )
+            .unwrap();
+        }
+        assert!(!profile_identity(&core, listing).unwrap().listing_new);
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listing_snapshots SET published_at=datetime('now','-36 hours')
+                 WHERE listing_id=?1",
+                [listing],
+            )
+            .unwrap();
+        }
+        assert!(!profile_identity(&core, listing).unwrap().listing_new);
+    }
+
 }
