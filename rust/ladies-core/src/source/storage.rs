@@ -2,7 +2,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
 use url::Url;
 
-use crate::{CoreError, LadiesCore, history};
+use crate::{CoreError, LadiesCore, history, identity};
 
 use super::{Card, Profile, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 use super::{network::DownloadedSearch, parse};
@@ -445,6 +445,11 @@ pub(super) fn save_profile(
         }
         id
     };
+    tx.execute(
+        "UPDATE listing_snapshots SET normalized_phone=?1 WHERE snapshot_id=?2",
+        params![identity::normalize_phone(profile.phone_display.as_deref()), snapshot_id],
+    )?;
+    identity::record_phone(&tx, person_id, listing_id, profile.phone_display.as_deref())?;
     history::record_transition(&tx, person_id, listing_id, active_snapshot_before, snapshot_id)?;
     tx.execute(
         "UPDATE listings
@@ -460,6 +465,7 @@ pub(super) fn save_profile(
          WHERE person_id=?2",
         params![profile.name, person_id],
     )?;
+    identity::refresh(&tx, listing_id)?;
     tx.execute(
         "INSERT INTO listing_observations
          (listing_id, source, status, http_status, snapshot_id, details_json)

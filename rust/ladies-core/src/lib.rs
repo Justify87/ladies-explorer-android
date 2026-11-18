@@ -3,6 +3,7 @@
 
 mod diagnostics;
 mod history;
+mod identity;
 mod legacy_import;
 mod schema;
 mod source;
@@ -131,6 +132,7 @@ pub struct ImportReport {
 }
 
 pub use history::ChangeRecord;
+pub use identity::IdentityCandidate;
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 
 #[derive(uniffi::Object)]
@@ -221,6 +223,14 @@ impl LadiesCore {
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
         source::load_profile(self, listing_id)
+    }
+
+    pub fn list_identity_candidates(&self, listing_id: i64) -> Result<Vec<IdentityCandidate>, CoreError> {
+        identity::list(self, listing_id)
+    }
+
+    pub fn confirm_identity_match(&self, listing_id: i64, target_person_id: i64) -> Result<(), CoreError> {
+        identity::confirm(self, listing_id, target_person_id)
     }
 
     pub fn list_change_events(&self, person_id: i64, limit: u32) -> Result<Vec<ChangeRecord>, CoreError> {
