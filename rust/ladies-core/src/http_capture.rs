@@ -137,7 +137,10 @@ fn redacted_url(input: &str) -> String {
 
 fn is_text(mime: Option<&str>) -> bool {
     let mime = mime.unwrap_or("").to_ascii_lowercase();
-    mime.starts_with("text/")
+    // Rust source responses have already passed UTF-8 decoding; missing MIME is still text.
+    mime.is_empty()
+        || mime == "not specified"
+        || mime.starts_with("text/")
         || mime.contains("json")
         || mime.contains("xml")
         || mime.contains("javascript")
