@@ -129,7 +129,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var profileRequestId = 0L
     private var discoveryEpoch = 0L
     private val searchGeneration = RequestGeneration()
-    private val swipeSession = SwipeSession()
+    private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
 
     init {
         refresh()
@@ -723,6 +723,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setReplayLikes(replay: Boolean) {
         if (_discoverState.value.busy || _searchUiState.value.loading || swipeSession.replayLikes == replay) return
         swipeSession.replayLikes = replay
+        core.setReplayLikes(replay)
         _discoverState.update { it.copy(replayLikes = replay) }
         refreshDiscovery()
     }
@@ -746,6 +747,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _discoverState.update { it.copy(busy = true, error = null, loadingMore = false, favoritesLoadingMore = false) }
         viewModelScope.launch {
             var committed = false
+            var projected = false
             try {
                 val previous = core.setSwipePreference(listingId, card.personId, null, preference)
                 committed = true
@@ -753,17 +755,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val page = discoveryPage()
                 val favorites = core.discoveryCards(favoritesOnly = true)
                 publishDiscovery(epoch, page, favorites)
+                projected = true
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        it.copy(cards = if (committed) swipeSession.queue(it.cards, it.activeRunId != null) else it.cards,
-                            canUndoSwipe = swipeSession.last != null, error = failure.message ?: "Entscheidung fehlgeschlagen")
+                        it.copy(canUndoSwipe = swipeSession.last != null, error = failure.message ?: "Entscheidung fehlgeschlagen")
                     }
                 }
             } finally {
-                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update { it.copy(busy = false) }
+                    if (committed && !projected) recoverSwipeProjection()
+                }
             }
         }
     }
@@ -775,6 +780,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _discoverState.update { it.copy(busy = true, error = null, loadingMore = false, favoritesLoadingMore = false) }
         viewModelScope.launch {
             var restored = false
+            var projected = false
             try {
                 val previous = step.before
                 if (previous != null) {
@@ -789,6 +795,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val page = discoveryPage()
                 val favorites = core.discoveryCards(favoritesOnly = true)
                 publishDiscovery(epoch, page, favorites)
+                projected = true
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
@@ -797,9 +804,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         if (restored) "Undo gespeichert; bitte Ansicht aktualisieren." else failure.message ?: "Undo fehlgeschlagen")
                 }
             } finally {
-                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update { it.copy(busy = false) }
+                    if (restored && !projected) recoverSwipeProjection()
+                }
             }
         }
+    }
+
+    private fun recoverSwipeProjection() {
+        _searchUiState.update { it.copy(activeCards = emptyList()) }
+        _discoverState.update {
+            it.copy(cards = emptyList(), favorites = emptyList(), nextCursor = null,
+                favoritesNextCursor = null, activeVisibleCount = 0, canUndoSwipe = swipeSession.last != null)
+        }
+        refreshDiscovery()
     }
 
     fun choosePreference(personId: Long, preference: Preference) {
