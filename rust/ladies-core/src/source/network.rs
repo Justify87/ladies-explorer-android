@@ -328,6 +328,7 @@ fn append_page(
     profiles: &mut Vec<Card>,
     payload: &Value,
     requested_radius: u32,
+    page: u32,
     logger: Option<&Diagnostics>,
 ) -> Result<AppendPageOutcome, CoreError> {
     let content = payload
@@ -335,6 +336,16 @@ fn append_page(
         .and_then(Value::as_str)
         .ok_or_else(|| CoreError::Source("Search API page missing HTML content".into()))?;
     let parsed = parse::parse_cards(content);
+    if let Some(log) = logger {
+        log.event(
+            "PARSER",
+            format!(
+                "API page={page} cards={} {}",
+                parsed.len(),
+                parse::search_page_diagnostics(content)
+            ),
+        );
+    }
     if parsed.is_empty() && !content.trim().is_empty() {
         if parse::is_radius_transition_placeholder(content, requested_radius) {
             return Ok(AppendPageOutcome::RadiusTransition);
@@ -537,14 +548,14 @@ fn fetch_search_using<T: Transport>(
                         &mut cards,
                         &payload,
                         request.radius_km,
+                        2,
                         client.diagnostics(),
                     )? == AppendPageOutcome::RadiusTransition
                     {
                         boundary_stopped = true;
-                        partial = true;
                         client.log_event(
                             "SEARCH",
-                            "Stopped at page=2 radius transition placeholder; search is partial",
+                            "Stopped at page=2 radius transition placeholder",
                         );
                     }
                 }
@@ -590,16 +601,14 @@ fn fetch_search_using<T: Transport>(
                 &mut cards,
                 &payload,
                 request.radius_km,
+                page,
                 client.diagnostics(),
             )? == AppendPageOutcome::RadiusTransition
             {
                 boundary_stopped = true;
-                partial = true;
                 client.log_event(
                     "SEARCH",
-                    format!(
-                        "Stopped at page={page} radius transition placeholder; search is partial"
-                    ),
+                    format!("Stopped at page={page} radius transition placeholder"),
                 );
                 break;
             }
@@ -609,13 +618,22 @@ fn fetch_search_using<T: Transport>(
         }
     }
 
+    let parsed_cards = cards.len();
     let mut ids = HashSet::new();
     cards.retain(|card| ids.insert(card.advert_id.clone()));
+    let count_mismatch = server_count.is_some_and(|count| cards.len() as u32 != count);
+    if count_mismatch || (boundary_stopped && server_count.is_none()) {
+        partial = true;
+    }
     client.log_event(
         "SEARCH",
         format!(
-            "Search completed cards={} fetched_pages={} total_pages={} partial={} radius_verified={} boundary_stopped={}",
+            "Search completed cards={} parsed_cards={} duplicates={} server_count={:?} count_mismatch={} fetched_pages={} total_pages={} partial={} radius_verified={} boundary_stopped={}",
             cards.len(),
+            parsed_cards,
+            parsed_cards - cards.len(),
+            server_count,
+            count_mismatch,
             fetched_pages,
             total_pages,
             partial,
@@ -623,9 +641,6 @@ fn fetch_search_using<T: Transport>(
             boundary_stopped
         ),
     );
-    if server_count.is_some_and(|count| cards.len() as u32 != count) {
-        partial = true;
-    }
     Ok(DownloadedSearch {
         cards,
         city,
@@ -863,6 +878,39 @@ mod tests {
         assert!(result.partial);
         assert!(result.radius_boundary_stopped);
         assert!(result.radius_verified);
+    }
+
+    #[test]
+    fn verified_radius_transition_with_matching_count_is_complete() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"3\", 1)), \
+             advertCount: Number.parseInt(replaceWithDefault(\"2\", 1)), \
+             distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        let transition = r#"<div hidden id="page-section-3" data-page="3"></div>
+            <div class="affiliate-card ladies-card"><p class="card-name">&nbsp;</p></div>
+            <lds-button id="load-adverts-next-distance" data-next-distance="30"></lds-button>"#;
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":card(2), "distanceSearched":20}).to_string(),
+                )
+                .with(
+                    &search_url("leipzig", 20, 3, "", true),
+                    200,
+                    &json!({"content":transition, "distanceSearched":20}).to_string(),
+                ),
+        );
+        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+        assert_eq!(result.cards.len(), 2);
+        assert_eq!(result.server_count, Some(2));
+        assert!(result.radius_boundary_stopped);
+        assert!(result.radius_verified);
+        assert!(!result.partial);
     }
 
     #[test]
