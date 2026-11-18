@@ -24,11 +24,12 @@ internal suspend fun CoreStore.readSwipeProfile(
     listingId: Long,
     control: RequestControl,
     refresh: Boolean,
+    allowNetwork: Boolean = true,
 ): SwipeProfile {
     var cached = cachedProfile(listingId)
     var fromArchive = cached != null && !refresh
     var warning: String? = null
-    if (refresh || cached == null) {
+    if (allowNetwork && (refresh || cached == null)) {
         try {
             cached = loadSwipeProfile(listingId, control)
             fromArchive = false
@@ -41,7 +42,7 @@ internal suspend fun CoreStore.readSwipeProfile(
             warning = "Online-Aktualisierung fehlgeschlagen; archivierte Daten."
         }
     }
-    val profile = checkNotNull(cached)
+    val profile = checkNotNull(cached) { "Kein archiviertes Profil vorhanden" }
     currentCoroutineContext().ensureActive()
     val identity = profileIdentity(listingId)
     return SwipeProfile(profile, identity, person(identity.personId),
