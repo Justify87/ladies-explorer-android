@@ -1,10 +1,6 @@
 use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use std::time::{Duration, Instant};
 
 use crate::media_url::validate_media_url;
@@ -13,7 +9,7 @@ use reqwest::blocking::Client;
 use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
-use crate::{CoreError, LadiesCore, identity};
+use crate::{CoreError, LadiesCore, identity, operation::RequestControl};
 
 const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES: u64 = 48 * 1024 * 1024;
@@ -21,29 +17,6 @@ const MAX_REFERENCES: usize = 80;
 const MAX_ARCHIVE_DURATION: Duration = Duration::from_secs(150);
 const MAX_REQUEST_DURATION: Duration = Duration::from_secs(15);
 const MAX_PIXELS: u64 = 24_000_000;
-
-#[derive(Default, uniffi::Object)]
-pub struct MediaArchiveControl {
-    cancelled: AtomicBool,
-}
-
-#[uniffi::export]
-impl MediaArchiveControl {
-    #[uniffi::constructor]
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self::default())
-    }
-
-    pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
-    }
-}
-
-impl MediaArchiveControl {
-    fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
-    }
-}
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct MediaArchiveReport {
@@ -83,7 +56,7 @@ trait Fetcher {
         url: &str,
         limit: u64,
         timeout: Duration,
-        control: &MediaArchiveControl,
+        control: &RequestControl,
     ) -> Result<Download, CoreError>;
 }
 
@@ -107,7 +80,7 @@ impl Fetcher for HttpFetcher {
         url: &str,
         limit: u64,
         timeout: Duration,
-        control: &MediaArchiveControl,
+        control: &RequestControl,
     ) -> Result<Download, CoreError> {
         if control.is_cancelled() {
             return Err(CoreError::Media("Media archive cancelled".into()));
@@ -402,7 +375,7 @@ fn archive_with(
     snapshot_id: i64,
     include_videos: bool,
     fetcher: &impl Fetcher,
-    control: &MediaArchiveControl,
+    control: &RequestControl,
 ) -> Result<MediaArchiveReport, CoreError> {
     let root = core
         .media_root
@@ -512,7 +485,7 @@ pub(crate) fn archive(
     core: &LadiesCore,
     snapshot_id: i64,
     include_videos: bool,
-    control: &MediaArchiveControl,
+    control: &RequestControl,
 ) -> Result<MediaArchiveReport, CoreError> {
     let http = HttpFetcher::new()?;
     archive_with(core, snapshot_id, include_videos, &http, control)
@@ -528,7 +501,7 @@ mod tests {
             _: &str,
             _: u64,
             _: Duration,
-            _: &MediaArchiveControl,
+            _: &RequestControl,
         ) -> Result<Download, CoreError> {
             Ok(Download {
                 bytes: self.0.clone(),
@@ -644,7 +617,7 @@ mod tests {
             snapshot,
             false,
             &fetcher,
-            &MediaArchiveControl::default(),
+            &RequestControl::default(),
         )
         .unwrap();
         assert_eq!((first.downloaded, first.failed), (2, 0));
@@ -653,7 +626,7 @@ mod tests {
             snapshot,
             false,
             &fetcher,
-            &MediaArchiveControl::default(),
+            &RequestControl::default(),
         )
         .unwrap();
         assert_eq!((again.reused, again.downloaded), (2, 0));
@@ -694,7 +667,7 @@ mod tests {
             first,
             false,
             &fetcher,
-            &MediaArchiveControl::default(),
+            &RequestControl::default(),
         )
         .unwrap();
         let db = core.connection().unwrap();
@@ -724,7 +697,7 @@ mod tests {
                 _: &str,
                 _: u64,
                 _: Duration,
-                _: &MediaArchiveControl,
+                _: &RequestControl,
             ) -> Result<Download, CoreError> {
                 Err(CoreError::Media("No network allowed".into()))
             }
@@ -734,7 +707,7 @@ mod tests {
             second,
             false,
             &Offline,
-            &MediaArchiveControl::default(),
+            &RequestControl::default(),
         )
         .unwrap();
         assert_eq!((reused.reused, reused.failed), (2, 0));
@@ -756,7 +729,7 @@ mod tests {
                 _: &str,
                 _: u64,
                 _: Duration,
-                _: &MediaArchiveControl,
+                _: &RequestControl,
             ) -> Result<Download, CoreError> {
                 Err(CoreError::Media("Network unavailable".into()))
             }
@@ -766,7 +739,7 @@ mod tests {
             snapshot,
             false,
             &Offline,
-            &MediaArchiveControl::default(),
+            &RequestControl::default(),
         )
         .unwrap();
         assert_eq!((report.failed, report.downloaded), (2, 0));
@@ -788,7 +761,7 @@ mod tests {
     #[test]
     fn cancelled_archive_preserves_pending_assets() {
         let (_temp, core, snapshot, _) = fixture();
-        let control = MediaArchiveControl::default();
+        let control = RequestControl::default();
         control.cancel();
         struct Never;
         impl Fetcher for Never {
@@ -797,7 +770,7 @@ mod tests {
                 _: &str,
                 _: u64,
                 _: Duration,
-                _: &MediaArchiveControl,
+                _: &RequestControl,
             ) -> Result<Download, CoreError> {
                 panic!("Cancelled archive attempted an HTTP request")
             }

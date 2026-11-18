@@ -3,7 +3,7 @@ mod network;
 mod parse;
 mod storage;
 
-use crate::{CoreError, LadiesCore, diagnostics::Diagnostics};
+use crate::{CoreError, LadiesCore, diagnostics::Diagnostics, operation::RequestControl};
 use std::sync::Arc;
 
 pub(crate) struct SourceSession(network::SourceHttp);
@@ -125,6 +125,7 @@ struct Profile {
 pub(crate) fn search(
     core: &LadiesCore,
     request: SearchRequest,
+    control: Option<&RequestControl>,
 ) -> Result<SearchResponse, CoreError> {
     core.diagnostics.event(
         "SEARCH",
@@ -134,12 +135,14 @@ pub(crate) fn search(
         ),
     );
     filter::validate_request(&request)?;
-    let downloaded = network::fetch_search(&core.source_session.0, &request).map_err(|error| {
+    if let Some(control) = control { control.check()?; }
+    let downloaded = network::fetch_search(&core.source_session.0, &request, control).map_err(|error| {
         core.diagnostics
             .event("SEARCH", format!("Search fetch failed: {error}"));
         error
     })?;
-    let saved = storage::save_search(core, &request, downloaded);
+    if let Some(control) = control { control.check()?; }
+    let saved = storage::save_search_with_control(core, &request, downloaded, control);
     match &saved {
         Ok(response) => core.diagnostics.event(
             "STORAGE",

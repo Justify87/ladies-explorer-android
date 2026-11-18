@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use crate::{
     CoreError, LadiesCore,
+    operation::RequestControl,
     source::{self, SearchRequest, SearchResponse},
 };
 
@@ -509,13 +510,19 @@ fn apply_local_visibility(
     Ok(())
 }
 
-pub(crate) fn run(core: &LadiesCore, id: String) -> Result<SearchResponse, CoreError> {
+pub(crate) fn run(
+    core: &LadiesCore,
+    id: String,
+    control: Option<&RequestControl>,
+) -> Result<SearchResponse, CoreError> {
     let (stored_definition, version) = definition(core, &id)?;
     let definition = decode_definition(&stored_definition)?;
-    let fetched = source::search(core, definition.query);
+    let fetched = source::search(core, definition.query, control);
     match fetched {
         Ok(mut response) => {
+            if let Some(control) = control { control.check()?; }
             apply_local_visibility(core, &mut response, definition.local)?;
+            if let Some(control) = control { control.check()?; }
             if !response.partial && response.radius_verified {
                 persist_results(core, &id, &response, &stored_definition, version)?;
             } else {

@@ -8,7 +8,7 @@ use reqwest::blocking::Client;
 use serde_json::Value;
 use url::Url;
 
-use crate::{CoreError, diagnostics::Diagnostics};
+use crate::{CoreError, diagnostics::Diagnostics, operation::RequestControl};
 
 use super::{Card, SearchRequest, filter, parse};
 
@@ -22,6 +22,16 @@ struct Response {
 
 trait Transport {
     fn get(&self, url: &str) -> Result<Response, CoreError>;
+    fn get_cancellable(
+        &self,
+        url: &str,
+        control: Option<&RequestControl>,
+    ) -> Result<Response, CoreError> {
+        if let Some(control) = control { control.check()?; }
+        let response = self.get(url)?;
+        if let Some(control) = control { control.check()?; }
+        Ok(response)
+    }
     fn diagnostics(&self) -> Option<&Diagnostics> {
         None
     }
@@ -199,13 +209,17 @@ pub(super) struct DownloadedSearch {
     pub radius_verified: bool,
 }
 
-fn resolve_location<T: Transport>(client: &T, city: &str) -> (String, String) {
+fn resolve_location<T: Transport>(
+    client: &T,
+    city: &str,
+    control: Option<&RequestControl>,
+) -> (String, String) {
     let fallback = (filter::slugify_city(city), city.trim().to_owned());
     let mut url = Url::parse(&format!("{BASE}/api/location")).expect("constant source URL");
     url.query_pairs_mut()
         .append_pair("searchString", city)
         .append_pair("searchAddAlleRegionen", "false");
-    let Ok(response) = client.get(url.as_str()) else {
+    let Ok(response) = client.get_cancellable(url.as_str(), control) else {
         return fallback;
     };
     if response.status != 200 {
@@ -365,17 +379,33 @@ fn append_page(
 pub(super) fn fetch_search(
     client: &SourceHttp,
     request: &SearchRequest,
+    control: Option<&RequestControl>,
 ) -> Result<DownloadedSearch, CoreError> {
-    fetch_search_using(client, request)
+    fetch_search_controlled(client, request, control)
 }
 
+#[cfg(test)]
 fn fetch_search_using<T: Transport>(
     client: &T,
     request: &SearchRequest,
 ) -> Result<DownloadedSearch, CoreError> {
+    fetch_search_controlled(client, request, None)
+}
+
+fn fetch_search_controlled<T: Transport>(
+    client: &T,
+    request: &SearchRequest,
+    control: Option<&RequestControl>,
+) -> Result<DownloadedSearch, CoreError> {
+    let check = || -> Result<(), CoreError> {
+        if let Some(control) = control { control.check()?; }
+        Ok(())
+    };
+    check()?;
     filter::validate_request(request)?;
     let filter_path = filter::filter_path(request)?;
-    let (city_slug, city) = resolve_location(client, &request.city);
+    let (city_slug, city) = resolve_location(client, &request.city, control);
+    check()?;
     client.log_event(
         "SEARCH",
         format!(
@@ -383,13 +413,13 @@ fn fetch_search_using<T: Transport>(
             city, city_slug, request.radius_km, request.max_pages, filter_path
         ),
     );
-    let first = client.get(&search_url(
+    let first = client.get_cancellable(&search_url(
         &city_slug,
         request.radius_km,
         1,
         &filter_path,
         false,
-    ))?;
+    ), control)?;
     if first.status == 404 {
         return Ok(DownloadedSearch {
             cards: Vec::new(),
@@ -442,13 +472,13 @@ fn fetch_search_using<T: Transport>(
         client.log_html("search_page_1_unrecognized", &first.body);
         client.log_event("SEARCH", "Attempting JSON API fallback for page 1");
         let first_api = client
-            .get(&search_url(
+            .get_cancellable(&search_url(
                 &city_slug,
                 request.radius_km,
                 1,
                 &filter_path,
                 true,
-            ))
+            ), control)
             .and_then(|response| parse_api(response, client.diagnostics()))
             .map_err(|err| {
                 CoreError::Source(format!(
@@ -512,15 +542,17 @@ fn fetch_search_using<T: Transport>(
             // Do not fetch beyond the caller's limit just to discover pagination.
             partial = true;
         } else {
+            check()?;
             client.wait_between_pages();
+            check()?;
             let probe = parse_api(
-                client.get(&search_url(
+                client.get_cancellable(&search_url(
                     &city_slug,
                     request.radius_km,
                     2,
                     &filter_path,
                     true,
-                ))?,
+                ), control)?,
                 client.diagnostics(),
             )?;
             if let Some(payload) = probe {
@@ -566,15 +598,17 @@ fn fetch_search_using<T: Transport>(
 
     if !boundary_stopped {
         for page in next_page..=total_pages.min(request.max_pages) {
+            check()?;
             client.wait_between_pages();
+            check()?;
             let response = parse_api(
-                client.get(&search_url(
+                client.get_cancellable(&search_url(
                     &city_slug,
                     request.radius_km,
                     page,
                     &filter_path,
                     true,
-                ))?,
+                ), control)?,
                 client.diagnostics(),
             )?;
             let Some(payload) = response else {
@@ -639,6 +673,7 @@ fn fetch_search_using<T: Transport>(
             boundary_stopped
         ),
     );
+    check()?;
     Ok(DownloadedSearch {
         cards,
         city,

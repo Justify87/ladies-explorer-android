@@ -8,6 +8,7 @@ mod identity;
 mod legacy_import;
 mod media;
 mod media_url;
+mod operation;
 mod saved_search;
 mod schema;
 mod source;
@@ -140,7 +141,8 @@ pub struct ImportReport {
 pub use discovery::{DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem};
 pub use history::ChangeRecord;
 pub use identity::IdentityCandidate;
-pub use media::{MediaArchiveControl, MediaArchiveReport};
+pub use media::MediaArchiveReport;
+pub use operation::RequestControl;
 pub use saved_search::{SavedSearchCard, SavedSearchInfo};
 pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
@@ -237,8 +239,12 @@ impl LadiesCore {
         Ok(path.to_string_lossy().into_owned())
     }
 
-    pub fn search_source(&self, query: SearchRequest) -> Result<SearchResponse, CoreError> {
-        source::search(self, query)
+    pub fn search_source(
+        &self,
+        query: SearchRequest,
+        control: Arc<RequestControl>,
+    ) -> Result<SearchResponse, CoreError> {
+        source::search(self, query, Some(&control))
     }
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
@@ -256,7 +262,7 @@ impl LadiesCore {
         &self,
         snapshot_id: i64,
         include_videos: bool,
-        control: Arc<MediaArchiveControl>,
+        control: Arc<RequestControl>,
     ) -> Result<MediaArchiveReport, CoreError> {
         media::archive(self, snapshot_id, include_videos, &control)
     }
@@ -339,8 +345,12 @@ impl LadiesCore {
         saved_search::acknowledge(self, id)
     }
 
-    pub fn run_saved_search(&self, id: String) -> Result<SearchResponse, CoreError> {
-        saved_search::run(self, id)
+    pub fn run_saved_search(
+        &self,
+        id: String,
+        control: Arc<RequestControl>,
+    ) -> Result<SearchResponse, CoreError> {
+        saved_search::run(self, id, Some(&control))
     }
 
     pub fn status(&self) -> Result<CoreStatus, CoreError> {
