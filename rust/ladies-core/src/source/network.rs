@@ -171,7 +171,7 @@ impl Transport for SourceHttp {
         let request_started = Instant::now();
         let mut current_url = parsed;
         let mut followed = 0usize;
-        let (mut response, mut observation, started) = loop {
+        let (mut response, mut observation, started, capture_epoch) = loop {
             let started = Instant::now();
             let remaining = Duration::from_secs(25).saturating_sub(request_started.elapsed());
             if remaining.is_zero() {
@@ -189,8 +189,9 @@ impl Transport for SourceHttp {
                 .map_err(|error| {
                     CoreError::Source(format!("Source HTTP request failed: {error}"))
                 })?;
+            let (capture_mode, capture_epoch) = self.recorder.mode_epoch();
             let mut observation =
-                (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
+                (capture_mode != CaptureMode::Off).then(|| HttpObservation {
                     method: request.method().to_string(),
                     url: request.url().to_string(),
                     final_url: request.url().to_string(),
@@ -215,7 +216,7 @@ impl Transport for SourceHttp {
                     if let Some(mut obs) = observation.take() {
                         obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
                         obs.error = Some(error.to_string());
-                        self.recorder.record(obs);
+                        self.recorder.record_for_epoch(obs, capture_epoch);
                     }
                     self.diagnostics
                         .error("HTTP", format!("GET failure {url}: {error}"));
@@ -244,7 +245,7 @@ impl Transport for SourceHttp {
                             .and_then(|header| header.to_str().ok())
                             .map(ToOwned::to_owned);
                         obs.body_omitted = Some("redirect_body_not_read".into());
-                        self.recorder.record(obs);
+                        self.recorder.record_for_epoch(obs, capture_epoch);
                     }
                 }
                 if let Some(target) = next? {
@@ -254,7 +255,7 @@ impl Transport for SourceHttp {
                 }
                 // A 3xx without Location is a terminal response and body is processed below.
             }
-            break (response, observation, started);
+            break (response, observation, started, capture_epoch);
         };
         let header_duration = started.elapsed();
         let status = response.status().as_u16();
@@ -300,7 +301,7 @@ impl Transport for SourceHttp {
             if let Some(mut obs) = observation.take() {
                 obs.error = Some(error.to_string());
                 obs.body_omitted = Some("read_failed".into());
-                self.recorder.record(obs);
+                self.recorder.record_for_epoch(obs, capture_epoch);
             }
             return Err(CoreError::Source(format!(
                 "Source HTTP read failed: {error}"
@@ -310,7 +311,7 @@ impl Transport for SourceHttp {
             if let Some(mut obs) = observation.take() {
                 obs.error = Some("Source response size limit exceeded".into());
                 obs.body_omitted = Some("source_limit".into());
-                self.recorder.record(obs);
+                self.recorder.record_for_epoch(obs, capture_epoch);
             }
             return Err(CoreError::Source(
                 "Source response size limit exceeded".into(),
@@ -322,7 +323,7 @@ impl Transport for SourceHttp {
                 if let Some(mut obs) = observation.take() {
                     obs.error = Some("Source response is not UTF-8".into());
                     obs.body_omitted = Some("invalid_utf8".into());
-                    self.recorder.record(obs);
+                    self.recorder.record_for_epoch(obs, capture_epoch);
                 }
                 return Err(CoreError::Source("Source response is not UTF-8".into()));
             }
@@ -336,7 +337,7 @@ impl Transport for SourceHttp {
             } else if body.len() > http_capture::MAX_BODY_BYTES {
                 obs.body_omitted = Some("body_over_2_mib".into());
             }
-            self.recorder.record(obs);
+            self.recorder.record_for_epoch(obs, capture_epoch);
         }
         self.diagnostics.debug(
             "HTTP",

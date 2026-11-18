@@ -103,7 +103,8 @@ impl Fetcher for HttpFetcher {
             .header("Referer", "https://www.ladies.de/")
             .build()
             .map_err(|error| CoreError::Media(format!("Media request failed: {error}")))?;
-        let mut observation = (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
+        let (capture_mode, capture_epoch) = self.recorder.mode_epoch();
+        let mut observation = (capture_mode != CaptureMode::Off).then(|| HttpObservation {
             method: request.method().to_string(),
             url: request.url().to_string(),
             final_url: request.url().to_string(),
@@ -128,7 +129,7 @@ impl Fetcher for HttpFetcher {
                 if let Some(mut obs) = observation.take() {
                     obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
                     obs.error = Some(error.to_string());
-                    self.recorder.record(obs);
+                    self.recorder.record_for_epoch(obs, capture_epoch);
                 }
                 return Err(CoreError::Media(format!("Media request failed: {error}")));
             }
@@ -148,7 +149,7 @@ impl Fetcher for HttpFetcher {
         }
         if !response.status().is_success() {
             if let Some(obs) = observation.take() {
-                self.recorder.record(obs);
+                self.recorder.record_for_epoch(obs, capture_epoch);
             }
             return Err(CoreError::Media(format!(
                 "Media HTTP status {}",
@@ -158,7 +159,7 @@ impl Fetcher for HttpFetcher {
         if response.content_length().is_some_and(|size| size > limit) {
             if let Some(mut obs) = observation.take() {
                 obs.body_omitted = Some("media_size_limit".into());
-                self.recorder.record(obs);
+                self.recorder.record_for_epoch(obs, capture_epoch);
             }
             return Err(CoreError::Media("Media exceeds byte limit".into()));
         }
@@ -192,7 +193,7 @@ impl Fetcher for HttpFetcher {
                     obs.error = Some("Media archive cancelled".into());
                     obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
                     obs.response_size = Some(bytes.len() as u64);
-                    self.recorder.record(obs);
+                    self.recorder.record_for_epoch(obs, capture_epoch);
                 }
                 return Err(CoreError::Media("Media archive cancelled".into()));
             }
@@ -203,7 +204,7 @@ impl Fetcher for HttpFetcher {
                         obs.error = Some(error.to_string());
                         obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
                         obs.response_size = Some(bytes.len() as u64);
-                        self.recorder.record(obs);
+                        self.recorder.record_for_epoch(obs, capture_epoch);
                     }
                     return Err(CoreError::Media(format!("Media response failed: {error}")));
                 }
@@ -215,7 +216,7 @@ impl Fetcher for HttpFetcher {
                 if let Some(mut obs) = observation.take() {
                     obs.error = Some("Media exceeds byte limit".into());
                     obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
-                    self.recorder.record(obs);
+                    self.recorder.record_for_epoch(obs, capture_epoch);
                 }
                 return Err(CoreError::Media("Media exceeds byte limit".into()));
             }
@@ -224,7 +225,7 @@ impl Fetcher for HttpFetcher {
         if let Some(mut obs) = observation {
             obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
             obs.response_size = Some(bytes.len() as u64);
-            self.recorder.record(obs);
+            self.recorder.record_for_epoch(obs, capture_epoch);
         }
         if bytes.is_empty() {
             return Err(CoreError::Media("Empty media response".into()));

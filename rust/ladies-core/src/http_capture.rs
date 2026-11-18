@@ -60,6 +60,7 @@ pub struct HttpObservation {
 #[derive(Debug)]
 struct State {
     mode: CaptureMode,
+    epoch: u64,
     entries: u32,
     bytes: u64,
     stopped: bool,
@@ -210,6 +211,7 @@ impl HttpRecorder {
             path,
             state: Mutex::new(State {
                 mode: CaptureMode::Off,
+                epoch: 0,
                 entries,
                 bytes,
                 stopped: invalid_file || bytes >= MAX_SESSION_BYTES,
@@ -221,8 +223,16 @@ impl HttpRecorder {
     pub(crate) fn set_mode(&self, mode: CaptureMode) {
         if let Ok(mut state) = self.state.lock() {
             // Modes are never persisted; restart always reverts to Off.
-            state.mode = mode;
+            if state.mode != mode {
+                state.epoch = state.epoch.wrapping_add(1);
+                state.mode = mode;
+            }
         }
+    }
+
+    pub(crate) fn mode_epoch(&self) -> (CaptureMode, u64) {
+        self.state.lock().map(|state| (state.mode, state.epoch))
+            .unwrap_or((CaptureMode::Off, 0))
     }
 
     pub(crate) fn mode(&self) -> CaptureMode {
@@ -252,11 +262,20 @@ impl HttpRecorder {
     }
 
     /// Recorder errors never alter a source request or an image load.
-    pub(crate) fn record(&self, mut event: HttpObservation) {
+    pub(crate) fn record(&self, event: HttpObservation) {
+        self.record_checked(event, None);
+    }
+
+    pub(crate) fn record_for_epoch(&self, event: HttpObservation, epoch: u64) {
+        self.record_checked(event, Some(epoch));
+    }
+
+    fn record_checked(&self, mut event: HttpObservation, epoch: Option<u64>) {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
-        if state.mode == CaptureMode::Off || state.stopped {
+        if state.mode == CaptureMode::Off || state.stopped
+            || epoch.is_some_and(|expected| state.epoch != expected) {
             return;
         };
         let Some(path) = self.path.as_ref() else {
@@ -351,6 +370,7 @@ impl HttpRecorder {
             }
         }
         state.mode = CaptureMode::Off;
+        state.epoch = state.epoch.wrapping_add(1);
         state.bytes = 0;
         state.entries = 0;
         state.stopped = false;
@@ -544,6 +564,21 @@ mod tests {
             error: None,
             body_omitted: None,
         }
+    }
+
+    #[test]
+    fn events_from_previous_capture_epoch_never_enter_next_session() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("db.sqlite").to_string_lossy());
+        recorder.set_mode(CaptureMode::Metadata);
+        let (_, prior_epoch) = recorder.mode_epoch();
+        recorder.clear().unwrap();
+        recorder.set_mode(CaptureMode::Metadata);
+        recorder.record_for_epoch(sample(), prior_epoch);
+        assert_eq!(recorder.status().entries, 0);
+        let (_, current_epoch) = recorder.mode_epoch();
+        recorder.record_for_epoch(sample(), current_epoch);
+        assert_eq!(recorder.status().entries, 1);
     }
 
     #[test]
