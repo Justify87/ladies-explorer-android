@@ -190,7 +190,7 @@ class CoreStore(context: Context) {
         recorded("mapOverview") { engine.mapOverview(favoritesOnly) }
     }
 
-    suspend fun resolveMapLocations(favoritesOnly: Boolean, control: RequestControl): MapOverview =
+    suspend fun resolveMapLocations(favoritesOnly: Boolean, control: RequestControl): UInt =
         withContext(Dispatchers.IO) {
             recorded("resolveMapLocations") { engine.resolveMapLocations(favoritesOnly, 15u, control) }
         }

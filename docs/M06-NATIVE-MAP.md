@@ -21,7 +21,7 @@
 
 1. Rust ermittelt aus `listings`, `listing_snapshots`, `search_results` und `person_user_state` die aktuelle Karte pro Person. Leere oder nicht auflösbare Orte bleiben bewusst **ohne Marker**.
 2. Rust liest vorhandene gültige Cachekoordinaten. `mapOverview(favoritesOnly)` ist vollständig offline und löst niemals Netzwerkanfragen aus.
-3. Ein ausdrücklicher Nutzerauftrag `resolveMapLocations(favoritesOnly, 15, control)` ergänzt den Cache und liefert den aktualisierten Kartenbestand zurück.
+3. Ein ausdrücklicher Nutzerauftrag `resolveMapLocations(favoritesOnly, 15, control)` ergänzt den Cache und liefert die Anzahl fehlgeschlagener Abfragen zurück. Die UI fragt den aktuellen Kartenbestand einmal neu ab.
 4. Compose aktualisiert die GeoJSON-Quelle; MapLibre clustert die Positionen. Tippen auf ein einzelnes Profil zeigt die lokale Profilauswahl. Profile am gleichen PLZ-/Stadtzentrum werden gemeinsam angeboten.
 5. Der vorhandene `loadProfile(listingId, personId)`-Datenfluss zeigt wie in M05 zunächst aktuelle Quelldaten und fällt bei Netzproblemen auf die archivierte Version zurück.
 
@@ -38,7 +38,9 @@
 
 ## Review-Korrekturen
 
-- Kartenkamera und Profilauswahl werden über Compose SaveableStateHolder bei Tab- und Profilwechseln erhalten. Der Lifecycle-Observer synchronisiert die MapView genau einmal; Ladefehler haben eine native Wiederholmöglichkeit.
+- Kartenkamera und Profilauswahl werden über Compose SaveableStateHolder bei Tab- und Profilwechseln erhalten. Der AndroidView-Factory/onRelease-Lifecycle besitzt die native MapView; der Lifecycle-Observer synchronisiert sie genau einmal und leitet auch Speicherdruck weiter. Ladefehler haben eine native Wiederholmöglichkeit.
 - Rust hält eine zentrale Geocoding-Auftragslease und die Nominatim-Pause über alle Läufe. Nach Abschluss oder Abbruch liest die UI den aktuellen DB-Stand erneut. Bereits gecachte Stadtzentren bleiben während der PLZ-Auflösung sichtbar.
 - Der bestehende HTTP-Recorder erfasst Geocoder-Anfragen im bewusst aktivierten HAR-Modus. MapLibre-Kachelrequests werden nicht über den Rust-/Coil-Recorder erfasst.
 - Referenzen: [MapLibre Quickstart](https://maplibre.org/maplibre-native/android/examples/getting-started/), [CameraPositionActivity](https://maplibre.org/maplibre-native/android/examples/camera/cameraposition/), [GeoJSON-Updates](https://maplibre.org/maplibre-native/android/examples/geojson-guide/), [Android Lifecycle](https://developer.android.com/reference/androidx/lifecycle/Lifecycle), [Nominatim Policy](https://operations.osmfoundation.org/policies/nominatim/).
+
+- Compose-Interop: [Views in Compose](https://developer.android.com/develop/ui/compose/migrate/interoperability-apis/views-in-compose). Nach Geocoding keine doppelte Übertragung der Kartenliste über UniFFI; der DB-Überblick und der Auftragsstatus bleiben getrennt.

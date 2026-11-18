@@ -81,7 +81,6 @@ pub struct MapOverview {
     pub total_profiles: u32,
     pub unlocated_profiles: u32,
     pub pending_locations: u32,
-    pub failed_lookups: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -270,7 +269,6 @@ fn chosen_location<'a>(
 fn build_overview(
     people: Vec<Candidate>,
     cache: &HashMap<String, CachedLocation>,
-    failed_lookups: u32,
 ) -> MapOverview {
     let total_profiles = people.len().min(u32::MAX as usize) as u32;
     let mut profiles = Vec::new();
@@ -309,7 +307,6 @@ fn build_overview(
         total_profiles,
         profiles,
         pending_locations: pending.len() as u32,
-        failed_lookups,
     }
 }
 
@@ -317,7 +314,6 @@ pub(crate) fn overview(core: &LadiesCore, favorites_only: bool) -> Result<MapOve
     Ok(build_overview(
         candidates(core, favorites_only)?,
         &read_cache(core)?,
-        0,
     ))
 }
 
@@ -499,7 +495,7 @@ pub(crate) fn resolve(
     favorites_only: bool,
     max_requests: u32,
     control: &Arc<RequestControl>,
-) -> Result<MapOverview, CoreError> {
+) -> Result<u32, CoreError> {
     if !(1..=MAX_GEOCODE_REQUESTS).contains(&max_requests) {
         return Err(CoreError::InvalidInput(
             "Geocode batch must contain 1–15 requests".into(),
@@ -558,9 +554,7 @@ pub(crate) fn resolve(
         save_cache(core, &key, &entry)?;
         scheduler.last_attempt.remove(&key);
     }
-    let mut latest = overview(core, favorites_only)?;
-    latest.failed_lookups = failed;
-    Ok(latest)
+    Ok(failed)
 }
 
 #[cfg(test)]

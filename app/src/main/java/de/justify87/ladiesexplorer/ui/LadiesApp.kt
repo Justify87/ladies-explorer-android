@@ -66,6 +66,9 @@ fun LadiesApp(
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val tabs = Tab.entries
     val mapStateHolder = rememberSaveableStateHolder()
+    LaunchedEffect(tabs[selected], search.profileOpen) {
+        if (tabs[selected] == Tab.Map && !search.profileOpen) viewModel.refreshMap()
+    }
 
     // Refresh the displayed session size while the capture settings are visible.
     LaunchedEffect(selected, home.httpCaptureMode, search.profileOpen) {
@@ -103,7 +106,7 @@ fun LadiesApp(
                                 when (tab) {
                                     Tab.Discover,Tab.Favorites -> viewModel.refreshDiscovery()
                                     Tab.Search -> viewModel.refreshSearchDefinitions()
-                                    Tab.Map -> viewModel.refreshMap()
+                                    Tab.Map -> Unit // entry effect also handles restored navigation
                                     Tab.Settings -> viewModel.refresh()
                                 }
                             },

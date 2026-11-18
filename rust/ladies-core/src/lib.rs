@@ -372,7 +372,7 @@ impl LadiesCore {
         favorites_only: bool,
         max_requests: u32,
         control: Arc<RequestControl>,
-    ) -> Result<MapOverview, CoreError> {
+    ) -> Result<u32, CoreError> {
         self.diagnostics.timed("MAP", "resolve_map_locations", || {
             map::resolve(self, favorites_only, max_requests, &control)
         })

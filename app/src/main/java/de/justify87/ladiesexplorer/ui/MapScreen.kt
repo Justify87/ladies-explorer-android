@@ -1,5 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
+import android.content.ComponentCallbacks
+import android.content.Context
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +21,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -30,7 +32,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -122,7 +123,7 @@ fun MapScreen(
             }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if ((overview?.failedLookups ?: 0u) > 0u) {
+        if (state.failedLookups > 0u) {
             Text("Einige Standortabfragen sind fehlgeschlagen. Später erneut versuchen.",
                 color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
@@ -190,53 +191,26 @@ private fun NativeProfileMap(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val currentPoints by rememberUpdatedState(points)
     val currentCamera by rememberUpdatedState(savedCamera)
     val saveCamera by rememberUpdatedState(onCameraChanged)
     val currentSelect by rememberUpdatedState(onSelect)
-    val mapView = remember(context, owner) {
-        MapLibre.getInstance(context)
-        MapView(context).apply { onCreate(null) }
-    }
-    var map by remember(mapView) { mutableStateOf<MapLibreMap?>(null) }
-    var loadError by remember(mapView) { mutableStateOf<String?>(null) }
-    var disposed by remember(mapView) { mutableStateOf(false) }
-
-    DisposableEffect(owner, mapView) {
-        val lifecycle = owner.lifecycle
-        // addObserver synchronizes to the current state; never start/resume twice.
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                else -> Unit
-            }
-        }
-        lifecycle.addObserver(observer)
-        onDispose {
-            disposed = true
-            map?.cameraPosition?.let(saveCamera)
-            lifecycle.removeObserver(observer)
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
-            mapView.onDestroy()
-        }
-    }
+    var map by remember { mutableStateOf<MapLibreMap?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
 
     Box(modifier = modifier) {
         AndroidView(
-            factory = {
+            factory = { context ->
+                MapLibre.getInstance(context)
+                val mapView = LifecycleMapView(context, owner.lifecycle)
                 mapView.addOnDidFailLoadingMapListener { message ->
-                    if (!disposed) loadError = message.ifBlank { "Kartenstil konnte nicht geladen werden." }
+                    if (!mapView.released) loadError = message.ifBlank { "Kartenstil konnte nicht geladen werden." }
                 }
                 mapView.getMapAsync { ready ->
-                    if (!disposed) {
+                    if (!mapView.released) {
                         ready.setStyle(MAP_STYLE) { style ->
-                            if (!disposed) {
+                            if (!mapView.released) {
                                 val source = GeoJsonSource(
                                     MAP_SOURCE,
                                     asFeatures(currentPoints),
@@ -275,8 +249,9 @@ private fun NativeProfileMap(
                                         if (first == null) 5.0 else 10.0,
                                     ))
                                 }
+                                saveCamera(ready.cameraPosition)
                                 ready.addOnCameraIdleListener {
-                                    if (!disposed) saveCamera(ready.cameraPosition)
+                                    if (!mapView.released) saveCamera(ready.cameraPosition)
                                 }
                                 ready.addOnMapClickListener { location ->
                                     val screen = ready.projection.toScreenLocation(location)
@@ -299,6 +274,10 @@ private fun NativeProfileMap(
                 mapView
             },
             modifier = Modifier.fillMaxSize(),
+            onRelease = { view ->
+                if (!view.released) map?.cameraPosition?.let(saveCamera)
+                view.releaseMap()
+            },
         )
         when {
             loadError != null -> Card(modifier = Modifier.align(Alignment.Center).padding(16.dp)) {
@@ -316,5 +295,69 @@ private fun NativeProfileMap(
         map?.getStyle { style ->
             (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(points))
         }
+    }
+}
+
+/** The AndroidView factory/onRelease own the native view, its lifecycle and memory callback. */
+private class LifecycleMapView(
+    context: Context,
+    private val lifecycle: Lifecycle,
+) : MapView(context) {
+    var released = false
+        private set
+    private var started = false
+    private var resumed = false
+    private val memoryCallbacks = object : ComponentCallbacks {
+        override fun onConfigurationChanged(newConfig: Configuration) = Unit
+        override fun onLowMemory() {
+            if (!released) this@LifecycleMapView.onLowMemory()
+        }
+    }
+    private val observer = LifecycleEventObserver { _, event ->
+        when (event) {
+            Lifecycle.Event.ON_START -> if (!started) {
+                onStart()
+                started = true
+            }
+            Lifecycle.Event.ON_RESUME -> if (!resumed) {
+                onResume()
+                resumed = true
+            }
+            Lifecycle.Event.ON_PAUSE -> pauseMap()
+            Lifecycle.Event.ON_STOP -> stopMap()
+            Lifecycle.Event.ON_DESTROY -> releaseMap()
+            else -> Unit
+        }
+    }
+
+    init {
+        onCreate(null)
+        context.applicationContext.registerComponentCallbacks(memoryCallbacks)
+        // Android synchronizes the new observer to its current state.
+        lifecycle.addObserver(observer)
+    }
+
+    private fun pauseMap() {
+        if (resumed) {
+            onPause()
+            resumed = false
+        }
+    }
+
+    private fun stopMap() {
+        pauseMap()
+        if (started) {
+            onStop()
+            started = false
+        }
+    }
+
+    fun releaseMap() {
+        if (released) return
+        released = true
+        lifecycle.removeObserver(observer)
+        context.applicationContext.unregisterComponentCallbacks(memoryCallbacks)
+        stopMap()
+        onDestroy()
     }
 }

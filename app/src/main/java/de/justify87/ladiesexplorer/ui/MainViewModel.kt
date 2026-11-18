@@ -53,6 +53,7 @@ data class MapUiState(
     val loading: Boolean = false,
     val resolving: Boolean = false,
     val cancelling: Boolean = false,
+    val failedLookups: UInt = 0u,
     val favoritesOnly: Boolean = false,
     val error: String? = null,
 )
@@ -445,7 +446,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (mapControl != null) return // completion refreshes from the actual database
         val epoch = ++mapEpoch
         val favoritesOnly = _mapState.value.favoritesOnly
-        _mapState.update { it.copy(loading = true, error = null) }
+        _mapState.update { it.copy(loading = true, error = null, failedLookups = 0u) }
         viewModelScope.launch {
             try {
                 val overview = core.mapOverview(favoritesOnly)
@@ -466,7 +467,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setMapFavoritesOnly(value: Boolean) {
         if (_mapState.value.favoritesOnly == value) return
         cancelMapResolution()
-        _mapState.update { it.copy(favoritesOnly = value, overview = null) }
+        _mapState.update { it.copy(favoritesOnly = value, overview = null, failedLookups = 0u) }
         refreshMap()
     }
 
@@ -481,12 +482,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val control = RequestControl()
         val favoritesOnly = _mapState.value.favoritesOnly
         mapControl = control
-        _mapState.update { it.copy(resolving = true, cancelling = false, error = null) }
+        _mapState.update { it.copy(resolving = true, cancelling = false, error = null, failedLookups = 0u) }
         viewModelScope.launch {
             var failureMessage: String? = null
             var failedLookups = 0u
             try {
-                failedLookups = core.resolveMapLocations(favoritesOnly, control).failedLookups
+                failedLookups = core.resolveMapLocations(favoritesOnly, control)
             } catch (cancelled: CancellationException) {
                 control.cancel()
                 throw cancelled
@@ -507,7 +508,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val latest = core.mapOverview(_mapState.value.favoritesOnly)
                 if (epoch == mapEpoch) _mapState.update {
-                    it.copy(overview = latest.copy(failedLookups = failedLookups),
+                    it.copy(overview = latest, failedLookups = failedLookups,
                         loading = false, error = failureMessage)
                 }
             } catch (cancelled: CancellationException) {
