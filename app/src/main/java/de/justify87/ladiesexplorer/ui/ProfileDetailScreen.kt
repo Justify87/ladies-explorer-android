@@ -98,8 +98,14 @@ fun ProfileDetailScreen(
                         identity = state.profileIdentity,
                         person = state.selectedPerson,
                         hasVideo = state.profileMedia.any { it.kind == "VIDEO" },
+                        fromArchive = state.profileFromArchive,
                     )
                     profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                }
+                if (state.profileFromArchive) {
+                    state.mediaWarning?.let { item(key = "archive-warning") {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    } }
                 }
                 item(key = "actions") {
                     ProfileActionRail(state.selectedPerson, profile.phoneDisplay,
