@@ -604,6 +604,7 @@ pub(super) fn fingerprint(profile: &Profile, category: Option<&str>) -> String {
     let content = json!({
         "category": category,
         "name": profile.name,
+        "category": category,
         "city": profile.city,
         "postal_code": profile.postal_code,
         "hidden_location": profile.hidden_location,
