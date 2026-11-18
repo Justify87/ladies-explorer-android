@@ -35,6 +35,10 @@ struct Reference {
     revision: Option<String>,
     asset_id: Option<i64>,
     local_path: Option<String>,
+    cached_asset_id: Option<i64>,
+    cached_path: Option<String>,
+    cached_revision: Option<String>,
+    cached_dhash: Option<String>,
 }
 
 struct Download {
@@ -150,7 +154,7 @@ fn image_dhash(bytes: &[u8]) -> Result<(String, u32, u32, &'static str), CoreErr
     if width == 0 || height == 0 {
         return Err(CoreError::Media("Invalid image dimensions".into()));
     }
-    let mono = img.resize_exact(9, 8, FilterType::Lanczos3).to_luma8();
+    let mono = img.grayscale().resize_exact(9, 8, FilterType::Lanczos3).to_luma8();
     let mut hash = 0u64;
     for y in 0..8 {
         for x in 0..8 {
@@ -177,11 +181,14 @@ fn snapshot_refs(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<Reference>, 
     let mut query = db.prepare(
         "SELECT m.snapshot_media_id, s.listing_id, l.person_id,
                 m.kind,m.remote_url,COALESCE(m.remote_base_url,m.remote_url),
-                m.revision_token,m.media_asset_id,a.local_path
+                m.revision_token,m.media_asset_id,a.local_path,
+                src.media_asset_id,cached.local_path,src.revision_token,cached.dhash
          FROM snapshot_media m
          JOIN listing_snapshots s ON s.snapshot_id=m.snapshot_id
          JOIN listings l ON l.listing_id=s.listing_id
          LEFT JOIN media_assets a ON a.media_asset_id=m.media_asset_id
+         LEFT JOIN media_sources src ON src.remote_base_url=m.remote_base_url
+         LEFT JOIN media_assets cached ON cached.media_asset_id=src.media_asset_id
          WHERE m.snapshot_id=?1 ORDER BY m.position,m.snapshot_media_id",
     )?;
     let refs = query
@@ -196,6 +203,10 @@ fn snapshot_refs(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<Reference>, 
                 revision: r.get(6)?,
                 asset_id: r.get(7)?,
                 local_path: r.get(8)?,
+                cached_asset_id: r.get(9)?,
+                cached_path: r.get(10)?,
+                cached_revision: r.get(11)?,
+                cached_dhash: r.get(12)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -228,7 +239,14 @@ fn persist(
         };
         (None, None, None, ext)
     };
-    let rel = relative_path(&reference.kind, &hash, ext);
+    // Respect an already imported asset path for the same content hash.
+    let existing: Option<String> = {
+        let db = core.connection()?;
+        db.query_row("SELECT local_path FROM media_assets WHERE sha256=?1", [&hash], |r| r.get(0))
+            .optional()?
+    };
+    let rel = existing.filter(|path| root.join(path).is_file())
+        .unwrap_or_else(|| relative_path(&reference.kind, &hash, ext));
     let path = root.join(&rel);
     let parent = path
         .parent()
@@ -254,7 +272,8 @@ fn persist(
          last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
          dhash=COALESCE(media_assets.dhash,excluded.dhash),
          width=COALESCE(media_assets.width,excluded.width),
-         height=COALESCE(media_assets.height,excluded.height)",
+         height=COALESCE(media_assets.height,excluded.height),
+         local_path=excluded.local_path",
         params![
             hash,
             dhash,
@@ -335,6 +354,27 @@ fn archive_with(
                 .is_some_and(|p| root.join(p).is_file())
         {
             report.reused += 1;
+            continue;
+        }
+        // Cross-snapshot reuse is safe only for a matching, explicit revision token.
+        if reference.revision.is_some()
+            && reference.revision == reference.cached_revision
+            && reference.cached_asset_id.is_some()
+            && reference.cached_path.as_deref()
+                .is_some_and(|path| root.join(path).is_file())
+        {
+            let mut db=core.connection()?;
+            let tx=db.transaction()?;
+            tx.execute(
+                "UPDATE snapshot_media SET media_asset_id=?1 WHERE snapshot_media_id=?2",
+                params![reference.cached_asset_id,reference.id]
+            )?;
+            if let Some(hash)=reference.cached_dhash.as_deref() {
+                identity::record_image_hash(&tx,reference.person_id,reference.listing_id,hash)?;
+                identity::refresh(&tx,reference.listing_id)?;
+            }
+            tx.commit()?;
+            report.reused+=1;
             continue;
         }
         let result = (|| -> Result<(), CoreError> {
@@ -466,6 +506,44 @@ mod tests {
         assert_eq!(links, 2);
         assert_eq!(core.list_identity_candidates(listing).unwrap().len(), 0);
     }
+    #[test]
+    fn existing_revision_is_linked_without_network() {
+        let (_temp,core,first,listing)=fixture();
+        let mut image=std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(16,16)
+            .write_to(&mut image,image::ImageFormat::Png).unwrap();
+        let fetcher=FixtureFetcher(image.into_inner());
+        archive_with(&core,first,false,&fetcher).unwrap();
+        let db=core.connection().unwrap();
+        db.execute("INSERT INTO listing_snapshots(listing_id,fingerprint)
+                    VALUES (?1,'later')",[listing]).unwrap();
+        let second=db.last_insert_rowid();
+        db.execute(
+            "INSERT INTO snapshot_media
+             (snapshot_id,position,kind,role,remote_url,remote_base_url,revision_token)
+             SELECT ?1,position,kind,role,remote_url,remote_base_url,'rev1'
+             FROM snapshot_media WHERE snapshot_id=?2",
+            params![second,first]
+        ).unwrap();
+        // The first snapshot now provides a verified cached revision.
+        db.execute("UPDATE media_sources SET revision_token='rev1'",[]).unwrap();
+        drop(db);
+        struct Offline;
+        impl Fetcher for Offline{
+            fn get(&self,_:&str,_:u64)->Result<Download,CoreError>{
+                Err(CoreError::Media("No network allowed".into()))
+            }
+        }
+        let reused=archive_with(&core,second,false,&Offline).unwrap();
+        assert_eq!((reused.reused,reused.failed),(2,0));
+        let db=core.connection().unwrap();
+        let count:i64=db.query_row(
+            "SELECT COUNT(*) FROM snapshot_media WHERE snapshot_id=?1 AND media_asset_id IS NOT NULL",
+            [second],|r|r.get(0)
+        ).unwrap();
+        assert_eq!(count,2);
+    }
+
     #[test]
     fn only_whitelisted_cdn_hosts_are_downloaded() {
         assert!(validate_media_url("https://bilder1.ladies-cdn.de/Bilder/1.jpg", "IMAGE").is_ok());
