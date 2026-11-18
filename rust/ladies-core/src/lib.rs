@@ -152,9 +152,9 @@ pub use saved_search::{
     SavedSearchResultPage,
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
-pub use source::ProfileIdentity;
 pub use source::{
-    MediaReference, ProfileResponse, SearchCard, SearchPreview, SearchRequest, SearchResponse,
+    MediaReference, ProfileIdentity, ProfileResponse, SearchCard, SearchPreview, SearchRequest,
+    SearchResponse,
 };
 
 #[derive(uniffi::Object)]
