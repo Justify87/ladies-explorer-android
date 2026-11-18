@@ -779,7 +779,10 @@ mod tests {
         image::DynamicImage::new_rgb8(8193, 1)
             .write_to(&mut png, image::ImageFormat::Png)
             .unwrap();
-        assert!(matches!(image_dhash(&png.into_inner()), Err(CoreError::Media(_))));
+        assert!(matches!(
+            image_dhash(&png.into_inner()),
+            Err(CoreError::Media(_))
+        ));
     }
 
     #[test]
@@ -797,7 +800,9 @@ mod tests {
         assert!(validate_media_url("http://bilder1.ladies-cdn.de/a.jpg", Some("IMAGE")).is_err());
         assert!(validate_media_url("https://127.0.0.1/a.jpg", Some("IMAGE")).is_err());
         assert!(validate_media_url("https://video2.ladies-cdn.de/a.mp4", Some("VIDEO")).is_ok());
-        assert!(validate_media_url("https://m.ladies.de/Bilder/gallery.jpg", Some("IMAGE")).is_ok());
+        assert!(
+            validate_media_url("https://m.ladies.de/Bilder/gallery.jpg", Some("IMAGE")).is_ok()
+        );
         assert!(validate_media_url("https://bilder1.ladies-cdn.de/a.jpg", Some("VIDEO")).is_err());
     }
 }

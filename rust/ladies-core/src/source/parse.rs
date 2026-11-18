@@ -313,7 +313,10 @@ fn revision_token(url: &str) -> Option<String> {
 }
 
 fn media_url(raw: &str) -> Option<Url> {
-    let cleaned = raw.trim().trim_matches(['"', '\'']).trim_end_matches([')', ',', ';']);
+    let cleaned = raw
+        .trim()
+        .trim_matches(['"', '\''])
+        .trim_end_matches([')', ',', ';']);
     crate::media::validate_media_url(cleaned, None).ok()
 }
 
