@@ -739,10 +739,16 @@ mod tests {
         let cards = parse_cards(html);
         assert_eq!(cards.len(), 3);
         assert_eq!(cards[0].advert_id, "14620911");
-        assert_eq!(cards[0].profile_url, "https://www.ladies.de/fkk-saunaclubs/fkk-leipzig");
+        assert_eq!(
+            cards[0].profile_url,
+            "https://www.ladies.de/fkk-saunaclubs/fkk-leipzig"
+        );
         assert_eq!(cards[0].category, "fkk saunaclubs");
         assert_eq!(cards[1].advert_id, "13778337");
-        assert_eq!(cards[1].profile_url, "https://www.ladies.de/stars/melissadeluxe-978145");
+        assert_eq!(
+            cards[1].profile_url,
+            "https://www.ladies.de/stars/melissadeluxe-978145"
+        );
         assert_eq!(cards[1].category, "stars");
         assert_eq!(cards[2].category, "huren hostessen");
         assert!(search_page_diagnostics(html).contains("gültige Links=3"));
