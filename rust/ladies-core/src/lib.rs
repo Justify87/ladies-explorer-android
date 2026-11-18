@@ -239,19 +239,34 @@ impl LadiesCore {
         source::load_profile(self, listing_id)
     }
 
-    pub fn archive_profile_media(&self, snapshot_id: i64, include_videos: bool) -> Result<MediaArchiveReport, CoreError> {
+    pub fn archive_profile_media(
+        &self,
+        snapshot_id: i64,
+        include_videos: bool,
+    ) -> Result<MediaArchiveReport, CoreError> {
         media::archive(self, snapshot_id, include_videos)
     }
 
-    pub fn list_identity_candidates(&self, listing_id: i64) -> Result<Vec<IdentityCandidate>, CoreError> {
+    pub fn list_identity_candidates(
+        &self,
+        listing_id: i64,
+    ) -> Result<Vec<IdentityCandidate>, CoreError> {
         identity::list(self, listing_id)
     }
 
-    pub fn confirm_identity_match(&self, listing_id: i64, target_person_id: i64) -> Result<(), CoreError> {
+    pub fn confirm_identity_match(
+        &self,
+        listing_id: i64,
+        target_person_id: i64,
+    ) -> Result<(), CoreError> {
         identity::confirm(self, listing_id, target_person_id)
     }
 
-    pub fn list_change_events(&self, person_id: i64, limit: u32) -> Result<Vec<ChangeRecord>, CoreError> {
+    pub fn list_change_events(
+        &self,
+        person_id: i64,
+        limit: u32,
+    ) -> Result<Vec<ChangeRecord>, CoreError> {
         history::list(self, person_id, limit)
     }
 
