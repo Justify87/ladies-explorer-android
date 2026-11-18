@@ -89,6 +89,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startSearch() {
         if (_searchUiState.value.loading || _uiState.value.loading) return
+        core.cancelMediaArchive()
         val input = _searchUiState.value
         invalidateProfileRequest()
         _searchUiState.update {
@@ -125,6 +126,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadProfile(listingId: Long) {
         if (_searchUiState.value.loading || _uiState.value.loading) return
+        core.cancelMediaArchive()
         invalidateProfileRequest()
         val requestId = profileRequestId
         _searchUiState.update {
@@ -225,6 +227,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun prepareDiagnosticSnapshot(): File = core.createDiagnosticSnapshot()
+
+    override fun onCleared() {
+        core.cancelMediaArchive()
+        super.onCleared()
+    }
 
     private suspend fun publishStatus() {
         val status = core.status()
