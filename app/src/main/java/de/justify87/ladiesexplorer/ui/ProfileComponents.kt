@@ -73,29 +73,41 @@ internal fun ProfileImage(
     modifier: Modifier = Modifier,
     scale: ContentScale = ContentScale.Crop,
     description: String = "Profilbild",
+    allowRetry: Boolean = false,
 ) {
-    val models = remember(localPath, url) { mediaModels(localPath, url) }
-    var attempt by remember(localPath, url) { mutableIntStateOf(0) }
-    var loading by remember(localPath, url, attempt) { mutableStateOf(true) }
-    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-        if (attempt >= models.size) {
-            Text("Kein Bild verfügbar", style = MaterialTheme.typography.bodySmall)
-            if (models.isNotEmpty()) {
-                TextButton(onClick = { attempt = 0; loading = true }, modifier = Modifier.align(Alignment.BottomCenter)) {
-                    Text("Erneut laden")
+    // A new media identity owns separate state. Callbacks from disposed requests
+    // cannot advance another image's local/remote fallback.
+    key(localPath, url) {
+        val models = remember { mediaModels(localPath, url) }
+        var retry by remember { mutableIntStateOf(0) }
+        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+            key(retry) {
+                var attempt by remember { mutableIntStateOf(0) }
+                if (attempt >= models.size) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Kein Bild verfügbar", style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        if (allowRetry && models.isNotEmpty()) {
+                            TextButton(onClick = { retry++ }) { Text("Erneut laden") }
+                        }
+                    }
+                } else {
+                    val requestedAttempt = attempt
+                    key(requestedAttempt) {
+                        var loading by remember { mutableStateOf(true) }
+                        AsyncImage(
+                            model = models[requestedAttempt],
+                            contentDescription = description,
+                            contentScale = scale,
+                            onSuccess = { loading = false },
+                            onError = {
+                                if (attempt == requestedAttempt) attempt = requestedAttempt + 1
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        if (loading) CircularProgressIndicator(Modifier.size(28.dp))
+                    }
                 }
-            }
-        } else {
-            if (loading) CircularProgressIndicator(Modifier.size(28.dp))
-            key(attempt) {
-                AsyncImage(
-                    model = models[attempt],
-                    contentDescription = description,
-                    contentScale = scale,
-                    onSuccess = { loading = false },
-                    onError = { attempt++; loading = false },
-                    modifier = Modifier.fillMaxSize(),
-                )
             }
         }
     }
@@ -146,9 +158,11 @@ internal fun ProfileMediaHero(
     val context = LocalContext.current
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val index = mediaIndex(selected, media.size)
+    LaunchedEffect(index, selected) { if (selected != index) selected = index }
     val item = media.getOrNull(index)
     var more by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
+    LaunchedEffect(item?.kind) { if (item?.kind != "IMAGE") fullscreen = false }
     if (fullscreen && item?.kind == "IMAGE") {
         Dialog(onDismissRequest = { fullscreen = false }) {
             ProfileImage(item.url, item.localPath, Modifier.fillMaxWidth().heightIn(min = 240.dp)
@@ -167,7 +181,7 @@ internal fun ProfileMediaHero(
                 }
             }
             else -> ProfileImage(item.url, item.localPath, Modifier.fillMaxSize(),
-                description = "Profilbild ${index + 1}")
+                description = "Profilbild ${index + 1}", allowRetry = true)
         }
         if (media.size > 1) {
             val start = (index / 10) * 10
