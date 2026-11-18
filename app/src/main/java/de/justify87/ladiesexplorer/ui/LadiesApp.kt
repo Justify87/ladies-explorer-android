@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -157,6 +158,7 @@ fun LadiesApp(
                     onPickLegacyBundle=onPickLegacyBundle,
                     onSaveDiagnostics=onSaveDiagnostics,
                     onShareDiagnostics=onShareDiagnostics,
+                    onDebugLogging=viewModel::setDebugLoggingEnabled,
                     modifier=modifier,
                 )
             }
@@ -171,6 +173,7 @@ private fun SettingsScreen(
     onPickLegacyBundle: () -> Unit,
     onSaveDiagnostics: () -> Unit,
     onShareDiagnostics: () -> Unit,
+    onDebugLogging: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -196,6 +199,10 @@ private fun SettingsScreen(
             style=MaterialTheme.typography.bodySmall,
         )
         Text("Diagnose",style=MaterialTheme.typography.titleLarge)
+        androidx.compose.foundation.layout.Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Debug-Details", modifier=Modifier.weight(1f))
+            Switch(checked=state.debugLoggingEnabled,onCheckedChange=onDebugLogging)
+        }
         Text("Debug-Protokolle können persönliche Inhalte enthalten. Teile sie nur bewusst.",style=MaterialTheme.typography.bodySmall)
         state.diagnosticLastError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
         Text(
