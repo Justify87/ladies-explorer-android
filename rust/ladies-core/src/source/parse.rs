@@ -39,9 +39,12 @@ fn attr(root: &Html, css: &str, key: &str) -> Option<String> {
 pub(super) fn valid_profile_url(value: &str) -> Option<String> {
     let base = Url::parse("https://www.ladies.de/").ok()?;
     let parsed = base.join(value.trim()).ok()?;
+    let supported_path = ["/sex-anzeigen/", "/fkk-saunaclubs/", "/stars/"]
+        .iter()
+        .any(|prefix| parsed.path().starts_with(prefix));
     if parsed.scheme() != "https"
         || !matches!(parsed.host_str(), Some("www.ladies.de" | "m.ladies.de"))
-        || !parsed.path().starts_with("/sex-anzeigen/")
+        || !supported_path
         || parsed.username() != ""
         || parsed.password().is_some()
     {
@@ -102,8 +105,12 @@ pub(super) fn parse_cards(html: &str) -> Vec<Card> {
             .ok()
             .and_then(|parsed| {
                 let segments = parsed.path_segments()?.collect::<Vec<_>>();
-                let index = segments.iter().position(|s| *s == "sex-anzeigen")?;
-                segments.get(index + 1).map(|value| value.replace('-', " "))
+                match segments.as_slice() {
+                    ["sex-anzeigen", category, ..] => Some(category.replace('-', " ")),
+                    ["fkk-saunaclubs", ..] => Some("fkk saunaclubs".into()),
+                    ["stars", ..] => Some("stars".into()),
+                    _ => None,
+                }
             })
             .unwrap_or_default();
         profiles.push(Card {
@@ -705,6 +712,71 @@ mod tests {
         assert!(details.contains("Kartencontainer=1"));
         assert!(details.contains("Anzeigenlinks=1"));
         assert!(details.contains("gültige Links=0"));
+    }
+
+    #[test]
+    fn cards_accept_fkk_and_stars_profile_routes_from_debug_har() {
+        // The two cards rejected in the 2026-11-18 Leipzig HAR have valid
+        // advert IDs but profile URLs outside /sex-anzeigen/.
+        let html = r#"
+            <div class="card-gallery-premium ladies-card">
+                <a class="card-link" data-owg-id="14620911" data-ref-id="14620911"
+                   href="/fkk-saunaclubs/fkk-leipzig"></a>
+                <span class="card-name">FKK Leipzig</span>
+                <span class="card-city">Leipzig</span>
+            </div>
+            <div class="card-gallery-standard ladies-card">
+                <a class="card-link" data-owg-id="13778337" data-ref-id="13778337"
+                   href="/stars/melissadeluxe-978145"></a>
+                <span class="card-name">MelissaDeluxe</span>
+                <span class="card-city">Leipzig</span>
+            </div>
+            <div class="ladies-card">
+                <a class="card-link" data-ref-id="12345"
+                   href="/sex-anzeigen/huren-hostessen/beispiel-12345"></a>
+            </div>
+        "#;
+        let cards = parse_cards(html);
+        assert_eq!(cards.len(), 3);
+        assert_eq!(cards[0].advert_id, "14620911");
+        assert_eq!(cards[0].profile_url, "https://www.ladies.de/fkk-saunaclubs/fkk-leipzig");
+        assert_eq!(cards[0].category, "fkk saunaclubs");
+        assert_eq!(cards[1].advert_id, "13778337");
+        assert_eq!(cards[1].profile_url, "https://www.ladies.de/stars/melissadeluxe-978145");
+        assert_eq!(cards[1].category, "stars");
+        assert_eq!(cards[2].category, "huren hostessen");
+        assert!(search_page_diagnostics(html).contains("gültige Links=3"));
+    }
+
+    #[test]
+    fn profile_urls_allow_only_known_ladies_routes() {
+        for (input, expected) in [
+            (
+                "/sex-anzeigen/huren-hostessen/test-42",
+                "https://www.ladies.de/sex-anzeigen/huren-hostessen/test-42",
+            ),
+            (
+                "/fkk-saunaclubs/fkk-leipzig",
+                "https://www.ladies.de/fkk-saunaclubs/fkk-leipzig",
+            ),
+            (
+                "https://m.ladies.de/stars/melissadeluxe-978145?from=search",
+                "https://www.ladies.de/stars/melissadeluxe-978145",
+            ),
+        ] {
+            assert_eq!(valid_profile_url(input).as_deref(), Some(expected));
+        }
+        for rejected in [
+            "http://www.ladies.de/stars/example",
+            "https://evil.example/stars/example",
+            "https://www.ladies.de.evil.example/fkk-saunaclubs/example",
+            "https://www.ladies.de@evil.example/stars/example",
+            "/stars-fake/example",
+            "/fkk-saunaclubs-fake/example",
+            "/api/leipzig/sex-anzeigen",
+        ] {
+            assert_eq!(valid_profile_url(rejected), None, "{rejected}");
+        }
     }
 
     #[test]
