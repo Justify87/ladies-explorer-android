@@ -137,6 +137,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchGeneration.invalidate()
         searchControl?.cancel()
         searchControl = null
+        _searchUiState.update { it.copy(savedResultsLoadingMore = false) }
     }
 
     fun cancelActiveSearch() {
@@ -325,7 +326,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadSavedSearch(id: String) {
-        if (_searchUiState.value.loading) return
+        if (_searchUiState.value.loading || _searchUiState.value.saving) return
         invalidateActiveSearch()
         val epoch = searchGeneration.value
         viewModelScope.launch {
@@ -351,7 +352,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteSavedSearch(id: String) {
-        if (_searchUiState.value.loading) return
+        if (_searchUiState.value.loading || _searchUiState.value.saving) return
         invalidateActiveSearch()
         viewModelScope.launch {
             try {
@@ -378,7 +379,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun showSavedResults(id: String) {
         if (_searchUiState.value.loading) return
         invalidateActiveSearch()
-        _searchUiState.update { it.copy(savedResultsLoadingMore = false) }
+        // Bind the pending load to the new list immediately. Never page the previous cursor
+        // under the new generation; Back can invalidate the pending first page as well.
+        _searchUiState.update { it.copy(showingSavedSearchId = id, savedResultCards = emptyList(),
+            savedResultCursor = null, savedResultsLoadingMore = true, error = null) }
         val epoch = searchGeneration.value
         viewModelScope.launch {
             try {
@@ -397,7 +401,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 throw cancellation
             } catch (failure: Exception) {
                 if (searchGeneration.isCurrent(epoch)) {
-                    _searchUiState.update { it.copy(error=failure.message ?: "Gespeicherte Ergebnisse konnten nicht geladen werden") }
+                    _searchUiState.update { it.copy(savedResultsLoadingMore = false, error=failure.message ?: "Gespeicherte Ergebnisse konnten nicht geladen werden") }
                 }
             }
         }
@@ -442,7 +446,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startSearch(savedId: String? = null, requestOverride: SearchRequest? = null, localOverride: LocalVisibility? = null) {
-        if (_searchUiState.value.loading || _uiState.value.loading || _discoverState.value.busy) return
+        if (_searchUiState.value.loading || _searchUiState.value.saving || _uiState.value.loading || _discoverState.value.busy) return
         val input = _searchUiState.value
         cancelPreview()
         invalidateActiveSearch()
