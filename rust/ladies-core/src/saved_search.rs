@@ -242,7 +242,8 @@ fn local_visibility(core: &LadiesCore, id: &str) -> Result<LocalVisibility, Core
     let db = core.connection()?;
     let definition: String = db.query_row(
         "SELECT filters_json FROM saved_searches WHERE saved_search_id=?1",
-        [id], |r| r.get(0),
+        [id],
+        |r| r.get(0),
     )?;
     let parsed: serde_json::Value = serde_json::from_str(&definition)
         .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
@@ -255,8 +256,11 @@ fn local_visibility(core: &LadiesCore, id: &str) -> Result<LocalVisibility, Core
         photos_only: flag("photosOnly") == Some(true),
         hide_dislikes: flag("hideDislikes") != Some(false),
         hide_likes: flag("hideLikes") == Some(true),
-        image_mode: local.get("imageMode").and_then(|v| v.as_str())
-            .unwrap_or("ALL").to_uppercase(),
+        image_mode: local
+            .get("imageMode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ALL")
+            .to_uppercase(),
     })
 }
 
@@ -266,11 +270,10 @@ fn apply_local_visibility(
     rules: LocalVisibility,
 ) -> Result<(), CoreError> {
     let db = core.connection()?;
-    let mut person_query = db.prepare(
-        "SELECT preference FROM person_user_state WHERE person_id=?1"
-    )?;
+    let mut person_query =
+        db.prepare("SELECT preference FROM person_user_state WHERE person_id=?1")?;
     let mut marker_query = db.prepare(
-        "SELECT markers_json FROM search_results WHERE search_run_id=?1 AND listing_id=?2"
+        "SELECT markers_json FROM search_results WHERE search_run_id=?1 AND listing_id=?2",
     )?;
     let mut visible = Vec::new();
     for card in response.profiles.drain(..) {
@@ -279,9 +282,7 @@ fn apply_local_visibility(
         {
             continue;
         }
-        let preference: String = person_query.query_row(
-            [card.person_id], |r| r.get(0)
-        )?;
+        let preference: String = person_query.query_row([card.person_id], |r| r.get(0))?;
         if (rules.hide_dislikes && preference == "DISLIKE")
             || (rules.hide_likes && preference == "LIKE")
         {
@@ -292,11 +293,17 @@ fn apply_local_visibility(
             "NATURAL" => !card.has_ai_content,
             "STUDIO" | "FACEAPP" => {
                 let markers: Option<String> = marker_query
-                    .query_row(params![response.search_run_id,card.listing_id], |r| r.get(0))
+                    .query_row(params![response.search_run_id, card.listing_id], |r| {
+                        r.get(0)
+                    })
                     .optional()?
                     .flatten();
                 let marker = markers.unwrap_or_default().to_lowercase();
-                marker.contains(if rules.image_mode == "STUDIO" { "studio" } else { "face" })
+                marker.contains(if rules.image_mode == "STUDIO" {
+                    "studio"
+                } else {
+                    "face"
+                })
             }
             _ => true,
         };
