@@ -130,6 +130,7 @@ fun LadiesApp(
                     onToggleFilter=viewModel::toggleFilter,
                     onSearch={viewModel.startSearch()},
                     onSave=viewModel::saveCurrentSearch,
+                    onNewPreset=viewModel::createNewSavedSearch,
                     onLoadSaved=viewModel::loadSavedSearch,
                     onRunSaved={viewModel.startSearch(it)},
                     onDeleteSaved=viewModel::deleteSavedSearch,
