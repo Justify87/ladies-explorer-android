@@ -536,7 +536,9 @@ mod tests {
             .unwrap();
         assert_eq!(note, "Synthetische Personennotiz");
         let count: i64 = db
-            .query_row("SELECT COUNT(*) FROM listing_snapshots", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM listing_snapshots", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(count, 18);
         assert!(
