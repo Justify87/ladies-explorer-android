@@ -661,11 +661,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val page = core.discoveryCards(cursor = cursor, excludedPeople = swipeSession.excludedPeople)
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        val known = it.cards.mapTo(mutableSetOf()) { card -> card.personId }
                         it.copy(
-                            cards = it.cards + page.cards.filter { card ->
-                                card.personId !in swipeSession.excludedPeople && known.add(card.personId)
-                            },
+                            cards = swipeSession.queue(it.cards + page.cards, active = false),
                             nextCursor = page.nextCursor,
                             loadingMore = false,
                         )
