@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use reqwest::blocking::Client;
-use rusqlite::{OptionalExtension, params};
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use crate::{CoreError, LadiesCore, RequestControl};
@@ -373,6 +373,9 @@ pub(crate) fn resolve(
             pending.entry(key).or_insert((value, postal));
         }
     }
+    // Postcodes yield finer (still approximate) positions than city centers.
+    let mut pending: Vec<_> = pending.into_iter().collect();
+    pending.sort_by_key(|(_, (_, is_postal))| !*is_postal);
     let client = Client::builder()
         .timeout(Duration::from_secs(9))
         .user_agent("LadiesExplorerAndroid/0.1 (github.com/Justify87/ladies-explorer-android)")
