@@ -27,9 +27,13 @@ trait Transport {
         url: &str,
         control: Option<&RequestControl>,
     ) -> Result<Response, CoreError> {
-        if let Some(control) = control { control.check()?; }
+        if let Some(control) = control {
+            control.check()?;
+        }
         let response = self.get(url)?;
-        if let Some(control) = control { control.check()?; }
+        if let Some(control) = control {
+            control.check()?;
+        }
         Ok(response)
     }
     fn diagnostics(&self) -> Option<&Diagnostics> {
@@ -398,7 +402,9 @@ fn fetch_search_controlled<T: Transport>(
     control: Option<&RequestControl>,
 ) -> Result<DownloadedSearch, CoreError> {
     let check = || -> Result<(), CoreError> {
-        if let Some(control) = control { control.check()?; }
+        if let Some(control) = control {
+            control.check()?;
+        }
         Ok(())
     };
     check()?;
@@ -413,13 +419,10 @@ fn fetch_search_controlled<T: Transport>(
             city, city_slug, request.radius_km, request.max_pages, filter_path
         ),
     );
-    let first = client.get_cancellable(&search_url(
-        &city_slug,
-        request.radius_km,
-        1,
-        &filter_path,
-        false,
-    ), control)?;
+    let first = client.get_cancellable(
+        &search_url(&city_slug, request.radius_km, 1, &filter_path, false),
+        control,
+    )?;
     if first.status == 404 {
         return Ok(DownloadedSearch {
             cards: Vec::new(),
@@ -472,13 +475,10 @@ fn fetch_search_controlled<T: Transport>(
         client.log_html("search_page_1_unrecognized", &first.body);
         client.log_event("SEARCH", "Attempting JSON API fallback for page 1");
         let first_api = client
-            .get_cancellable(&search_url(
-                &city_slug,
-                request.radius_km,
-                1,
-                &filter_path,
-                true,
-            ), control)
+            .get_cancellable(
+                &search_url(&city_slug, request.radius_km, 1, &filter_path, true),
+                control,
+            )
             .and_then(|response| parse_api(response, client.diagnostics()))
             .map_err(|err| {
                 CoreError::Source(format!(
@@ -546,13 +546,10 @@ fn fetch_search_controlled<T: Transport>(
             client.wait_between_pages();
             check()?;
             let probe = parse_api(
-                client.get_cancellable(&search_url(
-                    &city_slug,
-                    request.radius_km,
-                    2,
-                    &filter_path,
-                    true,
-                ), control)?,
+                client.get_cancellable(
+                    &search_url(&city_slug, request.radius_km, 2, &filter_path, true),
+                    control,
+                )?,
                 client.diagnostics(),
             )?;
             if let Some(payload) = probe {
@@ -602,13 +599,10 @@ fn fetch_search_controlled<T: Transport>(
             client.wait_between_pages();
             check()?;
             let response = parse_api(
-                client.get_cancellable(&search_url(
-                    &city_slug,
-                    request.radius_km,
-                    page,
-                    &filter_path,
-                    true,
-                ), control)?,
+                client.get_cancellable(
+                    &search_url(&city_slug, request.radius_km, page, &filter_path, true),
+                    control,
+                )?,
                 client.diagnostics(),
             )?;
             let Some(payload) = response else {

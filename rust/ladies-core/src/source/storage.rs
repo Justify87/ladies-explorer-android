@@ -22,7 +22,9 @@ pub(super) fn save_search_with_control(
     downloaded: DownloadedSearch,
     control: Option<&RequestControl>,
 ) -> Result<SearchResponse, CoreError> {
-    if let Some(control) = control { control.check()?; }
+    if let Some(control) = control {
+        control.check()?;
+    }
     let mut db = core.connection()?;
     let tx = db.transaction()?;
     let filters = json!({
@@ -61,7 +63,9 @@ pub(super) fn save_search_with_control(
     let run_id = tx.last_insert_rowid();
     let mut profiles = Vec::with_capacity(downloaded.cards.len());
     for (position, card) in downloaded.cards.iter().enumerate() {
-        if let Some(control) = control { control.check()?; }
+        if let Some(control) = control {
+            control.check()?;
+        }
         let (listing_id, person_id) = upsert_listing(&tx, card)?;
         tx.execute(
             "INSERT INTO search_results
@@ -114,7 +118,9 @@ pub(super) fn save_search_with_control(
             has_stars: card.has_stars,
         });
     }
-    if let Some(control) = control { control.check()?; }
+    if let Some(control) = control {
+        control.check()?;
+    }
     tx.commit()?;
     Ok(SearchResponse {
         search_run_id: run_id,

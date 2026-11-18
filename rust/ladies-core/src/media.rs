@@ -612,23 +612,11 @@ mod tests {
             .write_to(&mut png, image::ImageFormat::Png)
             .unwrap();
         let fetcher = FixtureFetcher(png.into_inner());
-        let first = archive_with(
-            &core,
-            snapshot,
-            false,
-            &fetcher,
-            &RequestControl::default(),
-        )
-        .unwrap();
+        let first =
+            archive_with(&core, snapshot, false, &fetcher, &RequestControl::default()).unwrap();
         assert_eq!((first.downloaded, first.failed), (2, 0));
-        let again = archive_with(
-            &core,
-            snapshot,
-            false,
-            &fetcher,
-            &RequestControl::default(),
-        )
-        .unwrap();
+        let again =
+            archive_with(&core, snapshot, false, &fetcher, &RequestControl::default()).unwrap();
         assert_eq!((again.reused, again.downloaded), (2, 0));
         let db = core.connection().unwrap();
         let assets: i64 = db
@@ -662,14 +650,7 @@ mod tests {
             .write_to(&mut image, image::ImageFormat::Png)
             .unwrap();
         let fetcher = FixtureFetcher(image.into_inner());
-        archive_with(
-            &core,
-            first,
-            false,
-            &fetcher,
-            &RequestControl::default(),
-        )
-        .unwrap();
+        archive_with(&core, first, false, &fetcher, &RequestControl::default()).unwrap();
         let db = core.connection().unwrap();
         db.execute(
             "INSERT INTO listing_snapshots(listing_id,fingerprint)
@@ -702,14 +683,8 @@ mod tests {
                 Err(CoreError::Media("No network allowed".into()))
             }
         }
-        let reused = archive_with(
-            &core,
-            second,
-            false,
-            &Offline,
-            &RequestControl::default(),
-        )
-        .unwrap();
+        let reused =
+            archive_with(&core, second, false, &Offline, &RequestControl::default()).unwrap();
         assert_eq!((reused.reused, reused.failed), (2, 0));
         let db = core.connection().unwrap();
         let count:i64=db.query_row(
@@ -734,14 +709,8 @@ mod tests {
                 Err(CoreError::Media("Network unavailable".into()))
             }
         }
-        let report = archive_with(
-            &core,
-            snapshot,
-            false,
-            &Offline,
-            &RequestControl::default(),
-        )
-        .unwrap();
+        let report =
+            archive_with(&core, snapshot, false, &Offline, &RequestControl::default()).unwrap();
         assert_eq!((report.failed, report.downloaded), (2, 0));
         let db = core.connection().unwrap();
         let snapshots: i64 = db

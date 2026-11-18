@@ -520,9 +520,13 @@ pub(crate) fn run(
     let fetched = source::search(core, definition.query, control);
     match fetched {
         Ok(mut response) => {
-            if let Some(control) = control { control.check()?; }
+            if let Some(control) = control {
+                control.check()?;
+            }
             apply_local_visibility(core, &mut response, definition.local)?;
-            if let Some(control) = control { control.check()?; }
+            if let Some(control) = control {
+                control.check()?;
+            }
             if !response.partial && response.radius_verified {
                 persist_results(core, &id, &response, &stored_definition, version)?;
             } else {

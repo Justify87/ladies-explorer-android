@@ -154,8 +154,8 @@ pub(crate) fn page(
             "Discovery page size must be between 1 and 100".into(),
         ));
     }
-    let excluded = serde_json::to_string(excluded_people)
-        .map_err(|e| CoreError::Storage(e.to_string()))?;
+    let excluded =
+        serde_json::to_string(excluded_people).map_err(|e| CoreError::Storage(e.to_string()))?;
     let db = core.connection()?;
     // Stable keyset pagination after selecting the newest listing per person.
     // Explicit exclusions keep session-skipped people from exhausting the first page.
@@ -202,13 +202,20 @@ pub(crate) fn page(
                 OR (u.favorite=?2 AND l.last_seen_at < ?3)
                 OR (u.favorite=?2 AND l.last_seen_at=?3 AND l.listing_id < ?4))
          ORDER BY u.favorite DESC,l.last_seen_at DESC,l.listing_id DESC
-         LIMIT ?6"
+         LIMIT ?6",
     )?;
     let cursor_favorite = cursor.as_ref().map(|c| i64::from(c.favorite));
     let cursor_time = cursor.as_ref().map(|c| c.last_seen_at.as_str());
     let cursor_id = cursor.as_ref().map(|c| c.listing_id);
     let rows = query.query_map(
-        params![favorites_only, cursor_favorite, cursor_time, cursor_id, excluded, limit + 1],
+        params![
+            favorites_only,
+            cursor_favorite,
+            cursor_time,
+            cursor_id,
+            excluded,
+            limit + 1
+        ],
         |r| {
             Ok((
                 r.get::<_, i64>(0)?,
@@ -228,8 +235,20 @@ pub(crate) fn page(
     )?;
     let mut entries = rows
         .map(|row| {
-            let (listing_id, person_id, name, city, thumbnail_url, relative, description,
-                preference, favorite, video, ai, last_seen_at) = row?;
+            let (
+                listing_id,
+                person_id,
+                name,
+                city,
+                thumbnail_url,
+                relative,
+                description,
+                preference,
+                favorite,
+                video,
+                ai,
+                last_seen_at,
+            ) = row?;
             let local_path = relative.and_then(|relative| {
                 let path = core.media_root.as_ref()?.join(relative);
                 path.is_file().then(|| path.to_string_lossy().into_owned())
@@ -284,11 +303,28 @@ mod tests {
             .unwrap();
         core.add_listing(second, None, "LADIES".into(), "3".into(), None)
             .unwrap();
-        assert_eq!(page(&core, false, 100, None, &[]).map(|p| p.cards).unwrap().len(), 2);
+        assert_eq!(
+            page(&core, false, 100, None, &[])
+                .map(|p| p.cards)
+                .unwrap()
+                .len(),
+            2
+        );
         core.set_preference(first, Preference::Dislike).unwrap();
-        assert_eq!(page(&core, false, 100, None, &[]).map(|p| p.cards).unwrap().len(), 1);
+        assert_eq!(
+            page(&core, false, 100, None, &[])
+                .map(|p| p.cards)
+                .unwrap()
+                .len(),
+            1
+        );
         core.set_preference(second, Preference::Like).unwrap();
-        assert!(page(&core, false, 100, None, &[]).map(|p| p.cards).unwrap().is_empty());
+        assert!(
+            page(&core, false, 100, None, &[])
+                .map(|p| p.cards)
+                .unwrap()
+                .is_empty()
+        );
         core.set_favorite(first, true).unwrap();
         let favorites = page(&core, true, 100, None, &[]).map(|p| p.cards).unwrap();
         assert_eq!(favorites.len(), 1);

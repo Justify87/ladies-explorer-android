@@ -135,13 +135,18 @@ pub(crate) fn search(
         ),
     );
     filter::validate_request(&request)?;
-    if let Some(control) = control { control.check()?; }
-    let downloaded = network::fetch_search(&core.source_session.0, &request, control).map_err(|error| {
-        core.diagnostics
-            .event("SEARCH", format!("Search fetch failed: {error}"));
-        error
-    })?;
-    if let Some(control) = control { control.check()?; }
+    if let Some(control) = control {
+        control.check()?;
+    }
+    let downloaded =
+        network::fetch_search(&core.source_session.0, &request, control).map_err(|error| {
+            core.diagnostics
+                .event("SEARCH", format!("Search fetch failed: {error}"));
+            error
+        })?;
+    if let Some(control) = control {
+        control.check()?;
+    }
     let saved = storage::save_search_with_control(core, &request, downloaded, control);
     match &saved {
         Ok(response) => core.diagnostics.event(
