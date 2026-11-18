@@ -40,9 +40,14 @@ als gültige Null-Treffer-Suche. Ein anhand des dokumentierten
 `page-section`-/`affiliate-card`-Platzhalters und der
 `load-adverts-next-distance`-Schaltfläche eindeutig erkannter
 Radiusübergang auf einer API-Folgeseite beendet die Pagination
-ohne Parserfehler. Bis dahin erkannte Anzeigen bleiben erhalten; der
-Lauf ist ausdrücklich `partial`, da der Platzhalter selbst keine
-auswertbaren Inserate liefert. Abweichende Gesamtzahlen bleiben sichtbar.
+ohne Parserfehler. Bis dahin erkannte Anzeigen bleiben erhalten.
+Der Übergang ist ein reguläres Ende der gewählten Umkreissuche: Sind
+Radius und die vollständige Inseratzahl der Quelle bestätigt, ist der
+Lauf nicht `partial`. Fehlt die Gesamtzahl oder weicht sie von den
+eindeutigen Profilen ab, wird er weiterhin als `partial` gespeichert.
+Die Diagnose protokolliert pro API-Seite erkannte Karten sowie nach
+Deduplizierung die Abweichung zur Quellzahl. Bei einem Quellzahlkonflikt
+werden keine fehlenden Inserate erfunden.
 
 Wichtig: Wenn die Quelle einen größeren als den angeforderten Radius
 meldet, akzeptiert die neue App keine Daten aus dem erweiterten
