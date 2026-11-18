@@ -160,6 +160,7 @@ pub struct LadiesCore {
     recorder: Arc<http_capture::HttpRecorder>,
     source_session: source::SourceSession,
     media_root: Option<std::path::PathBuf>,
+    geocoding: Mutex<map::GeocodeState>,
 }
 
 #[uniffi::export]
@@ -195,6 +196,7 @@ impl LadiesCore {
             recorder,
             source_session,
             media_root,
+            geocoding: Mutex::new(map::GeocodeState::default()),
         }))
     }
 
@@ -371,7 +373,9 @@ impl LadiesCore {
         max_requests: u32,
         control: Arc<RequestControl>,
     ) -> Result<MapOverview, CoreError> {
-        map::resolve(self, favorites_only, max_requests, &control)
+        self.diagnostics.timed("MAP", "resolve_map_locations", || {
+            map::resolve(self, favorites_only, max_requests, &control)
+        })
     }
 
     pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {

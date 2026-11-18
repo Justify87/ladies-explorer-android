@@ -2,6 +2,7 @@
 //! Source: ZIPPOPOTAM for German postcodes, Nominatim for city fallback.
 //! Both services are contacted only after an explicit user request.
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::io::Read;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -9,10 +10,56 @@ use reqwest::blocking::Client;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
+use crate::http_capture::{self, CaptureMode, HttpObservation};
 use crate::{CoreError, LadiesCore, RequestControl};
 
 const NEGATIVE_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 const MAX_GEOCODE_REQUESTS: u32 = 15;
+const CITY_INTERVAL: Duration = Duration::from_millis(1100);
+
+/// Held for a complete resolve operation. Retains fairness and provider pacing
+/// across user-triggered runs without adding a persistent job queue.
+#[derive(Default)]
+pub(crate) struct GeocodeState {
+    last_city_request: Option<Instant>,
+    last_attempt: HashMap<String, u64>,
+    sequence: u64,
+}
+
+impl GeocodeState {
+    fn ordered(
+        &mut self,
+        pending: BTreeMap<String, (String, bool)>,
+    ) -> Vec<(String, (String, bool))> {
+        self.last_attempt.retain(|key, _| pending.contains_key(key));
+        let mut pending: Vec<_> = pending.into_iter().collect();
+        pending.sort_by_key(|(key, (_, postal))| {
+            (self.last_attempt.get(key).copied().unwrap_or(0), !*postal)
+        });
+        pending
+    }
+
+    fn attempted(&mut self, key: &str) {
+        self.sequence += 1;
+        self.last_attempt.insert(key.to_owned(), self.sequence);
+    }
+
+    fn wait_for_city(&mut self, control: &RequestControl) -> Result<(), CoreError> {
+        if let Some(previous) = self.last_city_request {
+            while previous.elapsed() < CITY_INTERVAL {
+                control.check()?;
+                std::thread::sleep(
+                    CITY_INTERVAL
+                        .saturating_sub(previous.elapsed())
+                        .min(Duration::from_millis(50)),
+                );
+            }
+        }
+        control.check()?;
+        self.last_city_request = Some(Instant::now());
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct MapProfile {
@@ -187,44 +234,37 @@ fn save_cache(core: &LadiesCore, key: &str, entry: &CachedLocation) -> Result<()
     Ok(())
 }
 
+type LocationChoice<'a> = (
+    Option<(&'a CachedLocation, String)>,
+    Option<(String, String, bool)>,
+);
+
 fn chosen_location<'a>(
     candidate: &Candidate,
     cache: &'a HashMap<String, CachedLocation>,
-) -> (
-    Option<(&'a CachedLocation, String)>,
-    Option<(String, String, bool)>,
-) {
+) -> LocationChoice<'a> {
     let (postal_key, city_key) = cache_keys(candidate);
+    let mut pending = None;
     if let Some(key) = postal_key {
-        if let Some(value) = cache.get(&key) {
-            if value.valid_point().is_some() {
-                return (Some((value, key)), None);
-            }
-            if !value.negative_fresh() {
-                return (
-                    None,
-                    candidate.postal.as_ref().map(|p| (key, p.clone(), true)),
-                );
-            }
-        } else {
-            return (
-                None,
-                candidate.postal.as_ref().map(|p| (key, p.clone(), true)),
-            );
+        let cached = cache.get(&key);
+        if let Some(value) = cached.filter(|value| value.valid_point().is_some()) {
+            return (Some((value, key)), None);
+        }
+        if !cached.is_some_and(CachedLocation::negative_fresh) {
+            pending = candidate.postal.as_ref().map(|p| (key, p.clone(), true));
         }
     }
     if let Some(key) = city_key {
-        if let Some(value) = cache.get(&key) {
-            if value.valid_point().is_some() {
-                return (Some((value, key)), None);
-            }
-            if value.negative_fresh() {
-                return (None, None);
-            }
+        let cached = cache.get(&key);
+        if let Some(value) = cached.filter(|value| value.valid_point().is_some()) {
+            // Keep the offline city marker while a finer postal fix is pending.
+            return (Some((value, key)), pending);
         }
-        return (None, Some((key, candidate.city.clone(), false)));
+        if pending.is_none() && !cached.is_some_and(CachedLocation::negative_fresh) {
+            pending = Some((key, candidate.city.clone(), false));
+        }
     }
-    (None, None)
+    (None, pending)
 }
 
 fn build_overview(
@@ -243,6 +283,7 @@ fn build_overview(
                     (Some(postal), Some("POSTAL")) if !person.city.trim().is_empty() => {
                         format!("{postal} {}", person.city)
                     }
+                    (Some(postal), Some("POSTAL")) => postal.clone(),
                     _ => person.city.clone(),
                 };
                 profiles.push(MapProfile {
@@ -258,7 +299,8 @@ fn build_overview(
                     thumbnail_url: person.thumbnail_url,
                 });
             }
-        } else if let Some((key, _, _)) = next {
+        }
+        if let Some((key, _, _)) = next {
             pending.insert(key);
         }
     }
@@ -279,16 +321,79 @@ pub(crate) fn overview(core: &LadiesCore, favorites_only: bool) -> Result<MapOve
     ))
 }
 
+#[derive(Debug, PartialEq)]
 enum Lookup {
     Resolved(f64, f64, &'static str),
     NotFound,
 }
 
-fn geocode(client: &Client, value: &str, postal: bool) -> Result<Lookup, CoreError> {
-    let response = if postal {
-        client
-            .get(format!("https://api.zippopotam.us/DE/{value}"))
-            .send()
+#[derive(Deserialize)]
+struct PostalResponse {
+    places: Vec<PostalPlace>,
+}
+
+#[derive(Deserialize)]
+struct PostalPlace {
+    latitude: String,
+    longitude: String,
+}
+
+#[derive(Deserialize)]
+struct CityPlace {
+    lat: String,
+    lon: String,
+}
+
+fn provider_error(error: impl std::fmt::Display) -> CoreError {
+    CoreError::Source(format!("Invalid geocoding response: {error}"))
+}
+
+fn checked_coordinates(lat: &str, lon: &str) -> Result<(f64, f64), CoreError> {
+    let lat: f64 = lat.parse().map_err(provider_error)?;
+    let lon: f64 = lon.parse().map_err(provider_error)?;
+    if !(47.0..=56.0).contains(&lat) || !(5.0..=16.0).contains(&lon) {
+        return Err(provider_error("coordinates outside supported region"));
+    }
+    Ok((lat, lon))
+}
+
+fn parse_geocoding(body: &str, postal: bool) -> Result<Lookup, CoreError> {
+    if postal {
+        let payload: PostalResponse = serde_json::from_str(body).map_err(provider_error)?;
+        if payload.places.is_empty() {
+            return Ok(Lookup::NotFound);
+        }
+        let mut latitude = 0.0;
+        let mut longitude = 0.0;
+        for place in &payload.places {
+            let (lat, lon) = checked_coordinates(&place.latitude, &place.longitude)?;
+            latitude += lat;
+            longitude += lon;
+        }
+        let count = payload.places.len() as f64;
+        Ok(Lookup::Resolved(
+            latitude / count,
+            longitude / count,
+            "POSTAL",
+        ))
+    } else {
+        let payload: Vec<CityPlace> = serde_json::from_str(body).map_err(provider_error)?;
+        let Some(place) = payload.first() else {
+            return Ok(Lookup::NotFound);
+        };
+        let (lat, lon) = checked_coordinates(&place.lat, &place.lon)?;
+        Ok(Lookup::Resolved(lat, lon, "CITY"))
+    }
+}
+
+fn geocode(
+    core: &LadiesCore,
+    client: &Client,
+    value: &str,
+    postal: bool,
+) -> Result<Lookup, CoreError> {
+    let request = if postal {
+        client.get(format!("https://api.zippopotam.us/DE/{value}"))
     } else {
         client
             .get("https://nominatim.openstreetmap.org/search")
@@ -298,63 +403,97 @@ fn geocode(client: &Client, value: &str, postal: bool) -> Result<Lookup, CoreErr
                 ("limit", "1".into()),
                 ("countrycodes", "de".into()),
             ])
-            .send()
     }
-    .map_err(|error| CoreError::Source(format!("Geocoding network request failed: {error}")))?;
-    if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Ok(Lookup::NotFound);
-    }
-    let response = response.error_for_status().map_err(|error| {
-        CoreError::Source(format!("Geocoding provider rejected the request: {error}"))
-    })?;
-    let body = response.text().map_err(|error| {
-        CoreError::Source(format!("Unable to read geocoding response: {error}"))
-    })?;
-    let payload: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|error| CoreError::Source(format!("Invalid geocoding response: {error}")))?;
-    let mut coordinates = Vec::new();
-    if postal {
-        for place in payload["places"].as_array().into_iter().flatten() {
-            if let (Some(lat), Some(lon)) = (
-                place["latitude"]
-                    .as_str()
-                    .and_then(|s| s.parse::<f64>().ok()),
-                place["longitude"]
-                    .as_str()
-                    .and_then(|s| s.parse::<f64>().ok()),
-            ) {
-                coordinates.push((lat, lon));
+    .build()
+    .map_err(|error| CoreError::Source(format!("Geocoding request failed: {error}")))?;
+
+    let started = Instant::now();
+    let (mode, epoch) = core.recorder.mode_epoch();
+    let mut observation = (mode != CaptureMode::Off).then(|| HttpObservation {
+        method: request.method().to_string(),
+        url: request.url().to_string(),
+        final_url: request.url().to_string(),
+        status: None,
+        http_version: "unknown".into(),
+        request_headers: http_capture::headers(request.headers()),
+        response_headers: Vec::new(),
+        mime: None,
+        response_size: None,
+        started_ms: http_capture::started_ms(),
+        headers_elapsed_ms: 0,
+        body_elapsed_ms: 0,
+        body: None,
+        is_media: false,
+        error: None,
+        body_omitted: None,
+    });
+    let result = (|| {
+        let sent = client.execute(request);
+        if let Some(obs) = observation.as_mut() {
+            obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
+        }
+        let mut response = sent.map_err(|error| {
+            CoreError::Source(format!("Geocoding network request failed: {error}"))
+        })?;
+        let status = response.status();
+        if let Some(obs) = observation.as_mut() {
+            obs.status = Some(status.as_u16());
+            obs.http_version = format!("{:?}", response.version());
+            obs.final_url = response.url().to_string();
+            obs.response_headers = http_capture::headers(response.headers());
+            obs.mime = response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|header| header.to_str().ok())
+                .map(ToOwned::to_owned);
+            obs.response_size = response.content_length();
+        }
+        let body_started = Instant::now();
+        let mut bytes = Vec::new();
+        let read = response
+            .by_ref()
+            .take(http_capture::MAX_BODY_BYTES as u64 + 1)
+            .read_to_end(&mut bytes);
+        if let Some(obs) = observation.as_mut() {
+            obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
+            obs.response_size = Some(bytes.len() as u64);
+        }
+        read.map_err(provider_error)?;
+        if bytes.len() > http_capture::MAX_BODY_BYTES {
+            if let Some(obs) = observation.as_mut() {
+                obs.body_omitted = Some("body_over_2_mib".into());
             }
+            return Err(provider_error("response size limit exceeded"));
         }
-    } else if let Some(first) = payload.as_array().and_then(|items| items.first()) {
-        if let (Some(lat), Some(lon)) = (
-            first["lat"].as_str().and_then(|s| s.parse::<f64>().ok()),
-            first["lon"].as_str().and_then(|s| s.parse::<f64>().ok()),
-        ) {
-            coordinates.push((lat, lon));
+        let body = String::from_utf8(bytes).map_err(provider_error)?;
+        if let Some(obs) = observation.as_mut()
+            && mode == CaptureMode::Text
+        {
+            obs.body = Some(body.clone());
         }
+        // The postcode endpoint defines HTTP 404 as not found; a 404 at
+        // the city-search endpoint is an HTTP failure, not an empty result.
+        if postal && status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(Lookup::NotFound);
+        }
+        if !status.is_success() {
+            return Err(CoreError::Source(format!(
+                "Geocoding provider returned HTTP {status}"
+            )));
+        }
+        parse_geocoding(&body, postal)
+    })();
+    if let Some(mut obs) = observation {
+        if let Err(error) = &result {
+            obs.error = Some(error.to_string());
+        }
+        core.recorder.record_for_epoch(obs, epoch);
     }
-    let coordinates: Vec<_> = coordinates
-        .into_iter()
-        .filter(|(lat, lon)| {
-            lat.is_finite()
-                && lon.is_finite()
-                && (47.0..=56.0).contains(lat)
-                && (5.0..=16.0).contains(lon)
-        })
-        .collect();
-    if coordinates.is_empty() {
-        return Ok(Lookup::NotFound);
-    }
-    Ok(Lookup::Resolved(
-        coordinates.iter().map(|v| v.0).sum::<f64>() / coordinates.len() as f64,
-        coordinates.iter().map(|v| v.1).sum::<f64>() / coordinates.len() as f64,
-        if postal { "POSTAL" } else { "CITY" },
-    ))
+    result
 }
 
-/// Explicit, bounded geocoding, with no full address sent to the provider.
-/// Errors do not poison the cache; negative results expire after seven days.
+/// Explicit, bounded geocoding. The app-wide operation lease and city pacing
+/// prevent overlapping requests; failures rotate behind untried locations.
 pub(crate) fn resolve(
     core: &LadiesCore,
     favorites_only: bool,
@@ -366,8 +505,13 @@ pub(crate) fn resolve(
             "Geocode batch must contain 1–15 requests".into(),
         ));
     }
+    let mut scheduler = core
+        .geocoding
+        .try_lock()
+        .map_err(|_| CoreError::Source("Standortauflösung läuft bereits".into()))?;
+    control.check()?;
     let people = candidates(core, favorites_only)?;
-    let mut cache = read_cache(core)?;
+    let cache = read_cache(core)?;
     let mut pending = BTreeMap::new();
     for person in &people {
         let (_, candidate) = chosen_location(person, &cache);
@@ -375,29 +519,20 @@ pub(crate) fn resolve(
             pending.entry(key).or_insert((value, postal));
         }
     }
-    // Postcodes yield finer (still approximate) positions than city centers.
-    let mut pending: Vec<_> = pending.into_iter().collect();
-    pending.sort_by_key(|(_, (_, is_postal))| !*is_postal);
+    let pending = scheduler.ordered(pending);
     let client = Client::builder()
         .timeout(Duration::from_secs(9))
         .user_agent("LadiesExplorerAndroid/0.1 (github.com/Justify87/ladies-explorer-android)")
         .build()
         .map_err(|error| CoreError::Source(error.to_string()))?;
     let mut failed = 0u32;
-    let mut last_city_request: Option<Instant> = None;
     for (key, (value, postal)) in pending.into_iter().take(max_requests as usize) {
         control.check()?;
         if !postal {
-            // Nominatim's public service requires a strict <=1 request/second rate.
-            if let Some(previous) = last_city_request {
-                let elapsed = previous.elapsed();
-                if elapsed < Duration::from_millis(1100) {
-                    std::thread::sleep(Duration::from_millis(1100) - elapsed);
-                }
-            }
-            last_city_request = Some(Instant::now());
+            scheduler.wait_for_city(control)?;
         }
-        let response = geocode(&client, &value, postal);
+        scheduler.attempted(&key);
+        let response = geocode(core, &client, &value, postal);
         control.check()?;
         let entry = match response {
             Ok(Lookup::Resolved(lat, lon, precision)) => CachedLocation {
@@ -414,15 +549,18 @@ pub(crate) fn resolve(
                 precision: None,
                 updated_at: now(),
             },
-            Err(_) => {
+            Err(error) => {
+                core.diagnostics.error("MAP", error.to_string());
                 failed += 1;
                 continue;
             }
         };
         save_cache(core, &key, &entry)?;
-        cache.insert(key, entry);
+        scheduler.last_attempt.remove(&key);
     }
-    Ok(build_overview(people, &cache, failed))
+    let mut latest = overview(core, favorites_only)?;
+    latest.failed_lookups = failed;
+    Ok(latest)
 }
 
 #[cfg(test)]
@@ -552,6 +690,67 @@ mod tests {
         let view = overview(&core, false).unwrap();
         assert_eq!(view.profiles.len(), 2);
         assert!(view.profiles.iter().all(|p| p.precision == "CITY"));
+    }
+
+    #[test]
+    fn provider_responses_distinguish_empty_results_from_malformed_data() {
+        assert_eq!(parse_geocoding("[]", false).unwrap(), Lookup::NotFound);
+        assert_eq!(
+            parse_geocoding(r#"{"places":[]}"#, true).unwrap(),
+            Lookup::NotFound
+        );
+        for body in ["{}", "null", r#"[{"lat":"51"}]"#, r#"[{"lat":"NaN","lon":"12"}]"#] {
+            assert!(parse_geocoding(body, false).is_err());
+        }
+        assert!(parse_geocoding(r#"{"error":"maintenance"}"#, true).is_err());
+        assert!(parse_geocoding(r#"{"places":[{"latitude":"0","longitude":"0"}]}"#, true).is_err());
+        assert_eq!(
+            parse_geocoding(r#"[{"lat":"51.3","lon":"12.3"}]"#, false).unwrap(),
+            Lookup::Resolved(51.3, 12.3, "CITY")
+        );
+    }
+
+    #[test]
+    fn fair_scheduler_moves_failed_requests_behind_untried_locations() {
+        let mut scheduler = GeocodeState::default();
+        let pending: BTreeMap<_, _> = (0..20)
+            .map(|i| (format!("postal:{i:02}"), (i.to_string(), true)))
+            .collect();
+        let first = scheduler.ordered(pending.clone());
+        for (key, _) in first.iter().take(15) {
+            scheduler.attempted(key);
+        }
+        let next = scheduler.ordered(pending);
+        assert_eq!(next[0].0, "postal:15");
+        assert_eq!(next[5].0, "postal:00");
+    }
+
+    #[test]
+    fn city_fallback_remains_visible_while_postcode_is_pending() {
+        let core = seed();
+        save_cache(
+            &core,
+            "map:city:DE:leipzig",
+            &CachedLocation {
+                status: "RESOLVED".into(),
+                latitude: Some(51.34),
+                longitude: Some(12.37),
+                precision: Some("CITY".into()),
+                updated_at: now(),
+            },
+        )
+        .unwrap();
+        let view = overview(&core, false).unwrap();
+        assert_eq!(view.profiles.len(), 2);
+        assert_eq!(view.pending_locations, 1);
+        assert!(view.profiles.iter().all(|p| p.precision == "CITY"));
+    }
+
+    #[test]
+    fn overlapping_resolution_is_rejected_without_network_access() {
+        let core = seed();
+        let _lease = core.geocoding.lock().unwrap();
+        assert!(resolve(&core, false, 15, &RequestControl::new()).is_err());
     }
 
     #[test]
