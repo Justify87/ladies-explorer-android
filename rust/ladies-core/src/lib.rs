@@ -741,6 +741,46 @@ impl LadiesCore {
         Ok(())
     }
 
+    // A deck decision/undo must address the same canonical owner and, for undo,
+    // the exact previously committed preference in one write transaction.
+    pub fn set_swipe_preference(
+        &self,
+        listing_id: i64,
+        expected_person_id: i64,
+        expected_preference: Option<Preference>,
+        preference: Preference,
+    ) -> Result<Preference, CoreError> {
+        let mut db = self.connection()?;
+        let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let (owner, raw): (i64, String) = tx
+            .query_row(
+                "SELECT l.person_id,u.preference FROM listings l
+                 JOIN person_user_state u ON u.person_id=l.person_id WHERE l.listing_id=?1",
+                [listing_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or(CoreError::ListingNotFound(listing_id))?;
+        if owner != expected_person_id {
+            return Err(CoreError::IdentityConflict(
+                "Personenzuordnung geändert; bitte Deck aktualisieren.".into(),
+            ));
+        }
+        let before = Preference::from_db(&raw)?;
+        if expected_preference.is_some_and(|expected| expected != before) {
+            return Err(CoreError::IdentityConflict(
+                "Präferenz inzwischen geändert; Undo nicht möglich.".into(),
+            ));
+        }
+        tx.execute(
+            "UPDATE person_user_state SET preference=?1,
+             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE person_id=?2",
+            params![preference.as_db(), owner],
+        )?;
+        tx.commit()?;
+        Ok(before)
+    }
+
     pub fn set_favorite(&self, person_id: i64, favorite: bool) -> Result<(), CoreError> {
         let db = self.connection()?;
         let changed = db.execute(
@@ -1171,5 +1211,43 @@ mod tests {
         assert!(!export_a.contains("core-beta-"));
         assert!(export_b.contains("core-beta-199"));
         assert!(!export_b.contains("core-alpha-"));
+    }
+}
+
+#[cfg(test)]
+mod swipe_preference_tests {
+    use super::*;
+
+    #[test]
+    fn swipe_writes_and_undo_check_owner_and_previous_preference_atomically() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let other = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "swipe-fixture".into(), None)
+            .unwrap();
+        core.set_preference(person, Preference::Dislike).unwrap();
+        core.set_favorite(person, true).unwrap();
+        assert_eq!(
+            core.set_swipe_preference(listing, person, None, Preference::Like)
+                .unwrap(),
+            Preference::Dislike
+        );
+        assert!(
+            core.set_swipe_preference(listing, other, None, Preference::None)
+                .is_err()
+        );
+        assert!(
+            core.set_swipe_preference(listing, person, Some(Preference::None), Preference::Dislike)
+                .is_err()
+        );
+        assert_eq!(
+            core.set_swipe_preference(listing, person, Some(Preference::Like), Preference::Dislike)
+                .unwrap(),
+            Preference::Like
+        );
+        let person = core.get_person(person).unwrap().unwrap();
+        assert_eq!(person.preference, Preference::Dislike);
+        assert!(person.favorite);
     }
 }
