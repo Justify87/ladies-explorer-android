@@ -74,18 +74,8 @@ impl SourceHttp {
     ) -> Result<Self, CoreError> {
         let client = Client::builder()
             .cookie_store(true)
-            .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                let destination = attempt.url();
-                if attempt.previous().len() >= 5 {
-                    attempt.error("Too many source redirects")
-                } else if destination.scheme() == "https"
-                    && matches!(destination.host_str(), Some("www.ladies.de" | "ladies.de"))
-                {
-                    attempt.follow()
-                } else {
-                    attempt.error("Source redirected outside ladies.de")
-                }
-            }))
+            // Redirects are followed explicitly so each actual network response can be captured.
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_secs(25))
             .user_agent(
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
@@ -131,6 +121,32 @@ fn check_redirect(
     Ok(())
 }
 
+fn redirect_target(
+    current: &Url,
+    status: u16,
+    location: Option<&str>,
+    followed: usize,
+) -> Result<Option<Url>, CoreError> {
+    if !matches!(status, 301 | 302 | 303 | 307 | 308) {
+        return Ok(None);
+    }
+    let Some(location) = location else {
+        return Ok(None);
+    };
+    if followed >= 5 {
+        return Err(CoreError::Source("Too many source redirects".into()));
+    }
+    let target = current
+        .join(location)
+        .map_err(|error| CoreError::Source(format!("Invalid redirect URL: {error}")))?;
+    if target.scheme() != "https"
+        || !matches!(target.host_str(), Some("www.ladies.de" | "ladies.de"))
+    {
+        return Err(CoreError::Source("Source redirected outside ladies.de".into()));
+    }
+    Ok(Some(target))
+}
+
 impl Transport for SourceHttp {
     fn diagnostics(&self) -> Option<&Diagnostics> {
         Some(self.diagnostics.as_ref())
@@ -150,49 +166,87 @@ impl Transport for SourceHttp {
             "text/html, application/xhtml+xml, */*"
         };
         let requested_path = parsed.path().to_owned();
-        let started = Instant::now();
-        let request = self
-            .client
-            .get(parsed)
-            .header("Accept", accept)
-            .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
-            .header("Referer", BASE)
-            .header("DNT", "1")
-            .build()
-            .map_err(|error| CoreError::Source(format!("Source HTTP request failed: {error}")))?;
-        let mut observation = (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
-            method: request.method().to_string(),
-            url: request.url().to_string(),
-            final_url: request.url().to_string(),
-            status: None,
-            http_version: "unknown".into(),
-            request_headers: http_capture::headers(request.headers()),
-            response_headers: Vec::new(),
-            mime: None,
-            response_size: None,
-            started_ms: http_capture::started_ms(),
-            headers_elapsed_ms: 0,
-            body_elapsed_ms: 0,
-            body: None,
-            is_media: false,
-            error: None,
-            body_omitted: None,
-        });
-        let sent = self.client.execute(request);
-        let mut response = match sent {
-            Ok(response) => response,
-            Err(error) => {
+        let request_started = Instant::now();
+        let mut current_url = parsed;
+        let mut followed = 0usize;
+        let (mut response, mut observation, started) = loop {
+            let started = Instant::now();
+            let remaining = Duration::from_secs(25).saturating_sub(request_started.elapsed());
+            if remaining.is_zero() {
+                return Err(CoreError::Source("Source HTTP request timed out".into()));
+            }
+            let request = self
+                .client
+                .get(current_url.clone())
+                .timeout(remaining)
+                .header("Accept", accept)
+                .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
+                .header("Referer", BASE)
+                .header("DNT", "1")
+                .build()
+                .map_err(|error| CoreError::Source(format!("Source HTTP request failed: {error}")))?;
+            let mut observation = (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
+                method: request.method().to_string(),
+                url: request.url().to_string(),
+                final_url: request.url().to_string(),
+                status: None,
+                http_version: "unknown".into(),
+                request_headers: http_capture::headers(request.headers()),
+                response_headers: Vec::new(),
+                mime: None,
+                response_size: None,
+                started_ms: http_capture::started_ms(),
+                headers_elapsed_ms: 0,
+                body_elapsed_ms: 0,
+                body: None,
+                is_media: false,
+                error: None,
+                body_omitted: None,
+            });
+            let sent = self.client.execute(request);
+            let response = match sent {
+                Ok(response) => response,
+                Err(error) => {
+                    if let Some(mut obs) = observation.take() {
+                        obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
+                        obs.error = Some(error.to_string());
+                        self.recorder.record(obs);
+                    }
+                    self.diagnostics
+                        .error("HTTP", format!("GET failure {url}: {error}"));
+                    return Err(CoreError::Source(format!(
+                        "Source HTTP request failed: {error}"
+                    )));
+                }
+            };
+            let status = response.status().as_u16();
+            if matches!(status, 301 | 302 | 303 | 307 | 308) {
+                let location = response
+                    .headers()
+                    .get(reqwest::header::LOCATION)
+                    .and_then(|header| header.to_str().ok());
+                let next = redirect_target(response.url(), status, location, followed);
                 if let Some(mut obs) = observation.take() {
                     obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
-                    obs.error = Some(error.to_string());
+                    obs.status = Some(status);
+                    obs.http_version = format!("{:?}", response.version());
+                    obs.response_headers = http_capture::headers(response.headers());
+                    obs.response_size = response.content_length();
+                    obs.mime = response.headers()
+                        .get(reqwest::header::CONTENT_TYPE)
+                        .and_then(|header| header.to_str().ok())
+                        .map(ToOwned::to_owned);
+                    obs.body_omitted = Some("redirect_body_not_read".into());
                     self.recorder.record(obs);
                 }
-                self.diagnostics
-                    .error("HTTP", format!("GET failure {url}: {error}"));
-                return Err(CoreError::Source(format!(
-                    "Source HTTP request failed: {error}"
-                )));
+                if let Some(target) = next? {
+                    current_url = target;
+                    followed += 1;
+                    continue;
+                }
+                // A 3xx without Location is a terminal response.
             }
+            break (response, observation, started);
         };
         let header_duration = started.elapsed();
         let status = response.status().as_u16();
