@@ -9,6 +9,7 @@ pub struct DiscoveryCard {
     pub name: String,
     pub city: String,
     pub thumbnail_url: Option<String>,
+    pub local_path: Option<String>,
     pub description: Option<String>,
     pub preference: Preference,
     pub favorite: bool,
@@ -128,22 +129,43 @@ pub(crate) fn media(
     .collect()
 }
 
-pub(crate) fn list(
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DiscoveryCursor {
+    pub favorite: bool,
+    pub last_seen_at: String,
+    pub listing_id: i64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DiscoveryPage {
+    pub cards: Vec<DiscoveryCard>,
+    pub next_cursor: Option<DiscoveryCursor>,
+}
+
+pub(crate) fn page(
     core: &LadiesCore,
     favorites_only: bool,
     limit: u32,
-) -> Result<Vec<DiscoveryCard>, CoreError> {
-    if !(1..=200).contains(&limit) {
+    cursor: Option<DiscoveryCursor>,
+    excluded_people: &[i64],
+) -> Result<DiscoveryPage, CoreError> {
+    if !(1..=100).contains(&limit) {
         return Err(CoreError::InvalidInput(
-            "Discovery limit must be between 1 and 200".into(),
+            "Discovery page size must be between 1 and 100".into(),
         ));
     }
+    let excluded = serde_json::to_string(excluded_people)
+        .map_err(|e| CoreError::Storage(e.to_string()))?;
     let db = core.connection()?;
-    // One latest listing per person. A person's preference belongs to the person, not the ad.
+    // Stable keyset pagination after selecting the newest listing per person.
+    // Explicit exclusions keep session-skipped people from exhausting the first page.
     let mut query = db.prepare(
         "WITH ranked AS (
            SELECT l.listing_id, l.person_id,
-                  ROW_NUMBER() OVER (PARTITION BY l.person_id ORDER BY l.last_seen_at DESC,l.listing_id DESC) AS rank
+                  ROW_NUMBER() OVER (
+                      PARTITION BY l.person_id
+                      ORDER BY l.last_seen_at DESC, l.listing_id DESC
+                  ) AS rank
            FROM listings l
          )
          SELECT l.listing_id, l.person_id,
@@ -156,9 +178,14 @@ pub(crate) fn list(
                      LIMIT 1),
                     r.thumbnail_url
                 ) AS thumbnail_url,
-                s.description,
-                u.preference,u.favorite,
-                COALESCE(r.has_video,0),COALESCE(r.has_ai_content,0)
+                (SELECT a.local_path FROM snapshot_media m
+                 JOIN media_assets a ON a.media_asset_id=m.media_asset_id
+                 WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
+                 ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position
+                 LIMIT 1) AS local_path,
+                s.description,u.preference,u.favorite,
+                COALESCE(r.has_video,0),COALESCE(r.has_ai_content,0),
+                l.last_seen_at
          FROM ranked k
          JOIN listings l ON l.listing_id=k.listing_id
          JOIN persons p ON p.person_id=l.person_id
@@ -170,51 +197,76 @@ pub(crate) fn list(
          )
          WHERE k.rank=1 AND (?1=0 OR u.favorite=1)
            AND (?1=1 OR u.preference='NONE')
-         ORDER BY CASE WHEN u.favorite=1 THEN 0 ELSE 1 END,
-                  l.last_seen_at DESC,l.listing_id DESC
-         LIMIT ?2"
+           AND l.person_id NOT IN (SELECT value FROM json_each(?5))
+           AND (?2 IS NULL OR u.favorite < ?2
+                OR (u.favorite=?2 AND l.last_seen_at < ?3)
+                OR (u.favorite=?2 AND l.last_seen_at=?3 AND l.listing_id < ?4))
+         ORDER BY u.favorite DESC,l.last_seen_at DESC,l.listing_id DESC
+         LIMIT ?6"
     )?;
-    let rows = query.query_map(params![favorites_only, limit], |r| {
-        Ok((
-            r.get::<_, i64>(0)?,
-            r.get::<_, i64>(1)?,
-            r.get::<_, String>(2)?,
-            r.get::<_, String>(3)?,
-            r.get::<_, Option<String>>(4)?,
-            r.get::<_, Option<String>>(5)?,
-            r.get::<_, String>(6)?,
-            r.get::<_, i64>(7)?,
-            r.get::<_, i64>(8)?,
-            r.get::<_, i64>(9)?,
-        ))
-    })?;
-    rows.map(|row| {
-        let (
-            listing_id,
-            person_id,
-            name,
-            city,
-            thumbnail_url,
-            description,
-            preference,
-            favorite,
-            video,
-            ai,
-        ) = row?;
-        Ok(DiscoveryCard {
-            listing_id,
-            person_id,
-            name,
-            city,
-            thumbnail_url,
-            description,
-            preference: Preference::from_db(&preference)?,
-            favorite: favorite != 0,
-            has_video: video != 0,
-            has_ai_content: ai != 0,
+    let cursor_favorite = cursor.as_ref().map(|c| i64::from(c.favorite));
+    let cursor_time = cursor.as_ref().map(|c| c.last_seen_at.as_str());
+    let cursor_id = cursor.as_ref().map(|c| c.listing_id);
+    let rows = query.query_map(
+        params![favorites_only, cursor_favorite, cursor_time, cursor_id, excluded, limit + 1],
+        |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<String>>(6)?,
+                r.get::<_, String>(7)?,
+                r.get::<_, i64>(8)?,
+                r.get::<_, i64>(9)?,
+                r.get::<_, i64>(10)?,
+                r.get::<_, String>(11)?,
+            ))
+        },
+    )?;
+    let mut entries = rows
+        .map(|row| {
+            let (listing_id, person_id, name, city, thumbnail_url, relative, description,
+                preference, favorite, video, ai, last_seen_at) = row?;
+            let local_path = relative.and_then(|relative| {
+                let path = core.media_root.as_ref()?.join(relative);
+                path.is_file().then(|| path.to_string_lossy().into_owned())
+            });
+            Ok((
+                DiscoveryCard {
+                    listing_id,
+                    person_id,
+                    name,
+                    city,
+                    thumbnail_url,
+                    local_path,
+                    description,
+                    preference: Preference::from_db(&preference)?,
+                    favorite: favorite != 0,
+                    has_video: video != 0,
+                    has_ai_content: ai != 0,
+                },
+                last_seen_at,
+            ))
         })
+        .collect::<Result<Vec<_>, CoreError>>()?;
+    let has_more = entries.len() > limit as usize;
+    entries.truncate(limit as usize);
+    let next_cursor = if has_more {
+        entries.last().map(|(card, last_seen_at)| DiscoveryCursor {
+            favorite: card.favorite,
+            last_seen_at: last_seen_at.clone(),
+            listing_id: card.listing_id,
+        })
+    } else {
+        None
+    };
+    Ok(DiscoveryPage {
+        cards: entries.into_iter().map(|(card, _)| card).collect(),
+        next_cursor,
     })
-    .collect()
 }
 
 #[cfg(test)]
@@ -232,13 +284,13 @@ mod tests {
             .unwrap();
         core.add_listing(second, None, "LADIES".into(), "3".into(), None)
             .unwrap();
-        assert_eq!(list(&core, false, 100).unwrap().len(), 2);
+        assert_eq!(page(&core, false, 100, None, &[]).map(|p| p.cards).unwrap().len(), 2);
         core.set_preference(first, Preference::Dislike).unwrap();
-        assert_eq!(list(&core, false, 100).unwrap().len(), 1);
+        assert_eq!(page(&core, false, 100, None, &[]).map(|p| p.cards).unwrap().len(), 1);
         core.set_preference(second, Preference::Like).unwrap();
-        assert!(list(&core, false, 100).unwrap().is_empty());
+        assert!(page(&core, false, 100, None, &[]).map(|p| p.cards).unwrap().is_empty());
         core.set_favorite(first, true).unwrap();
-        let favorites = list(&core, true, 100).unwrap();
+        let favorites = page(&core, true, 100, None, &[]).map(|p| p.cards).unwrap();
         assert_eq!(favorites.len(), 1);
         assert_eq!(favorites[0].person_id, first);
         assert!(favorites[0].favorite);
@@ -286,9 +338,35 @@ mod tests {
     }
 
     #[test]
+    fn discovery_keyset_pages_beyond_old_limit_and_honors_skips() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        for id in 1..=215 {
+            let person = core.create_person(Some(format!("Person {id}"))).unwrap();
+            core.add_listing(person, None, "LADIES".into(), id.to_string(), None)
+                .unwrap();
+        }
+        let excluded = vec![214, 215];
+        let mut cursor = None;
+        let mut ids = std::collections::HashSet::new();
+        loop {
+            let current = page(&core, false, 35, cursor, &excluded).unwrap();
+            for card in current.cards {
+                assert!(ids.insert(card.person_id));
+            }
+            match current.next_cursor {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+        assert_eq!(ids.len(), 213);
+        assert!(!ids.contains(&214));
+        assert!(!ids.contains(&215));
+    }
+
+    #[test]
     fn discovery_limit_is_bounded() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
-        assert!(list(&core, false, 0).is_err());
-        assert!(list(&core, false, 201).is_err());
+        assert!(page(&core, false, 0, None, &[]).map(|p| p.cards).is_err());
+        assert!(page(&core, false, 201, None, &[]).map(|p| p.cards).is_err());
     }
 }

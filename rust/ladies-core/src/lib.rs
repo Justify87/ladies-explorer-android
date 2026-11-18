@@ -137,7 +137,7 @@ pub struct ImportReport {
     pub media_files: u32,
 }
 
-pub use discovery::{DiscoveryCard, ProfileMediaItem};
+pub use discovery::{DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem};
 pub use history::ChangeRecord;
 pub use identity::IdentityCandidate;
 pub use media::{MediaArchiveControl, MediaArchiveReport};
@@ -288,8 +288,10 @@ impl LadiesCore {
         &self,
         favorites_only: bool,
         limit: u32,
-    ) -> Result<Vec<DiscoveryCard>, CoreError> {
-        discovery::list(self, favorites_only, limit)
+        cursor: Option<DiscoveryCursor>,
+        excluded_person_ids: Vec<i64>,
+    ) -> Result<DiscoveryPage, CoreError> {
+        discovery::page(self, favorites_only, limit, cursor, &excluded_person_ids)
     }
 
     pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
