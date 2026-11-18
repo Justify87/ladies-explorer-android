@@ -36,15 +36,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
-import java.io.File
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.Preference
 
@@ -121,8 +118,7 @@ fun DiscoverScreen(
                         Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Text(card.name, style = MaterialTheme.typography.headlineSmall)
-                        Text(card.city, style = MaterialTheme.typography.bodyLarge)
+                        ProfileIdentityHeader(card.name, card.city, hasVideo = card.hasVideo)
                         card.description?.takeIf { it.isNotBlank() }?.let {
                             Text(it.take(190), maxLines = 3, style = MaterialTheme.typography.bodyMedium)
                         }
@@ -233,17 +229,5 @@ fun FavoritesScreen(
 
 @Composable
 fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: String? = null) {
-    if (url.isNullOrBlank() && localPath == null) {
-        Box(
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) { Text("Kein Bild",style = MaterialTheme.typography.bodySmall) }
-    } else {
-        AsyncImage(
-            model = localPath?.let(::File) ?: url,
-            contentDescription = "Profilbild",
-            contentScale = ContentScale.Crop,
-            modifier = modifier,
-        )
-    }
+    ProfileImage(url = url, localPath = localPath, modifier = modifier)
 }
