@@ -80,9 +80,10 @@ class CoreStore(context: Context) {
 
     suspend fun clearHttpCapture() = withContext(Dispatchers.IO) {
         // Serialize with all pending image observations before deleting the session.
-        logBridge.queue.clear()
-        engine.setHttpCaptureMode(CaptureMode.OFF)
         imageCaptureMode = CaptureMode.OFF
+        engine.setHttpCaptureMode(CaptureMode.OFF)
+        // Drain any already queued events before removing the session.
+        logBridge.submit { }.get()
         engine.clearHttpCapture()
     }
 
