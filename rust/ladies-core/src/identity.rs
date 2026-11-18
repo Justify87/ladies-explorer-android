@@ -470,20 +470,6 @@ pub(crate) fn confirm(core: &LadiesCore, listing_id: i64, target_id: i64) -> Res
             "Conflicting repeat-interest decisions require explicit resolution".into(),
         ));
     }
-    let conflicting_preference =
-        pref != "NONE" && target_pref != "NONE" && pref != target_pref;
-    let (target_interest,): (String,) = tx.query_row(
-        "SELECT repeat_interest FROM person_user_state WHERE person_id=?1",
-        [target_id],
-        |r| Ok((r.get(0)?,)),
-    )?;
-    let conflicting_interest =
-        interest != "UNKNOWN" && target_interest != "UNKNOWN" && interest != target_interest;
-    if conflicting_preference || conflicting_interest {
-        return Err(CoreError::IdentityConflict(
-            "Conflicting user decisions require resolution before merging".into(),
-        ));
-    }
     let combined_note = [target_note.as_deref(), note.as_deref()]
         .into_iter()
         .flatten()
@@ -643,9 +629,13 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let source = core.create_person(Some("Source".into())).unwrap();
         let target = core.create_person(Some("Target".into())).unwrap();
-        let listing = core.add_listing(source, None, "LADIES".into(), "101".into(), None).unwrap();
-        core.set_preference(source, crate::Preference::Like).unwrap();
-        core.set_preference(target, crate::Preference::Dislike).unwrap();
+        let listing = core
+            .add_listing(source, None, "LADIES".into(), "101".into(), None)
+            .unwrap();
+        core.set_preference(source, crate::Preference::Like)
+            .unwrap();
+        core.set_preference(target, crate::Preference::Dislike)
+            .unwrap();
         let db = core.connection().unwrap();
         record_phone(&db, source, listing, Some("0170 1234567")).unwrap();
         record_phone(&db, target, listing, Some("0170 1234567")).unwrap();
@@ -653,10 +643,14 @@ mod tests {
             "INSERT INTO listing_snapshots(listing_id,fingerprint,normalized_phone)
              VALUES (?1,'fp','+491701234567')",
             [listing],
-        ).unwrap();
+        )
+        .unwrap();
         let snapshot = db.last_insert_rowid();
-        db.execute("UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
-            params![snapshot, listing]).unwrap();
+        db.execute(
+            "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+            params![snapshot, listing],
+        )
+        .unwrap();
         drop(db);
         assert!(core.confirm_identity_match(listing, target).is_err());
         assert_eq!(core.status().unwrap().person_count, 2);
