@@ -1,4 +1,4 @@
-mod filter;
+pub(crate) mod filter;
 mod network;
 mod parse;
 mod storage;
@@ -14,7 +14,7 @@ impl SourceSession {
     }
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct SearchRequest {
     pub city: String,
     pub radius_km: u32,
