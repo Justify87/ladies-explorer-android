@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     CoreError, LadiesCore,
-    http_capture::{self, CaptureMode, HttpHeader, HttpObservation, HttpRecorder},
+    http_capture::{self, CaptureMode, HttpObservation, HttpRecorder},
     identity,
     operation::RequestControl,
 };
@@ -96,22 +96,17 @@ impl Fetcher for HttpFetcher {
             return Err(CoreError::Media("Media archive cancelled".into()));
         }
         let started = Instant::now();
+        let request = self.client.get(url).timeout(timeout)
+            .header("Referer", "https://www.ladies.de/")
+            .build()
+            .map_err(|error| CoreError::Media(format!("Media request failed: {error}")))?;
         let mut observation = (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
-            method: "GET".into(),
-            url: url.into(),
-            final_url: url.into(),
+            method: request.method().to_string(),
+            url: request.url().to_string(),
+            final_url: request.url().to_string(),
             status: None,
             http_version: "unknown".into(),
-            request_headers: vec![
-                HttpHeader {
-                    name: "Referer".into(),
-                    value: "https://www.ladies.de/".into(),
-                },
-                HttpHeader {
-                    name: "User-Agent".into(),
-                    value: "Mozilla/5.0 LadiesExplorerAndroid/1".into(),
-                },
-            ],
+            request_headers: http_capture::headers(request.headers()),
             response_headers: Vec::new(),
             mime: None,
             response_size: None,
@@ -123,12 +118,7 @@ impl Fetcher for HttpFetcher {
             error: None,
             body_omitted: None,
         });
-        let sent = self
-            .client
-            .get(url)
-            .timeout(timeout)
-            .header("Referer", "https://www.ladies.de/")
-            .send();
+        let sent = self.client.execute(request);
         let mut response = match sent {
             Ok(response) => response,
             Err(error) => {
