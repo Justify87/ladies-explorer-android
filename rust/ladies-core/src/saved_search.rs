@@ -111,6 +111,7 @@ fn decode_definition(definition: &str) -> Result<SearchRequest, CoreError> {
     // Translate the intent into the native request rather than preserving a Python pipeline.
     let legacy: serde_json::Value = serde_json::from_str(definition)
         .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
+    local_visibility(definition)?;
     let number = |camel: &str, snake: &str, default: u32| {
         legacy
             .get(camel)
@@ -375,9 +376,26 @@ struct LocalVisibility {
 fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
     let parsed: serde_json::Value = serde_json::from_str(definition)
         .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
-    let Some(local) = parsed.get("local").and_then(|v| v.as_object()) else {
+    let Some(local_value) = parsed.get("local") else {
         return Ok(LocalVisibility::default());
     };
+    let local = local_value.as_object().ok_or_else(|| {
+        CoreError::InvalidInput("Unsupported local saved-search filters".into())
+    })?;
+    for (key, value) in local {
+        let supported = match key.as_str() {
+            "videoOnly" | "photosOnly" | "hideDislikes" | "hideLikes" => value.is_boolean(),
+            "imageMode" => value.as_str().is_some_and(|mode| {
+                matches!(mode.to_ascii_uppercase().as_str(), "ALL" | "AI" | "NATURAL" | "STUDIO" | "FACEAPP")
+            }),
+            _ => false,
+        };
+        if !supported {
+            return Err(CoreError::InvalidInput(format!(
+                "Unsupported local saved-search filter: {key}"
+            )));
+        }
+    }
     let flag = |key: &str| local.get(key).and_then(|v| v.as_bool());
     Ok(LocalVisibility {
         video_only: flag("videoOnly") == Some(true),
@@ -510,6 +528,24 @@ mod tests {
         );
         assert_eq!(q.category, "escort");
         assert!(q.filters_json.contains("schlank"));
+    }
+
+    #[test]
+    fn unknown_legacy_local_filters_are_not_silently_discarded() {
+        let unsupported = r#"{"city":"Leipzig","local":{"businessOnly":true}}"#;
+        assert!(decode_definition(unsupported).is_err());
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        core.connection()
+            .unwrap()
+            .execute(
+                "INSERT INTO saved_searches(saved_search_id,name,filters_json)
+                 VALUES ('unsupported','Imported',?1)",
+                [unsupported],
+            )
+            .unwrap();
+        let imported = list(&core).unwrap();
+        assert!(!imported[0].definition_supported);
+        assert!(load(&core, "unsupported".into()).is_err());
     }
 
     #[test]
