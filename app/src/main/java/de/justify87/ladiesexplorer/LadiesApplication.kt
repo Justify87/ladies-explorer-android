@@ -27,7 +27,7 @@ class LadiesApplication : Application(), SingletonImageLoader.Factory {
         val client = OkHttpClient.Builder()
             .eventListenerFactory(EventListener.Factory {
                 if (recorder.imageCaptureMode == CaptureMode.OFF) EventListener.NONE
-                else ImageHttpListener(recorder)
+                else ImageHttpListener(recorder, recorder.currentCaptureEpoch())
             })
             .build()
         return ImageLoader.Builder(context)
@@ -38,7 +38,7 @@ class LadiesApplication : Application(), SingletonImageLoader.Factory {
     }
 }
 
-private class ImageHttpListener(private val recorder: CoreStore) : EventListener() {
+private class ImageHttpListener(private val recorder: CoreStore, private val epoch: Long) : EventListener() {
     private var request: Request? = null
     private var pending: HttpObservation? = null
     private var startedMs = 0L
@@ -106,7 +106,7 @@ private class ImageHttpListener(private val recorder: CoreStore) : EventListener
                 isMedia = true,
                 error = ioe.message,
                 bodyOmitted = "network_error",
-            ))
+            ), epoch)
         }
         request = null
     }
@@ -126,7 +126,7 @@ private class ImageHttpListener(private val recorder: CoreStore) : EventListener
                 } else 0uL,
                 error = error,
                 bodyOmitted = reason,
-            )
+            ), epoch
         )
         request = null
     }
