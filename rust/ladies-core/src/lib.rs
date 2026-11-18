@@ -197,7 +197,9 @@ impl LadiesCore {
     ) -> Result<ImportReport, CoreError> {
         self.diagnostics
             .event("IMPORT", "Legacy data import requested");
-        let result = legacy_import::import_bundle(self, &bundle_path, &app_files_directory);
+        let result = self.diagnostics.timed("IMPORT", "import_legacy_bundle", || {
+            legacy_import::import_bundle(self, &bundle_path, &app_files_directory)
+        });
         match &result {
             Ok(report) => self.diagnostics.event(
                 "IMPORT",
@@ -215,6 +217,22 @@ impl LadiesCore {
 
     pub fn record_debug_event(&self, component: String, message: String) {
         self.diagnostics.event(&component, message);
+    }
+
+    pub fn record_kotlin_event(&self, component: String, message: String, detailed: bool) {
+        if detailed {
+            self.diagnostics.debug(&component, message);
+        } else {
+            self.diagnostics.event(&component, message);
+        }
+    }
+
+    pub fn set_diagnostic_debug_enabled(&self, enabled: bool) {
+        self.diagnostics.set_debug(enabled);
+    }
+
+    pub fn diagnostic_debug_enabled(&self) -> bool {
+        self.diagnostics.debug_enabled()
     }
 
     pub fn diagnostic_status(&self) -> Result<DiagnosticStatus, CoreError> {
@@ -246,11 +264,11 @@ impl LadiesCore {
         query: SearchRequest,
         control: Arc<RequestControl>,
     ) -> Result<SearchResponse, CoreError> {
-        source::search(self, query, Some(&control))
+        self.diagnostics.timed("SEARCH", "search_source", || source::search(self, query, Some(&control)))
     }
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
-        source::load_profile(self, listing_id)
+        self.diagnostics.timed("PROFILE", "load_source_profile", || source::load_profile(self, listing_id))
     }
 
     pub fn cached_source_profile(
@@ -266,7 +284,7 @@ impl LadiesCore {
         include_videos: bool,
         control: Arc<RequestControl>,
     ) -> Result<MediaArchiveReport, CoreError> {
-        media::archive(self, snapshot_id, include_videos, &control)
+        self.diagnostics.timed("MEDIA", "archive_profile_media", || media::archive(self, snapshot_id, include_videos, &control))
     }
 
     pub fn list_identity_candidates(
