@@ -82,6 +82,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var archiveControl: MediaArchiveControl? = null
     private var profileRequestId = 0L
     private var discoveryEpoch = 0L
+    private var searchEpoch = 0L
     private val skippedPeople = mutableSetOf<Long>()
 
     init {
@@ -117,6 +118,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun invalidateSearchResults() {
+        searchEpoch++
         invalidateProfileRequest()
         _searchUiState.update {
             it.copy(response = null, profileOpen = false, profile = null, error = null,
@@ -287,23 +289,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startSearch(savedId: String? = null) {
         if (_searchUiState.value.loading || _uiState.value.loading) return
         val input = _searchUiState.value
+        val epoch = ++searchEpoch
         invalidateProfileRequest()
-        _searchUiState.update { it.copy(loading = true,error = null,profile = null,profileOpen = false,response = null,
-                showingSavedSearchId = null,savedResultCards = emptyList()) }
+        _searchUiState.update {
+            it.copy(loading = true, error = null, profile = null, profileOpen = false,
+                response = null, showingSavedSearchId = null, savedResultCards = emptyList())
+        }
         viewModelScope.launch {
             try {
                 val result = if (savedId == null) core.search(request(input)) else core.runSavedSearch(savedId)
+                if (epoch != searchEpoch) return@launch
                 skippedPeople.clear()
+                val saved = core.savedSearches()
+                if (epoch != searchEpoch) return@launch
                 _searchUiState.update {
-                    it.copy(loading = false,response = result,savedSearches = core.savedSearches())
+                    it.copy(loading = false, response = result, savedSearches = saved)
                 }
                 refreshDiscovery()
                 refresh()
             } catch (cancellation: CancellationException) {
-                _searchUiState.update { it.copy(loading = false) }
+                if (epoch == searchEpoch) _searchUiState.update { it.copy(loading = false) }
                 throw cancellation
             } catch (failure: Exception) {
-                _searchUiState.update { it.copy(loading = false,error = failure.message ?: "Online-Suche fehlgeschlagen") }
+                if (epoch == searchEpoch) {
+                    _searchUiState.update {
+                        it.copy(loading = false, error = failure.message ?: "Online-Suche fehlgeschlagen")
+                    }
+                }
             }
         }
     }
