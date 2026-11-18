@@ -121,7 +121,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchEpoch++
         invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(response = null, profileOpen = false, profile = null, error = null,
+            it.copy(response = null, profileOpen = false, profile = null, loading = false, error = null,
                 showingSavedSearchId = null, savedResultCards = emptyList(),
                 mediaArchive = null, mediaWarning = null, archiving = false)
         }
