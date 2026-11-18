@@ -252,6 +252,7 @@ fn build_overview(
 
 pub(crate) fn overview(core: &LadiesCore, favorites_only: bool) -> Result<MapOverview,CoreError> {
     Ok(build_overview(candidates(core, favorites_only)?, &read_cache(core)?, 0))
+}
 
 enum Lookup {
     Resolved(f64,f64,&'static str),
