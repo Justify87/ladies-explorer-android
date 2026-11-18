@@ -1,16 +1,13 @@
 package de.justify87.ladiesexplorer.ui
 
-import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.weight
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -76,14 +73,11 @@ fun MapScreen(
     modifier: Modifier = Modifier,
 ) {
     var selectedListingId by rememberSaveable { mutableStateOf<Long?>(null) }
-    val selection = state.overview?.profiles?.filter {
-        it.listingId == selectedListingId ||
-            (selectedListingId != null && state.overview.profiles.firstOrNull {
-                profile -> profile.listingId == selectedListingId
-            }?.let { active ->
-                active.latitude == it.latitude && active.longitude == it.longitude
-            } == true)
-    }.orEmpty()
+    val points = state.overview?.profiles.orEmpty()
+    val active = points.firstOrNull { it.listingId == selectedListingId }
+    val selection = if (active == null) emptyList() else points.filter {
+        it.latitude == active.latitude && it.longitude == active.longitude
+    }
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),

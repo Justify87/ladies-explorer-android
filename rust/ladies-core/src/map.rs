@@ -251,13 +251,7 @@ fn build_overview(
 }
 
 pub(crate) fn overview(core: &LadiesCore, favorites_only: bool) -> Result<MapOverview,CoreError> {
-    build_overview(candidates(core,favorites_only)?,&read_cache(core)?,0).pipe(Ok)
-}
-
-trait Pipe: Sized {
-    fn pipe<T>(self, f: impl FnOnce(Self) -> T) -> T { f(self) }
-}
-impl<T> Pipe for T {}
+    Ok(build_overview(candidates(core, favorites_only)?, &read_cache(core)?, 0))
 
 enum Lookup {
     Resolved(f64,f64,&'static str),
@@ -383,8 +377,8 @@ mod tests {
         let core = Arc::try_unwrap(LadiesCore::new(":memory:".into()).unwrap()).ok().unwrap();
         let first = core.create_person(Some("Ada".into())).unwrap();
         let second = core.create_person(Some("Bea".into())).unwrap();
-        let listing = core.add_listing(first,None,"LADIES".into(),"one".into(),None).unwrap();
-        core.add_listing(first,None,"LADIES".into(),"two".into(),None).unwrap();
+        core.add_listing(first,None,"LADIES".into(),"one".into(),None).unwrap();
+        let listing = core.add_listing(first,None,"LADIES".into(),"two".into(),None).unwrap();
         let second_listing = core.add_listing(second,None,"LADIES".into(),"three".into(),None).unwrap();
         let db = core.connection().unwrap();
         db.execute(

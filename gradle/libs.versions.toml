@@ -11,6 +11,7 @@ jna = "5.19.1"
 junit = "4.13.2"
 coil = "3.6.3"
 kermit = "2.2.0"
+maplibre = "13.5.4"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -29,6 +30,7 @@ jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+maplibre-sdk = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]

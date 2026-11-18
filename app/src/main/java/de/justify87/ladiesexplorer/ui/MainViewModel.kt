@@ -48,6 +48,14 @@ data class DiscoverUiState(
     val error: String? = null,
 )
 
+data class MapUiState(
+    val overview: MapOverview? = null,
+    val loading: Boolean = false,
+    val resolving: Boolean = false,
+    val favoritesOnly: Boolean = false,
+    val error: String? = null,
+)
+
 data class SearchUiState(
     val city: String = "Leipzig",
     val radiusKm: UInt = 20u,
@@ -92,6 +100,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _searchUiState = MutableStateFlow(SearchUiState())
     val searchUiState: StateFlow<SearchUiState> = _searchUiState
 
+    private val _mapState = MutableStateFlow(MapUiState())
+    val mapState: StateFlow<MapUiState> = _mapState
+    private var mapEpoch = 0L
+    private var mapControl: RequestControl? = null
+
     private var archiveControl: RequestControl? = null
     private var searchControl: RequestControl? = null
     private var profileRequestId = 0L
@@ -123,6 +136,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        cancelMapResolution()
         invalidateActiveSearch()
         invalidateProfileRequest()
         super.onCleared()
@@ -396,6 +410,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(loading = false, response = result, savedSearches = saved)
                 }
                 refreshDiscovery()
+                refreshMap()
                 refresh()
             } catch (cancellation: CancellationException) {
                 if (epoch == searchEpoch) _searchUiState.update { it.copy(loading = false) }
@@ -421,6 +436,68 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 throw cancellation
             } catch (failure: Exception) {
                 _searchUiState.update { it.copy(error = failure.message ?: "Status konnte nicht gespeichert werden") }
+            }
+        }
+    }
+
+    fun refreshMap() {
+        if (_mapState.value.resolving) return
+        val epoch = ++mapEpoch
+        val favoritesOnly = _mapState.value.favoritesOnly
+        _mapState.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val overview = core.mapOverview(favoritesOnly)
+                if (epoch == mapEpoch) _mapState.update {
+                    it.copy(overview = overview, loading = false)
+                }
+            } catch (cancelled: CancellationException) {
+                if (epoch == mapEpoch) _mapState.update { it.copy(loading = false) }
+                throw cancelled
+            } catch (failure: Exception) {
+                if (epoch == mapEpoch) _mapState.update {
+                    it.copy(loading = false, error = failure.message ?: "Karte konnte nicht geladen werden")
+                }
+            }
+        }
+    }
+
+    fun setMapFavoritesOnly(value: Boolean) {
+        cancelMapResolution()
+        _mapState.update { it.copy(favoritesOnly = value, overview = null) }
+        refreshMap()
+    }
+
+    fun cancelMapResolution() {
+        mapEpoch++
+        mapControl?.cancel()
+        mapControl = null
+        _mapState.update { it.copy(resolving = false, loading = false) }
+    }
+
+    fun resolveMapLocations() {
+        if (_mapState.value.resolving || _mapState.value.loading) return
+        val control = RequestControl()
+        val epoch = ++mapEpoch
+        val favoritesOnly = _mapState.value.favoritesOnly
+        mapControl = control
+        _mapState.update { it.copy(resolving = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val overview = core.resolveMapLocations(favoritesOnly, control)
+                if (epoch == mapEpoch) _mapState.update {
+                    it.copy(overview = overview, resolving = false)
+                }
+            } catch (cancelled: CancellationException) {
+                control.cancel()
+                if (epoch == mapEpoch) _mapState.update { it.copy(resolving = false) }
+                throw cancelled
+            } catch (failure: Exception) {
+                if (epoch == mapEpoch) _mapState.update {
+                    it.copy(resolving = false, error = failure.message ?: "Standortauflösung fehlgeschlagen")
+                }
+            } finally {
+                if (mapControl === control) mapControl = null
             }
         }
     }
@@ -585,6 +662,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }
                 }
+                refreshMap()
                 val personState = core.person(personId)
                 _searchUiState.update {
                     if (it.selectedPersonId == personId) it.copy(selectedPerson = personState) else it

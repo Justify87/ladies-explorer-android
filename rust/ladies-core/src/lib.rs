@@ -7,6 +7,7 @@ mod history;
 mod http_capture;
 mod identity;
 mod legacy_import;
+mod map;
 mod media;
 mod media_url;
 mod operation;
@@ -144,6 +145,7 @@ pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
 pub use media::MediaArchiveReport;
+pub use map::{MapOverview, MapProfile};
 pub use operation::RequestControl;
 pub use saved_search::{
     SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage,
@@ -357,6 +359,19 @@ impl LadiesCore {
         excluded_person_ids: Vec<i64>,
     ) -> Result<DiscoveryPage, CoreError> {
         discovery::page(self, favorites_only, limit, cursor, &excluded_person_ids)
+    }
+
+    pub fn map_overview(&self, favorites_only: bool) -> Result<MapOverview, CoreError> {
+        map::overview(self, favorites_only)
+    }
+
+    pub fn resolve_map_locations(
+        &self,
+        favorites_only: bool,
+        max_requests: u32,
+        control: Arc<RequestControl>,
+    ) -> Result<MapOverview, CoreError> {
+        map::resolve(self, favorites_only, max_requests, &control)
     }
 
     pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
