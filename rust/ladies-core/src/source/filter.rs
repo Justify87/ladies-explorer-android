@@ -144,8 +144,8 @@ pub(crate) fn canonicalize_request(mut request: SearchRequest) -> Result<SearchR
             normalized.entry(group.clone()).or_default().insert(label);
         }
     }
-    request.filters_json = serde_json::to_string(&normalized)
-        .map_err(|e| CoreError::Storage(e.to_string()))?;
+    request.filters_json =
+        serde_json::to_string(&normalized).map_err(|e| CoreError::Storage(e.to_string()))?;
     Ok(request)
 }
 
@@ -260,8 +260,7 @@ mod tests {
                 .into();
         let canonical = canonicalize_request(request).unwrap();
         assert_eq!(canonical.category, "bordelle-laufhaeuser");
-        let selected: serde_json::Value =
-            serde_json::from_str(&canonical.filters_json).unwrap();
+        let selected: serde_json::Value = serde_json::from_str(&canonical.filters_json).unwrap();
         assert_eq!(selected["treff"], serde_json::json!(["Hausbesuche"]));
         assert_eq!(selected["service"], serde_json::json!(["ZK"]));
         assert!(selected.get("treffpunkt").is_none());
