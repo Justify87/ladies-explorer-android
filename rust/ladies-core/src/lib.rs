@@ -148,7 +148,7 @@ pub use map::{MapOverview, MapProfile};
 pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
 pub use saved_search::{
-    SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage,
+    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage,
 };
 pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchPreview, SearchRequest, SearchResponse};
@@ -307,11 +307,25 @@ impl LadiesCore {
     pub fn search_source(
         &self,
         query: SearchRequest,
+        local: LocalVisibility,
         control: Arc<RequestControl>,
     ) -> Result<SearchResponse, CoreError> {
         self.diagnostics.timed("SEARCH", "search_source", || {
-            source::search(self, query, Some(&control))
+            saved_search::validate_local(&local)?;
+            let mut response = source::search(self, query, Some(&control))?;
+            control.check()?;
+            saved_search::apply_local_visibility(self, &mut response, local)?;
+            control.check()?;
+            Ok(response)
         })
+    }
+
+    pub fn active_search_cards(
+        &self,
+        run_id: i64,
+        local: LocalVisibility,
+    ) -> Result<Vec<DiscoveryCard>, CoreError> {
+        discovery::active_search_cards(self, run_id, &local)
     }
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {

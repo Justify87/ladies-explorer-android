@@ -467,16 +467,34 @@ fn persist_results_with_control(
     Ok(())
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct LocalVisibility {
-    video_only: bool,
-    photos_only: bool,
-    hide_dislikes: bool,
-    hide_likes: bool,
-    image_mode: String,
+#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Record)]
+pub struct LocalVisibility {
+    pub video_only: bool,
+    pub photos_only: bool,
+    pub hide_dislikes: bool,
+    pub hide_likes: bool,
+    pub image_mode: String,
 }
 
 impl LocalVisibility {
+    pub(crate) fn allows(
+        &self,
+        has_video: bool,
+        has_photo: bool,
+        has_ai: bool,
+        preference: &str,
+    ) -> bool {
+        (!self.video_only || has_video)
+            && (!self.photos_only || has_photo)
+            && (!self.hide_dislikes || preference != "DISLIKE")
+            && (!self.hide_likes || preference != "LIKE")
+            && match self.image_mode.as_str() {
+                "AI" => has_ai,
+                "NATURAL" => !has_ai,
+                _ => true,
+            }
+    }
+
     fn summary(&self) -> String {
         let mut active = Vec::new();
         if self.video_only {
@@ -500,7 +518,7 @@ impl LocalVisibility {
     }
 }
 
-fn validate_local(local: &LocalVisibility) -> Result<(), CoreError> {
+pub(crate) fn validate_local(local: &LocalVisibility) -> Result<(), CoreError> {
     if !matches!(local.image_mode.as_str(), "" | "ALL" | "AI" | "NATURAL") {
         return Err(CoreError::InvalidInput(
             "Image classification is not available in this native search".into(),
@@ -548,7 +566,7 @@ fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
     Ok(rules)
 }
 
-fn apply_local_visibility(
+pub(crate) fn apply_local_visibility(
     core: &LadiesCore,
     response: &mut SearchResponse,
     rules: LocalVisibility,
@@ -557,27 +575,19 @@ fn apply_local_visibility(
     let mut person_query =
         db.prepare("SELECT preference FROM person_user_state WHERE person_id=?1")?;
     let mut visible = Vec::new();
+    validate_local(&rules)?;
     for card in response.profiles.drain(..) {
-        if (rules.video_only && !card.has_video)
-            || (rules.photos_only && card.thumbnail_url.is_none())
-        {
-            continue;
-        }
         let preference: String = person_query.query_row([card.person_id], |r| r.get(0))?;
-        if (rules.hide_dislikes && preference == "DISLIKE")
-            || (rules.hide_likes && preference == "LIKE")
-        {
-            continue;
-        }
-        let image_allowed = match rules.image_mode.as_str() {
-            "AI" => card.has_ai_content,
-            "NATURAL" => !card.has_ai_content,
-            _ => true,
-        };
-        if image_allowed {
+        if rules.allows(
+            card.has_video,
+            card.thumbnail_url.is_some(),
+            card.has_ai_content,
+            &preference,
+        ) {
             visible.push(card);
         }
     }
+    response.local = rules;
     response.profiles = visible;
     Ok(())
 }
@@ -779,6 +789,8 @@ mod tests {
             has_stars: false,
         };
         let mut result = SearchResponse {
+            query: SearchRequest::for_test(),
+            local: LocalVisibility::default(),
             search_run_id: 1,
             city: "Leipzig".into(),
             requested_radius_km: 20,
@@ -845,6 +857,8 @@ mod tests {
         changed.radius_km = 30;
         update(&core, id.clone(), "Changed".into(), changed).unwrap();
         let empty = SearchResponse {
+            query: SearchRequest::for_test(),
+            local: LocalVisibility::default(),
             search_run_id: 1,
             city: "Leipzig".into(),
             requested_radius_km: 20,
@@ -875,6 +889,8 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "Leipzig".into(), SearchRequest::for_test()).unwrap();
         let response = SearchResponse {
+            query: SearchRequest::for_test(),
+            local: LocalVisibility::default(),
             search_run_id: 1,
             city: "Leipzig".into(),
             requested_radius_km: 20,
@@ -946,6 +962,8 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "test".into(), SearchRequest::for_test()).unwrap();
         let response = SearchResponse {
+            query: SearchRequest::for_test(),
+            local: LocalVisibility::default(),
             search_run_id: 1,
             city: "Leipzig".into(),
             requested_radius_km: 20,

@@ -59,6 +59,8 @@ pub struct SearchPreview {
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SearchResponse {
+    pub query: SearchRequest,
+    pub local: crate::saved_search::LocalVisibility,
     pub search_run_id: i64,
     pub city: String,
     pub requested_radius_km: u32,

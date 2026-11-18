@@ -158,11 +158,16 @@ class CoreStore(context: Context) {
             }
         }
 
-    suspend fun search(query: SearchRequest, control: RequestControl): SearchResponse = withContext(Dispatchers.IO) {
+    suspend fun search(query: SearchRequest, local: LocalVisibility, control: RequestControl): SearchResponse = withContext(Dispatchers.IO) {
         recorded("search city=${query.city} radius=${query.radiusKm}") {
-            engine.searchSource(query, control)
+            engine.searchSource(query, local, control)
         }
     }
+
+    suspend fun activeSearchCards(runId: Long, local: LocalVisibility): List<DiscoveryCard> =
+        withContext(Dispatchers.IO) {
+            engine.activeSearchCards(runId, local)
+        }
 
     suspend fun archiveProfileMedia(snapshotId: Long, control: RequestControl): MediaArchiveReport =
         withContext(Dispatchers.IO) {
