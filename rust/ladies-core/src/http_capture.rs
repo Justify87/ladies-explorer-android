@@ -786,7 +786,7 @@ mod tests {
         recorder.record(sample());
         let journal = root.path().join("diagnostics/ladies-http.jsonl");
         let mut file = OpenOptions::new().append(true).open(&journal).unwrap();
-        file.write_all(b"{\\\"partial\\\":").unwrap();
+        file.write_all(br#"{"partial":"#).unwrap();
         drop(file);
 
         let reopened = HttpRecorder::new(&path);
@@ -810,7 +810,7 @@ mod tests {
         recorder.record(sample());
         let journal = root.path().join("diagnostics/ladies-http.jsonl");
         OpenOptions::new().append(true).open(journal).unwrap()
-            .write_all(b"invalid json\\n").unwrap();
+            .write_all(b"invalid json\n").unwrap();
         assert_eq!(
             recorder.export(root.path()).unwrap_err().kind(),
             io::ErrorKind::InvalidData,
