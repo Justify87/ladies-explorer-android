@@ -80,7 +80,7 @@ class LadiesApplication : Application(), SingletonImageLoader.Factory {
             .build()
         return ImageLoader.Builder(context)
             .components {
-                add(OkHttpNetworkFetcherFactory(callFactory = client))
+                add(OkHttpNetworkFetcherFactory(callFactory = { client }))
             }
             .build()
     }
