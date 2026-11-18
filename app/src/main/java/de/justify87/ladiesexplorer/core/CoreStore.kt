@@ -49,6 +49,10 @@ class CoreStore(context: Context) {
         recorded("status") { engine.status() }
     }
 
+    suspend fun person(personId: Long): PersonSummary? = withContext(Dispatchers.IO) {
+        engine.getPerson(personId)
+    }
+
     suspend fun people(
         limit: UInt = 50u,
         cursor: PersonCursor? = null,
@@ -70,13 +74,13 @@ class CoreStore(context: Context) {
         }
     }
 
-    suspend fun search(query: SearchRequest): SearchResponse = withContext(Dispatchers.IO) {
+    suspend fun search(query: SearchRequest, control: RequestControl): SearchResponse = withContext(Dispatchers.IO) {
         recorded("search city=${query.city} radius=${query.radiusKm}") {
-            engine.searchSource(query)
+            engine.searchSource(query, control)
         }
     }
 
-    suspend fun archiveProfileMedia(snapshotId: Long, control: MediaArchiveControl): MediaArchiveReport =
+    suspend fun archiveProfileMedia(snapshotId: Long, control: RequestControl): MediaArchiveReport =
         withContext(Dispatchers.IO) {
             recorded("archiveProfileMedia snapshotId=$snapshotId") {
                 engine.archiveProfileMedia(snapshotId, false, control)
@@ -88,4 +92,64 @@ class CoreStore(context: Context) {
             engine.loadSourceProfile(listingId)
         }
     }
+
+    suspend fun cachedProfile(listingId: Long): ProfileResponse? = withContext(Dispatchers.IO) {
+        engine.cachedSourceProfile(listingId)
+    }
+
+    suspend fun sourceFilterCatalog(): SourceFilterCatalog = withContext(Dispatchers.IO) {
+        engine.sourceFilterCatalog()
+    }
+
+    suspend fun discoveryCards(
+        favoritesOnly: Boolean = false,
+        cursor: DiscoveryCursor? = null,
+        excludedPeople: List<Long> = emptyList(),
+    ): DiscoveryPage = withContext(Dispatchers.IO) {
+        engine.discoveryCards(favoritesOnly, 50u, cursor, excludedPeople)
+    }
+
+    suspend fun profileMedia(snapshotId: Long): List<ProfileMediaItem> =
+        withContext(Dispatchers.IO) { engine.profileMedia(snapshotId) }
+
+    suspend fun identityCandidates(listingId: Long): List<IdentityCandidate> =
+        withContext(Dispatchers.IO) { engine.listIdentityCandidates(listingId) }
+
+    suspend fun confirmIdentityMatch(listingId: Long, targetPersonId: Long) =
+        withContext(Dispatchers.IO) {
+            recorded("confirmIdentityMatch listing=$listingId") {
+                engine.confirmIdentityMatch(listingId, targetPersonId)
+            }
+        }
+
+    suspend fun changeEvents(personId: Long): List<ChangeRecord> =
+        withContext(Dispatchers.IO) { engine.listChangeEvents(personId, 100u) }
+
+    suspend fun savedSearches(): List<SavedSearchInfo> =
+        withContext(Dispatchers.IO) { engine.listSavedSearches() }
+
+    suspend fun saveSearch(name: String, request: SearchRequest): String =
+        withContext(Dispatchers.IO) { engine.saveNativeSearch(name, request) }
+
+    suspend fun updateSavedSearch(id: String, name: String, request: SearchRequest) =
+        withContext(Dispatchers.IO) { engine.updateNativeSearch(id, name, request) }
+
+    suspend fun loadSavedSearch(id: String): SearchRequest =
+        withContext(Dispatchers.IO) { engine.loadSavedSearch(id) }
+
+    suspend fun savedSearchResults(
+        id: String,
+        cursor: SavedResultCursor? = null,
+    ): SavedSearchResultPage = withContext(Dispatchers.IO) {
+        engine.savedSearchResults(id, 100u, cursor)
+    }
+
+    suspend fun runSavedSearch(id: String, control: RequestControl): SearchResponse =
+        withContext(Dispatchers.IO) { recorded("runSavedSearch") { engine.runSavedSearch(id, control) } }
+
+    suspend fun deleteSavedSearch(id: String) =
+        withContext(Dispatchers.IO) { engine.deleteSavedSearch(id) }
+
+    suspend fun acknowledgeSavedSearch(id: String) =
+        withContext(Dispatchers.IO) { engine.acknowledgeSavedSearch(id) }
 }

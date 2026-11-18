@@ -2,11 +2,14 @@
 //! A person is distinct from its source profiles and individual listings.
 
 mod diagnostics;
+mod discovery;
 mod history;
 mod identity;
 mod legacy_import;
 mod media;
 mod media_url;
+mod operation;
+mod saved_search;
 mod schema;
 mod source;
 
@@ -135,9 +138,15 @@ pub struct ImportReport {
     pub media_files: u32,
 }
 
+pub use discovery::{DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem};
 pub use history::ChangeRecord;
 pub use identity::IdentityCandidate;
-pub use media::{MediaArchiveControl, MediaArchiveReport};
+pub use media::MediaArchiveReport;
+pub use operation::RequestControl;
+pub use saved_search::{
+    SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage,
+};
+pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 
 #[derive(uniffi::Object)]
@@ -232,19 +241,30 @@ impl LadiesCore {
         Ok(path.to_string_lossy().into_owned())
     }
 
-    pub fn search_source(&self, query: SearchRequest) -> Result<SearchResponse, CoreError> {
-        source::search(self, query)
+    pub fn search_source(
+        &self,
+        query: SearchRequest,
+        control: Arc<RequestControl>,
+    ) -> Result<SearchResponse, CoreError> {
+        source::search(self, query, Some(&control))
     }
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
         source::load_profile(self, listing_id)
     }
 
+    pub fn cached_source_profile(
+        &self,
+        listing_id: i64,
+    ) -> Result<Option<ProfileResponse>, CoreError> {
+        discovery::cached_profile(self, listing_id)
+    }
+
     pub fn archive_profile_media(
         &self,
         snapshot_id: i64,
         include_videos: bool,
-        control: Arc<MediaArchiveControl>,
+        control: Arc<RequestControl>,
     ) -> Result<MediaArchiveReport, CoreError> {
         media::archive(self, snapshot_id, include_videos, &control)
     }
@@ -270,6 +290,74 @@ impl LadiesCore {
         limit: u32,
     ) -> Result<Vec<ChangeRecord>, CoreError> {
         history::list(self, person_id, limit)
+    }
+
+    pub fn discovery_cards(
+        &self,
+        favorites_only: bool,
+        limit: u32,
+        cursor: Option<DiscoveryCursor>,
+        excluded_person_ids: Vec<i64>,
+    ) -> Result<DiscoveryPage, CoreError> {
+        discovery::page(self, favorites_only, limit, cursor, &excluded_person_ids)
+    }
+
+    pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
+        discovery::media(self, snapshot_id)
+    }
+
+    pub fn source_filter_catalog(&self) -> SourceFilterCatalog {
+        source::filter::available()
+    }
+
+    pub fn save_native_search(
+        &self,
+        name: String,
+        request: SearchRequest,
+    ) -> Result<String, CoreError> {
+        saved_search::save(self, name, request)
+    }
+
+    pub fn update_native_search(
+        &self,
+        id: String,
+        name: String,
+        request: SearchRequest,
+    ) -> Result<(), CoreError> {
+        saved_search::update(self, id, name, request)
+    }
+
+    pub fn list_saved_searches(&self) -> Result<Vec<SavedSearchInfo>, CoreError> {
+        saved_search::list(self)
+    }
+
+    pub fn saved_search_results(
+        &self,
+        id: String,
+        limit: u32,
+        cursor: Option<SavedResultCursor>,
+    ) -> Result<SavedSearchResultPage, CoreError> {
+        saved_search::results(self, id, limit, cursor)
+    }
+
+    pub fn load_saved_search(&self, id: String) -> Result<SearchRequest, CoreError> {
+        saved_search::load(self, id)
+    }
+
+    pub fn delete_saved_search(&self, id: String) -> Result<(), CoreError> {
+        saved_search::delete(self, id)
+    }
+
+    pub fn acknowledge_saved_search(&self, id: String) -> Result<(), CoreError> {
+        saved_search::acknowledge(self, id)
+    }
+
+    pub fn run_saved_search(
+        &self,
+        id: String,
+        control: Arc<RequestControl>,
+    ) -> Result<SearchResponse, CoreError> {
+        saved_search::run(self, id, Some(&control))
     }
 
     pub fn status(&self) -> Result<CoreStatus, CoreError> {

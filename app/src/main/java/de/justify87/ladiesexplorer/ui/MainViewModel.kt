@@ -4,13 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import de.justify87.ladiesexplorer.core.CoreStore
-import de.justify87.ladiesexplorer.core.MediaArchiveControl
-import de.justify87.ladiesexplorer.core.MediaArchiveReport
-import de.justify87.ladiesexplorer.core.ImportReport
-import de.justify87.ladiesexplorer.core.ProfileResponse
-import de.justify87.ladiesexplorer.core.SearchRequest
-import de.justify87.ladiesexplorer.core.SearchResponse
+import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 data class HomeUiState(
@@ -33,12 +29,47 @@ data class HomeUiState(
     val error: String? = null,
 )
 
+data class DiscoverUiState(
+    val cards: List<DiscoveryCard> = emptyList(),
+    val favorites: List<DiscoveryCard> = emptyList(),
+    val nextCursor: DiscoveryCursor? = null,
+    val favoritesNextCursor: DiscoveryCursor? = null,
+    val loadingMore: Boolean = false,
+    val favoritesLoadingMore: Boolean = false,
+    val loading: Boolean = true,
+    val busy: Boolean = false,
+    val error: String? = null,
+)
+
 data class SearchUiState(
     val city: String = "Leipzig",
     val radiusKm: UInt = 20u,
+    val category: String = "",
+    val ageMin: UInt = 18u,
+    val ageMax: UInt = 60u,
+    val heightMin: UInt = 140u,
+    val heightMax: UInt = 200u,
+    val maxPages: UInt = 10u,
+    val selectedFilters: Map<String, Set<String>> = emptyMap(),
+    val filterCatalog: SourceFilterCatalog? = null,
+    val savedSearches: List<SavedSearchInfo> = emptyList(),
+    val showingSavedSearchId: String? = null,
+    val savedResultCards: List<SavedSearchCard> = emptyList(),
+    val savedResultCursor: SavedResultCursor? = null,
+    val savedResultsLoadingMore: Boolean = false,
+    val editingSavedSearchId: String? = null,
     val loading: Boolean = false,
+    val saving: Boolean = false,
     val response: SearchResponse? = null,
+    val profileOpen: Boolean = false,
     val profile: ProfileResponse? = null,
+    val selectedPersonId: Long? = null,
+    val selectedPerson: PersonSummary? = null,
+    val profileMedia: List<ProfileMediaItem> = emptyList(),
+    val changeEvents: List<ChangeRecord> = emptyList(),
+    val identityCandidates: List<IdentityCandidate> = emptyList(),
+    val actionBusy: Boolean = false,
+    val actionError: String? = null,
     val mediaArchive: MediaArchiveReport? = null,
     val archiving: Boolean = false,
     val mediaWarning: String? = null,
@@ -49,12 +80,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val core = CoreStore(app.applicationContext)
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
-
+    private val _discoverState = MutableStateFlow(DiscoverUiState())
+    val discoverState: StateFlow<DiscoverUiState> = _discoverState
     private val _searchUiState = MutableStateFlow(SearchUiState())
     val searchUiState: StateFlow<SearchUiState> = _searchUiState
 
-    private var archiveControl: MediaArchiveControl? = null
+    private var archiveControl: RequestControl? = null
+    private var searchControl: RequestControl? = null
     private var profileRequestId = 0L
+    private var discoveryEpoch = 0L
+    private var searchEpoch = 0L
+    private val skippedPeople = mutableSetOf<Long>()
+
+    init {
+        refresh()
+        refreshDiscovery()
+        refreshSearchDefinitions()
+    }
+
+    private fun invalidateActiveSearch() {
+        searchEpoch++
+        searchControl?.cancel()
+        searchControl = null
+    }
+
+    fun cancelActiveSearch() {
+        invalidateActiveSearch()
+        _searchUiState.update { it.copy(loading = false, error = null) }
+    }
 
     private fun invalidateProfileRequest() {
         profileRequestId++
@@ -62,133 +115,608 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         archiveControl = null
     }
 
-    fun cancelMediaArchive() {
-        invalidateProfileRequest()
-        _searchUiState.update { it.copy(archiving = false) }
-    }
-
     override fun onCleared() {
+        invalidateActiveSearch()
         invalidateProfileRequest()
         super.onCleared()
     }
 
+    fun cancelMediaArchive() {
+        archiveControl?.cancel()
+        _searchUiState.update { it.copy(archiving = false) }
+    }
 
-    fun setSearchCity(city: String) {
+    fun closeProfile() {
         invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(city = city, response = null, profile = null, mediaArchive = null, archiving = false, mediaWarning = null, error = null)
+            it.copy(profileOpen = false, profile = null, selectedPersonId = null,
+                selectedPerson = null, profileMedia = emptyList(), loading = false,
+                archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
+                actionBusy = false, actionError = null, error = null)
         }
     }
 
-    fun setSearchRadius(radiusKm: UInt) {
+    private fun invalidateSearchResults() {
+        invalidateActiveSearch()
         invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(radiusKm = radiusKm, response = null, profile = null, mediaArchive = null, archiving = false, mediaWarning = null, error = null)
+            it.copy(response = null, profileOpen = false, profile = null, loading = false, error = null,
+                showingSavedSearchId = null, savedResultCards = emptyList(),
+                savedResultCursor = null, savedResultsLoadingMore = false,
+                mediaArchive = null, mediaWarning = null, archiving = false)
         }
     }
 
-    fun startSearch() {
-        if (_searchUiState.value.loading || _uiState.value.loading) return
-        val input = _searchUiState.value
-        invalidateProfileRequest()
+    fun setSearchCity(value: String) {
+        invalidateSearchResults()
+        _searchUiState.update { it.copy(city = value) }
+    }
+
+    fun setSearchRadius(value: UInt) {
+        invalidateSearchResults()
+        _searchUiState.update { it.copy(radiusKm = value) }
+    }
+
+    fun setCategory(value: String) {
+        invalidateSearchResults()
+        _searchUiState.update { it.copy(category = value) }
+    }
+
+    fun setAgeRange(min: UInt, max: UInt) {
+        invalidateSearchResults()
+        _searchUiState.update { it.copy(ageMin = min, ageMax = max) }
+    }
+
+    fun setHeightRange(min: UInt, max: UInt) {
+        invalidateSearchResults()
+        _searchUiState.update { it.copy(heightMin = min, heightMax = max) }
+    }
+
+    fun setMaxPages(value: UInt) {
+        invalidateSearchResults()
+        _searchUiState.update { it.copy(maxPages = value.coerceIn(1u,50u)) }
+    }
+
+    fun toggleFilter(group: String, value: String) {
+        invalidateSearchResults()
         _searchUiState.update {
-            it.copy(loading = true, error = null, profile = null, mediaArchive = null, archiving = false, mediaWarning = null, response = null)
+            val updated = it.selectedFilters.toMutableMap()
+            val selected = (updated[group] ?: emptySet()).toMutableSet()
+            if (!selected.add(value)) selected.remove(value)
+            if (selected.isEmpty()) updated.remove(group) else updated[group] = selected
+            it.copy(selectedFilters = updated)
         }
+    }
+
+    private fun request(input: SearchUiState): SearchRequest {
+        val filters = JSONObject()
+        input.selectedFilters.forEach { (group, values) ->
+            filters.put(group, JSONArray(values.sorted()))
+        }
+        return SearchRequest(
+            city = input.city.trim(),
+            radiusKm = input.radiusKm,
+            category = input.category,
+            ageMin = input.ageMin,
+            ageMax = input.ageMax,
+            heightMin = input.heightMin,
+            heightMax = input.heightMax,
+            filtersJson = filters.toString(),
+            maxPages = input.maxPages,
+        )
+    }
+
+    fun refreshSearchDefinitions() {
         viewModelScope.launch {
             try {
-                val request = SearchRequest(
-                    city = input.city.trim(),
-                    radiusKm = input.radiusKm,
-                    category = "",
-                    ageMin = 18u,
-                    ageMax = 60u,
-                    heightMin = 140u,
-                    heightMax = 200u,
-                    filtersJson = "{}",
-                    maxPages = 10u,
-                )
-                val result = core.search(request)
-                _searchUiState.update {
-                    it.copy(loading = false, response = result, error = null)
-                }
-                publishStatus()
+                val catalog = core.sourceFilterCatalog()
+                val saved = core.savedSearches()
+                _searchUiState.update { it.copy(filterCatalog = catalog, savedSearches = saved) }
             } catch (cancellation: CancellationException) {
-                _searchUiState.update { it.copy(loading = false) }
                 throw cancellation
             } catch (failure: Exception) {
+                _searchUiState.update { it.copy(error = failure.message ?: "Filter konnten nicht geladen werden") }
+            }
+        }
+    }
+
+    fun createNewSavedSearch() {
+        invalidateActiveSearch()
+        _searchUiState.update { it.copy(editingSavedSearchId = null) }
+    }
+
+    fun saveCurrentSearch(name: String) {
+        if (_searchUiState.value.saving) return
+        val input = _searchUiState.value
+        _searchUiState.update { it.copy(saving = true, error = null) }
+        viewModelScope.launch {
+            try {
+                if (input.editingSavedSearchId != null) {
+                    core.updateSavedSearch(input.editingSavedSearchId, name, request(input))
+                } else {
+                    core.saveSearch(name, request(input))
+                }
+                _searchUiState.update { it.copy(savedSearches = core.savedSearches(), saving = false) }
+            } catch (cancellation: CancellationException) {
+                _searchUiState.update { it.copy(saving = false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                _searchUiState.update { it.copy(saving = false,error = failure.message ?: "Suche konnte nicht gespeichert werden") }
+            }
+        }
+    }
+
+    fun loadSavedSearch(id: String) {
+        if (_searchUiState.value.loading) return
+        invalidateActiveSearch()
+        val epoch = searchEpoch
+        viewModelScope.launch {
+            try {
+                val q = core.loadSavedSearch(id)
+                val selected = JSONObject(q.filtersJson)
+                val values = mutableMapOf<String,Set<String>>()
+                for (key in selected.keys()) {
+                    val array = selected.getJSONArray(key)
+                    values[key] = (0 until array.length()).map { array.getString(it) }.toSet()
+                }
+                if (epoch != searchEpoch) return@launch
+                invalidateSearchResults()
                 _searchUiState.update {
-                    it.copy(loading = false, error = failure.message ?: "Online-Suche fehlgeschlagen")
+                    it.copy(city=q.city,radiusKm=q.radiusKm,category=q.category,
+                        ageMin=q.ageMin,ageMax=q.ageMax,heightMin=q.heightMin,
+                        heightMax=q.heightMax,maxPages=q.maxPages,selectedFilters=values,
+                        editingSavedSearchId=id)
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == searchEpoch) {
+                    _searchUiState.update { it.copy(error = failure.message ?: "Suche konnte nicht geladen werden") }
                 }
             }
         }
     }
 
-    fun loadProfile(listingId: Long) {
-        if (_searchUiState.value.loading || _uiState.value.loading) return
-        invalidateProfileRequest()
-        val requestId = profileRequestId
+    fun deleteSavedSearch(id: String) {
+        invalidateActiveSearch()
+        viewModelScope.launch {
+            try {
+                core.deleteSavedSearch(id)
+                _searchUiState.update { it.copy(savedSearches = core.savedSearches(),
+                    editingSavedSearchId = if (it.editingSavedSearchId == id) null else it.editingSavedSearchId) }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                _searchUiState.update { it.copy(error = failure.message ?: "Gespeicherte Suche konnte nicht entfernt werden") }
+            }
+        }
+    }
+
+    fun closeSavedResults() {
+        invalidateActiveSearch()
         _searchUiState.update {
-            it.copy(loading = true, error = null, profile = null, mediaArchive = null,
-                archiving = false, mediaWarning = null)
+            it.copy(showingSavedSearchId = null, savedResultCards = emptyList(),
+                savedResultCursor = null, savedResultsLoadingMore = false)
+        }
+    }
+
+    fun showSavedResults(id: String) {
+        invalidateActiveSearch()
+        val epoch = searchEpoch
+        viewModelScope.launch {
+            try {
+                val page = core.savedSearchResults(id)
+                if (epoch != searchEpoch) return@launch
+                _searchUiState.update {
+                    it.copy(showingSavedSearchId=id,savedResultCards=page.cards,
+                        savedResultCursor=page.nextCursor,savedResultsLoadingMore=false,error=null)
+                }
+                core.acknowledgeSavedSearch(id)
+                val saved = core.savedSearches()
+                if (epoch == searchEpoch) {
+                    _searchUiState.update { it.copy(savedSearches = saved) }
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == searchEpoch) {
+                    _searchUiState.update { it.copy(error=failure.message ?: "Gespeicherte Ergebnisse konnten nicht geladen werden") }
+                }
+            }
+        }
+    }
+
+    fun loadMoreSavedResults() {
+        val state = _searchUiState.value
+        val id = state.showingSavedSearchId ?: return
+        val cursor = state.savedResultCursor ?: return
+        if (state.savedResultsLoadingMore || state.loading) return
+        val epoch = searchEpoch
+        _searchUiState.update { it.copy(savedResultsLoadingMore = true) }
+        viewModelScope.launch {
+            try {
+                val page = core.savedSearchResults(id, cursor)
+                if (epoch == searchEpoch) {
+                    _searchUiState.update {
+                        if (it.showingSavedSearchId != id) return@update it
+                        val known = it.savedResultCards.mapTo(mutableSetOf()) { card -> card.resultKey }
+                        it.copy(
+                            savedResultCards = it.savedResultCards +
+                                page.cards.filter { card -> known.add(card.resultKey) },
+                            savedResultCursor = page.nextCursor,
+                            savedResultsLoadingMore = false,
+                        )
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                if (epoch == searchEpoch) {
+                    _searchUiState.update { it.copy(savedResultsLoadingMore = false) }
+                }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == searchEpoch) {
+                    _searchUiState.update {
+                        it.copy(savedResultsLoadingMore = false,
+                            error = failure.message ?: "Weitere Suchergebnisse konnten nicht geladen werden")
+                    }
+                }
+            }
+        }
+    }
+
+    fun startSearch(savedId: String? = null) {
+        if (_searchUiState.value.loading || _uiState.value.loading) return
+        val input = _searchUiState.value
+        invalidateActiveSearch()
+        val epoch = searchEpoch
+        val control = RequestControl()
+        searchControl = control
+        invalidateProfileRequest()
+        _searchUiState.update {
+            it.copy(loading = true, error = null, profile = null, profileOpen = false,
+                response = null, showingSavedSearchId = null, savedResultCards = emptyList(),
+                savedResultCursor = null, savedResultsLoadingMore = false)
         }
         viewModelScope.launch {
             try {
-                val profile = core.loadProfile(listingId)
+                val result = if (savedId == null) core.search(request(input), control)
+                else core.runSavedSearch(savedId, control)
+                if (epoch != searchEpoch) return@launch
+                skippedPeople.clear()
+                val saved = core.savedSearches()
+                if (epoch != searchEpoch) return@launch
+                _searchUiState.update {
+                    it.copy(loading = false, response = result, savedSearches = saved)
+                }
+                refreshDiscovery()
+                refresh()
+            } catch (cancellation: CancellationException) {
+                if (epoch == searchEpoch) _searchUiState.update { it.copy(loading = false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == searchEpoch) {
+                    _searchUiState.update {
+                        it.copy(loading = false, error = failure.message ?: "Online-Suche fehlgeschlagen")
+                    }
+                }
+            } finally {
+                if (searchControl === control) searchControl = null
+            }
+        }
+    }
+
+    fun acknowledgeSavedSearch(id: String) {
+        viewModelScope.launch {
+            try {
+                core.acknowledgeSavedSearch(id)
+                _searchUiState.update { it.copy(savedSearches = core.savedSearches()) }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                _searchUiState.update { it.copy(error = failure.message ?: "Status konnte nicht gespeichert werden") }
+            }
+        }
+    }
+
+    fun refreshDiscovery() {
+        if (_discoverState.value.busy) return
+        val epoch = ++discoveryEpoch
+        viewModelScope.launch {
+            _discoverState.update {
+                it.copy(loading = true, loadingMore = false, favoritesLoadingMore = false)
+            }
+            try {
+                val cards = core.discoveryCards(excludedPeople = skippedPeople.toList())
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(
+                            cards = cards.cards.filterNot { card -> card.personId in skippedPeople },
+                            nextCursor = cards.nextCursor,
+                            favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
+                            loading = false, error = null,
+                        )
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(loading = false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(loading = false, error = failure.message ?: "Entdecken fehlgeschlagen")
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadMoreDiscovery() {
+        val state = _discoverState.value
+        val cursor = state.nextCursor ?: return
+        if (state.loading || state.loadingMore || state.busy) return
+        val epoch = discoveryEpoch
+        _discoverState.update { it.copy(loadingMore = true) }
+        viewModelScope.launch {
+            try {
+                val page = core.discoveryCards(cursor = cursor, excludedPeople = skippedPeople.toList())
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        val known = it.cards.mapTo(mutableSetOf()) { card -> card.personId }
+                        it.copy(
+                            cards = it.cards + page.cards.filter { card ->
+                                card.personId !in skippedPeople && known.add(card.personId)
+                            },
+                            nextCursor = page.nextCursor,
+                            loadingMore = false,
+                        )
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(loadingMore = false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(loadingMore = false, error = failure.message ?: "Weitere Profile konnten nicht geladen werden")
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadMoreFavorites() {
+        val state = _discoverState.value
+        val cursor = state.favoritesNextCursor ?: return
+        if (state.loading || state.favoritesLoadingMore || state.busy) return
+        val epoch = discoveryEpoch
+        _discoverState.update { it.copy(favoritesLoadingMore = true) }
+        viewModelScope.launch {
+            try {
+                val page = core.discoveryCards(favoritesOnly = true, cursor = cursor)
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        val known = it.favorites.mapTo(mutableSetOf()) { card -> card.personId }
+                        it.copy(
+                            favorites = it.favorites + page.cards.filter { card -> known.add(card.personId) },
+                            favoritesNextCursor = page.nextCursor,
+                            favoritesLoadingMore = false,
+                        )
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(favoritesLoadingMore = false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(favoritesLoadingMore = false, error = failure.message ?: "Weitere Favoriten konnten nicht geladen werden")
+                    }
+                }
+            }
+        }
+    }
+
+    fun skipCard(personId: Long) {
+        skippedPeople.add(personId)
+        _discoverState.update { it.copy(cards = it.cards.filterNot { card -> card.personId == personId }) }
+        if (_discoverState.value.cards.size < 10) loadMoreDiscovery()
+    }
+
+    fun choosePreference(personId: Long, preference: Preference) {
+        if (_discoverState.value.busy) return
+        val epoch = ++discoveryEpoch
+        _discoverState.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                core.setPreference(personId, preference)
+                skippedPeople.remove(personId)
+                val cards = core.discoveryCards(excludedPeople = skippedPeople.toList())
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(
+                            cards = cards.cards.filterNot { card -> card.personId in skippedPeople },
+                            nextCursor = cards.nextCursor,
+                            favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
+                            busy = false, loadingMore = false, favoritesLoadingMore = false,
+                        )
+                    }
+                }
+                val updatedPerson = core.person(personId)
+                _searchUiState.update {
+                    if (it.selectedPersonId == personId) it.copy(selectedPerson = updatedPerson) else it
+                }
+            } catch (cancellation: CancellationException) {
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update { it.copy(busy = false, error = failure.message ?: "Entscheidung nicht gespeichert") }
+                }
+            }
+        }
+    }
+
+    fun toggleFavorite(personId: Long) {
+        if (_discoverState.value.busy || _searchUiState.value.actionBusy) return
+        val epoch = ++discoveryEpoch
+        _discoverState.update { it.copy(busy = true) }
+        viewModelScope.launch {
+            try {
+                val person = core.person(personId) ?: error("Person nicht gefunden")
+                core.setFavorite(personId, !person.favorite)
+                val cards = core.discoveryCards(excludedPeople = skippedPeople.toList())
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(
+                            cards = cards.cards.filterNot { card -> card.personId in skippedPeople },
+                            nextCursor = cards.nextCursor,
+                            favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
+                            busy = false, loadingMore = false, favoritesLoadingMore = false, error = null,
+                        )
+                    }
+                }
+                val personState = core.person(personId)
+                _searchUiState.update {
+                    if (it.selectedPersonId == personId) it.copy(selectedPerson = personState) else it
+                }
+            } catch (cancellation: CancellationException) {
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update { it.copy(busy = false, error = failure.message ?: "Favorit konnte nicht geändert werden") }
+                }
+            }
+        }
+    }
+
+    fun loadProfile(listingId: Long, personId: Long) {
+        invalidateActiveSearch()
+        invalidateProfileRequest()
+        val requestId = profileRequestId
+        _searchUiState.update {
+            it.copy(profileOpen=true,selectedPersonId=personId,selectedPerson=null,
+                loading=true,profile=null,profileMedia=emptyList(),changeEvents=emptyList(),
+                identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
+                mediaArchive=null,mediaWarning=null,archiving=false)
+        }
+        viewModelScope.launch {
+            try {
+                var showingArchive = false
+                var refreshError: String? = null
+                val profile = try {
+                    core.loadProfile(listingId)
+                } catch (failure: CancellationException) {
+                    throw failure
+                } catch (failure: Exception) {
+                    val archived = core.cachedProfile(listingId) ?: throw failure
+                    showingArchive = true
+                    refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
+                    archived
+                }
                 if (requestId != profileRequestId) return@launch
-                _searchUiState.update { it.copy(loading = false, profile = profile, archiving = true) }
-                val control = MediaArchiveControl()
+                val items = core.profileMedia(profile.snapshotId)
+                val person = core.person(personId)
+                val changes = core.changeEvents(personId)
+                val candidates = core.identityCandidates(listingId)
+                if (requestId != profileRequestId) return@launch
+                _searchUiState.update {
+                    it.copy(loading=false,profile=profile,selectedPerson=person,
+                        profileMedia=items,changeEvents=changes,identityCandidates=candidates,
+                        mediaWarning=refreshError,archiving=!showingArchive)
+                }
+                if (showingArchive) return@launch
+                val control = RequestControl()
                 archiveControl = control
                 try {
-                    val media = core.archiveProfileMedia(profile.snapshotId, control)
+                    val report = core.archiveProfileMedia(profile.snapshotId,control)
+                    val updatedMedia = core.profileMedia(profile.snapshotId)
                     if (requestId == profileRequestId) {
-                        _searchUiState.update { it.copy(mediaArchive = media) }
+                        _searchUiState.update { it.copy(profileMedia=updatedMedia,mediaArchive=report) }
                     }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (failure: Exception) {
                     if (requestId == profileRequestId) {
                         _searchUiState.update {
-                            it.copy(mediaWarning = failure.message ?: "Medienarchivierung fehlgeschlagen")
+                            it.copy(mediaWarning=failure.message ?: "Medienarchivierung fehlgeschlagen")
                         }
                     }
                 } finally {
                     if (archiveControl === control) archiveControl = null
-                    if (requestId == profileRequestId) {
-                        _searchUiState.update { it.copy(archiving = false) }
-                    }
+                    if (requestId == profileRequestId) _searchUiState.update { it.copy(archiving=false) }
                 }
             } catch (cancellation: CancellationException) {
-                if (requestId == profileRequestId) {
-                    _searchUiState.update { it.copy(loading = false, archiving = false) }
-                }
+                if (requestId == profileRequestId) _searchUiState.update { it.copy(loading=false,archiving=false) }
                 throw cancellation
             } catch (failure: Exception) {
                 if (requestId == profileRequestId) {
                     _searchUiState.update {
-                        it.copy(loading = false, archiving = false,
-                            error = failure.message ?: "Profil konnte nicht geladen werden")
+                        it.copy(loading=false,archiving=false,error=failure.message ?: "Profil konnte nicht geladen werden")
                     }
                 }
             }
         }
     }
 
-    init {
-        refresh()
+    fun confirmIdentity(listingId: Long, targetPersonId: Long) {
+        val active = _searchUiState.value
+        if (active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
+        val requestId = profileRequestId
+        archiveControl?.cancel()
+        _searchUiState.update { it.copy(actionBusy=true,actionError=null) }
+        viewModelScope.launch {
+            try {
+                core.confirmIdentityMatch(listingId,targetPersonId)
+                val history = core.changeEvents(targetPersonId)
+                val candidates = core.identityCandidates(listingId)
+                val person = core.person(targetPersonId)
+                if (requestId == profileRequestId) {
+                    _searchUiState.update {
+                        if (it.profile?.listingId == listingId) {
+                            it.copy(actionBusy=false,selectedPersonId=targetPersonId,
+                                selectedPerson=person,changeEvents=history,identityCandidates=candidates)
+                        } else it
+                    }
+                }
+                refreshDiscovery()
+                refresh()
+            } catch (cancellation: CancellationException) {
+                if (requestId == profileRequestId) {
+                    _searchUiState.update { it.copy(actionBusy=false) }
+                }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (requestId == profileRequestId) {
+                    _searchUiState.update {
+                        it.copy(actionBusy=false,actionError=failure.message ?: "Zusammenführung fehlgeschlagen")
+                    }
+                }
+            }
+        }
     }
 
     fun refresh() {
-        if (_uiState.value.loading && _uiState.value.schemaVersion != null) return
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, error = null) }
+            _uiState.update { it.copy(loading=true,error=null) }
             try {
-                publishStatus()
+                val status = core.status()
+                val diagnostic = core.diagnosticStatus()
+                _uiState.update {
+                    it.copy(loading=false,schemaVersion=status.schemaVersion.toString(),
+                        personCount=status.personCount.toString(),sourceProfileCount=status.sourceProfileCount.toString(),
+                        listingCount=status.listingCount.toString(),diagnosticAvailable=diagnostic.available,
+                        diagnosticSizeBytes=diagnostic.sizeBytes.toLong(),
+                        diagnosticLastError=diagnostic.lastWriteError)
+                }
             } catch (cancellation: CancellationException) {
+                _uiState.update { it.copy(loading=false) }
                 throw cancellation
             } catch (failure: Exception) {
-                _uiState.update {
-                    it.copy(loading = false, error = failure.message ?: "Rust-Datenbank nicht verfügbar")
-                }
+                _uiState.update { it.copy(loading=false,error=failure.message ?: "Rust-Datenbank nicht verfügbar") }
             }
         }
     }
@@ -196,50 +724,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun importBundle(uri: Uri) {
         if (_uiState.value.loading || _searchUiState.value.loading) return
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, error = null) }
+            _uiState.update { it.copy(loading=true,error=null) }
             try {
                 val result = withContext(Dispatchers.IO) {
-                    val application = getApplication<Application>()
-                    val tempFile = File.createTempFile("ladies-migration-", ".zip", application.cacheDir)
+                    val context = getApplication<Application>()
+                    val temp = File.createTempFile("ladies-migration-",".zip",context.cacheDir)
                     try {
-                        val stream = application.contentResolver.openInputStream(uri)
-                            ?: error("Das ausgewählte Archiv konnte nicht geöffnet werden.")
-                        stream.use { input ->
-                            tempFile.outputStream().use { output -> input.copyTo(output) }
-                        }
-                        core.importLegacyBundle(tempFile)
+                        val input = context.contentResolver.openInputStream(uri)
+                            ?: error("Das ausgewählte Archiv konnte nicht geöffnet werden")
+                        input.use { stream -> temp.outputStream().use { stream.copyTo(it) } }
+                        core.importLegacyBundle(temp)
                     } finally {
-                        tempFile.delete()
+                        temp.delete()
                     }
                 }
-                _uiState.update { it.copy(lastImport = result) }
-                publishStatus()
+                _uiState.update { it.copy(lastImport=result) }
+                refresh()
+                refreshDiscovery()
+                refreshSearchDefinitions()
             } catch (cancellation: CancellationException) {
+                _uiState.update { it.copy(loading=false) }
                 throw cancellation
             } catch (failure: Exception) {
-                _uiState.update {
-                    it.copy(loading = false, error = failure.message ?: "Datenimport fehlgeschlagen")
-                }
+                _uiState.update { it.copy(loading=false,error=failure.message ?: "Datenimport fehlgeschlagen") }
             }
         }
     }
 
     suspend fun prepareDiagnosticSnapshot(): File = core.createDiagnosticSnapshot()
-
-    private suspend fun publishStatus() {
-        val status = core.status()
-        val diagnostic = core.diagnosticStatus()
-        _uiState.update {
-            it.copy(
-                loading = false,
-                schemaVersion = status.schemaVersion.toString(),
-                diagnosticAvailable = diagnostic.available,
-                diagnosticSizeBytes = diagnostic.sizeBytes.toLong(),
-                diagnosticLastError = diagnostic.lastWriteError,
-                personCount = status.personCount.toString(),
-                sourceProfileCount = status.sourceProfileCount.toString(),
-                listingCount = status.listingCount.toString(),
-            )
-        }
-    }
 }

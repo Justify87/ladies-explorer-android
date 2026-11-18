@@ -5,7 +5,7 @@ Material 3 Expressive**, **Rust**, **UniFFI** and **SQLite**.
 
 This is a staged native migration, not yet a complete Ladies Explorer replacement.
 The Android app imports legacy SQLite/media bundles locally and provides a native Rust
-search/profile extraction engine. Full swipe discovery and maps are not implemented yet. No personal records are stored in this repository.
+search/profile extraction engine. Native discovery, search/filter, saved searches and profile screens are implemented in M05; maps remain planned for M06. No personal records are stored in this repository.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ There is no embedded Python, Flask, Node.js, messaging client or price-extractio
 
 ## Scaffold features
 
-- Three native placeholder tabs: Entdecken, Suche and Einstellungen.
+- Four native tabs: Entdecken, Suche, Favoriten and Einstellungen, with full-screen profile details.
 - Material 3 theme with Android dynamic colors.
 - Settings tab shows the Rust-owned database schema version and domain counts.
 - Rust unit tests verify schema identity, versioned migrations, saved-search history, source/listing uniqueness, foreign keys, paging and persistence.
@@ -72,7 +72,7 @@ contains personal records; never commit or upload it to GitHub.
 
 M03 adds a typed Rust/UniFFI search API: configured location, source filter
 mapping, radius-aware pagination, deduplicated results, SQLite search runs and
-profile snapshot extraction. The Compose Search tab has a minimal smoke-test UI.
+profile snapshot extraction. The Compose Search tab uses the Rust filter catalog and native saved-search history.
 Source HTML may change and must be verified on-device with real pages.
 
 See [docs/SOURCE-M03.md](docs/SOURCE-M03.md) for behavior, compatibility
@@ -91,7 +91,7 @@ See [docs/DEBUG-LOG.md](docs/DEBUG-LOG.md) for details and privacy notes.
 M04 adds transition-based profile history, explicit identity candidates/merging,
 local SHA-256/dHash image archiving and optional video archiving. See
 [docs/M04-IDENTITY-MEDIA-HISTORY.md](docs/M04-IDENTITY-MEDIA-HISTORY.md).
-The full profile UI, swipe discovery and MapLibre follow in M05/M06.
+The native profile UI and swipe discovery are implemented in M05. See [docs/M05-NATIVE-EXPLORER.md](docs/M05-NATIVE-EXPLORER.md). MapLibre follows in M06.
 WhatsApp is an external-open button only; integrated messaging and AI price
 extraction are explicitly excluded.
 

@@ -2,16 +2,29 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
 use url::Url;
 
-use crate::{CoreError, LadiesCore, history, identity};
+use crate::{CoreError, LadiesCore, history, identity, operation::RequestControl};
 
 use super::{Card, Profile, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 use super::{network::DownloadedSearch, parse};
 
+#[cfg(test)]
 pub(super) fn save_search(
     core: &LadiesCore,
     request: &SearchRequest,
     downloaded: DownloadedSearch,
 ) -> Result<SearchResponse, CoreError> {
+    save_search_with_control(core, request, downloaded, None)
+}
+
+pub(super) fn save_search_with_control(
+    core: &LadiesCore,
+    request: &SearchRequest,
+    downloaded: DownloadedSearch,
+    control: Option<&RequestControl>,
+) -> Result<SearchResponse, CoreError> {
+    if let Some(control) = control {
+        control.check()?;
+    }
     let mut db = core.connection()?;
     let tx = db.transaction()?;
     let filters = json!({
@@ -50,6 +63,9 @@ pub(super) fn save_search(
     let run_id = tx.last_insert_rowid();
     let mut profiles = Vec::with_capacity(downloaded.cards.len());
     for (position, card) in downloaded.cards.iter().enumerate() {
+        if let Some(control) = control {
+            control.check()?;
+        }
         let (listing_id, person_id) = upsert_listing(&tx, card)?;
         tx.execute(
             "INSERT INTO search_results
@@ -101,6 +117,9 @@ pub(super) fn save_search(
             has_18plus: card.has_18plus,
             has_stars: card.has_stars,
         });
+    }
+    if let Some(control) = control {
+        control.check()?;
     }
     tx.commit()?;
     Ok(SearchResponse {

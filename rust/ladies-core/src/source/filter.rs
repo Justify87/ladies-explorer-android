@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use serde::Deserialize;
 
@@ -14,9 +15,45 @@ struct Catalog {
     order: Vec<String>,
 }
 
-fn catalog() -> Catalog {
-    serde_json::from_str(include_str!("filter_catalog.json"))
-        .expect("the checked-in source filter catalog is valid JSON")
+fn catalog() -> &'static Catalog {
+    static CATALOG: OnceLock<Catalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        serde_json::from_str(include_str!("filter_catalog.json"))
+            .expect("the checked-in source filter catalog is valid JSON")
+    })
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SourceFilterGroup {
+    pub key: String,
+    pub options: Vec<String>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SourceFilterCatalog {
+    pub categories: Vec<String>,
+    pub groups: Vec<SourceFilterGroup>,
+}
+
+pub(crate) fn available() -> SourceFilterCatalog {
+    let catalog = catalog();
+    let mut categories = vec![String::new()];
+    for category in catalog.categories.values() {
+        if !categories.contains(category) {
+            categories.push(category.clone());
+        }
+    }
+    let groups = catalog
+        .order
+        .iter()
+        .filter_map(|key| {
+            catalog.values.get(key).map(|values| SourceFilterGroup {
+                key: key.clone(),
+                options: values.keys().cloned().collect(),
+            })
+        })
+        .collect();
+    SourceFilterCatalog { categories, groups }
 }
 
 fn invalid(why: impl Into<String>) -> CoreError {
@@ -50,7 +87,7 @@ pub(super) fn slugify_city(input: &str) -> String {
     }
 }
 
-pub(super) fn validate_request(request: &SearchRequest) -> Result<(), CoreError> {
+pub(crate) fn validate_request(request: &SearchRequest) -> Result<(), CoreError> {
     if request.city.trim().is_empty() || request.city.chars().count() > 120 {
         return Err(invalid("City must contain 1–120 characters"));
     }
@@ -70,6 +107,46 @@ pub(super) fn validate_request(request: &SearchRequest) -> Result<(), CoreError>
     }
     filter_path(request)?;
     Ok(())
+}
+
+/// Normalize source aliases and technical filter values to the keys shown by Compose.
+pub(crate) fn canonicalize_request(mut request: SearchRequest) -> Result<SearchRequest, CoreError> {
+    validate_request(&request)?;
+    let catalog = catalog();
+    request.category = catalog
+        .categories
+        .get(request.category.trim_matches('/').trim())
+        .ok_or_else(|| invalid("Unknown source category"))?
+        .clone();
+
+    let selected: BTreeMap<String, Vec<String>> = serde_json::from_str(&request.filters_json)
+        .map_err(|e| invalid(format!("Invalid selected filters JSON: {e}")))?;
+    let mut normalized: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (raw_group, raw_values) in selected {
+        let group = catalog
+            .groups
+            .get(&raw_group)
+            .ok_or_else(|| invalid(format!("Unknown filter group: {raw_group}")))?;
+        let allowed = catalog
+            .values
+            .get(group)
+            .ok_or_else(|| invalid(format!("Unknown filter values for {group}")))?;
+        for raw_value in raw_values {
+            let clean = raw_value.split_whitespace().collect::<Vec<_>>().join(" ");
+            let label = if allowed.contains_key(&clean) {
+                clean
+            } else {
+                allowed
+                    .iter()
+                    .find_map(|(name, slug)| (slug == &clean).then(|| name.clone()))
+                    .ok_or_else(|| invalid(format!("Unknown filter value in {group}: {clean}")))?
+            };
+            normalized.entry(group.clone()).or_default().insert(label);
+        }
+    }
+    request.filters_json =
+        serde_json::to_string(&normalized).map_err(|e| CoreError::Storage(e.to_string()))?;
+    Ok(request)
 }
 
 pub(super) fn filter_path(request: &SearchRequest) -> Result<String, CoreError> {
@@ -172,6 +249,25 @@ mod tests {
         req.filters_json = "{}".into();
         req.radius_km = 13;
         assert!(validate_request(&req).is_err());
+    }
+
+    #[test]
+    fn canonicalizes_imported_aliases_and_slugs_for_the_native_filter_ui() {
+        let mut request = SearchRequest::for_test();
+        request.category = "locations".into();
+        request.filters_json =
+            r#"{"treffpunkt":["treffen-haus"],"treff":["Hausbesuche"],"service":["zungenkuss","ZK"]}"#
+                .into();
+        let canonical = canonicalize_request(request).unwrap();
+        assert_eq!(canonical.category, "bordelle-laufhaeuser");
+        let selected: serde_json::Value = serde_json::from_str(&canonical.filters_json).unwrap();
+        assert_eq!(selected["treff"], serde_json::json!(["Hausbesuche"]));
+        assert_eq!(selected["service"], serde_json::json!(["ZK"]));
+        assert!(selected.get("treffpunkt").is_none());
+        assert_eq!(
+            filter_path(&canonical).unwrap(),
+            "bordelle-laufhaeuser/service:zungenkuss;treff:treffen-haus"
+        );
     }
 
     #[test]

@@ -1,10 +1,6 @@
 use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use std::time::{Duration, Instant};
 
 use crate::media_url::validate_media_url;
@@ -13,7 +9,7 @@ use reqwest::blocking::Client;
 use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
-use crate::{CoreError, LadiesCore, identity};
+use crate::{CoreError, LadiesCore, identity, operation::RequestControl};
 
 const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES: u64 = 48 * 1024 * 1024;
@@ -21,29 +17,6 @@ const MAX_REFERENCES: usize = 80;
 const MAX_ARCHIVE_DURATION: Duration = Duration::from_secs(150);
 const MAX_REQUEST_DURATION: Duration = Duration::from_secs(15);
 const MAX_PIXELS: u64 = 24_000_000;
-
-#[derive(Default, uniffi::Object)]
-pub struct MediaArchiveControl {
-    cancelled: AtomicBool,
-}
-
-#[uniffi::export]
-impl MediaArchiveControl {
-    #[uniffi::constructor]
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self::default())
-    }
-
-    pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
-    }
-}
-
-impl MediaArchiveControl {
-    fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
-    }
-}
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct MediaArchiveReport {
@@ -58,7 +31,6 @@ pub struct MediaArchiveReport {
 struct Reference {
     id: i64,
     listing_id: i64,
-    person_id: i64,
     kind: String,
     url: String,
     base: String,
@@ -84,7 +56,7 @@ trait Fetcher {
         url: &str,
         limit: u64,
         timeout: Duration,
-        control: &MediaArchiveControl,
+        control: &RequestControl,
     ) -> Result<Download, CoreError>;
 }
 
@@ -108,7 +80,7 @@ impl Fetcher for HttpFetcher {
         url: &str,
         limit: u64,
         timeout: Duration,
-        control: &MediaArchiveControl,
+        control: &RequestControl,
     ) -> Result<Download, CoreError> {
         if control.is_cancelled() {
             return Err(CoreError::Media("Media archive cancelled".into()));
@@ -236,14 +208,13 @@ fn relative_path(kind: &str, sha: &str, ext: &str) -> String {
 fn snapshot_refs(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<Reference>, CoreError> {
     let db = core.connection()?;
     let mut query = db.prepare(
-        "SELECT m.snapshot_media_id, s.listing_id, l.person_id,
+        "SELECT m.snapshot_media_id, s.listing_id,
                 m.kind,m.remote_url,COALESCE(m.remote_base_url,m.remote_url),
                 m.revision_token,m.media_asset_id,a.local_path,
                 src.media_asset_id,cached.local_path,src.revision_token,cached.dhash
          FROM snapshot_media m
          JOIN listing_snapshots s ON s.snapshot_id=m.snapshot_id
-         JOIN listings l ON l.listing_id=s.listing_id
-         LEFT JOIN media_assets a ON a.media_asset_id=m.media_asset_id
+                  LEFT JOIN media_assets a ON a.media_asset_id=m.media_asset_id
          LEFT JOIN media_sources src ON src.remote_base_url=m.remote_base_url
          LEFT JOIN media_assets cached ON cached.media_asset_id=src.media_asset_id
          WHERE m.snapshot_id=?1 ORDER BY m.position,m.snapshot_media_id",
@@ -253,17 +224,16 @@ fn snapshot_refs(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<Reference>, 
             Ok(Reference {
                 id: r.get(0)?,
                 listing_id: r.get(1)?,
-                person_id: r.get(2)?,
-                kind: r.get(3)?,
-                url: r.get(4)?,
-                base: r.get(5)?,
-                revision: r.get(6)?,
-                asset_id: r.get(7)?,
-                local_path: r.get(8)?,
-                cached_asset_id: r.get(9)?,
-                cached_path: r.get(10)?,
-                cached_revision: r.get(11)?,
-                cached_dhash: r.get(12)?,
+                kind: r.get(2)?,
+                url: r.get(3)?,
+                base: r.get(4)?,
+                revision: r.get(5)?,
+                asset_id: r.get(6)?,
+                local_path: r.get(7)?,
+                cached_asset_id: r.get(8)?,
+                cached_path: r.get(9)?,
+                cached_revision: r.get(10)?,
+                cached_dhash: r.get(11)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -276,6 +246,15 @@ fn snapshot_refs(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<Reference>, 
         return Err(CoreError::Media("Unknown profile snapshot".into()));
     }
     Ok(refs)
+}
+
+fn current_person(db: &rusqlite::Connection, listing_id: i64) -> Result<i64, CoreError> {
+    db.query_row(
+        "SELECT person_id FROM listings WHERE listing_id=?1",
+        [listing_id],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
 }
 
 fn persist(
@@ -379,7 +358,12 @@ fn persist(
         params![id, download.etag, download.last_modified, reference.id],
     )?;
     if let Some(ref dhash) = dhash {
-        identity::record_image_hash(&tx, reference.person_id, reference.listing_id, dhash)?;
+        identity::record_image_hash(
+            &tx,
+            current_person(&tx, reference.listing_id)?,
+            reference.listing_id,
+            dhash,
+        )?;
         identity::refresh(&tx, reference.listing_id)?;
     }
     tx.commit()?;
@@ -391,7 +375,7 @@ fn archive_with(
     snapshot_id: i64,
     include_videos: bool,
     fetcher: &impl Fetcher,
-    control: &MediaArchiveControl,
+    control: &RequestControl,
 ) -> Result<MediaArchiveReport, CoreError> {
     let root = core
         .media_root
@@ -443,7 +427,12 @@ fn archive_with(
                 params![reference.cached_asset_id, reference.id],
             )?;
             if let Some(hash) = reference.cached_dhash.as_deref() {
-                identity::record_image_hash(&tx, reference.person_id, reference.listing_id, hash)?;
+                identity::record_image_hash(
+                    &tx,
+                    current_person(&tx, reference.listing_id)?,
+                    reference.listing_id,
+                    hash,
+                )?;
                 identity::refresh(&tx, reference.listing_id)?;
             }
             tx.commit()?;
@@ -496,7 +485,7 @@ pub(crate) fn archive(
     core: &LadiesCore,
     snapshot_id: i64,
     include_videos: bool,
-    control: &MediaArchiveControl,
+    control: &RequestControl,
 ) -> Result<MediaArchiveReport, CoreError> {
     let http = HttpFetcher::new()?;
     archive_with(core, snapshot_id, include_videos, &http, control)
@@ -512,7 +501,7 @@ mod tests {
             _: &str,
             _: u64,
             _: Duration,
-            _: &MediaArchiveControl,
+            _: &RequestControl,
         ) -> Result<Download, CoreError> {
             Ok(Download {
                 bytes: self.0.clone(),
@@ -576,6 +565,46 @@ mod tests {
         (temp, core, snapshot, listing)
     }
     #[test]
+    fn archive_uses_current_owner_after_listing_is_reassigned() {
+        let (_temp, core, snapshot, listing) = fixture();
+        let pending = snapshot_refs(&core, snapshot).unwrap()[0].clone();
+        let new_owner = core.create_person(Some("New owner".into())).unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listings SET person_id=?1 WHERE listing_id=?2",
+                params![new_owner, listing],
+            )
+            .unwrap();
+        }
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(16, 16)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        persist(
+            &core,
+            core.media_root.as_ref().unwrap(),
+            &pending,
+            Download {
+                bytes: png.into_inner(),
+                mime: Some("image/png".into()),
+                etag: None,
+                last_modified: None,
+            },
+        )
+        .unwrap();
+        let db = core.connection().unwrap();
+        let owner: i64 = db
+            .query_row(
+                "SELECT person_id FROM person_identifiers WHERE kind='IMAGE_DHASH'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(owner, new_owner);
+    }
+
+    #[test]
     fn archive_is_content_addressed_and_repeatable() {
         let (_temp, core, snapshot, listing) = fixture();
         let mut png = std::io::Cursor::new(Vec::new());
@@ -583,23 +612,11 @@ mod tests {
             .write_to(&mut png, image::ImageFormat::Png)
             .unwrap();
         let fetcher = FixtureFetcher(png.into_inner());
-        let first = archive_with(
-            &core,
-            snapshot,
-            false,
-            &fetcher,
-            &MediaArchiveControl::default(),
-        )
-        .unwrap();
+        let first =
+            archive_with(&core, snapshot, false, &fetcher, &RequestControl::default()).unwrap();
         assert_eq!((first.downloaded, first.failed), (2, 0));
-        let again = archive_with(
-            &core,
-            snapshot,
-            false,
-            &fetcher,
-            &MediaArchiveControl::default(),
-        )
-        .unwrap();
+        let again =
+            archive_with(&core, snapshot, false, &fetcher, &RequestControl::default()).unwrap();
         assert_eq!((again.reused, again.downloaded), (2, 0));
         let db = core.connection().unwrap();
         let assets: i64 = db
@@ -633,14 +650,7 @@ mod tests {
             .write_to(&mut image, image::ImageFormat::Png)
             .unwrap();
         let fetcher = FixtureFetcher(image.into_inner());
-        archive_with(
-            &core,
-            first,
-            false,
-            &fetcher,
-            &MediaArchiveControl::default(),
-        )
-        .unwrap();
+        archive_with(&core, first, false, &fetcher, &RequestControl::default()).unwrap();
         let db = core.connection().unwrap();
         db.execute(
             "INSERT INTO listing_snapshots(listing_id,fingerprint)
@@ -668,19 +678,13 @@ mod tests {
                 _: &str,
                 _: u64,
                 _: Duration,
-                _: &MediaArchiveControl,
+                _: &RequestControl,
             ) -> Result<Download, CoreError> {
                 Err(CoreError::Media("No network allowed".into()))
             }
         }
-        let reused = archive_with(
-            &core,
-            second,
-            false,
-            &Offline,
-            &MediaArchiveControl::default(),
-        )
-        .unwrap();
+        let reused =
+            archive_with(&core, second, false, &Offline, &RequestControl::default()).unwrap();
         assert_eq!((reused.reused, reused.failed), (2, 0));
         let db = core.connection().unwrap();
         let count:i64=db.query_row(
@@ -700,19 +704,13 @@ mod tests {
                 _: &str,
                 _: u64,
                 _: Duration,
-                _: &MediaArchiveControl,
+                _: &RequestControl,
             ) -> Result<Download, CoreError> {
                 Err(CoreError::Media("Network unavailable".into()))
             }
         }
-        let report = archive_with(
-            &core,
-            snapshot,
-            false,
-            &Offline,
-            &MediaArchiveControl::default(),
-        )
-        .unwrap();
+        let report =
+            archive_with(&core, snapshot, false, &Offline, &RequestControl::default()).unwrap();
         assert_eq!((report.failed, report.downloaded), (2, 0));
         let db = core.connection().unwrap();
         let snapshots: i64 = db
@@ -732,7 +730,7 @@ mod tests {
     #[test]
     fn cancelled_archive_preserves_pending_assets() {
         let (_temp, core, snapshot, _) = fixture();
-        let control = MediaArchiveControl::default();
+        let control = RequestControl::default();
         control.cancel();
         struct Never;
         impl Fetcher for Never {
@@ -741,7 +739,7 @@ mod tests {
                 _: &str,
                 _: u64,
                 _: Duration,
-                _: &MediaArchiveControl,
+                _: &RequestControl,
             ) -> Result<Download, CoreError> {
                 panic!("Cancelled archive attempted an HTTP request")
             }
