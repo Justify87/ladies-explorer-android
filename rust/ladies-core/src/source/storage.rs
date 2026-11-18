@@ -766,6 +766,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(last, (1, 0, original.snapshot_id));
+        drop(db);
         let history = core
             .list_change_events(found.profiles[0].person_id, 50)
             .unwrap();
