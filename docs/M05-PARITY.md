@@ -148,7 +148,7 @@ Technische Abnahme G3 bestanden: [Full-CI #321](https://github.com/Justify87/lad
 | P22 | SwipeStep/SwipeSession; MainViewModel: decideSwipe/undoSwipe/resetSwipe; Rust set_swipe_preference | Atomare Owner-/Präferenzprüfung; Undo auf ehemaligem Listing soweit sichtbar; keine DB-Löschung, Favorit unabhängig. |
 | P23 | SwipeProfile.kt, CoreStore, source/mod.rs/network.rs; DiscoveryScreen lifecycle effects | 2 kommende Profile, 2 Bilder pro Profil; vorhandene Snapshots/Coil, keine Archivdownloads; kooperativer Abbruch mit bestehendem begrenztem HTTP-Timeout. |
 
-G4 REVIEW, Full-CI und manuelle Geräte-/Live-Quellprüfung offen (DEVICE_PENDING).
+G4 technisch DONE: PR #17 gemergt, Full-CI #329 bestanden; manuelle Geräte-/Live-Quellprüfung DEVICE_PENDING.
 
 ## Ergänzung M05.4a
 

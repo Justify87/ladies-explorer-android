@@ -147,10 +147,14 @@ pub struct DiscoveryPage {
 /// Only explicit, unambiguous source traits from an existing snapshot.
 fn known_age(traits_json: Option<&str>) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(traits_json?).ok()?;
-    let (_, age) = value
+    let mut ages = value
         .as_object()?
         .iter()
-        .find(|(key, _)| key.eq_ignore_ascii_case("Alter"))?;
+        .filter(|(key, _)| key.eq_ignore_ascii_case("Alter"));
+    let (_, age) = ages.next()?;
+    if ages.next().is_some() {
+        return None;
+    }
     let text = match age {
         serde_json::Value::String(text) => text.as_str(),
         serde_json::Value::Array(values) if values.len() == 1 => values[0].as_str()?,
@@ -423,6 +427,7 @@ mod tests {
         assert_eq!(known_age(Some(r#"{"alter":"28"}"#)).as_deref(), Some("28"));
         assert!(known_age(Some(r#"{"Alter":["28","30"]}"#)).is_none());
         assert!(known_age(Some(r#"{"Alter":["ca. 30"]}"#)).is_none());
+        assert!(known_age(Some(r#"{"Alter":"28","alter":"30"}"#)).is_none());
         assert!(known_age(None).is_none());
     }
 
@@ -461,6 +466,22 @@ mod tests {
             vec![lb, la]
         );
         assert!(rows[0].is_premium);
+        assert!(rows[0].age.is_none());
+        // A direct grid mutation is conditional and does not change run membership.
+        core.set_swipe_preference(la, a, Some(Preference::None), Preference::Like)
+            .unwrap();
+        let liked = active_search_cards(&core, 1, &all).unwrap();
+        assert_eq!(liked[1].listing_id, la);
+        assert_eq!(liked[1].preference, Preference::Like);
+        let hide_likes = crate::saved_search::LocalVisibility {
+            hide_likes: true,
+            ..all.clone()
+        };
+        let visible = active_search_cards(&core, 1, &hide_likes).unwrap();
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].listing_id, lb);
+        core.set_swipe_preference(la, a, Some(Preference::Like), Preference::None)
+            .unwrap();
         core.set_preference(b, Preference::Dislike).unwrap();
         core.set_favorite(b, true).unwrap();
         let rows = active_search_cards(&core, 1, &all).unwrap();
