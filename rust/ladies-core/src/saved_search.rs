@@ -229,11 +229,92 @@ fn persist_results(core: &LadiesCore, id: &str, result: &SearchResponse) -> Resu
     Ok(())
 }
 
+#[derive(Default)]
+struct LocalVisibility {
+    video_only: bool,
+    photos_only: bool,
+    hide_dislikes: bool,
+    hide_likes: bool,
+    image_mode: String,
+}
+
+fn local_visibility(core: &LadiesCore, id: &str) -> Result<LocalVisibility, CoreError> {
+    let db = core.connection()?;
+    let definition: String = db.query_row(
+        "SELECT filters_json FROM saved_searches WHERE saved_search_id=?1",
+        [id], |r| r.get(0),
+    )?;
+    let parsed: serde_json::Value = serde_json::from_str(&definition)
+        .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
+    let Some(local) = parsed.get("local").and_then(|v| v.as_object()) else {
+        return Ok(LocalVisibility::default());
+    };
+    let flag = |key: &str| local.get(key).and_then(|v| v.as_bool());
+    Ok(LocalVisibility {
+        video_only: flag("videoOnly") == Some(true),
+        photos_only: flag("photosOnly") == Some(true),
+        hide_dislikes: flag("hideDislikes") != Some(false),
+        hide_likes: flag("hideLikes") == Some(true),
+        image_mode: local.get("imageMode").and_then(|v| v.as_str())
+            .unwrap_or("ALL").to_uppercase(),
+    })
+}
+
+fn apply_local_visibility(
+    core: &LadiesCore,
+    response: &mut SearchResponse,
+    rules: LocalVisibility,
+) -> Result<(), CoreError> {
+    let db = core.connection()?;
+    let mut person_query = db.prepare(
+        "SELECT preference FROM person_user_state WHERE person_id=?1"
+    )?;
+    let mut marker_query = db.prepare(
+        "SELECT markers_json FROM search_results WHERE search_run_id=?1 AND listing_id=?2"
+    )?;
+    let mut visible = Vec::new();
+    for card in response.profiles.drain(..) {
+        if (rules.video_only && !card.has_video)
+            || (rules.photos_only && card.thumbnail_url.is_none())
+        {
+            continue;
+        }
+        let preference: String = person_query.query_row(
+            [card.person_id], |r| r.get(0)
+        )?;
+        if (rules.hide_dislikes && preference == "DISLIKE")
+            || (rules.hide_likes && preference == "LIKE")
+        {
+            continue;
+        }
+        let image_allowed = match rules.image_mode.as_str() {
+            "AI" => card.has_ai_content,
+            "NATURAL" => !card.has_ai_content,
+            "STUDIO" | "FACEAPP" => {
+                let markers: Option<String> = marker_query
+                    .query_row(params![response.search_run_id,card.listing_id], |r| r.get(0))
+                    .optional()?
+                    .flatten();
+                let marker = markers.unwrap_or_default().to_lowercase();
+                marker.contains(if rules.image_mode == "STUDIO" { "studio" } else { "face" })
+            }
+            _ => true,
+        };
+        if image_allowed {
+            visible.push(card);
+        }
+    }
+    response.profiles = visible;
+    Ok(())
+}
+
 pub(crate) fn run(core: &LadiesCore, id: String) -> Result<SearchResponse, CoreError> {
     let definition = request(core, &id)?;
+    let rules = local_visibility(core, &id)?;
     let fetched = source::search(core, definition);
     match fetched {
-        Ok(response) => {
+        Ok(mut response) => {
+            apply_local_visibility(core, &mut response, rules)?;
             // An incomplete search cannot be used to infer removals.
             if !response.partial && response.radius_verified {
                 persist_results(core, &id, &response)?;
