@@ -57,9 +57,14 @@ pub(crate) fn cached_profile(
                     canonical_id: r.get(8)?,
                     phone_display: r.get(9)?,
                     published_at: r.get(10)?,
-                    traits_json: r.get::<_, Option<String>>(11)?.unwrap_or_else(|| "{}".into()),
-                    services_json: r.get::<_, Option<String>>(12)?.unwrap_or_else(|| "{}".into()),
-                    opening_times_json: r.get::<_, Option<String>>(13)?
+                    traits_json: r
+                        .get::<_, Option<String>>(11)?
+                        .unwrap_or_else(|| "{}".into()),
+                    services_json: r
+                        .get::<_, Option<String>>(12)?
+                        .unwrap_or_else(|| "{}".into()),
+                    opening_times_json: r
+                        .get::<_, Option<String>>(13)?
                         .unwrap_or_else(|| "{}".into()),
                     media: Vec::new(),
                 })
