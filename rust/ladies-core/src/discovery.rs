@@ -24,6 +24,70 @@ pub struct ProfileMediaItem {
     pub position: u32,
 }
 
+pub(crate) fn cached_profile(
+    core: &LadiesCore,
+    listing_id: i64,
+) -> Result<Option<crate::source::ProfileResponse>, CoreError> {
+    use crate::source::{MediaReference, ProfileResponse};
+
+    let db = core.connection()?;
+    let mut profile: Option<ProfileResponse> = db
+        .query_row(
+            "SELECT s.snapshot_id,l.external_listing_id,s.name,s.city,s.description,
+                    s.postal_code,s.hidden_location,s.external_profile_id,s.canonical_id,
+                    s.phone_display,s.published_at,s.traits_json,s.services_json,
+                    s.opening_times_json
+             FROM listings l
+             JOIN listing_snapshots s
+               ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
+             WHERE l.listing_id=?1",
+            [listing_id],
+            |r| {
+                Ok(ProfileResponse {
+                    listing_id,
+                    snapshot_id: r.get(0)?,
+                    new_snapshot: false,
+                    advert_id: r.get(1)?,
+                    name: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    city: r.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    description: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                    postal_code: r.get(5)?,
+                    hidden_location: r.get(6)?,
+                    source_profile_id: r.get(7)?,
+                    canonical_id: r.get(8)?,
+                    phone_display: r.get(9)?,
+                    published_at: r.get(10)?,
+                    traits_json: r.get::<_, Option<String>>(11)?.unwrap_or_else(|| "{}".into()),
+                    services_json: r.get::<_, Option<String>>(12)?.unwrap_or_else(|| "{}".into()),
+                    opening_times_json: r.get::<_, Option<String>>(13)?
+                        .unwrap_or_else(|| "{}".into()),
+                    media: Vec::new(),
+                })
+            },
+        )
+        .optional()?;
+    if let Some(profile) = profile.as_mut() {
+        let mut query = db.prepare(
+            "SELECT remote_url,kind,position,role,remote_variant,revision_token
+             FROM snapshot_media WHERE snapshot_id=?1
+             ORDER BY position,snapshot_media_id",
+        )?;
+        profile.media = query
+            .query_map([profile.snapshot_id], |r| {
+                Ok(MediaReference {
+                    url: r.get(0)?,
+                    kind: r.get(1)?,
+                    position: r.get(2)?,
+                    role: r.get(3)?,
+                    variant: r.get(4)?,
+                    revision_token: r.get(5)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+    }
+    Ok(profile)
+}
+
 pub(crate) fn media(
     core: &LadiesCore,
     snapshot_id: i64,
@@ -173,6 +237,47 @@ mod tests {
         assert_eq!(favorites.len(), 1);
         assert_eq!(favorites[0].person_id, first);
         assert!(favorites[0].favorite);
+    }
+
+    #[test]
+    fn archived_profile_is_available_without_network() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(Some("Ada".into())).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "123".into(), None)
+            .unwrap();
+        assert!(cached_profile(&core, listing).unwrap().is_none());
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots
+                 (listing_id,fingerprint,name,city,description,traits_json)
+                 VALUES (?1,'cached','Ada','Leipzig','archiviert','{}')",
+                [listing],
+            )
+            .unwrap();
+            let snapshot = db.last_insert_rowid();
+            db.execute(
+                "INSERT INTO snapshot_media
+                 (snapshot_id,position,kind,role,remote_url)
+                 VALUES (?1,1,'IMAGE','PRIMARY','https://bilder1.ladies-cdn.de/Bilder/1/1-A1.JPG')",
+                [snapshot],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![snapshot, listing],
+            )
+            .unwrap();
+        }
+        let profile = cached_profile(&core, listing).unwrap().unwrap();
+        assert_eq!(profile.name, "Ada");
+        assert_eq!(profile.city, "Leipzig");
+        assert_eq!(profile.description, "archiviert");
+        assert_eq!(profile.advert_id, "123");
+        assert_eq!(profile.media.len(), 1);
+        assert!(!profile.new_snapshot);
+        assert!(cached_profile(&core, -1).unwrap().is_none());
     }
 
     #[test]
