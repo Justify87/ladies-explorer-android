@@ -44,7 +44,6 @@ fun ProfileDetailScreen(
     onCancelArchive: () -> Unit,
     onBack: () -> Unit,
     actionsBusy: Boolean,
-    actionError: String?,
     modifier: Modifier = Modifier,
 ) {
     val profile = state.profile
@@ -59,7 +58,7 @@ fun ProfileDetailScreen(
                 Text("Das Inserat wird mit Person #$target zusammengeführt. Die Entscheidung verändert Zuordnungen und die gemeinsame Historie. Bitte nur bei sicherer Identität bestätigen.")
             },
             confirmButton = {
-                Button(onClick = {
+                Button(enabled = !actionsBusy && !state.actionBusy, onClick = {
                     val listingId = profile?.listingId
                     confirmTarget = null
                     if (listingId != null) onConfirmIdentity(listingId,target)
@@ -83,7 +82,7 @@ fun ProfileDetailScreen(
         }
         if (state.loading) item { CircularProgressIndicator() }
         state.error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
-        (state.actionError ?: actionError)?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
+        state.actionError?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
         if (profile != null) {
             item(key = "media") {
                 ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
