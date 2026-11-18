@@ -58,7 +58,6 @@ pub struct MediaArchiveReport {
 struct Reference {
     id: i64,
     listing_id: i64,
-    person_id: i64,
     kind: String,
     url: String,
     base: String,
@@ -236,14 +235,13 @@ fn relative_path(kind: &str, sha: &str, ext: &str) -> String {
 fn snapshot_refs(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<Reference>, CoreError> {
     let db = core.connection()?;
     let mut query = db.prepare(
-        "SELECT m.snapshot_media_id, s.listing_id, l.person_id,
+        "SELECT m.snapshot_media_id, s.listing_id,
                 m.kind,m.remote_url,COALESCE(m.remote_base_url,m.remote_url),
                 m.revision_token,m.media_asset_id,a.local_path,
                 src.media_asset_id,cached.local_path,src.revision_token,cached.dhash
          FROM snapshot_media m
          JOIN listing_snapshots s ON s.snapshot_id=m.snapshot_id
-         JOIN listings l ON l.listing_id=s.listing_id
-         LEFT JOIN media_assets a ON a.media_asset_id=m.media_asset_id
+                  LEFT JOIN media_assets a ON a.media_asset_id=m.media_asset_id
          LEFT JOIN media_sources src ON src.remote_base_url=m.remote_base_url
          LEFT JOIN media_assets cached ON cached.media_asset_id=src.media_asset_id
          WHERE m.snapshot_id=?1 ORDER BY m.position,m.snapshot_media_id",
@@ -253,17 +251,16 @@ fn snapshot_refs(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<Reference>, 
             Ok(Reference {
                 id: r.get(0)?,
                 listing_id: r.get(1)?,
-                person_id: r.get(2)?,
-                kind: r.get(3)?,
-                url: r.get(4)?,
-                base: r.get(5)?,
-                revision: r.get(6)?,
-                asset_id: r.get(7)?,
-                local_path: r.get(8)?,
-                cached_asset_id: r.get(9)?,
-                cached_path: r.get(10)?,
-                cached_revision: r.get(11)?,
-                cached_dhash: r.get(12)?,
+                kind: r.get(2)?,
+                url: r.get(3)?,
+                base: r.get(4)?,
+                revision: r.get(5)?,
+                asset_id: r.get(6)?,
+                local_path: r.get(7)?,
+                cached_asset_id: r.get(8)?,
+                cached_path: r.get(9)?,
+                cached_revision: r.get(10)?,
+                cached_dhash: r.get(11)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -276,6 +273,15 @@ fn snapshot_refs(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<Reference>, 
         return Err(CoreError::Media("Unknown profile snapshot".into()));
     }
     Ok(refs)
+}
+
+fn current_person(db: &rusqlite::Connection, listing_id: i64) -> Result<i64, CoreError> {
+    db.query_row(
+        "SELECT person_id FROM listings WHERE listing_id=?1",
+        [listing_id],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
 }
 
 fn persist(
@@ -379,7 +385,7 @@ fn persist(
         params![id, download.etag, download.last_modified, reference.id],
     )?;
     if let Some(ref dhash) = dhash {
-        identity::record_image_hash(&tx, reference.person_id, reference.listing_id, dhash)?;
+        identity::record_image_hash(&tx, current_person(&tx, reference.listing_id)?, reference.listing_id, dhash)?;
         identity::refresh(&tx, reference.listing_id)?;
     }
     tx.commit()?;
@@ -443,7 +449,7 @@ fn archive_with(
                 params![reference.cached_asset_id, reference.id],
             )?;
             if let Some(hash) = reference.cached_dhash.as_deref() {
-                identity::record_image_hash(&tx, reference.person_id, reference.listing_id, hash)?;
+                identity::record_image_hash(&tx, current_person(&tx, reference.listing_id)?, reference.listing_id, hash)?;
                 identity::refresh(&tx, reference.listing_id)?;
             }
             tx.commit()?;
