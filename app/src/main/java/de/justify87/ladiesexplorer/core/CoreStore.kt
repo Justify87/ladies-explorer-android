@@ -128,6 +128,9 @@ class CoreStore(context: Context) {
     suspend fun loadSavedSearch(id: String): SearchRequest =
         withContext(Dispatchers.IO) { engine.loadSavedSearch(id) }
 
+    suspend fun savedSearchResults(id: String): List<SavedSearchCard> =
+        withContext(Dispatchers.IO) { engine.savedSearchResults(id) }
+
     suspend fun runSavedSearch(id: String): SearchResponse =
         withContext(Dispatchers.IO) { recorded("runSavedSearch") { engine.runSavedSearch(id) } }
 
