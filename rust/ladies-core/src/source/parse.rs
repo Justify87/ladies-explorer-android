@@ -326,7 +326,7 @@ fn media_url(raw: &str) -> Option<Url> {
     } else {
         "IMAGE"
     };
-    crate::media::validate_media_url(url.as_str(), kind).ok()
+    crate::media_url::validate_media_url(url.as_str(), Some(kind)).ok()
 }
 
 fn image_number(url: &Url) -> Option<(u32, String)> {
