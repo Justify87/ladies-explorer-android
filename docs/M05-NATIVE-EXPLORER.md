@@ -28,7 +28,9 @@ Neue Suchdefinitionen werden typisiert als serialisierte `SearchRequest`
 gespeichert. Die lokale ID bleibt stabil. Umbenennen erhält Ergebnisse und
 Historie; eine inhaltliche Änderung setzt die alte Ergebnisbasis transaktional
 zurück. Der Nutzer kann Vorlagen laden, aktualisieren, neu erstellen, ausführen,
-löschen oder als gelesen markieren.
+löschen oder als gelesen markieren. Gespeicherte Treffer bleiben auch ohne Netz
+über eine Rust-Abfrage sichtbar; vorhandene Inserate können aus dem Archiv
+heraus als Profil geöffnet werden.
 
 Importierte Web-App-Suchen mit `city/radius/category/ageMin/ageMax/heightMin/
 heightMax/selected` werden in native Suchanfragen übersetzt. Die `local`-Filter
