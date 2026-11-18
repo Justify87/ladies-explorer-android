@@ -88,4 +88,45 @@ class CoreStore(context: Context) {
             engine.loadSourceProfile(listingId)
         }
     }
+
+    suspend fun sourceFilterCatalog(): SourceFilterCatalog = withContext(Dispatchers.IO) {
+        engine.sourceFilterCatalog()
+    }
+
+    suspend fun discoveryCards(favoritesOnly: Boolean = false): List<DiscoveryCard> =
+        withContext(Dispatchers.IO) { engine.discoveryCards(favoritesOnly, 200u) }
+
+    suspend fun profileMedia(snapshotId: Long): List<ProfileMediaItem> =
+        withContext(Dispatchers.IO) { engine.profileMedia(snapshotId) }
+
+    suspend fun identityCandidates(listingId: Long): List<IdentityCandidate> =
+        withContext(Dispatchers.IO) { engine.listIdentityCandidates(listingId) }
+
+    suspend fun confirmIdentityMatch(listingId: Long, targetPersonId: Long) =
+        withContext(Dispatchers.IO) {
+            recorded("confirmIdentityMatch listing=$listingId") {
+                engine.confirmIdentityMatch(listingId, targetPersonId)
+            }
+        }
+
+    suspend fun changeEvents(personId: Long): List<ChangeRecord> =
+        withContext(Dispatchers.IO) { engine.listChangeEvents(personId, 100u) }
+
+    suspend fun savedSearches(): List<SavedSearchInfo> =
+        withContext(Dispatchers.IO) { engine.listSavedSearches() }
+
+    suspend fun saveSearch(name: String, request: SearchRequest): String =
+        withContext(Dispatchers.IO) { engine.saveNativeSearch(name, request) }
+
+    suspend fun loadSavedSearch(id: String): SearchRequest =
+        withContext(Dispatchers.IO) { engine.loadSavedSearch(id) }
+
+    suspend fun runSavedSearch(id: String): SearchResponse =
+        withContext(Dispatchers.IO) { recorded("runSavedSearch") { engine.runSavedSearch(id) } }
+
+    suspend fun deleteSavedSearch(id: String) =
+        withContext(Dispatchers.IO) { engine.deleteSavedSearch(id) }
+
+    suspend fun acknowledgeSavedSearch(id: String) =
+        withContext(Dispatchers.IO) { engine.acknowledgeSavedSearch(id) }
 }
