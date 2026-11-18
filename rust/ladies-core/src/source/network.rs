@@ -41,7 +41,8 @@ trait Transport {
     }
     fn log_event(&self, component: &str, message: impl AsRef<str>) {
         if let Some(log) = self.diagnostics() {
-            log.event(component, message);
+            if component == "PARSER" { log.debug(component, message); }
+            else { log.event(component, message); }
         }
     }
     fn log_html(&self, stage: &str, html: &str) {
@@ -365,12 +366,14 @@ fn parse_api(response: Response, logger: Option<&Diagnostics>) -> Result<Option<
             response.status
         )));
     }
+    let parse_started = Instant::now();
     let payload: Value = serde_json::from_str(&response.body).map_err(|e| {
         if let Some(log) = logger {
             log.html("invalid_api_json", &response.body);
         }
         CoreError::Source(format!("Invalid source search API payload: {e}"))
     })?;
+    if let Some(log) = logger { log.phase("PARSER", "json_parse", parse_started); }
     if !payload.is_object() {
         if let Some(log) = logger {
             log.html("invalid_api_shape", &response.body);
@@ -504,6 +507,7 @@ fn fetch_search_controlled<T: Transport>(
         )));
     }
 
+    let first_parse_started = Instant::now();
     let mut total_from_html = parse::parse_config(&first.body, "totalPages");
     let mut server_count = parse::parse_config(&first.body, "advertCount");
     let mut observed_radius = parse::parse_config(&first.body, "distanceSearched");
@@ -515,6 +519,9 @@ fn fetch_search_controlled<T: Transport>(
         )));
     }
     let mut cards = parse::parse_cards(&first.body);
+    if let Some(log) = client.diagnostics() {
+        log.phase("PARSER", "first_html_cards", first_parse_started);
+    }
     client.log_event(
         "PARSER",
         format!(
