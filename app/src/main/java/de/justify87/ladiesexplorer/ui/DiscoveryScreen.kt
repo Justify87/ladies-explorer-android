@@ -72,13 +72,16 @@ fun DiscoverScreen(
         if (!visible || state.busy || current == null) return@LaunchedEffect
         for (next in upcoming) {
             try {
-                val profile = decks[next.listingId] ?: core.readSwipeProfile(next.listingId, prefetchControl, refresh = false)
+                val profile = decks[next.listingId] ?: core.readSwipeProfile(next.listingId, prefetchControl,
+                    refresh = false, allowNetwork = state.activeRunId != null)
                 decks[next.listingId] = profile
                 warmSwipeImages(context, next, profile)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (_: Exception) {
-                warmSwipeImages(context, next, null)
+                try { warmSwipeImages(context, next, null) }
+                catch (cancel: CancellationException) { throw cancel }
+                catch (_: Exception) { /* optional cache warming must not fail the deck */ }
             }
         }
     }
