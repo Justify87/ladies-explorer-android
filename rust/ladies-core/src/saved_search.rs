@@ -1,4 +1,5 @@
 use rusqlite::{OptionalExtension, params};
+use std::collections::HashSet;
 use serde_json::json;
 
 use crate::{CoreError, LadiesCore, source::{self, SearchRequest, SearchResponse}};
@@ -97,22 +98,20 @@ fn persist_results(core: &LadiesCore, id: &str, result: &SearchResponse) -> Resu
         "SELECT last_run_at FROM saved_searches WHERE saved_search_id=?1",
         [id], |r| r.get(0),
     ).optional()?.ok_or_else(|| CoreError::InvalidInput("Saved search was deleted".into()))?;
-    let previous_present: i64 = tx.query_row(
-        "SELECT COUNT(*) FROM saved_search_results WHERE saved_search_id=?1 AND present=1",
-        [id], |r|r.get(0),
-    )?;
+    let previous_keys: HashSet<String> = {
+        let mut query = tx.prepare(
+            "SELECT result_key FROM saved_search_results WHERE saved_search_id=?1 AND present=1"
+        )?;
+        let rows = query.query_map([id], |r| r.get::<_,String>(0))?;
+        rows.collect::<rusqlite::Result<HashSet<_>>>()?
+    };
     tx.execute(
         "UPDATE saved_search_results SET present=0 WHERE saved_search_id=?1",[id]
     )?;
     let mut newly_seen = 0u32;
     for (position, card) in result.profiles.iter().enumerate() {
         let key = format!("LADIES:{}",card.advert_id);
-        let known: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM saved_search_results
-             WHERE saved_search_id=?1 AND result_key=?2)",
-            params![id,key],|r|r.get(0),
-        )?;
-        if !known && existing.is_some() {
+        if !previous_keys.contains(&key) && existing.is_some() {
             newly_seen += 1;
         }
         let snapshot = json!({
@@ -134,7 +133,9 @@ fn persist_results(core: &LadiesCore, id: &str, result: &SearchResponse) -> Resu
             params![id,key,snapshot,position as i64],
         )?;
     }
-    let removed = previous_present.saturating_sub(result.profiles.len() as i64 - newly_seen as i64);
+    let current_keys: HashSet<String> = result.profiles.iter()
+        .map(|card| format!("LADIES:{}",card.advert_id)).collect();
+    let removed = previous_keys.difference(&current_keys).count();
     tx.execute(
         "UPDATE saved_searches SET
          last_run_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
