@@ -521,17 +521,23 @@ mod tests {
         db.pragma_update(None, "application_id", APPLICATION_ID)
             .unwrap();
         db.pragma_update(None, "user_version", 1).unwrap();
-        db.execute_batch(r#"PRAGMA foreign_keys=ON;
+        db.execute_batch(
+            r#"PRAGMA foreign_keys=ON;
             INSERT INTO persons(person_id) VALUES (1),(2);
             INSERT INTO listings(listing_id,person_id,external_listing_id) VALUES (10,2,'old');
             INSERT INTO identity_events
             (identity_event_id,listing_id,previous_person_id,new_person_id,action,evidence_json)
             VALUES (20,10,1,2,'MANUAL_MATCH','{"previous_person_id":1}');
-            DELETE FROM persons WHERE person_id=1;"#).unwrap();
-        let old_before: Option<i64> = db.query_row(
-            "SELECT previous_person_id FROM identity_events WHERE identity_event_id=20", [],
-            |r| r.get(0)
-        ).unwrap();
+            DELETE FROM persons WHERE person_id=1;"#,
+        )
+        .unwrap();
+        let old_before: Option<i64> = db
+            .query_row(
+                "SELECT previous_person_id FROM identity_events WHERE identity_event_id=20",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(old_before, None);
         migrate(&mut db).unwrap();
         let old: i64 = db
