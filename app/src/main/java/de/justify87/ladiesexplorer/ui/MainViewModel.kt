@@ -49,6 +49,8 @@ data class SearchUiState(
     val selectedFilters: Map<String, Set<String>> = emptyMap(),
     val filterCatalog: SourceFilterCatalog? = null,
     val savedSearches: List<SavedSearchInfo> = emptyList(),
+    val showingSavedSearchId: String? = null,
+    val savedResultCards: List<SavedSearchCard> = emptyList(),
     val editingSavedSearchId: String? = null,
     val loading: Boolean = false,
     val saving: Boolean = false,
@@ -117,6 +119,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateProfileRequest()
         _searchUiState.update {
             it.copy(response = null, profileOpen = false, profile = null, error = null,
+                showingSavedSearchId = null, savedResultCards = emptyList(),
                 mediaArchive = null, mediaWarning = null, archiving = false)
         }
     }
@@ -259,11 +262,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun closeSavedResults() {
+        _searchUiState.update { it.copy(showingSavedSearchId = null, savedResultCards = emptyList()) }
+    }
+
+    fun showSavedResults(id: String) {
+        viewModelScope.launch {
+            try {
+                val results = core.savedSearchResults(id)
+                core.acknowledgeSavedSearch(id)
+                _searchUiState.update {
+                    it.copy(showingSavedSearchId=id,savedResultCards=results,
+                        savedSearches=core.savedSearches(),error=null)
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                _searchUiState.update { it.copy(error=failure.message ?: "Gespeicherte Ergebnisse konnten nicht geladen werden") }
+            }
+        }
+    }
+
     fun startSearch(savedId: String? = null) {
         if (_searchUiState.value.loading || _uiState.value.loading) return
         val input = _searchUiState.value
         invalidateProfileRequest()
-        _searchUiState.update { it.copy(loading = true,error = null,profile = null,profileOpen = false,response = null) }
+        _searchUiState.update { it.copy(loading = true,error = null,profile = null,profileOpen = false,response = null,
+                showingSavedSearchId = null,savedResultCards = emptyList()) }
         viewModelScope.launch {
             try {
                 val result = if (savedId == null) core.search(request(input)) else core.runSavedSearch(savedId)
