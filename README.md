@@ -10,7 +10,11 @@ Native, lokal genutzte Android-App mit Kotlin, Jetpack Compose / Material 3 Expr
 - Lokales Debug-/Performance-Logging und optionaler HTTP-Mitschnitt mit TXT-/HAR-Export.
 - Externe Video-/WhatsApp-Intents; kein integrierter Messenger oder automatische KI-/OCR-Preisextraktion.
 
-Der Code ist keine vollständig abgenommene Web-App-Ablösung. Offene Anforderungen (u. a. Notizen, Begegnungen und Gesamtintegration), Planabweichungen und Geräteabnahme stehen ausschließlich in der [Roadmap](docs/ROADMAP.md).
+Der Code ist keine vollständig abgenommene Web-App-Ablösung. Offene Anforderungen (u. a. Notizen, Begegnungen und Gesamtintegration), Planabweichungen und Geräteabnahme stehen im [Roadmap-Index](docs/ROADMAP.md); die operative M05-Planung ist dort verlinkt.
+
+## Aktive Weiterentwicklung
+
+M05 ist zur vollständigen Frontend-Parität wieder geöffnet. Nächsten ausführbaren Schritt dem [Aufgabenregister](docs/M05-TASKS.md) entnehmen; M06/M07 nicht vorziehen. Einstieg für Agenten: [AGENTS.md](AGENTS.md).
 
 ## Architektur
 
@@ -64,6 +68,10 @@ Format, Voraussetzungen, Ausschlüsse und Integrität: [DATA-IMPORT.md](docs/DAT
 | [DIAGNOSTICS.md](docs/DIAGNOSTICS.md) | Lokale Logs, Messungen, HTTP-Mitschnitt, Export und Prüfschritte |
 | [MAP.md](docs/MAP.md) | Karte, Geocoding, Cache, Lifecycle und Abnahme |
 | [ROADMAP.md](docs/ROADMAP.md) | Implementierungsplan, Soll/Ist und offene Anforderungen |
+| [M05-PLAN.md](docs/M05-PLAN.md) | Aktives M05-Soll, Design, Architektur, Scope und Abnahme |
+| [M05-PARITY.md](docs/M05-PARITY.md) | Legacy-/Native-Paritätsmatrix mit stabilen Anforderungs-IDs |
+| [M05-TASKS.md](docs/M05-TASKS.md) | Operative Aufgaben, Abhängigkeiten, Status, Review-Gates |
+| [AGENTS.md](AGENTS.md) | Ausführungs-Harness für Agenten |
 | [PROVENANCE.md](docs/PROVENANCE.md) | Artefact-Referenz und Codeherkunft |
 
 Bei fachlichen Änderungen die zuständige Dokumentation im selben PR aktualisieren. Historische Meilensteinberichte sind über Git verfügbar. Keine zusätzlichen parallelen Spezifikationen.

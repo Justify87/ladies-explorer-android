@@ -17,11 +17,15 @@ Die linke Spalte verwendet die ursprüngliche Planung vom 17.11.2026; die PR-Spa
 | M02 – Datenbank: SQLite-Domänenmodell, Migration/Import | Später M01 [PR #2](https://github.com/Justify87/ladies-explorer-android/pull/2) für das Domänenmodell; M02 [PR #3](https://github.com/Justify87/ladies-explorer-android/pull/3) für den Legacy-Import. Schema v2 im weiteren Verlauf. | Reale Migration mit privatem Bestand nicht durch CI belegt; [DATA-IMPORT](DATA-IMPORT.md). |
 | M03 – Suche: HTTP, Filter, Pagination, Parser | M03 [PR #4](https://github.com/Justify87/ladies-explorer-android/pull/4), spätere Profilrouten-Korrektur [PR #8](https://github.com/Justify87/ladies-explorer-android/pull/8); [SOURCE](SOURCE.md). | Live-Kompatibilität und Vollständigkeit prüfen. |
 | M04 – Profile und Identitäten: dHash, Historie, Medien | M04 [PR #5](https://github.com/Justify87/ladies-explorer-android/pull/5); [ARCHITECTURE](ARCHITECTURE.md). | Reale Medien-/Identitätsfälle abnehmen. |
-| M05 – Frontend: Swipe-Deck, Suche, Grid, Details, Favoriten, Notizen | M05 [PR #6](https://github.com/Justify87/ladies-explorer-android/pull/6): native Feeds, Suchliste, Profile, Favoriten, bereits gespeicherte Suchen. | Native Notizbearbeitung und separate Grid-/Wechselansicht nicht als umgesetzt nachgewiesen. |
+| M05 – Frontend: Swipe-Deck, Suche, Grid, Details, Favoriten, Notizen | M05 [PR #6](https://github.com/Justify87/ladies-explorer-android/pull/6): native Feeds, Suchliste, Profile, Favoriten, bereits gespeicherte Suchen. | M05 erneut geöffnet: visuelle und funktionale Parität nach [M05-PLAN](M05-PLAN.md), [Matrix](M05-PARITY.md) und [Aufgabenregister](M05-TASKS.md); PR #6 bleibt technische Basis, nicht Endabnahme. |
 | M06 – Weitere Funktionen: Karte, gespeicherte Suchen, Begegnungen, Einstellungen, externer WhatsApp-Aufruf | Gespeicherte Suchen bereits in #6; Einstellungen/WhatsApp in main; MapLibre M06 [PR #10](https://github.com/Justify87/ladies-explorer-android/pull/10), [MAP](MAP.md). | Begegnungen/Besuche und Bewertungen (u. a. Gesamt- und Sympathiebewertung) im Schema/Import vorhanden, keine vollständige native Bearbeitung nachgewiesen. Manuelle Preislisten ebenfalls im Schema/Import; deren UI-Sollumfang noch bestätigen. Keine automatische Preisextraktion. |
 | M07 – Gesamtintegration: Performance, Stabilität, Tests, Import/Export, Release-Workflow | CI- und Diagnose-Infrastruktur vorhanden; kein abgeschlossener M07-PR nachgewiesen. | Funktionsparität zum vereinbarten Soll, Geräteabnahme, Import-/Export-Umfang und Release-Reife prüfen. |
 
 „In main“ bedeutet gemergter Code, nicht automatisch physisch getestet oder vollständig abgenommen. Die ursprünglichen Anforderungen sind aus dem Projektverlauf rekonstruiert, nicht aus einem separat vollständig verifizierten Originaldokument. Die PRs belegen die tatsächlich umgesetzte Reihenfolge; sie ersetzen den Sollumfang nicht.
+
+## Aktiver Arbeitsstrang: M05-Erweiterung
+
+Der Nutzer hat am 18.11.2026 die vollständige M05-Frontend-Adaption auf Grundlage der ursprünglichen Web-App priorisiert. [M05-PLAN](M05-PLAN.md) definiert Soll/Scope und Gates, [M05-PARITY](M05-PARITY.md) den belegten Ausgangsabgleich, [M05-TASKS](M05-TASKS.md) den einzigen operativen Status. [AGENTS](../AGENTS.md) regelt agentenbasierte Umsetzung. Reihenfolge M05.0–M05.9; nächsten ausführbaren Task aus dem Aufgabenregister ableiten, keine neue M06-/M07-Implementierung. Die schon integrierten M06-Bestandteile Karte und gespeicherte Suchen nur in die M05-UI einbinden; bestehende Fachverträge erhalten. Planungsstand ist keine Implementierung oder Geräteabnahme.
 
 ## Nachträgliche Arbeitsstränge
 
@@ -31,7 +35,7 @@ Die linke Spalte verwendet die ursprüngliche Planung vom 17.11.2026; die PR-Spa
 
 ## Offene Entscheidungen und Abnahme
 
-Vor M07 die noch nicht abgedeckten Notiz-, Begegnungs- und Bewertungsfunktionen sowie Grid-/Export-/Release-Anforderungen gegen den vereinbarten Soll-Umfang abgleichen. Nicht vorhandene Funktionen nicht durch bloße Schematabellen als erledigt markieren. Keine neue Funktion allein aufgrund dieser Dokumentationskonsolidierung umsetzen; bestätigte Scope-Änderungen hier ausdrücklich vermerken.
+M05 zuerst gemäß aktivem Aufgabenregister abschließen (u. a. Personennotiz und Grid). Danach M06-Restumfang (Begegnungen, Bewertungen, manuelle Preislisten) und M07-Export-/Release-Anforderungen abgleichen. Nicht vorhandene Funktionen nicht durch bloße Schematabellen als erledigt markieren. Keine neue Funktion allein aufgrund dieser Dokumentationskonsolidierung umsetzen; bestätigte Scope-Änderungen hier ausdrücklich vermerken.
 
 Geräteabnahme: realer Import (mit lokalem Testbestand), vollständige Suche mit Radius und Pagination, gespeicherte Such-Deltas, Profil-/Medienabruf und Offline-Fallback, Swipe/Favoriten/Identitätsbestätigung, Karte inkl. Lifecycle/Geocoding, Diagnose inkl. Firefox-Import, App-Neustart und Performance. Bereichsspezifische Prüfschritte stehen in den Fachdateien. Automatisierte CI ist davon getrennt; keine unbelegte Geräte- oder Releasefreigabe.
 
