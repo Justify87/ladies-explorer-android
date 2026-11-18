@@ -25,7 +25,7 @@ Die linke Spalte verwendet die ursprüngliche Planung vom 17.11.2026; die PR-Spa
 
 ## Aktiver Arbeitsstrang: M05-Erweiterung
 
-Der Nutzer hat am 18.11.2026 die vollständige M05-Frontend-Adaption auf Grundlage der ursprünglichen Web-App priorisiert. [M05-PLAN](M05-PLAN.md) definiert Soll/Scope und Gates, [M05-PARITY](M05-PARITY.md) den belegten Ausgangsabgleich, [M05-TASKS](M05-TASKS.md) den einzigen operativen Status. [AGENTS](../AGENTS.md) regelt agentenbasierte Umsetzung. Reihenfolge M05.0–M05.9; zunächst T0.1, keine neue M06-/M07-Implementierung. Die schon integrierten M06-Bestandteile Karte und gespeicherte Suchen nur in die M05-UI einbinden; bestehende Fachverträge erhalten. Planungsstand ist keine Implementierung oder Geräteabnahme.
+Der Nutzer hat am 18.11.2026 die vollständige M05-Frontend-Adaption auf Grundlage der ursprünglichen Web-App priorisiert. [M05-PLAN](M05-PLAN.md) definiert Soll/Scope und Gates, [M05-PARITY](M05-PARITY.md) den belegten Ausgangsabgleich, [M05-TASKS](M05-TASKS.md) den einzigen operativen Status. [AGENTS](../AGENTS.md) regelt agentenbasierte Umsetzung. Reihenfolge M05.0–M05.9; nächsten ausführbaren Task aus dem Aufgabenregister ableiten, keine neue M06-/M07-Implementierung. Die schon integrierten M06-Bestandteile Karte und gespeicherte Suchen nur in die M05-UI einbinden; bestehende Fachverträge erhalten. Planungsstand ist keine Implementierung oder Geräteabnahme.
 
 ## Nachträgliche Arbeitsstränge
 

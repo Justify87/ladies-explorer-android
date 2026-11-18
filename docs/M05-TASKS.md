@@ -1,6 +1,6 @@
 # M05 – Aufgabenregister und Review-Gates
 
-Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementierungsaufgabe erledigt. Referenz [M05-PLAN](M05-PLAN.md), Anforderungen [M05-PARITY](M05-PARITY.md), Prozess [AGENTS](../AGENTS.md). IDs stabil; Abhängigkeiten sind Task-IDs ohne T-Präfix. Alle Tasks beginnen TODO. Status: TODO, IN_PROGRESS, REVIEW, DONE, BLOCKED; DEVICE_PENDING ist ein zusätzlicher Abnahmevermerk, kein bestandener Test. DONE = Akzeptanz belegt (ggf. nur Code-/CI-Teil; G9/Geräteabnahme separat offen). Blocker in Evidenzspalte eintragen. Nächster ausführbarer Einstieg: T0.1.
+Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementierungsaufgabe erledigt. Referenz [M05-PLAN](M05-PLAN.md), Anforderungen [M05-PARITY](M05-PARITY.md), Prozess [AGENTS](../AGENTS.md). IDs stabil; Abhängigkeiten sind Task-IDs ohne T-Präfix. Alle Tasks beginnen TODO. Status: TODO, IN_PROGRESS, REVIEW, DONE, BLOCKED; DEVICE_PENDING ist ein zusätzlicher Abnahmevermerk, kein bestandener Test. DONE = Akzeptanz belegt (ggf. nur Code-/CI-Teil; G9/Geräteabnahme separat offen). Blocker in Evidenzspalte eintragen. Initialer Einstieg: T0.1. Danach jeweils aus Status, Abhängigkeiten und Gates ableiten.
 
 | Task | Abh. | Matrix | Umsetzung (eng begrenzt) | Akzeptanz / Test | Status | Evidenz / Rest |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -16,7 +16,7 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | T2.3 | 2.2 | P08 | Top-5 häufige Filter aus gesicherten tatsächlichen Suchnutzungen ableiten; keine unnötige Datenbank neben Rust. | Tests: Sortierung, Gleichstand, nicht verwendete Filter, Neustart | TODO | — |
 | T2.4 | 2.2 | P09 | Verfügbarkeitsmodus kanonisieren, andere Zeiten erhalten; Editor vs Header unterschiedliche Ausführung. | Tests: Alle/Jetzt/Heute/Aliase, kein doppelter Run | TODO | — |
 | T2.5 | 2.1,2.2,2.4 | P10,P11 | Leichtgewichtige Rust-Vorschau prüfen/ergänzen, Debounce, Cancellation/Epoch, Quellzahl und lokal gefilterte Zahl unterscheiden; Radiusvertrag strikt. | Mock-Fixtures: 0/Fehler/Radiusabweichung/veraltete Antwort; keine Suchpersistenz | TODO | — |
-| T2.6 | 2.1,2.2 | P12,P13 | Lokale Filter über existierende Rust-Regeln verbinden; Präferenz/Media/AI; STUDIO/FACEAPP/Business nur nach belegter Datenlage, andernfalls UI-Grenze/Abweichung. | Fixtures für Filterkombinationen und unsupported Import; keine falsa Klassifikation | TODO | — |
+| T2.6 | 2.1,2.2 | P12,P13 | Lokale Filter über existierende Rust-Regeln verbinden; Präferenz/Media/AI; STUDIO/FACEAPP/Business nur nach belegter Datenlage, andernfalls UI-Grenze/Abweichung. | Fixtures für Filterkombinationen und unsupported Import; keine falsche Klassifikation | TODO | — |
 | T2.7 | 2.3,2.4,2.5,2.6 | P14 | Suche erfolgreich → Entdecken; Teilresultat sichtbar; Abbruch/Fehler ohne alten Zustand zu verfälschen. | Quellen-Pagination/Radius/Delta-Regression, Back und Fehler | TODO | — |
 | T3.1 | 2.7 | P15 | Gemeinsame responsive Medienhero-UI, Zähler, Story-Balken, Tippzonen, Back/Mehr. | 0/1/viele Medien, kleine Displays, Gesten | TODO | — |
 | T3.2 | 3.1 | P16 | Coil/Archiv/Remote, Medienreihenfolge und Video extern, Loading/Fehler/Offline. | Synthetische lokale/remote/fehlende Medien; kein neuer Downloader | TODO | — |
@@ -39,7 +39,7 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | T7.1 | 6.2,6.6 | P33 | Paginiertes gespeichertes Personenmodell FAVORITE/LIKE/DISLIKE mit echten Counts, stabiler Datum-/Namenssortierung. | Rust-Fixtures: Kombinationen, Cursor, Gleichstände, keine Doppelung | TODO | — |
 | T7.2 | 7.1 | P34 | Tabs, Thumbnail, Metadaten, Menü und favorisieren; List-State je Tab. | Direkte Aktionen, Back, kleine Displays | TODO | — |
 | T7.3 | 7.1,7.2 | P35 | Watchlist 36h, Top 3 + expand, übrige Favoriten dedupliziert; Changed-/Relisting-Badges. | Grenzzeit, Datumssortierung, mehrere Anzeigen/Änderungen | TODO | — |
-| T7.4 | 7.2,7.3 | P36 | Einzel-/Batchstatus mit sichere Quellen-API, Abbruch, begrenzte Parallelität, Progress und Fehler. | Offline/404/Timeout/Prüfseite unterscheiden; keine falsche Inaktivität | TODO | — |
+| T7.4 | 7.2,7.3 | P36 | Einzel-/Batchstatus mit sicherer Quellen-API, Abbruch, begrenzte Parallelität, Progress und Fehler. | Offline/404/Timeout/Prüfseite unterscheiden; keine falsche Inaktivität | TODO | — |
 | T8.1 | 7.4 | P37 | Gespeicherte-Suchen-Screen und Header-Neuindikator, bestehende CRUD/Run/Delta/Acknowledge. | Neu-/Gelesen, Umbenennen versus Definitionsänderung | TODO | — |
 | T8.2 | 8.1,2.2,2.6 | P38 | Gemeinsamen Editor für gespeicherte Vorlagen, getrennte Drafts und Unsupported-Regeln. | Import/Save/Rename/Edit/Cancel und Delta-Regression | TODO | — |
 | T8.3 | 8.1,5.1 | P39 | Gespeicherte Ergebnisse über gemeinsame Grid-Karten, Cursor und Offline-Profilopen. | Stabile Paging-Keys, sichtbare Deltas, keine 1000-Grenze | TODO | — |
@@ -62,7 +62,7 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | G8 | T8.1–T8.4 | G7 | Gemeinsamer Editor/Grid, Delta, UX-Konsistenz | TODO | — |
 | G9 | T9.1–T9.2 | G8 | Komplette Matrix, CI, APK, visuelle/physische Abnahme | TODO | — |
 
-Für jedes Gate: alle Tasks/Matrix-IDs prüfen; gezielte Tests und Full-CI pro PR; Diff nach redundanter Implementierung, Folgefehlern, Daten-/State-Konsistenz und Scope prüfen. Kritische/hohe Befunde beheben und erneut testen. Offene Geräteprüfungen bezeichnen; echte Geräteabnahme ist G9-Voraussetzung. Bei externem Blocker sachlichen Teil weiterführen soweit Abhängigkeiten zulassen, nicht auf DONE setzen. Kein automatischer Merge.
+Vor Beginn eines Meilensteins muss das Vorgänger-Gate erfüllt bzw. eine ausdrücklich dokumentierte Freigabe für offene Gerätebelege vorhanden sein; Task-Abhängigkeiten allein ersetzen dieses Gate nicht. Für jedes Gate: alle Tasks/Matrix-IDs prüfen; gezielte Tests und Full-CI pro PR; Diff nach redundanter Implementierung, Folgefehlern, Daten-/State-Konsistenz und Scope prüfen. Kritische/hohe Befunde beheben und erneut testen. Offene Geräteprüfungen bezeichnen; echte Geräteabnahme ist G9-Voraussetzung. Bei externem Blocker sachlichen Teil weiterführen soweit Abhängigkeiten zulassen, nicht auf DONE setzen. Kein automatischer Merge.
 
 ## Reviewprotokoll (im PR; hier nur Beleg/Status verlinken)
 

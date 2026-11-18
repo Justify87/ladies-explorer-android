@@ -14,7 +14,7 @@ Der Code ist keine vollständig abgenommene Web-App-Ablösung. Offene Anforderun
 
 ## Aktive Weiterentwicklung
 
-M05 ist zur vollständigen Frontend-Parität wieder geöffnet. Nächster Schritt: T0.1 im [Aufgabenregister](docs/M05-TASKS.md); M06/M07 nicht vorziehen. Einstieg für Agenten: [AGENTS.md](AGENTS.md).
+M05 ist zur vollständigen Frontend-Parität wieder geöffnet. Nächsten ausführbaren Schritt dem [Aufgabenregister](docs/M05-TASKS.md) entnehmen; M06/M07 nicht vorziehen. Einstieg für Agenten: [AGENTS.md](AGENTS.md).
 
 ## Architektur
 
