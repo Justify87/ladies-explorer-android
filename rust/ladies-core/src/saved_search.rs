@@ -47,6 +47,41 @@ pub(crate) fn save(
     .map_err(Into::into)
 }
 
+fn decode_definition(definition: &str) -> Result<SearchRequest, CoreError> {
+    if let Ok(request) = serde_json::from_str::<SearchRequest>(definition) {
+        source::filter::validate_request(&request)?;
+        return Ok(request);
+    }
+    // Imported definitions use camelCase ranges and a nested selected filter map.
+    // Translate the intent into the native request rather than preserving a Python pipeline.
+    let legacy: serde_json::Value = serde_json::from_str(definition)
+        .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
+    let number = |camel: &str, snake: &str, default: u32| {
+        legacy.get(camel).or_else(|| legacy.get(snake)).and_then(|value| {
+            value.as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .or_else(|| value.as_str()?.parse().ok())
+        }).unwrap_or(default)
+    };
+    let request = SearchRequest {
+        city: legacy.get("city").and_then(|v| v.as_str())
+            .unwrap_or_default().to_owned(),
+        radius_km: number("radius", "radius_km", 20),
+        category: legacy.get("category").and_then(|v| v.as_str())
+            .unwrap_or_default().to_owned(),
+        age_min: number("ageMin", "age_min", 18),
+        age_max: number("ageMax", "age_max", 60),
+        height_min: number("heightMin", "height_min", 140),
+        height_max: number("heightMax", "height_max", 200),
+        filters_json: legacy.get("selected")
+            .filter(|v| v.is_object())
+            .map_or_else(|| "{}".into(), |v| v.to_string()),
+        max_pages: 50,
+    };
+    source::filter::validate_request(&request)?;
+    Ok(request)
+}
+
 fn request(core: &LadiesCore, id: &str) -> Result<SearchRequest, CoreError> {
     let db = core.connection()?;
     let definition: String = db
@@ -57,13 +92,7 @@ fn request(core: &LadiesCore, id: &str) -> Result<SearchRequest, CoreError> {
         )
         .optional()?
         .ok_or_else(|| CoreError::InvalidInput("Saved search not found".into()))?;
-    let request: SearchRequest = serde_json::from_str(&definition).map_err(|_| {
-        CoreError::InvalidInput(
-            "Imported search definition requires manual recreation with native filters".into(),
-        )
-    })?;
-    source::filter::validate_request(&request)?;
-    Ok(request)
+    decode_definition(&definition)
 }
 
 pub(crate) fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreError> {
@@ -88,7 +117,7 @@ pub(crate) fn list(core: &LadiesCore) -> Result<Vec<SavedSearchInfo>, CoreError>
     })?;
     rows.map(|row| {
         let (search_id, name, definition, last_run_at, last_error, unread) = row?;
-        let parsed = serde_json::from_str::<SearchRequest>(&definition).ok();
+        let parsed = decode_definition(&definition).ok();
         Ok(SavedSearchInfo {
             search_id,
             name,
