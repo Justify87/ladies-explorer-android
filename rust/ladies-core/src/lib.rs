@@ -4,6 +4,7 @@
 mod diagnostics;
 mod discovery;
 mod history;
+mod http_capture;
 mod identity;
 mod legacy_import;
 mod media;
@@ -140,6 +141,7 @@ pub struct ImportReport {
 
 pub use discovery::{DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem};
 pub use history::ChangeRecord;
+pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
 pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
@@ -153,6 +155,7 @@ pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, Sea
 pub struct LadiesCore {
     db: Mutex<Connection>,
     diagnostics: Arc<diagnostics::Diagnostics>,
+    recorder: Arc<http_capture::HttpRecorder>,
     source_session: source::SourceSession,
     media_root: Option<std::path::PathBuf>,
 }
@@ -175,16 +178,19 @@ impl LadiesCore {
                 .map(|parent| parent.join("ladies_data"))
         };
         let diagnostics = Arc::new(diagnostics::Diagnostics::new(&database_path));
+        let recorder = Arc::new(http_capture::HttpRecorder::new(&database_path));
         diagnostics.event("CORE", "Opening SQLite");
         let mut db = Connection::open(database_path)?;
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
         diagnostics.event("CORE", "SQLite schema ready");
-        let source_session = source::SourceSession::new(Arc::clone(&diagnostics))?;
+        let source_session =
+            source::SourceSession::new(Arc::clone(&diagnostics), Arc::clone(&recorder))?;
         Ok(Arc::new(Self {
             db: Mutex::new(db),
             diagnostics,
+            recorder,
             source_session,
             media_root,
         }))
@@ -197,7 +203,11 @@ impl LadiesCore {
     ) -> Result<ImportReport, CoreError> {
         self.diagnostics
             .event("IMPORT", "Legacy data import requested");
-        let result = legacy_import::import_bundle(self, &bundle_path, &app_files_directory);
+        let result = self
+            .diagnostics
+            .timed("IMPORT", "import_legacy_bundle", || {
+                legacy_import::import_bundle(self, &bundle_path, &app_files_directory)
+            });
         match &result {
             Ok(report) => self.diagnostics.event(
                 "IMPORT",
@@ -213,8 +223,20 @@ impl LadiesCore {
         result
     }
 
-    pub fn record_debug_event(&self, component: String, message: String) {
-        self.diagnostics.event(&component, message);
+    pub fn record_kotlin_event(&self, component: String, message: String, detailed: bool) {
+        if detailed {
+            self.diagnostics.debug(&component, message);
+        } else {
+            self.diagnostics.event(&component, message);
+        }
+    }
+
+    pub fn set_diagnostic_debug_enabled(&self, enabled: bool) {
+        self.diagnostics.set_debug(enabled);
+    }
+
+    pub fn diagnostic_debug_enabled(&self) -> bool {
+        self.diagnostics.debug_enabled()
     }
 
     pub fn diagnostic_status(&self) -> Result<DiagnosticStatus, CoreError> {
@@ -241,16 +263,48 @@ impl LadiesCore {
         Ok(path.to_string_lossy().into_owned())
     }
 
+    pub fn set_http_capture_mode(&self, mode: CaptureMode) -> CaptureStatus {
+        self.recorder.set_mode(mode);
+        self.recorder.status()
+    }
+
+    pub fn http_capture_status(&self) -> CaptureStatus {
+        self.recorder.status()
+    }
+
+    pub fn record_image_http(&self, mut event: HttpObservation) {
+        event.is_media = true;
+        self.recorder.record(event);
+    }
+
+    pub fn clear_http_capture(&self) -> Result<(), CoreError> {
+        self.recorder
+            .clear()
+            .map_err(|e| CoreError::Storage(e.to_string()))
+    }
+
+    pub fn export_http_har(&self, directory: String) -> Result<String, CoreError> {
+        self.recorder
+            .export(std::path::Path::new(&directory))
+            .map(|p| p.to_string_lossy().into_owned())
+            .map_err(|e| CoreError::Storage(format!("HAR export failed: {e}")))
+    }
+
     pub fn search_source(
         &self,
         query: SearchRequest,
         control: Arc<RequestControl>,
     ) -> Result<SearchResponse, CoreError> {
-        source::search(self, query, Some(&control))
+        self.diagnostics.timed("SEARCH", "search_source", || {
+            source::search(self, query, Some(&control))
+        })
     }
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
-        source::load_profile(self, listing_id)
+        self.diagnostics
+            .timed("PROFILE", "load_source_profile", || {
+                source::load_profile(self, listing_id)
+            })
     }
 
     pub fn cached_source_profile(
@@ -266,7 +320,10 @@ impl LadiesCore {
         include_videos: bool,
         control: Arc<RequestControl>,
     ) -> Result<MediaArchiveReport, CoreError> {
-        media::archive(self, snapshot_id, include_videos, &control)
+        self.diagnostics
+            .timed("MEDIA", "archive_profile_media", || {
+                media::archive(self, snapshot_id, include_videos, &control)
+            })
     }
 
     pub fn list_identity_candidates(
@@ -957,5 +1014,74 @@ mod tests {
         core.add_listing(id, Some(profile_id), "LADIES".into(), "ad".into(), None)
             .unwrap();
         assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
+    }
+    #[test]
+    fn independent_core_exports_remain_consistent_under_parallel_writes() {
+        use std::fs;
+        use std::thread;
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let a = LadiesCore::new(
+            first
+                .path()
+                .join("ladies.sqlite")
+                .to_string_lossy()
+                .into_owned(),
+        )
+        .unwrap();
+        let b = LadiesCore::new(
+            second
+                .path()
+                .join("ladies.sqlite")
+                .to_string_lossy()
+                .into_owned(),
+        )
+        .unwrap();
+        let jobs: Vec<_> = [(a.clone(), "core-alpha"), (b.clone(), "core-beta")]
+            .into_iter()
+            .map(|(core, label)| {
+                thread::spawn(move || {
+                    for n in 0..200 {
+                        core.record_kotlin_event("TEST".into(), format!("{label}-{n}"), false);
+                    }
+                })
+            })
+            .collect();
+        for _ in 0..5 {
+            for (core, directory) in [(&a, &first), (&b, &second)] {
+                let snapshot = core
+                    .export_diagnostic_snapshot(
+                        directory
+                            .path()
+                            .join("exports")
+                            .to_string_lossy()
+                            .into_owned(),
+                    )
+                    .unwrap();
+                let data = fs::read_to_string(snapshot).unwrap();
+                assert!(data.ends_with('\n'));
+            }
+        }
+        for job in jobs {
+            job.join().unwrap();
+        }
+        let export_a = fs::read_to_string(
+            a.export_diagnostic_snapshot(
+                first.path().join("exports").to_string_lossy().into_owned(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let export_b = fs::read_to_string(
+            b.export_diagnostic_snapshot(
+                second.path().join("exports").to_string_lossy().into_owned(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(export_a.contains("core-alpha-199"));
+        assert!(!export_a.contains("core-beta-"));
+        assert!(export_b.contains("core-beta-199"));
+        assert!(!export_b.contains("core-alpha-"));
     }
 }

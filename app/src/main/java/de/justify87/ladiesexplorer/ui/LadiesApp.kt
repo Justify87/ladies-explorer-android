@@ -24,8 +24,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.RadioButton
+import de.justify87.ladiesexplorer.core.CaptureMode
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -48,12 +53,24 @@ fun LadiesApp(
     onPickLegacyBundle: () -> Unit,
     onSaveDiagnostics: () -> Unit,
     onShareDiagnostics: () -> Unit,
+    onSaveHar: () -> Unit,
+    onShareHar: () -> Unit,
 ) {
     val home by viewModel.uiState.collectAsStateWithLifecycle()
     val search by viewModel.searchUiState.collectAsStateWithLifecycle()
     val discovery by viewModel.discoverState.collectAsStateWithLifecycle()
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val tabs = Tab.entries
+
+    // Refresh the displayed session size while the capture settings are visible.
+    LaunchedEffect(selected, home.httpCaptureMode, search.profileOpen) {
+        if (tabs[selected] == Tab.Settings && !search.profileOpen && home.httpCaptureMode != CaptureMode.OFF) {
+            while (true) {
+                delay(2_000)
+                viewModel.refreshCaptureStatus()
+            }
+        }
+    }
 
     BackHandler(enabled=search.profileOpen) { viewModel.closeProfile() }
 
@@ -157,6 +174,11 @@ fun LadiesApp(
                     onPickLegacyBundle=onPickLegacyBundle,
                     onSaveDiagnostics=onSaveDiagnostics,
                     onShareDiagnostics=onShareDiagnostics,
+                    onDebugLogging=viewModel::setDebugLoggingEnabled,
+                    onCaptureMode=viewModel::setHttpCaptureMode,
+                    onClearHar=viewModel::clearHttpCapture,
+                    onSaveHar=onSaveHar,
+                    onShareHar=onShareHar,
                     modifier=modifier,
                 )
             }
@@ -171,6 +193,11 @@ private fun SettingsScreen(
     onPickLegacyBundle: () -> Unit,
     onSaveDiagnostics: () -> Unit,
     onShareDiagnostics: () -> Unit,
+    onDebugLogging: (Boolean) -> Unit,
+    onCaptureMode: (CaptureMode) -> Unit,
+    onClearHar: () -> Unit,
+    onSaveHar: () -> Unit,
+    onShareHar: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -196,6 +223,10 @@ private fun SettingsScreen(
             style=MaterialTheme.typography.bodySmall,
         )
         Text("Diagnose",style=MaterialTheme.typography.titleLarge)
+        androidx.compose.foundation.layout.Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Debug-Details", modifier=Modifier.weight(1f))
+            Switch(checked=state.debugLoggingEnabled,onCheckedChange=onDebugLogging)
+        }
         Text("Debug-Protokolle können persönliche Inhalte enthalten. Teile sie nur bewusst.",style=MaterialTheme.typography.bodySmall)
         state.diagnosticLastError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
         Text(
@@ -211,6 +242,43 @@ private fun SettingsScreen(
             onClick=onShareDiagnostics,enabled=state.diagnosticAvailable,
             modifier=Modifier.fillMaxWidth(),
         ) { Text("Debug-Log teilen") }
+        Text("HTTP-Aufzeichnung",style=MaterialTheme.typography.titleMedium)
+        Text(
+            "Standardmäßig aus – auch nach jedem Neustart. HTML/JSON können personenbezogene Daten enthalten. HAR-Dateien nur bewusst exportieren und teilen.",
+            style=MaterialTheme.typography.bodySmall,
+        )
+        listOf(
+            CaptureMode.OFF to "Aus",
+            CaptureMode.METADATA to "Metadaten",
+            CaptureMode.TEXT to "Mit Textantworten",
+        ).forEach { (mode, label) ->
+            androidx.compose.foundation.layout.Row(
+                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                modifier=Modifier.fillMaxWidth(),
+            ) {
+                RadioButton(selected=state.httpCaptureMode==mode,onClick={onCaptureMode(mode)})
+                Text(label)
+            }
+        }
+        Text(
+            "Aufzeichnung: ${state.httpCaptureEntries} Requests · ${state.httpCaptureBytes} Bytes / 25 MiB",
+            style=MaterialTheme.typography.bodySmall,
+        )
+        if (state.httpCaptureStopped) Text(
+            "Sitzungslimit erreicht. Export weiter möglich; zum Neustart Aufzeichnung löschen.",
+            color=MaterialTheme.colorScheme.error,
+        )
+        state.httpCaptureError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+        Button(onClick=onSaveHar,enabled=state.httpCaptureEntries>0u,modifier=Modifier.fillMaxWidth()) {
+            Text("HAR speichern")
+        }
+        Button(onClick=onShareHar,enabled=state.httpCaptureEntries>0u,modifier=Modifier.fillMaxWidth()) {
+            Text("HAR teilen")
+        }
+        Button(onClick=onClearHar,enabled=state.httpCaptureEntries>0u || state.httpCaptureStopped,
+            modifier=Modifier.fillMaxWidth()) {
+            Text("Aufzeichnung löschen")
+        }
         state.lastImport?.let { report ->
             Text("Import abgeschlossen",style=MaterialTheme.typography.titleMedium)
             Text(

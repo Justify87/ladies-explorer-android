@@ -1,16 +1,32 @@
 package de.justify87.ladiesexplorer.core
 
 import android.content.Context
+import android.os.SystemClock
+import co.touchlab.kermit.Logger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /** Android access to the Rust database, online source service and diagnostics. */
 class CoreStore(context: Context) {
     private val appFiles = context.filesDir
+    private val preferences = context.getSharedPreferences("diagnostics", Context.MODE_PRIVATE)
+    private val logger = Logger.withTag("LadiesExplorer")
+    @Volatile var imageCaptureMode: CaptureMode = CaptureMode.OFF
+        private set
+    private val captureEpoch = AtomicLong(0)
+    fun currentCaptureEpoch(): Long = captureEpoch.get()
+    // Only best-effort events are bounded. Control barriers are never rejected.
+    private val logBridge = DiagnosticEventQueue()
+    private val captureControls = Mutex()
     private val database = File(appFiles, "ladies.sqlite")
     private val engine: LadiesCore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        LadiesCore(database.absolutePath)
+        LadiesCore(database.absolutePath).also {
+            it.setDiagnosticDebugEnabled(preferences.getBoolean("debug", false))
+        }
     }
 
     /** App-private, size-bounded log; shared only through explicit user interaction. */
@@ -28,19 +44,80 @@ class CoreStore(context: Context) {
         File(engine.exportDiagnosticSnapshot(diagnosticExports.absolutePath))
     }
 
-    private inline fun <T> recorded(operation: String, work: () -> T): T {
-        runCatching { engine.recordDebugEvent("ANDROID", "$operation started") }
-        return try {
-            val result = work()
-            runCatching { engine.recordDebugEvent("ANDROID", "$operation completed") }
-            result
-        } catch (failure: Exception) {
-            runCatching {
-                engine.recordDebugEvent(
-                    "ANDROID",
-                    "$operation failed: ${failure.stackTraceToString().take(3000)}",
-                )
+    fun isDebugLoggingEnabled(): Boolean = preferences.getBoolean("debug", false)
+
+    suspend fun setDebugLoggingEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        preferences.edit().putBoolean("debug", enabled).apply()
+        engine.setDiagnosticDebugEnabled(enabled)
+    }
+
+    private fun event(operation: String, durationMs: Long, failure: Exception? = null) {
+        val message = if (failure == null) {
+            "$operation completed duration_ms=$durationMs"
+        } else {
+            "$operation failed duration_ms=$durationMs type=${failure.javaClass.simpleName}"
+        }
+        if (failure == null) logger.i { message } else logger.e(failure) { message }
+        // The bounded bridge never blocks a Compose callback or an OkHttp hot path.
+        logBridge.offer {
+            runCatching { engine.recordKotlinEvent("ANDROID", message, false) }
+        }
+    }
+
+    fun enqueueImageObservation(observation: HttpObservation, epoch: Long) {
+        if (imageCaptureMode == CaptureMode.OFF || epoch != captureEpoch.get()) return
+        logBridge.offer {
+            // In-flight image calls from a previous recording session cannot leak into the new one.
+            if (epoch == captureEpoch.get()) {
+                runCatching { engine.recordImageHttp(observation) }
             }
+        }
+    }
+
+    suspend fun httpCaptureStatus(): CaptureStatus = withContext(Dispatchers.IO) {
+        captureControls.withLock {
+            engine.httpCaptureStatus().also { imageCaptureMode = it.mode }
+        }
+    }
+
+    suspend fun setHttpCaptureMode(mode: CaptureMode): CaptureStatus = withContext(Dispatchers.IO) {
+        captureControls.withLock {
+            captureEpoch.incrementAndGet()
+            engine.setHttpCaptureMode(mode).also { imageCaptureMode = it.mode }
+        }
+    }
+
+    suspend fun clearHttpCapture() = withContext(Dispatchers.IO) {
+        captureControls.withLock {
+            // Old in-flight requests are invalidated before the queue is drained.
+            captureEpoch.incrementAndGet()
+            imageCaptureMode = CaptureMode.OFF
+            engine.setHttpCaptureMode(CaptureMode.OFF)
+            logBridge.barrier()
+            engine.clearHttpCapture()
+        }
+    }
+
+    suspend fun createHarSnapshot(): File = withContext(Dispatchers.IO) {
+        captureControls.withLock {
+            val oldestAllowed = System.currentTimeMillis() - 48L * 60L * 60L * 1_000L
+            diagnosticExports.listFiles()
+                ?.filter { it.isFile && it.name.startsWith("ladies-http-") && it.lastModified() < oldestAllowed }
+                ?.forEach(File::delete)
+            // Snapshot includes every image event queued before this barrier.
+            logBridge.barrier()
+            File(engine.exportHttpHar(diagnosticExports.absolutePath))
+        }
+    }
+
+    private inline fun <T> recorded(operation: String, work: () -> T): T {
+        val started = SystemClock.elapsedRealtimeNanos()
+        try {
+            return work().also {
+                event(operation, (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000)
+            }
+        } catch (failure: Exception) {
+            event(operation, (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000, failure)
             throw failure
         }
     }

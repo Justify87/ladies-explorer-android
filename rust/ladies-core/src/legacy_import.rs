@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path};
+use std::time::Instant;
 
 use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
 use sha2::{Digest, Sha256};
@@ -317,7 +318,11 @@ pub(crate) fn import_bundle(
 
     let staged_assets = staging.path().join("ladies_data");
     fs::create_dir(&staged_assets)?;
+    let assets_started = Instant::now();
     let media_file_count = unpack_media(&mut archive, &source, &staged_assets)?;
+    core.diagnostics
+        .phase("IMPORT", "unpack_and_hash_media", assets_started);
+    let sqlite_started = Instant::now();
     let mut target = core.connection()?;
     if target_has_data(&target)? {
         return Err(error(
@@ -340,6 +345,8 @@ pub(crate) fn import_bundle(
         let _ = fs::remove_dir_all(&final_assets);
         return Err(CoreError::from(err));
     }
+    core.diagnostics
+        .phase("IMPORT", "sqlite_import_commit", sqlite_started);
     Ok(ImportReport {
         persons: count(&counts, "persons"),
         listings: count(&counts, "listings"),

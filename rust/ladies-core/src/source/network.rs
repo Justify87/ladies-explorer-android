@@ -2,13 +2,18 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use serde_json::Value;
 use url::Url;
 
-use crate::{CoreError, diagnostics::Diagnostics, operation::RequestControl};
+use crate::{
+    CoreError,
+    diagnostics::Diagnostics,
+    http_capture::{self, CaptureMode, HttpObservation, HttpRecorder},
+    operation::RequestControl,
+};
 
 use super::{Card, SearchRequest, filter, parse};
 
@@ -41,7 +46,11 @@ trait Transport {
     }
     fn log_event(&self, component: &str, message: impl AsRef<str>) {
         if let Some(log) = self.diagnostics() {
-            log.event(component, message);
+            if component == "PARSER" {
+                log.debug(component, message);
+            } else {
+                log.event(component, message);
+            }
         }
     }
     fn log_html(&self, stage: &str, html: &str) {
@@ -55,24 +64,18 @@ trait Transport {
 pub(super) struct SourceHttp {
     client: Client,
     diagnostics: Arc<Diagnostics>,
+    recorder: Arc<HttpRecorder>,
 }
 
 impl SourceHttp {
-    pub(super) fn new(diagnostics: Arc<Diagnostics>) -> Result<Self, CoreError> {
+    pub(super) fn new(
+        diagnostics: Arc<Diagnostics>,
+        recorder: Arc<HttpRecorder>,
+    ) -> Result<Self, CoreError> {
         let client = Client::builder()
             .cookie_store(true)
-            .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                let destination = attempt.url();
-                if attempt.previous().len() >= 5 {
-                    attempt.error("Too many source redirects")
-                } else if destination.scheme() == "https"
-                    && matches!(destination.host_str(), Some("www.ladies.de" | "ladies.de"))
-                {
-                    attempt.follow()
-                } else {
-                    attempt.error("Source redirected outside ladies.de")
-                }
-            }))
+            // Redirects are followed explicitly so each actual network response can be captured.
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_secs(25))
             .user_agent(
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
@@ -83,6 +86,7 @@ impl SourceHttp {
         Ok(Self {
             client,
             diagnostics,
+            recorder,
         })
     }
 
@@ -117,6 +121,34 @@ fn check_redirect(
     Ok(())
 }
 
+fn redirect_target(
+    current: &Url,
+    status: u16,
+    location: Option<&str>,
+    followed: usize,
+) -> Result<Option<Url>, CoreError> {
+    if !matches!(status, 301 | 302 | 303 | 307 | 308) {
+        return Ok(None);
+    }
+    let Some(location) = location else {
+        return Ok(None);
+    };
+    if followed >= 5 {
+        return Err(CoreError::Source("Too many source redirects".into()));
+    }
+    let target = current
+        .join(location)
+        .map_err(|error| CoreError::Source(format!("Invalid redirect URL: {error}")))?;
+    if target.scheme() != "https"
+        || !matches!(target.host_str(), Some("www.ladies.de" | "ladies.de"))
+    {
+        return Err(CoreError::Source(
+            "Source redirected outside ladies.de".into(),
+        ));
+    }
+    Ok(Some(target))
+}
+
 impl Transport for SourceHttp {
     fn diagnostics(&self) -> Option<&Diagnostics> {
         Some(self.diagnostics.as_ref())
@@ -136,20 +168,95 @@ impl Transport for SourceHttp {
             "text/html, application/xhtml+xml, */*"
         };
         let requested_path = parsed.path().to_owned();
-        self.diagnostics.event("HTTP", format!("GET {url}"));
-        let mut response = self
-            .client
-            .get(parsed)
-            .header("Accept", accept)
-            .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
-            .header("Referer", BASE)
-            .header("DNT", "1")
-            .send()
-            .map_err(|e| {
-                self.diagnostics
-                    .event("HTTP", format!("GET failure {url}: {e}"));
-                CoreError::Source(format!("Source HTTP request failed: {e}"))
-            })?;
+        let request_started = Instant::now();
+        let mut current_url = parsed;
+        let mut followed = 0usize;
+        let (mut response, mut observation, started, capture_epoch) = loop {
+            let started = Instant::now();
+            let remaining = Duration::from_secs(25).saturating_sub(request_started.elapsed());
+            if remaining.is_zero() {
+                return Err(CoreError::Source("Source HTTP request timed out".into()));
+            }
+            let request = self
+                .client
+                .get(current_url.clone())
+                .timeout(remaining)
+                .header("Accept", accept)
+                .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
+                .header("Referer", BASE)
+                .header("DNT", "1")
+                .build()
+                .map_err(|error| {
+                    CoreError::Source(format!("Source HTTP request failed: {error}"))
+                })?;
+            let (capture_mode, capture_epoch) = self.recorder.mode_epoch();
+            let mut observation = (capture_mode != CaptureMode::Off).then(|| HttpObservation {
+                method: request.method().to_string(),
+                url: request.url().to_string(),
+                final_url: request.url().to_string(),
+                status: None,
+                http_version: "unknown".into(),
+                request_headers: http_capture::headers(request.headers()),
+                response_headers: Vec::new(),
+                mime: None,
+                response_size: None,
+                started_ms: http_capture::started_ms(),
+                headers_elapsed_ms: 0,
+                body_elapsed_ms: 0,
+                body: None,
+                is_media: false,
+                error: None,
+                body_omitted: None,
+            });
+            let sent = self.client.execute(request);
+            let response = match sent {
+                Ok(response) => response,
+                Err(error) => {
+                    if let Some(mut obs) = observation.take() {
+                        obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
+                        obs.error = Some(error.to_string());
+                        self.recorder.record_for_epoch(obs, capture_epoch);
+                    }
+                    self.diagnostics
+                        .error("HTTP", format!("GET failure {url}: {error}"));
+                    return Err(CoreError::Source(format!(
+                        "Source HTTP request failed: {error}"
+                    )));
+                }
+            };
+            let status = response.status().as_u16();
+            if matches!(status, 301 | 302 | 303 | 307 | 308) {
+                let location = response
+                    .headers()
+                    .get(reqwest::header::LOCATION)
+                    .and_then(|header| header.to_str().ok());
+                let next = redirect_target(response.url(), status, location, followed);
+                if next.as_ref().is_err() || matches!(next, Ok(Some(_))) {
+                    if let Some(mut obs) = observation.take() {
+                        obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
+                        obs.status = Some(status);
+                        obs.http_version = format!("{:?}", response.version());
+                        obs.response_headers = http_capture::headers(response.headers());
+                        obs.response_size = response.content_length();
+                        obs.mime = response
+                            .headers()
+                            .get(reqwest::header::CONTENT_TYPE)
+                            .and_then(|header| header.to_str().ok())
+                            .map(ToOwned::to_owned);
+                        obs.body_omitted = Some("redirect_body_not_read".into());
+                        self.recorder.record_for_epoch(obs, capture_epoch);
+                    }
+                }
+                if let Some(target) = next? {
+                    current_url = target;
+                    followed += 1;
+                    continue;
+                }
+                // A 3xx without Location is a terminal response and body is processed below.
+            }
+            break (response, observation, started, capture_epoch);
+        };
+        let header_duration = started.elapsed();
         let status = response.status().as_u16();
         let response_type = response
             .headers()
@@ -157,7 +264,16 @@ impl Transport for SourceHttp {
             .and_then(|value| value.to_str().ok())
             .unwrap_or("not specified")
             .to_owned();
-        self.diagnostics.event(
+        if let Some(obs) = observation.as_mut() {
+            obs.status = Some(status);
+            obs.http_version = format!("{:?}", response.version());
+            obs.headers_elapsed_ms = header_duration.as_millis() as u64;
+            obs.final_url = response.url().to_string();
+            obs.response_headers = http_capture::headers(response.headers());
+            obs.mime = Some(response_type.clone());
+            obs.response_size = response.content_length();
+        }
+        self.diagnostics.debug(
             "HTTP",
             format!(
                 "Response status={status} type={response_type} final_url={} content_length={:?}",
@@ -165,21 +281,64 @@ impl Transport for SourceHttp {
                 response.content_length()
             ),
         );
+        self.diagnostics
+            .phase("HTTP", "request_until_headers", started);
         let redirected_path = response.url().path().to_owned();
+        let body_started = Instant::now();
         let mut bytes = Vec::new();
-        response
+        let read_result = response
             .by_ref()
             .take(MAX_RESPONSE_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| CoreError::Source(format!("Source HTTP read failed: {e}")))?;
+            .read_to_end(&mut bytes);
+        if let Some(obs) = observation.as_mut() {
+            obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
+            obs.response_size = Some(bytes.len() as u64);
+        }
+        self.diagnostics
+            .phase("HTTP", "response_body_read", body_started);
+        if let Err(error) = read_result {
+            if let Some(mut obs) = observation.take() {
+                obs.error = Some(error.to_string());
+                obs.body_omitted = Some("read_failed".into());
+                self.recorder.record_for_epoch(obs, capture_epoch);
+            }
+            return Err(CoreError::Source(format!(
+                "Source HTTP read failed: {error}"
+            )));
+        }
         if bytes.len() as u64 > MAX_RESPONSE_BYTES {
+            if let Some(mut obs) = observation.take() {
+                obs.error = Some("Source response size limit exceeded".into());
+                obs.body_omitted = Some("source_limit".into());
+                self.recorder.record_for_epoch(obs, capture_epoch);
+            }
             return Err(CoreError::Source(
                 "Source response size limit exceeded".into(),
             ));
         }
-        let body = String::from_utf8(bytes)
-            .map_err(|_| CoreError::Source("Source response is not UTF-8".into()))?;
-        self.diagnostics.event(
+        let body = match String::from_utf8(bytes) {
+            Ok(body) => body,
+            Err(_) => {
+                if let Some(mut obs) = observation.take() {
+                    obs.error = Some("Source response is not UTF-8".into());
+                    obs.body_omitted = Some("invalid_utf8".into());
+                    self.recorder.record_for_epoch(obs, capture_epoch);
+                }
+                return Err(CoreError::Source("Source response is not UTF-8".into()));
+            }
+        };
+        if let Some(mut obs) = observation {
+            obs.response_size = Some(body.len() as u64);
+            if self.recorder.mode() == CaptureMode::Text
+                && body.len() <= http_capture::MAX_BODY_BYTES
+            {
+                obs.body = Some(body.clone());
+            } else if body.len() > http_capture::MAX_BODY_BYTES {
+                obs.body_omitted = Some("body_over_2_mib".into());
+            }
+            self.recorder.record_for_epoch(obs, capture_epoch);
+        }
+        self.diagnostics.debug(
             "HTTP",
             format!("Response bytes={} status={status}", body.len()),
         );
@@ -304,12 +463,16 @@ fn parse_api(response: Response, logger: Option<&Diagnostics>) -> Result<Option<
             response.status
         )));
     }
+    let parse_started = Instant::now();
     let payload: Value = serde_json::from_str(&response.body).map_err(|e| {
         if let Some(log) = logger {
             log.html("invalid_api_json", &response.body);
         }
         CoreError::Source(format!("Invalid source search API payload: {e}"))
     })?;
+    if let Some(log) = logger {
+        log.phase("PARSER", "json_parse", parse_started);
+    }
     if !payload.is_object() {
         if let Some(log) = logger {
             log.html("invalid_api_shape", &response.body);
@@ -443,6 +606,7 @@ fn fetch_search_controlled<T: Transport>(
         )));
     }
 
+    let first_parse_started = Instant::now();
     let mut total_from_html = parse::parse_config(&first.body, "totalPages");
     let mut server_count = parse::parse_config(&first.body, "advertCount");
     let mut observed_radius = parse::parse_config(&first.body, "distanceSearched");
@@ -454,6 +618,9 @@ fn fetch_search_controlled<T: Transport>(
         )));
     }
     let mut cards = parse::parse_cards(&first.body);
+    if let Some(log) = client.diagnostics() {
+        log.phase("PARSER", "first_html_cards", first_parse_started);
+    }
     client.log_event(
         "PARSER",
         format!(
@@ -857,16 +1024,45 @@ mod tests {
     }
 
     #[test]
-    fn rejected_redirect_logs_actual_response_body() {
+    fn redirect_target_preserves_validated_get_and_rejects_external_hosts() {
+        let origin = Url::parse("https://www.ladies.de/leipzig/sex-anzeigen").unwrap();
+        assert_eq!(
+            redirect_target(&origin, 302, Some("/jugendschutz?session=1"), 0)
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "https://www.ladies.de/jugendschutz?session=1",
+        );
+        assert_eq!(
+            redirect_target(&origin, 302, Some("https://ladies.de/path"), 1)
+                .unwrap()
+                .unwrap()
+                .host_str(),
+            Some("ladies.de"),
+        );
+        assert!(redirect_target(&origin, 302, Some("https://evil.example/path"), 0).is_err());
+        assert!(redirect_target(&origin, 302, Some("http://www.ladies.de/path"), 0).is_err());
+        assert!(redirect_target(&origin, 302, Some("/path"), 5).is_err());
+        assert!(
+            redirect_target(&origin, 304, Some("/not-a-redirect"), 0)
+                .unwrap()
+                .is_none()
+        );
+        assert!(redirect_target(&origin, 302, None, 0).unwrap().is_none());
+    }
+
+    #[test]
+    fn rejected_redirect_does_not_leak_response_html_to_debug_log() {
         let directory = tempfile::tempdir().unwrap();
         let log = Diagnostics::new(directory.path().join("ladies.sqlite").to_str().unwrap());
+        log.set_debug(true);
         let html = "<html><body>Alter prüfen – Weiterleitung</body></html>";
         let result = check_redirect(&log, "/leipzig/sex-anzeigen", "/jugendschutz", 200, html);
         assert!(matches!(result, Err(CoreError::Source(_))));
         let saved =
             std::fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
-        assert!(saved.contains("BEGIN unexpected_redirect"));
-        assert!(saved.contains(html));
+        assert!(saved.contains("body discarded stage=unexpected_redirect"));
+        assert!(!saved.contains(html));
         assert!(
             check_redirect(
                 &log,

@@ -76,6 +76,9 @@ jobs:
       - name: Build arm64 APK (automatically builds Rust and UniFFI)
         run: ./gradlew :app:assembleDebug -Pladies.abis=arm64-v8a --stacktrace
 
+      - name: Android JVM diagnostic queue tests
+        run: ./gradlew :app:testDebugUnitTest -Pladies.abis=arm64-v8a --stacktrace
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
