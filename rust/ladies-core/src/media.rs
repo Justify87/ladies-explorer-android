@@ -385,7 +385,12 @@ fn persist(
         params![id, download.etag, download.last_modified, reference.id],
     )?;
     if let Some(ref dhash) = dhash {
-        identity::record_image_hash(&tx, current_person(&tx, reference.listing_id)?, reference.listing_id, dhash)?;
+        identity::record_image_hash(
+            &tx,
+            current_person(&tx, reference.listing_id)?,
+            reference.listing_id,
+            dhash,
+        )?;
         identity::refresh(&tx, reference.listing_id)?;
     }
     tx.commit()?;
@@ -449,7 +454,12 @@ fn archive_with(
                 params![reference.cached_asset_id, reference.id],
             )?;
             if let Some(hash) = reference.cached_dhash.as_deref() {
-                identity::record_image_hash(&tx, current_person(&tx, reference.listing_id)?, reference.listing_id, hash)?;
+                identity::record_image_hash(
+                    &tx,
+                    current_person(&tx, reference.listing_id)?,
+                    reference.listing_id,
+                    hash,
+                )?;
                 identity::refresh(&tx, reference.listing_id)?;
             }
             tx.commit()?;
