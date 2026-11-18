@@ -143,7 +143,7 @@ fun SearchScreen(
                     Text("${state.savedResultCards.size} bekannte Treffer",style=MaterialTheme.typography.bodyMedium)
                 }
             }
-            if (state.savedResultCards.isEmpty()) {
+            if (state.savedResultCards.isEmpty() && !state.savedResultsLoadingMore && state.error == null) {
                 item { Text("Für diese Suche sind noch keine vollständigen Ergebnisse gespeichert.") }
             }
             items(state.savedResultCards,key={it.resultKey}) { card ->
@@ -278,20 +278,20 @@ fun SearchScreen(
                         }
                         FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             TextButton(
-                                enabled=saved.definitionSupported && !state.loading,
+                                enabled=saved.definitionSupported && !state.loading && !state.saving,
                                 onClick={ onLoadSaved(saved.searchId) },
                             ) { Text("Bearbeiten") }
                             TextButton(onClick={onShowSavedResults(saved.searchId)}, enabled = !state.loading) {
                                 Text("Ergebnisse")
                             }
                             TextButton(
-                                enabled=saved.definitionSupported && !state.loading && canStartSearch,
+                                enabled=saved.definitionSupported && !state.loading && !state.saving && canStartSearch,
                                 onClick={ onRunSaved(saved.searchId) },
                             ) { Text("Ausführen") }
                             if (saved.unreadNewResults) {
                                 TextButton(onClick={ onAcknowledge(saved.searchId) }) { Text("Gelesen") }
                             }
-                            TextButton(onClick={ onDeleteSaved(saved.searchId) }) { Text("Löschen") }
+                            TextButton(onClick={ onDeleteSaved(saved.searchId) }, enabled = !state.loading && !state.saving) { Text("Löschen") }
                         }
                     }
                 }
@@ -316,7 +316,7 @@ fun SearchScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { filterQuery = ""; onReset() }, enabled = !state.loading) { Text("Reset") }
                         Button(onClick = if (state.loading) onCancelSearch else onSearch,
-                            enabled = state.loading || (canStartSearch && state.city.isNotBlank()), modifier = Modifier.weight(1f)) {
+                            enabled = state.loading || (canStartSearch && !state.saving && state.city.isNotBlank()), modifier = Modifier.weight(1f)) {
                             Text(if (state.loading) "Abbrechen" else "Suchen")
                         }
                     }
