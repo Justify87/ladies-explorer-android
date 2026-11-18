@@ -11,7 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import de.justify87.ladiesexplorer.core.Preference
+import de.justify87.ladiesexplorer.core.*
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -89,18 +89,8 @@ fun ProfileDetailScreen(
                         onBack = onBack, originalUrl = state.profileIdentity?.profileUrl)
                 }
                 item(key = "identity") {
-                    val age = jsonRows(profile.traitsJson).firstOrNull { it.first.equals("Alter", true) }
-                        ?.second?.let { Regex("""^([0-9]{2})(?:\s*Jahre?)?$""").matchEntire(it.trim())?.groupValues?.get(1) }
-                    ProfileIdentityHeader(
-                        name = profile.name,
-                        place = listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
-                        age = age,
-                        identity = state.profileIdentity,
-                        person = state.selectedPerson,
-                        hasVideo = state.profileMedia.any { it.kind == "VIDEO" },
-                        fromArchive = state.profileFromArchive,
-                    )
-                    profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                    ProfileHeader(profile, state.profileIdentity, state.selectedPerson,
+                        state.profileMedia, state.profileFromArchive)
                 }
                 if (state.profileFromArchive) {
                     state.mediaWarning?.let { item(key = "archive-warning") {
@@ -131,19 +121,42 @@ fun ProfileDetailScreen(
                 state.mediaWarning?.let {
                     item { Text(it,color=MaterialTheme.colorScheme.error) }
                 }
-                profileContent(state, actionsBusy) { confirmTarget = it }
+                profileContent(profile, state.identityCandidates, state.changeEvents,
+                    actionsBusy || state.actionBusy) { confirmTarget = it }
             }
         }
     }
 }
 
+@Composable
+internal fun ProfileHeader(
+    profile: ProfileResponse,
+    identity: ProfileIdentity?,
+    person: PersonSummary?,
+    media: List<ProfileMediaItem>,
+    fromArchive: Boolean,
+) {
+    val age = remember(profile.traitsJson) {
+        jsonRows(profile.traitsJson).firstOrNull { it.first.equals("Alter", true) }
+            ?.second?.let { Regex("""^([0-9]{2})(?:\s*Jahre?)?$""").matchEntire(it.trim())?.groupValues?.get(1) }
+    }
+    ProfileIdentityHeader(
+        name = profile.name,
+        place = listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
+        age = age, identity = identity, person = person,
+        hasVideo = media.any { it.kind == "VIDEO" }, fromArchive = fromArchive,
+    )
+    profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+}
+
 /** Existing detail sections remain shared; tab redesign is M05.6. */
 internal fun LazyListScope.profileContent(
-    state: SearchUiState,
+    profile: ProfileResponse,
+    candidates: List<IdentityCandidate>,
+    history: List<ChangeRecord>,
     actionsBusy: Boolean,
-    onConfirm: (Long) -> Unit,
+    onConfirm: ((Long) -> Unit)? = null,
 ) {
-    val profile = state.profile ?: return
     item {
         Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
             Text("Über das Profil",style=MaterialTheme.typography.titleLarge)
@@ -171,7 +184,7 @@ internal fun LazyListScope.profileContent(
             }
         }
     }
-    if (state.identityCandidates.isNotEmpty()) {
+    if (candidates.isNotEmpty()) {
         item {
             Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 HorizontalDivider()
@@ -179,7 +192,7 @@ internal fun LazyListScope.profileContent(
                 Text("Diese Hinweise führen niemals automatisch zu einer Zusammenführung.")
             }
         }
-        items(state.identityCandidates,key={"candidate/" + it.personId}) { candidate ->
+        items(candidates,key={"candidate/" + it.personId}) { candidate ->
             Card {
                 Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
                     Text("Person #${candidate.personId} · ${candidate.decision}")
@@ -190,20 +203,20 @@ internal fun LazyListScope.profileContent(
                             "${candidate.strongImageMatches} Bildtreffer".takeIf { candidate.imageMatches>0u },
                         ).joinToString(" · "),
                     )
-                    OutlinedButton(
+                    if (onConfirm != null) OutlinedButton(
                         onClick={ onConfirm(candidate.personId) },
-                        enabled=!state.actionBusy && !actionsBusy,
+                        enabled=!actionsBusy,
                     ) { Text("Zusammenführung prüfen") }
                 }
             }
         }
     }
-    if (state.changeEvents.isNotEmpty()) {
+    if (history.isNotEmpty()) {
         item {
             HorizontalDivider()
             Text("Änderungshistorie",style=MaterialTheme.typography.titleLarge)
         }
-        items(state.changeEvents,key={"event/" + it.changeEventId}) { event ->
+        items(history,key={"event/" + it.changeEventId}) { event ->
             Column(verticalArrangement=Arrangement.spacedBy(3.dp)) {
                 Text(
                     "${event.createdAt.take(16)} · ${event.eventType}",
