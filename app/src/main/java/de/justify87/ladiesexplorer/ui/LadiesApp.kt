@@ -139,6 +139,7 @@ fun LadiesApp(
                     onAcknowledge=viewModel::acknowledgeSavedSearch,
                     onShowSavedResults=viewModel::showSavedResults,
                     onCloseSavedResults=viewModel::closeSavedResults,
+                    onLoadMoreSavedResults=viewModel::loadMoreSavedResults,
                     onProfile=viewModel::loadProfile,
                     modifier=modifier,
                 )

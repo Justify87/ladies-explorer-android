@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -26,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,12 +84,25 @@ fun SearchScreen(
     onAcknowledge: (String) -> Unit,
     onShowSavedResults: (String) -> Unit,
     onCloseSavedResults: () -> Unit,
+    onLoadMoreSavedResults: () -> Unit,
     onProfile: (Long,Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var resultsVisible by rememberSaveable { mutableStateOf(false) }
     var presetName by rememberSaveable { mutableStateOf("") }
     var categoryMenu by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(state.showingSavedSearchId) {
+        if (state.showingSavedSearchId != null) listState.scrollToItem(0)
+    }
+    LaunchedEffect(state.showingSavedSearchId, state.savedResultCards.size, state.savedResultCursor) {
+        if (state.showingSavedSearchId != null && state.savedResultCursor != null) {
+            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+                .collect { last ->
+                    if (last >= state.savedResultCards.size - 3) onLoadMoreSavedResults()
+                }
+        }
+    }
     LaunchedEffect(state.editingSavedSearchId) {
         presetName = state.savedSearches.firstOrNull { it.searchId == state.editingSavedSearchId }?.name.orEmpty()
     }
@@ -95,6 +110,7 @@ fun SearchScreen(
         if (state.response != null) resultsVisible = true
     }
     LazyColumn(
+        state = listState,
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -158,6 +174,7 @@ fun SearchScreen(
                     }
                 }
             }
+            if (state.savedResultsLoadingMore) item { CircularProgressIndicator() }
         } else if (resultsVisible && state.response != null) {
             val response = state.response
             item {

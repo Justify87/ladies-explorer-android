@@ -55,6 +55,8 @@ data class SearchUiState(
     val savedSearches: List<SavedSearchInfo> = emptyList(),
     val showingSavedSearchId: String? = null,
     val savedResultCards: List<SavedSearchCard> = emptyList(),
+    val savedResultCursor: SavedResultCursor? = null,
+    val savedResultsLoadingMore: Boolean = false,
     val editingSavedSearchId: String? = null,
     val loading: Boolean = false,
     val saving: Boolean = false,
@@ -140,6 +142,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update {
             it.copy(response = null, profileOpen = false, profile = null, loading = false, error = null,
                 showingSavedSearchId = null, savedResultCards = emptyList(),
+                savedResultCursor = null, savedResultsLoadingMore = false,
                 mediaArchive = null, mediaWarning = null, archiving = false)
         }
     }
@@ -291,7 +294,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun closeSavedResults() {
         invalidateActiveSearch()
-        _searchUiState.update { it.copy(showingSavedSearchId = null, savedResultCards = emptyList()) }
+        _searchUiState.update {
+            it.copy(showingSavedSearchId = null, savedResultCards = emptyList(),
+                savedResultCursor = null, savedResultsLoadingMore = false)
+        }
     }
 
     fun showSavedResults(id: String) {
@@ -299,10 +305,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val epoch = searchEpoch
         viewModelScope.launch {
             try {
-                val results = core.savedSearchResults(id)
+                val page = core.savedSearchResults(id)
                 if (epoch != searchEpoch) return@launch
                 _searchUiState.update {
-                    it.copy(showingSavedSearchId=id,savedResultCards=results,error=null)
+                    it.copy(showingSavedSearchId=id,savedResultCards=page.cards,
+                        savedResultCursor=page.nextCursor,savedResultsLoadingMore=false,error=null)
                 }
                 core.acknowledgeSavedSearch(id)
                 val saved = core.savedSearches()
@@ -319,6 +326,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun loadMoreSavedResults() {
+        val state = _searchUiState.value
+        val id = state.showingSavedSearchId ?: return
+        val cursor = state.savedResultCursor ?: return
+        if (state.savedResultsLoadingMore || state.loading) return
+        val epoch = searchEpoch
+        _searchUiState.update { it.copy(savedResultsLoadingMore = true) }
+        viewModelScope.launch {
+            try {
+                val page = core.savedSearchResults(id, cursor)
+                if (epoch == searchEpoch) {
+                    _searchUiState.update {
+                        if (it.showingSavedSearchId != id) return@update it
+                        val known = it.savedResultCards.mapTo(mutableSetOf()) { card -> card.resultKey }
+                        it.copy(
+                            savedResultCards = it.savedResultCards +
+                                page.cards.filter { card -> known.add(card.resultKey) },
+                            savedResultCursor = page.nextCursor,
+                            savedResultsLoadingMore = false,
+                        )
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                if (epoch == searchEpoch) {
+                    _searchUiState.update { it.copy(savedResultsLoadingMore = false) }
+                }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == searchEpoch) {
+                    _searchUiState.update {
+                        it.copy(savedResultsLoadingMore = false,
+                            error = failure.message ?: "Weitere Suchergebnisse konnten nicht geladen werden")
+                    }
+                }
+            }
+        }
+    }
+
     fun startSearch(savedId: String? = null) {
         if (_searchUiState.value.loading || _uiState.value.loading) return
         val input = _searchUiState.value
@@ -329,7 +374,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateProfileRequest()
         _searchUiState.update {
             it.copy(loading = true, error = null, profile = null, profileOpen = false,
-                response = null, showingSavedSearchId = null, savedResultCards = emptyList())
+                response = null, showingSavedSearchId = null, savedResultCards = emptyList(),
+                savedResultCursor = null, savedResultsLoadingMore = false)
         }
         viewModelScope.launch {
             try {
