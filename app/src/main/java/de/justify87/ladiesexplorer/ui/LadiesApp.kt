@@ -29,6 +29,8 @@ import androidx.compose.material3.RadioButton
 import de.justify87.ladiesexplorer.core.CaptureMode
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,6 +61,16 @@ fun LadiesApp(
     val discovery by viewModel.discoverState.collectAsStateWithLifecycle()
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val tabs = Tab.entries
+
+    // Refresh the displayed session size while the capture settings are visible.
+    LaunchedEffect(selected, home.httpCaptureMode, search.profileOpen) {
+        if (tabs[selected] == Tab.Settings && !search.profileOpen && home.httpCaptureMode != CaptureMode.OFF) {
+            while (true) {
+                delay(2_000)
+                viewModel.refreshCaptureStatus()
+            }
+        }
+    }
 
     BackHandler(enabled=search.profileOpen) { viewModel.closeProfile() }
 
