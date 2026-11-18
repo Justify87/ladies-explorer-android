@@ -99,3 +99,6 @@ Auftrag: „Setze den ersten ausführbaren M05-Task bzw. vereinbarten Teilmeilen
 ### G2 – Review (M05.2)
 
 - CI 44393830437 auf `604409ad`: synthetische Fixture/Export erfolgreich; Rustfmt beanstandete acht Formatierungsstellen. Korrektur anhand tatsächlichen Diffs. Preview-HTML-Fixtures an den dokumentierten Parservertrag angepasst; explizite Nulltreffer, unbestätigter Radius und Abbruch getrennt getestet. Zusätzliche Rust-Tests für aktive Run-Mitgliedschaft/Reihenfolge, lokale Regeln, Favorit/Präferenz, tatsächliche Filternutzung und Versionsschutz gespeicherter Definitionen.
+
+- Quellreview Legacy `data/filter_usage.js`: Kategorie zählt, standardmäßige Geschlechts-/Treffpunktwerte nicht; Alias-Slugs werden pro persistiertem Lauf dedupliziert und einheitlich angezeigt; Top 5 stabil sortiert. Editor als eigenständige LazyListScope-Komponente extrahiert. Legacy-Header-Schnellwahl startet genau einen neuen Lauf; native Version nutzt den zuletzt ausgeführten Filter-Snapshot (statt einen noch nicht ausgeführten Entwurf zu überschreiben). Ergebnis und Fehler bleiben getrennt. Neutral-only Swipe bis M05.4 beibehalten; keine globale Vermischung. Premium-Marker bleibt erhalten.
+- CI 44394403310 auf `b66d8018`: erneuter Rustfmt-Befund ausschließlich lange Test-Tupel; korrigiert. Full-CI am neuen Stand weiterhin ausstehend.

@@ -55,27 +55,34 @@ pub(crate) fn frequent(core: &crate::LadiesCore) -> Result<Vec<FrequentFilter>, 
         let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw?) else {
             continue;
         };
-        let Some(selected) = json.get("selected").and_then(|v| v.as_object()) else {
-            continue;
-        };
         let mut used = BTreeSet::new();
-        for (raw_group, values) in selected {
-            let Some(group) = catalog.groups.get(raw_group) else {
-                continue;
-            };
-            let Some(allowed) = catalog.values.get(group) else {
-                continue;
-            };
-            let Some(values) = values.as_array() else {
-                continue;
-            };
-            for value in values.iter().filter_map(|v| v.as_str()) {
-                let clean = value.split_whitespace().collect::<Vec<_>>().join(" ");
-                let slug = allowed
-                    .get(&clean)
-                    .or_else(|| allowed.values().find(|slug| *slug == &clean));
-                if let Some(slug) = slug {
-                    used.insert((group.clone(), slug.clone()));
+        if let Some(category) = json.get("category").and_then(|v| v.as_str())
+            && let Some(value) = catalog.categories.get(category)
+            && !value.is_empty()
+        {
+            used.insert(("category".to_owned(), value.clone()));
+        }
+        if let Some(selected) = json.get("selected").and_then(|v| v.as_object()) {
+            for (raw_group, values) in selected {
+                let Some(group) = catalog.groups.get(raw_group) else {
+                    continue;
+                };
+                let Some(allowed) = catalog.values.get(group) else {
+                    continue;
+                };
+                let Some(values) = values.as_array() else {
+                    continue;
+                };
+                for value in values.iter().filter_map(|v| v.as_str()) {
+                    let clean = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                    let slug = allowed
+                        .get(&clean)
+                        .or_else(|| allowed.values().find(|slug| *slug == &clean));
+                    if let Some(slug) = slug
+                        && !skip_frequent(group, slug)
+                    {
+                        used.insert((group.clone(), slug.clone()));
+                    }
                 }
             }
         }
@@ -87,13 +94,11 @@ pub(crate) fn frequent(core: &crate::LadiesCore) -> Result<Vec<FrequentFilter>, 
     let mut result: Vec<_> = counts
         .into_iter()
         .filter_map(|((group, slug), count)| {
-            let value = catalog
-                .values
-                .get(&group)?
-                .iter()
-                .find(|(_, v)| *v == &slug)?
-                .0
-                .clone();
+            let value = if group == "category" {
+                slug
+            } else {
+                canonical_label(catalog.values.get(&group)?, &slug)?
+            };
             Some(FrequentFilter {
                 group,
                 value,
@@ -111,6 +116,32 @@ pub(crate) fn frequent(core: &crate::LadiesCore) -> Result<Vec<FrequentFilter>, 
     Ok(result)
 }
 
+fn canonical_label(allowed: &BTreeMap<String, String>, slug: &str) -> Option<String> {
+    let preferred = match slug {
+        "ab18" => Some("Mit 18+ Inhalten"),
+        "girlfriendsex" => Some("Girlfriend-Sex"),
+        _ => None,
+    };
+    if let Some(label) = preferred
+        && allowed.get(label).is_some_and(|value| value == slug)
+    {
+        return Some(label.to_owned());
+    }
+    allowed
+        .iter()
+        .find(|(_, value)| value.as_str() == slug)
+        .map(|(label, _)| label.clone())
+}
+
+fn skip_frequent(group: &str, slug: &str) -> bool {
+    (group == "geschlecht" && slug == "weiblich")
+        || (group == "treff"
+            && matches!(
+                slug,
+                "treffen-besuchbar" | "treffen-haus" | "treffen-hotel" | "treffen-buero"
+            ))
+}
+
 pub(crate) fn available() -> SourceFilterCatalog {
     let catalog = catalog();
     let mut categories = vec![String::new()];
@@ -125,7 +156,12 @@ pub(crate) fn available() -> SourceFilterCatalog {
         .filter_map(|key| {
             catalog.values.get(key).map(|values| SourceFilterGroup {
                 key: key.clone(),
-                options: values.keys().cloned().collect(),
+                options: values
+                        .values()
+                        .filter_map(|slug| canonical_label(values, slug))
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect(),
             })
         })
         .collect();
@@ -209,14 +245,12 @@ pub(crate) fn canonicalize_request(mut request: SearchRequest) -> Result<SearchR
             .ok_or_else(|| invalid(format!("Unknown filter values for {group}")))?;
         for raw_value in raw_values {
             let clean = raw_value.split_whitespace().collect::<Vec<_>>().join(" ");
-            let label = if allowed.contains_key(&clean) {
-                clean
-            } else {
-                allowed
-                    .iter()
-                    .find_map(|(name, slug)| (slug == &clean).then(|| name.clone()))
-                    .ok_or_else(|| invalid(format!("Unknown filter value in {group}: {clean}")))?
-            };
+            let slug = allowed
+                .get(&clean)
+                .map(String::as_str)
+                .unwrap_or(clean.as_str());
+            let label = canonical_label(allowed, slug)
+                .ok_or_else(|| invalid(format!("Unknown filter value in {group}: {clean}")))?;
             normalized.entry(group.clone()).or_default().insert(label);
         }
     }
@@ -306,8 +340,14 @@ mod tests {
         {
             let db = core.connection().unwrap();
             for (filters, finished) in [
-                (r#"{"selected":{"treff":["Hausbesuche","treffen-haus"],"treffpunkt":["Hausbesuche"],"figur":["schlank"]}}"#, true),
-                (r#"{"selected":{"treffpunkt":["treffen-haus"],"figur":["mittel"]}}"#, true),
+                (
+                    r#"{"category":"locations","selected":{"figur":["mittel","normal"],"treff":["Hausbesuche"],"geschlecht":["weiblich"]}}"#,
+                    true,
+                ),
+                (
+                    r#"{"category":"bordelle-laufhaeuser","selected":{"figur":["normal"],"haarfarbe":["blond"]}}"#,
+                    true,
+                ),
                 (r#"{"selected":{"figur":["mollig"]}}"#, false),
                 ("malformed", true),
             ] {
@@ -320,11 +360,13 @@ mod tests {
         }
         let result = frequent(&core).unwrap();
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].group, "treff");
-        assert_eq!(result[0].value, "Hausbesuche");
+        assert_eq!(result[0].group, "category");
+        assert_eq!(result[0].value, "bordelle-laufhaeuser");
         assert_eq!(result[0].count, 2);
         assert_eq!(result[1].value, "mittel");
-        assert_eq!(result[2].value, "schlank");
+        assert_eq!(result[1].count, 2);
+        assert_eq!(result[2].value, "blond");
+        assert_eq!(frequent(&core).unwrap(), result);
     }
 
     #[test]
