@@ -173,15 +173,56 @@ fn independent_pairs(new_hashes: &[u64], old_hashes: &[u64], threshold: u32) -> 
 }
 
 fn compare_images(new_hashes: &[u64], old_hashes: &[u64]) -> (u32, u32, Option<u32>) {
-    let best = new_hashes
-        .iter()
-        .flat_map(|new| old_hashes.iter().map(move |old| (new ^ old).count_ones()))
-        .min();
-    (
-        independent_pairs(new_hashes, old_hashes, CANDIDATE_DISTANCE),
-        independent_pairs(new_hashes, old_hashes, STRONG_DISTANCE),
-        best,
-    )
+    let mut best = None;
+    let mut edges = Vec::new();
+    let mut candidate = 0;
+    for (new_index, new_hash) in new_hashes.iter().enumerate() {
+        let mut closest = None;
+        for (old_index, old_hash) in old_hashes.iter().enumerate() {
+            let distance = (new_hash ^ old_hash).count_ones();
+            closest = Some(closest.map_or(distance, |current: u32| current.min(distance)));
+            best = Some(best.map_or(distance, |current: u32| current.min(distance)));
+            if distance <= STRONG_DISTANCE {
+                edges.push((new_index, old_index, distance));
+            }
+        }
+        if closest.is_some_and(|distance| distance <= CANDIDATE_DISTANCE) {
+            candidate += 1;
+        }
+    }
+    // Maximum-cardinality bipartite matching; deterministic order prefers closer pairs.
+    edges.sort_by_key(|&(new, old, distance)| (distance, new, old));
+    let mut neighbors = vec![Vec::new(); new_hashes.len()];
+    for (new, old, _) in edges {
+        neighbors[new].push(old);
+    }
+    fn augment(
+        new: usize,
+        neighbors: &[Vec<usize>],
+        owners: &mut [Option<usize>],
+        visited: &mut [bool],
+    ) -> bool {
+        for &old in &neighbors[new] {
+            if visited[old] {
+                continue;
+            }
+            visited[old] = true;
+            if owners[old].is_none_or(|previous| augment(previous, neighbors, owners, visited)) {
+                owners[old] = Some(new);
+                return true;
+            }
+        }
+        false
+    }
+    let mut owners = vec![None; old_hashes.len()];
+    let mut strong = 0;
+    for new in 0..new_hashes.len() {
+        let mut visited = vec![false; old_hashes.len()];
+        if augment(new, &neighbors, &mut owners, &mut visited) {
+            strong += 1;
+        }
+    }
+    (candidate, strong, best)
 }
 
 fn decision(e: &Evidence) -> &'static str {
@@ -425,6 +466,20 @@ pub(crate) fn confirm(core: &LadiesCore, listing_id: i64, target_id: i64) -> Res
             "Conflicting repeat-interest decisions require explicit resolution".into(),
         ));
     }
+    let conflicting_preference =
+        pref != "NONE" && target_pref != "NONE" && pref != target_pref;
+    let (target_interest,): (String,) = tx.query_row(
+        "SELECT repeat_interest FROM person_user_state WHERE person_id=?1",
+        [target_id],
+        |r| Ok((r.get(0)?,)),
+    )?;
+    let conflicting_interest =
+        interest != "UNKNOWN" && target_interest != "UNKNOWN" && interest != target_interest;
+    if conflicting_preference || conflicting_interest {
+        return Err(CoreError::IdentityConflict(
+            "Conflicting user decisions require resolution before merging".into(),
+        ));
+    }
     let combined_note = [target_note.as_deref(), note.as_deref()]
         .into_iter()
         .flatten()
@@ -571,6 +626,36 @@ mod tests {
     fn augmenting_paths_recover_independent_picture_matches() {
         assert_eq!(compare_images(&[1, 0], &[0, 63]).1, 2);
         assert_eq!(compare_images(&[1, 0], &[0, 63]).0, 2);
+    }
+
+    #[test]
+    fn image_matching_finds_maximum_independent_pairs() {
+        // New 0 matches both old 0 and old 1; new 1 matches only old 0.
+        assert_eq!(compare_images(&[0, 31], &[1, 2]).1, 2);
+    }
+
+    #[test]
+    fn conflicting_user_decisions_block_merge_without_data_loss() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let source = core.create_person(Some("Source".into())).unwrap();
+        let target = core.create_person(Some("Target".into())).unwrap();
+        let listing = core.add_listing(source, None, "LADIES".into(), "101".into(), None).unwrap();
+        core.set_preference(source, crate::Preference::Like).unwrap();
+        core.set_preference(target, crate::Preference::Dislike).unwrap();
+        let db = core.connection().unwrap();
+        record_phone(&db, source, listing, Some("0170 1234567")).unwrap();
+        record_phone(&db, target, listing, Some("0170 1234567")).unwrap();
+        db.execute(
+            "INSERT INTO listing_snapshots(listing_id,fingerprint,normalized_phone)
+             VALUES (?1,'fp','+491701234567')",
+            [listing],
+        ).unwrap();
+        let snapshot = db.last_insert_rowid();
+        db.execute("UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+            params![snapshot, listing]).unwrap();
+        drop(db);
+        assert!(core.confirm_identity_match(listing, target).is_err());
+        assert_eq!(core.status().unwrap().person_count, 2);
     }
 
     #[test]
