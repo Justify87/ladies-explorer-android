@@ -1,6 +1,6 @@
 # Architektur und native Datenflüsse
 
-Die App ist ein lokales Android-Hobbyprojekt mit einer APK. Kotlin/Compose (Material 3) besitzt Darstellung, Navigation und Lebenszyklus; der eigene Rust-Core besitzt die fachliche Logik und SQLite-Persistenz. UniFFI/JNA stellt die typisierte Grenze dar. JNI-Bindings werden beim Gradle-Build erzeugt. Kein Python, Flask, Node.js, eigener HTTP-Server oder Cloud-Backend; die Herkunft der technischen Basis steht in [PROVENANCE.md](PROVENANCE.md).
+Die App ist ein lokales Android-Hobbyprojekt mit einer APK. Kotlin/Compose (Material 3) besitzt Darstellung, Navigation und Lebenszyklus; der eigene Rust-Core besitzt die fachliche Logik und SQLite-Persistenz. UniFFI/JNA stellt die typisierte Grenze dar. Kotlin-Bindings werden von UniFFI beim Gradle-Build erzeugt. Kein Python, Flask, Node.js, eigener HTTP-Server oder Cloud-Backend; die Herkunft der technischen Basis steht in [PROVENANCE.md](PROVENANCE.md).
 
 ## Datenmodell und Zuständigkeiten
 
@@ -12,59 +12,36 @@ Die App ist ein lokales Android-Hobbyprojekt mit einer APK. Kotlin/Compose (Mate
 
 ## SQLite-Schema und Legacy-Zuordnung
 
-| Former model | New SQLite table | Status |
+| Legacy-Modell | Native SQLite-Tabelle | Status |
 | --- | --- | --- |
-| Person | persons | Created, typed API |
-| PersonUserState | person_user_state | Created, typed preference/favorite API |
-| SourceProfile | source_profiles | Created, typed API with conflict checks |
-| Listing | listings | Created, typed API with conflict checks |
-| PersonIdentifier | person_identifiers | Created |
-| ListingSnapshot / SnapshotValue | listing_snapshots / snapshot_values | Created |
-| MediaAsset / MediaSource / SnapshotMedia | media_assets / media_sources / snapshot_media | Created |
-| SearchRun / SearchResult / ListingObservation | search_runs / search_results / listing_observations | Created |
-| SavedSearchRecord | saved_searches | String IDs, definition versions, notification/delta state |
-| SavedSearchResultRecord | saved_search_results | Historical results, visibility and first/last seen |
-| ChangeEvent | change_events | Created |
-| IdentityEvidence / IdentityEvent | identity_evidence / identity_events | Created |
-| Encounter / EncounterService | encounters / encounter_services | Created |
-| PriceList / PriceItem | price_lists / price_items | Schema/import for manual entries only |
-| AppSetting | app_settings | Created |
-| Messaging / Baileys / chat threads | — | Explicitly excluded |
-| Automated AI/OCR price extraction | — | Explicitly excluded |
-| VisualAnalysis | — | Not part of the current core |
+| Person | persons | Vorhanden, typisierte API |
+| PersonUserState | person_user_state | Vorhanden, typisierte Präferenz-/Favoriten-API |
+| SourceProfile | source_profiles | Vorhanden, typisierte API mit Konfliktprüfung |
+| Listing | listings | Vorhanden, typisierte API mit Konfliktprüfung |
+| PersonIdentifier | person_identifiers | Vorhanden |
+| ListingSnapshot / SnapshotValue | listing_snapshots / snapshot_values | Vorhanden |
+| MediaAsset / MediaSource / SnapshotMedia | media_assets / media_sources / snapshot_media | Vorhanden |
+| SearchRun / SearchResult / ListingObservation | search_runs / search_results / listing_observations | Vorhanden |
+| SavedSearchRecord | saved_searches | String-IDs, Definitionsversionen, Benachrichtigungs-/Delta-Status |
+| SavedSearchResultRecord | saved_search_results | Historische Ergebnisse, Sichtbarkeit, first/last seen |
+| ChangeEvent | change_events | Vorhanden |
+| IdentityEvidence / IdentityEvent | identity_evidence / identity_events | Vorhanden |
+| Encounter / EncounterService | encounters / encounter_services | Vorhanden |
+| PriceList / PriceItem | price_lists / price_items | Schema/Import nur manueller Einträge |
+| AppSetting | app_settings | Vorhanden |
+| Messaging / Baileys / chat threads | — | Ausgeschlossen |
+| Automated AI/OCR price extraction | — | Ausgeschlossen |
+| VisualAnalysis | — | Nicht im aktuellen Core |
 
-The Android schema is intentionally not a binary copy of the legacy database.
-The legacy SQLAlchemy DB must **not** be opened as the Android SQLite store.
-The implemented exporter/importer transforms legacy data into the new tables; see [DATA-IMPORT.md](DATA-IMPORT.md).
+Das Android-Schema ist keine binäre Kopie der Legacy-Datenbank. Die alte SQLAlchemy-DB darf **nicht** direkt als native SQLite-Datenbank geöffnet werden. Der implementierte Exporter/Importer transformiert die Daten; siehe [DATA-IMPORT.md](DATA-IMPORT.md).
 
 ## Migration und Konsistenz
 
-- The native database uses `PRAGMA user_version = 2` and the distinct
-  `PRAGMA application_id = 0x4C445850` (LDXP). The legacy web-app database
-  is a separate format; its version 1 must never be opened as native SQLite.
-- Migration runs transactionally on the **Rust side** before exposing the store.
-- Fresh databases install the domain schema and migrate historical identity
-  references to v2 in one transaction. Existing native v1 databases must
-  match their canonical schema before the v1→v2 migration; every subsequent
-  opening validates the canonical v2 tables, indexes and triggers.
-- The obsolete `scaffold_notes` technical-demo table is dropped within the
-  migration transaction; real people or history are never implicitly deleted.
-- Unknown unversioned tables, foreign application IDs, noncanonical schemas and
-  future versions cause typed errors. Only a fresh database, the exact
-  technical `scaffold_notes` demo, or valid native v1 can be migrated.
-- `PRAGMA foreign_keys=ON` is enabled for every new connection.
-- The database is stored privately in `filesDir/ladies.sqlite`.
-- Public write operations use SQLite parameters and transactions.
-- A person INSERT creates its user-state row via a database trigger, regardless
-  of whether Kotlin/UniFFI or the importer inserted it.
-- SQLite triggers forbid linking a listing to a source profile belonging to a
-  different person or source, including direct INSERT/UPDATE from an importer.
-- Seeing a source profile or listing updates the canonical person's last-seen
-  timestamp; listing events also update the attached source profile.
-- The people feed exposes keyset pagination (`last_seen_at`, `person_id`) with
-  explicit 1–100 page-size validation and deterministic tie-breaking.
-- The SQLite connection is shared behind a Rust Mutex; Kotlin invokes the
-  generated bindings from `Dispatchers.IO`.
+- Native DB: `PRAGMA user_version = 2`, eigene `application_id = 0x4C445850` (LDXP); Legacy-Web-App v1 ist ein anderes Format. Migration vor Freigabe des Stores in einer Rust-Transaktion. Neue Datenbanken installieren das Domänenschema und migrieren historische Identitätsreferenzen auf v2 in einer Transaktion.
+- Native v1 muss vor dem Upgrade dem kanonischen Schema entsprechen; jede spätere Öffnung prüft v2-Tabellen, Indizes und Trigger. Fremde IDs, unbekannte unversionierte Tabellen, Schemaabweichungen und zukünftige Versionen erzeugen typisierte Fehler. Nur eine frische DB, die exakt bekannte technische Demo mit `scaffold_notes` oder gültige native v1 werden migriert. Die Demo-Tabelle wird transaktional entfernt; echte Personen/Historie werden nicht implizit gelöscht.
+- `PRAGMA foreign_keys=ON` je Verbindung. App-private DB unter `filesDir/ladies.sqlite`; öffentliche Schreiboperationen verwenden SQLite-Parameter und Transaktionen.
+- Ein Personen-INSERT erzeugt den Nutzerstatus per DB-Trigger auch beim direkten Import. Trigger verhindern bei INSERT/UPDATE Verknüpfungen eines Inserats mit einer fremden Person oder Quelle. Sichtungen von Quellprofil/Inserat aktualisieren last_seen der Person; Inseratereignisse auch das zugehörige Quellprofil.
+- Der Personenfeed nutzt Keyset-Pagination über `last_seen_at` und `person_id` mit deterministischem Tie-Breaker und validierter Seitengröße 1–100. Die SQLite-Verbindung liegt hinter einem Rust-Mutex; Kotlin ruft die Bindings über `Dispatchers.IO` auf.
 
 ## Profilhistorie und Identität
 
