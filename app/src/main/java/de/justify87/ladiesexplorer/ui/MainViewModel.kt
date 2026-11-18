@@ -90,6 +90,7 @@ data class SearchUiState(
     val profileSessionId: Long = 0L,
     val profile: ProfileResponse? = null,
     val profileIdentity: ProfileIdentity? = null,
+    val profileFromArchive: Boolean = false,
     val selectedPersonId: Long? = null,
     val selectedPerson: PersonSummary? = null,
     val profileMedia: List<ProfileMediaItem> = emptyList(),
@@ -169,7 +170,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun closeProfile() {
         invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(profileOpen = false, profile = null, profileIdentity = null, selectedPersonId = null,
+            it.copy(profileOpen = false, profile = null, profileIdentity = null, profileFromArchive = false, selectedPersonId = null,
                 savedResultsLoadingMore = false,
                 selectedPerson = null, profileMedia = emptyList(), loading = false,
                 archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
@@ -791,7 +792,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update {
             it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
                 savedResultsLoadingMore=false,
-                loading=true,profile=null,profileIdentity=null,profileMedia=emptyList(),changeEvents=emptyList(),
+                loading=true,profile=null,profileIdentity=null,profileFromArchive=false,profileMedia=emptyList(),changeEvents=emptyList(),
                 identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false)
         }
@@ -817,7 +818,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val candidates = core.identityCandidates(listingId)
                 if (requestId != profileRequestId) return@launch
                 _searchUiState.update {
-                    it.copy(loading=false,profile=profile,profileIdentity=identity,
+                    it.copy(loading=false,profile=profile,profileIdentity=identity,profileFromArchive=showingArchive,
                         selectedPersonId=identity.personId,selectedPerson=person,
                         profileMedia=items,changeEvents=changes,identityCandidates=candidates,
                         mediaWarning=refreshError,archiving=!showingArchive)
