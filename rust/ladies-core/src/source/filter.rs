@@ -157,11 +157,11 @@ pub(crate) fn available() -> SourceFilterCatalog {
             catalog.values.get(key).map(|values| SourceFilterGroup {
                 key: key.clone(),
                 options: values
-                        .values()
-                        .filter_map(|slug| canonical_label(values, slug))
-                        .collect::<BTreeSet<_>>()
-                        .into_iter()
-                        .collect(),
+                    .values()
+                    .filter_map(|slug| canonical_label(values, slug))
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
             })
         })
         .collect();

@@ -104,3 +104,5 @@ Auftrag: „Setze den ersten ausführbaren M05-Task bzw. vereinbarten Teilmeilen
 - CI 44394403310 auf `b66d8018`: erneuter Rustfmt-Befund ausschließlich lange Test-Tupel; korrigiert. Full-CI am neuen Stand weiterhin ausstehend.
 
 - T2.1/T2.7: Quellcode-Review und JVM-Regressionsfälle für getrennte Zustände, Generation/Abbruch, alte Antwort und Teilresultat. T2.5 Preview und volle Suche besitzen unabhängige Request-Generationen; Quellfilter debounced, lokale Filter/Seitenlimit ändern nicht die Quellzahl. T2.6 typisierte Regeln für neue/geladene Definitionen; alte Definitionsversionen und Delta-Basis bleiben beim bloßen Umbenennen erhalten. SOURCE aktualisiert. Nicht ausgeführt: physische Android-UI/IME, Rotation und Live-Quelle (DEVICE_PENDING); kein Browserwerkzeug.
+
+- CI 44394755901 auf `7109e2ab`: ausschließlich Einrückung im neuen Alias-Katalog beanstandet; Rustfmt-Diff übernommen. Noch kein vollständiger Lauf des neuen Codes belegt.
