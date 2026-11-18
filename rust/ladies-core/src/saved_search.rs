@@ -57,23 +57,35 @@ fn decode_definition(definition: &str) -> Result<SearchRequest, CoreError> {
     let legacy: serde_json::Value = serde_json::from_str(definition)
         .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
     let number = |camel: &str, snake: &str, default: u32| {
-        legacy.get(camel).or_else(|| legacy.get(snake)).and_then(|value| {
-            value.as_u64()
-                .and_then(|n| u32::try_from(n).ok())
-                .or_else(|| value.as_str()?.parse().ok())
-        }).unwrap_or(default)
+        legacy
+            .get(camel)
+            .or_else(|| legacy.get(snake))
+            .and_then(|value| {
+                value
+                    .as_u64()
+                    .and_then(|n| u32::try_from(n).ok())
+                    .or_else(|| value.as_str()?.parse().ok())
+            })
+            .unwrap_or(default)
     };
     let request = SearchRequest {
-        city: legacy.get("city").and_then(|v| v.as_str())
-            .unwrap_or_default().to_owned(),
+        city: legacy
+            .get("city")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_owned(),
         radius_km: number("radius", "radius_km", 20),
-        category: legacy.get("category").and_then(|v| v.as_str())
-            .unwrap_or_default().to_owned(),
+        category: legacy
+            .get("category")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_owned(),
         age_min: number("ageMin", "age_min", 18),
         age_max: number("ageMax", "age_max", 60),
         height_min: number("heightMin", "height_min", 140),
         height_max: number("heightMax", "height_max", 200),
-        filters_json: legacy.get("selected")
+        filters_json: legacy
+            .get("selected")
             .filter(|v| v.is_object())
             .map_or_else(|| "{}".into(), |v| v.to_string()),
         max_pages: 50,
