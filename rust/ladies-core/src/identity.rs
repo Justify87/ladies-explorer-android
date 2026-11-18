@@ -207,7 +207,11 @@ fn compare_images(new_hashes: &[u64], old_hashes: &[u64]) -> (u32, u32, Option<u
                 continue;
             }
             visited[old] = true;
-            if owners[old].is_none_or(|previous| augment(previous, neighbors, owners, visited)) {
+            let can_assign = match owners[old] {
+                None => true,
+                Some(previous) => augment(previous, neighbors, owners, visited),
+            };
+            if can_assign {
                 owners[old] = Some(new);
                 return true;
             }
