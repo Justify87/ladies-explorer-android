@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -66,7 +65,6 @@ fun DiscoverScreen(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.weight(1f)) {
-                Text("Entdecken", style = MaterialTheme.typography.headlineMedium)
                 Text(
                     "${state.cards.size} Profile zum Entdecken",
                     style = MaterialTheme.typography.bodyMedium,
@@ -192,7 +190,7 @@ fun FavoritesScreen(
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Favoriten", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                Text("Favoriten", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 TextButton(onClick = onRefresh) { Text("Aktualisieren") }
             }
         }
@@ -210,7 +208,7 @@ fun FavoritesScreen(
                     ProfileThumbnail(
                         url = card.thumbnailUrl,
                         localPath = card.localPath,
-                        modifier = Modifier.size(96.dp).clip(RoundedCornerShape(12.dp)),
+                        modifier = Modifier.size(96.dp).clip(MaterialTheme.shapes.small),
                     )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(card.name, style = MaterialTheme.typography.titleMedium)

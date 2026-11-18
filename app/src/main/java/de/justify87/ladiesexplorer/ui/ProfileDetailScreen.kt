@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -96,6 +97,8 @@ fun ProfileDetailScreen(
 ) {
     val context = LocalContext.current
     val profile = state.profile
+    val detailListState = rememberLazyListState()
+    val mediaListState = rememberLazyListState()
     var confirmTarget by remember(profile?.listingId) { mutableStateOf<Long?>(null) }
     var preview by remember(profile?.snapshotId) { mutableStateOf<ProfileMediaItem?>(null) }
 
@@ -129,6 +132,7 @@ fun ProfileDetailScreen(
         }
     }
     LazyColumn(
+        state = detailListState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -181,7 +185,7 @@ fun ProfileDetailScreen(
                 item {
                     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text("Galerie",style=MaterialTheme.typography.titleLarge)
-                        LazyRow(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                        LazyRow(state = mediaListState, horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                             items(state.profileMedia, key={it.position.toString()+":"+it.kind}) { media ->
                                 Card(
                                     modifier=Modifier.width(250.dp).height(290.dp),
