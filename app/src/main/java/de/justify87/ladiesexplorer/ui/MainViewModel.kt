@@ -52,6 +52,7 @@ data class MapUiState(
     val overview: MapOverview? = null,
     val loading: Boolean = false,
     val resolving: Boolean = false,
+    val cancelling: Boolean = false,
     val favoritesOnly: Boolean = false,
     val error: String? = null,
 )
@@ -441,7 +442,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshMap() {
-        if (_mapState.value.resolving) return
+        if (mapControl != null) return // completion refreshes from the actual database
         val epoch = ++mapEpoch
         val favoritesOnly = _mapState.value.favoritesOnly
         _mapState.update { it.copy(loading = true, error = null) }
@@ -463,41 +464,59 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setMapFavoritesOnly(value: Boolean) {
+        if (_mapState.value.favoritesOnly == value) return
         cancelMapResolution()
         _mapState.update { it.copy(favoritesOnly = value, overview = null) }
         refreshMap()
     }
 
     fun cancelMapResolution() {
-        mapEpoch++
-        mapControl?.cancel()
-        mapControl = null
-        _mapState.update { it.copy(resolving = false, loading = false) }
+        val control = mapControl ?: return
+        control.cancel()
+        _mapState.update { it.copy(cancelling = true) }
     }
 
     fun resolveMapLocations() {
-        if (_mapState.value.resolving || _mapState.value.loading) return
+        if (mapControl != null || _mapState.value.loading) return
         val control = RequestControl()
-        val epoch = ++mapEpoch
         val favoritesOnly = _mapState.value.favoritesOnly
         mapControl = control
-        _mapState.update { it.copy(resolving = true, error = null) }
+        _mapState.update { it.copy(resolving = true, cancelling = false, error = null) }
         viewModelScope.launch {
+            var failureMessage: String? = null
+            var failedLookups = 0u
             try {
-                val overview = core.resolveMapLocations(favoritesOnly, control)
-                if (epoch == mapEpoch) _mapState.update {
-                    it.copy(overview = overview, resolving = false)
-                }
+                failedLookups = core.resolveMapLocations(favoritesOnly, control).failedLookups
             } catch (cancelled: CancellationException) {
                 control.cancel()
-                if (epoch == mapEpoch) _mapState.update { it.copy(resolving = false) }
+                throw cancelled
+            } catch (failure: Exception) {
+                if (!_mapState.value.cancelling) {
+                    failureMessage = failure.message ?: "Standortauflösung fehlgeschlagen"
+                }
+            } finally {
+                if (mapControl === control) {
+                    mapControl = null
+                    _mapState.update { it.copy(resolving = false, cancelling = false) }
+                }
+            }
+            // Re-read even on explicit cancellation: already committed results and
+            // intervening search/favorite changes must be visible.
+            val epoch = ++mapEpoch
+            _mapState.update { it.copy(loading = true) }
+            try {
+                val latest = core.mapOverview(_mapState.value.favoritesOnly)
+                if (epoch == mapEpoch) _mapState.update {
+                    it.copy(overview = latest.copy(failedLookups = failedLookups),
+                        loading = false, error = failureMessage)
+                }
+            } catch (cancelled: CancellationException) {
+                if (epoch == mapEpoch) _mapState.update { it.copy(loading = false) }
                 throw cancelled
             } catch (failure: Exception) {
                 if (epoch == mapEpoch) _mapState.update {
-                    it.copy(resolving = false, error = failure.message ?: "Standortauflösung fehlgeschlagen")
+                    it.copy(loading = false, error = failure.message ?: "Karte konnte nicht geladen werden")
                 }
-            } finally {
-                if (mapControl === control) mapControl = null
             }
         }
     }
@@ -713,6 +732,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         profileMedia=items,changeEvents=changes,identityCandidates=candidates,
                         mediaWarning=refreshError,archiving=!showingArchive)
                 }
+                refreshMap()
                 if (showingArchive) return@launch
                 val control = RequestControl()
                 archiveControl = control
@@ -768,6 +788,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 refreshDiscovery()
+                refreshMap()
                 refresh()
             } catch (cancellation: CancellationException) {
                 if (requestId == profileRequestId) {
@@ -833,6 +854,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _uiState.update { it.copy(lastImport=result) }
                 refresh()
                 refreshDiscovery()
+                refreshMap()
                 refreshSearchDefinitions()
             } catch (cancellation: CancellationException) {
                 _uiState.update { it.copy(loading=false) }

@@ -21,6 +21,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -37,6 +39,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.google.gson.JsonObject
 import de.justify87.ladiesexplorer.core.MapProfile
 import org.maplibre.android.MapLibre
+import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
@@ -73,6 +76,8 @@ fun MapScreen(
     modifier: Modifier = Modifier,
 ) {
     var selectedListingId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var camera by rememberSaveable { mutableStateOf<CameraPosition?>(null) }
+    var mapAttempt by remember { mutableIntStateOf(0) }
     val points = state.overview?.profiles.orEmpty()
     val active = points.firstOrNull { it.listingId == selectedListingId }
     val selection = if (active == null) emptyList() else points.filter {
@@ -99,7 +104,7 @@ fun MapScreen(
                 Text("Aktualisieren")
             }
             if (state.resolving) {
-                OutlinedButton(onClick = onCancel) { Text("Abbrechen") }
+                OutlinedButton(onClick = onCancel, enabled = !state.cancelling) { Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen") }
             } else if ((overview?.pendingLocations ?: 0u) > 0u) {
                 Button(onClick = onResolve, enabled = !state.loading) {
                     Text("Standorte auflösen")
@@ -109,7 +114,11 @@ fun MapScreen(
         if (state.resolving || state.loading) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator()
-                Text(if (state.resolving) "Standorte werden ermittelt …" else "Karte wird geladen …")
+                Text(when {
+                    state.cancelling -> "Laufende Anfrage wird beendet …"
+                    state.resolving -> "Standorte werden ermittelt …"
+                    else -> "Karte wird geladen …"
+                })
             }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -125,11 +134,16 @@ fun MapScreen(
             )
         }
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            NativeProfileMap(
-                points = overview?.profiles.orEmpty(),
-                onSelect = { selectedListingId = it },
-                modifier = Modifier.fillMaxSize(),
-            )
+            key(mapAttempt) {
+                NativeProfileMap(
+                    points = points,
+                    savedCamera = camera,
+                    onCameraChanged = { camera = it },
+                    onSelect = { selectedListingId = it },
+                    onRetry = { mapAttempt++ },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
         if (selection.isNotEmpty()) {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -170,22 +184,29 @@ private fun asFeatures(points: List<MapProfile>): FeatureCollection {
 @Composable
 private fun NativeProfileMap(
     points: List<MapProfile>,
+    savedCamera: CameraPosition?,
+    onCameraChanged: (CameraPosition) -> Unit,
     onSelect: (Long) -> Unit,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val currentPoints by rememberUpdatedState(points)
+    val currentCamera by rememberUpdatedState(savedCamera)
+    val saveCamera by rememberUpdatedState(onCameraChanged)
     val currentSelect by rememberUpdatedState(onSelect)
-    var map by remember { mutableStateOf<MapLibreMap?>(null) }
-    var centered by remember { mutableStateOf(false) }
-    val mapView = remember(context) {
+    val mapView = remember(context, owner) {
         MapLibre.getInstance(context)
         MapView(context).apply { onCreate(null) }
     }
+    var map by remember(mapView) { mutableStateOf<MapLibreMap?>(null) }
+    var loadError by remember(mapView) { mutableStateOf<String?>(null) }
+    var disposed by remember(mapView) { mutableStateOf(false) }
 
     DisposableEffect(owner, mapView) {
         val lifecycle = owner.lifecycle
+        // addObserver synchronizes to the current state; never start/resume twice.
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> mapView.onStart()
@@ -196,9 +217,9 @@ private fun NativeProfileMap(
             }
         }
         lifecycle.addObserver(observer)
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStart()
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onResume()
         onDispose {
+            disposed = true
+            map?.cameraPosition?.let(saveCamera)
             lifecycle.removeObserver(observer)
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
@@ -206,65 +227,94 @@ private fun NativeProfileMap(
         }
     }
 
-    AndroidView(
-        factory = {
-            mapView.getMapAsync { ready ->
-                ready.setStyle(MAP_STYLE) { style ->
-                    val source = GeoJsonSource(
-                        MAP_SOURCE,
-                        asFeatures(currentPoints),
-                        GeoJsonOptions().withCluster(true).withClusterRadius(45).withClusterMaxZoom(15),
-                    )
-                    style.addSource(source)
-                    style.addLayer(
-                        CircleLayer(MAP_CLUSTERS, MAP_SOURCE)
-                            .withFilter(Expression.has("point_count"))
-                            .withProperties(circleColor("#4268B5"), circleRadius(21f)),
-                    )
-                    style.addLayer(
-                        SymbolLayer("ladies-cluster-count", MAP_SOURCE)
-                            .withFilter(Expression.has("point_count"))
-                            .withProperties(
-                                textField(Expression.get("point_count_abbreviated")),
-                                textColor("#FFFFFF"), textSize(14f),
-                            ),
-                    )
-                    style.addLayer(
-                        CircleLayer(MAP_SINGLE, MAP_SOURCE)
-                            .withFilter(Expression.not(Expression.has("point_count")))
-                            .withProperties(
-                                circleColor("#D62F77"), circleRadius(9f),
-                                circleStrokeWidth(2f), circleStrokeColor("#FFFFFF"),
-                            ),
-                    )
-                    ready.addOnMapClickListener { location ->
-                        val screen = ready.projection.toScreenLocation(location)
-                        val single = ready.queryRenderedFeatures(screen, MAP_SINGLE).firstOrNull()
-                        if (single != null && single.hasProperty("listing_id")) {
-                            currentSelect(single.getNumberProperty("listing_id").toLong())
-                            true
-                        } else if (ready.queryRenderedFeatures(screen, MAP_CLUSTERS).isNotEmpty()) {
-                            ready.animateCamera(CameraUpdateFactory.newLatLngZoom(
-                                location, (ready.cameraPosition.zoom + 2.0).coerceAtMost(16.0)))
-                            true
-                        } else false
+    Box(modifier = modifier) {
+        AndroidView(
+            factory = {
+                mapView.addOnDidFailLoadingMapListener { message ->
+                    if (!disposed) loadError = message.ifBlank { "Kartenstil konnte nicht geladen werden." }
+                }
+                mapView.getMapAsync { ready ->
+                    if (!disposed) {
+                        ready.setStyle(MAP_STYLE) { style ->
+                            if (!disposed) {
+                                val source = GeoJsonSource(
+                                    MAP_SOURCE,
+                                    asFeatures(currentPoints),
+                                    GeoJsonOptions().withCluster(true).withClusterRadius(45).withClusterMaxZoom(15),
+                                )
+                                style.addSource(source)
+                                style.addLayer(
+                                    CircleLayer(MAP_CLUSTERS, MAP_SOURCE)
+                                        .withFilter(Expression.has("point_count"))
+                                        .withProperties(circleColor("#4268B5"), circleRadius(21f)),
+                                )
+                                style.addLayer(
+                                    SymbolLayer("ladies-cluster-count", MAP_SOURCE)
+                                        .withFilter(Expression.has("point_count"))
+                                        .withProperties(
+                                            textField(Expression.get("point_count_abbreviated")),
+                                            textColor("#FFFFFF"), textSize(14f),
+                                        ),
+                                )
+                                style.addLayer(
+                                    CircleLayer(MAP_SINGLE, MAP_SOURCE)
+                                        .withFilter(Expression.not(Expression.has("point_count")))
+                                        .withProperties(
+                                            circleColor("#D62F77"), circleRadius(9f),
+                                            circleStrokeWidth(2f), circleStrokeColor("#FFFFFF"),
+                                        ),
+                                )
+                                val initial = currentCamera
+                                if (initial != null) {
+                                    ready.moveCamera(CameraUpdateFactory.newCameraPosition(initial))
+                                } else {
+                                    val first = currentPoints.firstOrNull()
+                                    ready.moveCamera(CameraUpdateFactory.newLatLngZoom(
+                                        if (first == null) LatLng(51.0, 10.0)
+                                        else LatLng(first.latitude, first.longitude),
+                                        if (first == null) 5.0 else 10.0,
+                                    ))
+                                }
+                                ready.addOnCameraIdleListener {
+                                    if (!disposed) saveCamera(ready.cameraPosition)
+                                }
+                                ready.addOnMapClickListener { location ->
+                                    val screen = ready.projection.toScreenLocation(location)
+                                    val single = ready.queryRenderedFeatures(screen, MAP_SINGLE).firstOrNull()
+                                    if (single != null && single.hasProperty("listing_id")) {
+                                        currentSelect(single.getNumberProperty("listing_id").toLong())
+                                        true
+                                    } else if (ready.queryRenderedFeatures(screen, MAP_CLUSTERS).isNotEmpty()) {
+                                        ready.animateCamera(CameraUpdateFactory.newLatLngZoom(
+                                            location, (ready.cameraPosition.zoom + 2.0).coerceAtMost(16.0)))
+                                        true
+                                    } else false
+                                }
+                                loadError = null
+                                map = ready
+                            }
+                        }
                     }
-                    map = ready
+                }
+                mapView
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        when {
+            loadError != null -> Card(modifier = Modifier.align(Alignment.Center).padding(16.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Karte konnte nicht geladen werden.", color = MaterialTheme.colorScheme.error)
+                    Text("Gespeicherte Profildaten bleiben verfügbar.", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = onRetry) { Text("Karte erneut laden") }
                 }
             }
-            mapView
-        },
-        modifier = modifier,
-    )
+            map == null -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
+    }
+
     LaunchedEffect(points, map) {
         map?.getStyle { style ->
             (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(points))
-        }
-        if (points.isNotEmpty() && !centered) {
-            val first = points.first()
-            map?.moveCamera(CameraUpdateFactory.newLatLngZoom(
-                LatLng(first.latitude, first.longitude), 10.0))
-            if (map != null) centered = true
         }
     }
 }
