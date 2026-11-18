@@ -112,6 +112,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val media = core.archiveProfileMedia(profile.snapshotId)
                     _searchUiState.update { it.copy(mediaArchive = media) }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
                 } catch (failure: Exception) {
                     _searchUiState.update {
                         it.copy(mediaWarning = failure.message ?: "Medienarchivierung fehlgeschlagen")

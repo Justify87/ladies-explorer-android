@@ -111,11 +111,10 @@ fn hashes(db: &Connection, snapshot_id: i64) -> Result<Vec<u64>, CoreError> {
          WHERE m.snapshot_id=?1 AND m.kind='IMAGE' AND a.dhash IS NOT NULL",
     )?;
     let rows = query.query_map([snapshot_id], |row| row.get::<_, String>(0))?;
-    Ok(rows
-        .filter_map(|row| {
-            row.ok()
-                .and_then(|hash| u64::from_str_radix(&hash, 16).ok())
-        })
+    let values = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(values
+        .into_iter()
+        .filter_map(|hash| u64::from_str_radix(&hash, 16).ok())
         .collect::<HashSet<_>>()
         .into_iter()
         .collect())
