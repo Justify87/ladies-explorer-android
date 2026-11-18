@@ -37,6 +37,8 @@ internal class SwipeSession {
     fun queue(cards: List<DiscoveryCard>, active: Boolean): List<DiscoveryCard> {
         val people = history.mapTo(hashSetOf()) { it.personId }
         val listings = history.mapTo(hashSetOf()) { it.listingId }
+        // After an identity merge, a visited listing may now have a different owner.
+        cards.filter { it.listingId in listings }.forEach { people.add(it.personId) }
         val eligible = cards.filter {
             it.personId !in people && it.listingId !in listings &&
                 (if (active) replayLikes || it.preference != Preference.LIKE else it.preference == Preference.NONE)
