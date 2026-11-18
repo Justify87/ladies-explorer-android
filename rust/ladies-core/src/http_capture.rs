@@ -720,4 +720,101 @@ mod tests {
         assert_eq!(entries[1]["timings"]["dns"], -1);
         assert_eq!(entries[1]["timings"]["connect"], -1);
     }
+    #[test]
+    fn har_timings_are_nonnegative_consistent_and_unknown_size_is_not_zero() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("db.sqlite").to_string_lossy());
+        recorder.set_mode(CaptureMode::Metadata);
+        let mut event = sample();
+        event.response_size = None;
+        event.headers_elapsed_ms = 73;
+        event.body_elapsed_ms = 12;
+        recorder.record(event);
+        let har: Value =
+            serde_json::from_slice(&fs::read(recorder.export(root.path()).unwrap()).unwrap())
+                .unwrap();
+        let entry = &har["log"]["entries"][0];
+        assert_eq!(entry["response"]["content"]["size"], -1);
+        assert_eq!(entry["time"], 85);
+        assert_eq!(entry["timings"]["send"], 0);
+        assert_eq!(entry["timings"]["wait"], 73);
+        assert_eq!(entry["timings"]["receive"], 12);
+        assert_eq!(
+            entry["time"].as_u64().unwrap(),
+            entry["timings"]["send"].as_u64().unwrap()
+                + entry["timings"]["wait"].as_u64().unwrap()
+                + entry["timings"]["receive"].as_u64().unwrap()
+        );
+    }
+
+    #[test]
+    fn masks_url_header_redirect_credentials_and_embedded_error_tokens() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("db.sqlite").to_string_lossy());
+        recorder.set_mode(CaptureMode::Metadata);
+        let mut event = sample();
+        event.url = "https://alice:pwd@www.ladies.de/path?api_key=request-key&keep=yes#token".into();
+        event.request_headers.push(HttpHeader {
+            name: "Referer".into(),
+            value: "https://www.ladies.de/start?access_token=ref-secret".into(),
+        });
+        event.response_headers.push(HttpHeader {
+            name: "Location".into(),
+            value: "/login?refresh_token=redirect-secret".into(),
+        });
+        event.error = Some(
+            "request to https://www.ladies.de/check?token=error-secret failed; password=plain-secret".into(),
+        );
+        recorder.record(event);
+        let har = fs::read_to_string(recorder.export(root.path()).unwrap()).unwrap();
+        for secret in [
+            "request-key", "ref-secret", "redirect-secret", "error-secret",
+            "plain-secret", "alice", "pwd", "#token",
+        ] {
+            assert!(!har.contains(secret), "leaked: {secret}");
+        }
+        assert!(har.contains("keep=yes"));
+        assert!(har.contains("REDACTED"));
+    }
+
+    #[test]
+    fn recover_incomplete_jsonl_tail_and_preserve_valid_entries() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("db.sqlite").to_string_lossy().into_owned();
+        let recorder = HttpRecorder::new(&path);
+        recorder.set_mode(CaptureMode::Metadata);
+        recorder.record(sample());
+        let journal = root.path().join("diagnostics/ladies-http.jsonl");
+        let mut file = OpenOptions::new().append(true).open(&journal).unwrap();
+        file.write_all(b"{\\\"partial\\\":").unwrap();
+        drop(file);
+
+        let reopened = HttpRecorder::new(&path);
+        assert_eq!(reopened.status().entries, 1);
+        assert!(reopened.status().last_error.is_some());
+        assert!(!reopened.status().stopped);
+        reopened.set_mode(CaptureMode::Metadata);
+        reopened.record(sample());
+        assert_eq!(reopened.status().entries, 2);
+        let data: Value =
+            serde_json::from_slice(&fs::read(reopened.export(root.path()).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(data["log"]["entries"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn corrupt_existing_lines_cannot_silently_disappear_during_export() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("db.sqlite").to_string_lossy());
+        recorder.set_mode(CaptureMode::Metadata);
+        recorder.record(sample());
+        let journal = root.path().join("diagnostics/ladies-http.jsonl");
+        OpenOptions::new().append(true).open(journal).unwrap()
+            .write_all(b"invalid json\\n").unwrap();
+        assert_eq!(
+            recorder.export(root.path()).unwrap_err().kind(),
+            io::ErrorKind::InvalidData,
+        );
+    }
+
 }
