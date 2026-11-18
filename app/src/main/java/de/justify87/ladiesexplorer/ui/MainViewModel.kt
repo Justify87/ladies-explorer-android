@@ -42,6 +42,8 @@ data class DiscoverUiState(
     val nextCursor: DiscoveryCursor? = null,
     val activeRunId: Long? = null,
     val activeVisibleCount: Int = 0,
+    val replayLikes: Boolean = true,
+    val canUndoSwipe: Boolean = false,
     val favoritesNextCursor: DiscoveryCursor? = null,
     val loadingMore: Boolean = false,
     val favoritesLoadingMore: Boolean = false,
@@ -127,7 +129,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var profileRequestId = 0L
     private var discoveryEpoch = 0L
     private val searchGeneration = RequestGeneration()
-    private val skippedPeople = mutableSetOf<Long>()
+    private val swipeSession = SwipeSession()
 
     init {
         refresh()
@@ -463,10 +465,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (!searchGeneration.isCurrent(epoch)) return@launch
                 val cards = core.activeSearchCards(result.searchRunId, result.local)
                 if (!searchGeneration.isCurrent(epoch)) return@launch
-                skippedPeople.clear()
+                swipeSession.reset()
                 discoveryEpoch++
                 _discoverState.update {
-                    it.copy(cards = neutralQueue(cards), nextCursor = null, activeRunId = result.searchRunId,
+                    it.copy(cards = swipeSession.queue(cards, active = true), canUndoSwipe = false, nextCursor = null, activeRunId = result.searchRunId,
                         activeVisibleCount = cards.size, loading = false, loadingMore = false,
                         favoritesLoadingMore = false, error = null)
                 }
@@ -592,17 +594,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val page: DiscoveryPage,
     )
 
-    private fun neutralQueue(cards: List<DiscoveryCard>): List<DiscoveryCard> =
-        cards.filter { it.preference == Preference.NONE && it.personId !in skippedPeople }.distinctBy { it.personId }
-
     private suspend fun discoveryPage(): DiscoveryProjection {
         val active = _searchUiState.value.response
         if (active == null) {
-            return DiscoveryProjection(null, emptyList(), core.discoveryCards(excludedPeople = skippedPeople.toList()))
+            return DiscoveryProjection(null, emptyList(), core.discoveryCards(excludedPeople = swipeSession.excludedPeople))
         }
         val visible = core.activeSearchCards(active.searchRunId, active.local)
-        // Replay/undo are M05.4; existing neutral-only swipe policy is retained.
-        return DiscoveryProjection(active.searchRunId, visible, DiscoveryPage(neutralQueue(visible), null))
+        return DiscoveryProjection(active.searchRunId, visible, DiscoveryPage(visible, null))
     }
 
     private fun publishDiscovery(
@@ -614,7 +612,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update { it.copy(activeCards = projection.visible) }
         _discoverState.update {
             it.copy(
-                cards = projection.page.cards.filterNot { card -> card.personId in skippedPeople },
+                cards = swipeSession.queue(projection.page.cards, active = projection.runId != null),
+                replayLikes = swipeSession.replayLikes,
+                canUndoSwipe = swipeSession.last != null,
                 activeRunId = projection.runId,
                 activeVisibleCount = projection.visible.size,
                 nextCursor = projection.page.nextCursor,
@@ -658,13 +658,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _discoverState.update { it.copy(loadingMore = true) }
         viewModelScope.launch {
             try {
-                val page = core.discoveryCards(cursor = cursor, excludedPeople = skippedPeople.toList())
+                val page = core.discoveryCards(cursor = cursor, excludedPeople = swipeSession.excludedPeople)
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
                         val known = it.cards.mapTo(mutableSetOf()) { card -> card.personId }
                         it.copy(
                             cards = it.cards + page.cards.filter { card ->
-                                card.personId !in skippedPeople && known.add(card.personId)
+                                card.personId !in swipeSession.excludedPeople && known.add(card.personId)
                             },
                             nextCursor = page.nextCursor,
                             loadingMore = false,
@@ -716,12 +716,98 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun skipCard(personId: Long) {
-        if (_discoverState.value.busy) return
-        if (_searchUiState.value.loading && !_searchUiState.value.profileOpen) return
-        skippedPeople.add(personId)
-        _discoverState.update { it.copy(cards = it.cards.filterNot { card -> card.personId == personId }) }
+    fun resetSwipe() {
+        if (_discoverState.value.busy || _searchUiState.value.loading) return
+        swipeSession.reset()
+        _discoverState.update { it.copy(canUndoSwipe = false) }
+        refreshDiscovery()
+    }
+
+    fun setReplayLikes(replay: Boolean) {
+        if (_discoverState.value.busy || _searchUiState.value.loading || swipeSession.replayLikes == replay) return
+        swipeSession.replayLikes = replay
+        _discoverState.update { it.copy(replayLikes = replay) }
+        refreshDiscovery()
+    }
+
+    fun skipCard(listingId: Long) {
+        val state = _discoverState.value
+        if (state.busy || state.loading || _searchUiState.value.loading) return
+        val card = state.cards.firstOrNull()?.takeIf { it.listingId == listingId } ?: return
+        swipeSession.visit(SwipeStep(card.listingId, card.personId))
+        _discoverState.update {
+            it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true)
+        }
         if (_discoverState.value.cards.size < 10) loadMoreDiscovery()
+    }
+
+    fun decideSwipe(listingId: Long, preference: Preference) {
+        val state = _discoverState.value
+        if (state.busy || state.loading || _searchUiState.value.loading) return
+        val card = state.cards.firstOrNull()?.takeIf { it.listingId == listingId } ?: return
+        val epoch = ++discoveryEpoch
+        _discoverState.update { it.copy(busy = true, error = null, loadingMore = false, favoritesLoadingMore = false) }
+        viewModelScope.launch {
+            var committed = false
+            try {
+                val owner = core.profileIdentity(listingId).personId
+                check(owner == card.personId) { "Personenzuordnung geändert; bitte aktualisieren." }
+                val previous = core.person(owner)?.preference ?: error("Person nicht gefunden")
+                core.setPreference(owner, preference)
+                committed = true
+                swipeSession.visit(SwipeStep(listingId, owner, previous, preference))
+                val page = discoveryPage()
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                publishDiscovery(epoch, page, favorites)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(cards = if (committed) swipeSession.queue(it.cards, it.activeRunId != null) else it.cards,
+                            canUndoSwipe = swipeSession.last != null, error = failure.message ?: "Entscheidung fehlgeschlagen")
+                    }
+                }
+            } finally {
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    fun undoSwipe() {
+        if (_discoverState.value.busy || _discoverState.value.loading || _searchUiState.value.loading) return
+        val step = swipeSession.last ?: return
+        val epoch = ++discoveryEpoch
+        _discoverState.update { it.copy(busy = true, error = null, loadingMore = false, favoritesLoadingMore = false) }
+        viewModelScope.launch {
+            var restored = false
+            try {
+                check(core.profileIdentity(step.listingId).personId == step.personId) {
+                    "Personenzuordnung geändert; Undo nicht möglich. Deck zurücksetzen."
+                }
+                val previous = step.before
+                if (previous != null) {
+                    check(core.person(step.personId)?.preference == step.after) {
+                        "Präferenz inzwischen geändert; Undo nicht möglich."
+                    }
+                    core.setPreference(step.personId, previous)
+                }
+                swipeSession.undo(step)
+                restored = true
+                val page = discoveryPage()
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                publishDiscovery(epoch, page, favorites)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) _discoverState.update {
+                    it.copy(canUndoSwipe = swipeSession.last != null, error =
+                        if (restored) "Undo gespeichert; bitte Ansicht aktualisieren." else failure.message ?: "Undo fehlgeschlagen")
+                }
+            } finally {
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
+            }
+        }
     }
 
     fun choosePreference(personId: Long, preference: Preference) {
@@ -732,7 +818,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 core.setPreference(personId, preference)
-                skippedPeople.remove(personId)
                 val updatedPerson = core.person(personId)
                 _searchUiState.update {
                     if (it.selectedPersonId == personId) it.copy(selectedPerson = updatedPerson) else it
