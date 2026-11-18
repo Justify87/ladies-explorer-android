@@ -21,10 +21,10 @@ pub struct SavedSearchInfo {
     pub local_filter_summary: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct SavedSearchDefinition {
-    query: SearchRequest,
-    local: LocalVisibility,
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Record)]
+pub struct SavedSearchDefinition {
+    pub query: SearchRequest,
+    pub local: LocalVisibility,
 }
 
 fn encode_definition(definition: &SavedSearchDefinition) -> Result<String, CoreError> {
@@ -36,6 +36,16 @@ pub(crate) fn save(
     name: String,
     request: SearchRequest,
 ) -> Result<String, CoreError> {
+    save_with_local(core, name, request, LocalVisibility::default())
+}
+
+pub(crate) fn save_with_local(
+    core: &LadiesCore,
+    name: String,
+    request: SearchRequest,
+    local: LocalVisibility,
+) -> Result<String, CoreError> {
+    validate_local(&local)?;
     let request = source::filter::canonicalize_request(request)?;
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {
@@ -45,7 +55,7 @@ pub(crate) fn save(
     }
     let definition = encode_definition(&SavedSearchDefinition {
         query: request,
-        local: LocalVisibility::default(),
+        local,
     })?;
     let db = core.connection()?;
     db.execute(
@@ -67,6 +77,19 @@ pub(crate) fn update(
     name: String,
     request: SearchRequest,
 ) -> Result<(), CoreError> {
+    update_with_local(core, id, name, request, None)
+}
+
+pub(crate) fn update_with_local(
+    core: &LadiesCore,
+    id: String,
+    name: String,
+    request: SearchRequest,
+    local: Option<LocalVisibility>,
+) -> Result<(), CoreError> {
+    if let Some(ref rules) = local {
+        validate_local(rules)?;
+    }
     let request = source::filter::canonicalize_request(request)?;
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {
@@ -89,7 +112,7 @@ pub(crate) fn update(
     // Imported local filters belong to the saved definition and survive source edits.
     let next = SavedSearchDefinition {
         query: request,
-        local: previous.local.clone(),
+        local: local.unwrap_or_else(|| previous.local.clone()),
     };
     let changed = previous != next;
     let definition = encode_definition(&next)?;
@@ -189,6 +212,14 @@ fn definition(core: &LadiesCore, id: &str) -> Result<(String, i64), CoreError> {
 
 fn request(core: &LadiesCore, id: &str) -> Result<SearchRequest, CoreError> {
     Ok(decode_definition(&definition(core, id)?.0)?.query)
+}
+
+pub(crate) fn load_definition(
+    core: &LadiesCore,
+    id: String,
+) -> Result<SavedSearchDefinition, CoreError> {
+    let (stored, _) = definition(core, &id)?;
+    decode_definition(&stored)
 }
 
 pub(crate) fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreError> {
@@ -467,16 +498,36 @@ fn persist_results_with_control(
     Ok(())
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct LocalVisibility {
-    video_only: bool,
-    photos_only: bool,
-    hide_dislikes: bool,
-    hide_likes: bool,
-    image_mode: String,
+#[derive(
+    Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Record,
+)]
+pub struct LocalVisibility {
+    pub video_only: bool,
+    pub photos_only: bool,
+    pub hide_dislikes: bool,
+    pub hide_likes: bool,
+    pub image_mode: String,
 }
 
 impl LocalVisibility {
+    pub(crate) fn allows(
+        &self,
+        has_video: bool,
+        has_photo: bool,
+        has_ai: bool,
+        preference: &str,
+    ) -> bool {
+        (!self.video_only || has_video)
+            && (!self.photos_only || has_photo)
+            && (!self.hide_dislikes || preference != "DISLIKE")
+            && (!self.hide_likes || preference != "LIKE")
+            && match self.image_mode.as_str() {
+                "AI" => has_ai,
+                "NATURAL" => !has_ai,
+                _ => true,
+            }
+    }
+
     fn summary(&self) -> String {
         let mut active = Vec::new();
         if self.video_only {
@@ -500,7 +551,7 @@ impl LocalVisibility {
     }
 }
 
-fn validate_local(local: &LocalVisibility) -> Result<(), CoreError> {
+pub(crate) fn validate_local(local: &LocalVisibility) -> Result<(), CoreError> {
     if !matches!(local.image_mode.as_str(), "" | "ALL" | "AI" | "NATURAL") {
         return Err(CoreError::InvalidInput(
             "Image classification is not available in this native search".into(),
@@ -548,36 +599,32 @@ fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
     Ok(rules)
 }
 
-fn apply_local_visibility(
+pub(crate) fn apply_local_visibility(
     core: &LadiesCore,
     response: &mut SearchResponse,
     rules: LocalVisibility,
 ) -> Result<(), CoreError> {
     let db = core.connection()?;
-    let mut person_query =
-        db.prepare("SELECT preference FROM person_user_state WHERE person_id=?1")?;
+    let mut person_query = db.prepare(
+        "SELECT l.person_id,u.preference FROM listings l
+         JOIN person_user_state u ON u.person_id=l.person_id WHERE l.listing_id=?1",
+    )?;
     let mut visible = Vec::new();
-    for card in response.profiles.drain(..) {
-        if (rules.video_only && !card.has_video)
-            || (rules.photos_only && card.thumbnail_url.is_none())
-        {
-            continue;
-        }
-        let preference: String = person_query.query_row([card.person_id], |r| r.get(0))?;
-        if (rules.hide_dislikes && preference == "DISLIKE")
-            || (rules.hide_likes && preference == "LIKE")
-        {
-            continue;
-        }
-        let image_allowed = match rules.image_mode.as_str() {
-            "AI" => card.has_ai_content,
-            "NATURAL" => !card.has_ai_content,
-            _ => true,
-        };
-        if image_allowed {
+    validate_local(&rules)?;
+    for mut card in response.profiles.drain(..) {
+        let (person_id, preference): (i64, String) =
+            person_query.query_row([card.listing_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        card.person_id = person_id;
+        if rules.allows(
+            card.has_video,
+            card.thumbnail_url.is_some(),
+            card.has_ai_content,
+            &preference,
+        ) {
             visible.push(card);
         }
     }
+    response.local = rules;
     response.profiles = visible;
     Ok(())
 }
@@ -692,6 +739,43 @@ mod tests {
     }
 
     #[test]
+    fn explicit_local_rules_round_trip_and_change_definition_version() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let query = SearchRequest::for_test();
+        let rules = LocalVisibility {
+            hide_dislikes: true,
+            ..LocalVisibility::default()
+        };
+        let id = save_with_local(&core, "Test".into(), query.clone(), rules.clone()).unwrap();
+        let (_, initial) = definition(&core, &id).unwrap();
+        assert_eq!(load_definition(&core, id.clone()).unwrap().local, rules);
+        update_with_local(
+            &core,
+            id.clone(),
+            "Renamed".into(),
+            query.clone(),
+            Some(rules.clone()),
+        )
+        .unwrap();
+        let (_, renamed) = definition(&core, &id).unwrap();
+        assert_eq!(initial, renamed);
+        let changed = LocalVisibility {
+            hide_likes: true,
+            ..rules
+        };
+        update_with_local(
+            &core,
+            id.clone(),
+            "Renamed".into(),
+            query,
+            Some(changed.clone()),
+        )
+        .unwrap();
+        assert_eq!(load_definition(&core, id.clone()).unwrap().local, changed);
+        assert_eq!(definition(&core, &id).unwrap().1, initial + 1);
+    }
+
+    #[test]
     fn imported_local_filters_survive_rename_and_source_edits() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let legacy = r#"{"city":"Leipzig","radius":20,"local":{"videoOnly":true,"hideDislikes":true,"imageMode":"AI"}}"#;
@@ -779,6 +863,8 @@ mod tests {
             has_stars: false,
         };
         let mut result = SearchResponse {
+            query: SearchRequest::for_test(),
+            local: LocalVisibility::default(),
             search_run_id: 1,
             city: "Leipzig".into(),
             requested_radius_km: 20,
@@ -845,6 +931,8 @@ mod tests {
         changed.radius_km = 30;
         update(&core, id.clone(), "Changed".into(), changed).unwrap();
         let empty = SearchResponse {
+            query: SearchRequest::for_test(),
+            local: LocalVisibility::default(),
             search_run_id: 1,
             city: "Leipzig".into(),
             requested_radius_km: 20,
@@ -875,6 +963,8 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "Leipzig".into(), SearchRequest::for_test()).unwrap();
         let response = SearchResponse {
+            query: SearchRequest::for_test(),
+            local: LocalVisibility::default(),
             search_run_id: 1,
             city: "Leipzig".into(),
             requested_radius_km: 20,
@@ -946,6 +1036,8 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "test".into(), SearchRequest::for_test()).unwrap();
         let response = SearchResponse {
+            query: SearchRequest::for_test(),
+            local: LocalVisibility::default(),
             search_run_id: 1,
             city: "Leipzig".into(),
             requested_radius_km: 20,

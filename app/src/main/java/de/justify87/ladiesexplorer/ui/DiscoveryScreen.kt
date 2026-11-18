@@ -51,6 +51,7 @@ import de.justify87.ladiesexplorer.core.Preference
 @Composable
 fun DiscoverScreen(
     state: DiscoverUiState,
+    searchLoading: Boolean = false,
     onRefresh: () -> Unit,
     onSkip: (Long) -> Unit,
     onChoose: (Long, Preference) -> Unit,
@@ -66,12 +67,13 @@ fun DiscoverScreen(
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    "${state.cards.size} Profile zum Entdecken",
+                    if (state.activeRunId == null) "Lokaler Bestand · ${state.cards.size} unbewertete Profile"
+                    else "Aktive Suche · ${state.activeVisibleCount} sichtbar · ${state.cards.size} unbewertet",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(onClick = onRefresh, enabled = !state.busy) { Text("Aktualisieren") }
+            TextButton(onClick = onRefresh, enabled = !state.busy && !searchLoading) { Text("Aktualisieren") }
         }
         if (state.loading) {
             CircularProgressIndicator()
@@ -79,7 +81,8 @@ fun DiscoverScreen(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Keine neuen Profile", style = MaterialTheme.typography.titleLarge)
-                    Text("Starte eine Suche oder aktualisiere deine Ergebnisse. Bereits abgelehnte Profile werden nicht erneut vorgeschlagen.")
+                    Text(if (state.activeRunId == null) "Starte eine Suche oder aktualisiere den lokalen Bestand."
+                        else "Keine unbewerteten Treffer in diesem Suchlauf. Ändere die Filter oder starte eine neue Suche.")
                     OutlinedButton(onClick = onRefresh) { Text("Erneut laden") }
                 }
             }
@@ -90,8 +93,8 @@ fun DiscoverScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .graphicsLayer { translationX = drag; rotationZ = drag / 45f }
-                    .pointerInput(card.personId, state.busy) {
-                        if (!state.busy) {
+                    .pointerInput(card.personId, state.busy, searchLoading) {
+                        if (!state.busy && !searchLoading) {
                             detectHorizontalDragGestures(
                                 onHorizontalDrag = { change, delta ->
                                     change.consume()
@@ -128,7 +131,7 @@ fun DiscoverScreen(
                                 modifier = Modifier.weight(1f),
                                 onClick = { onProfile(card.listingId, card.personId) },
                             ) { Text("Profil ansehen") }
-                            IconButton(onClick = { onFavorite(card.personId) }, enabled = !state.busy) {
+                            IconButton(onClick = { onFavorite(card.personId) }, enabled = !state.busy && !searchLoading) {
                                 Icon(
                                     if (card.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                     contentDescription = if (card.favorite) "Favorit entfernen" else "Zu Favoriten",
@@ -144,17 +147,17 @@ fun DiscoverScreen(
             ) {
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
-                    enabled = !state.busy,
+                    enabled = !state.busy && !searchLoading,
                     onClick = { onChoose(card.personId, Preference.DISLIKE) },
                 ) { Text("Nein") }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
-                    enabled = !state.busy,
+                    enabled = !state.busy && !searchLoading,
                     onClick = { onSkip(card.personId) },
                 ) { Text("Später") }
                 Button(
                     modifier = Modifier.weight(1f),
-                    enabled = !state.busy,
+                    enabled = !state.busy && !searchLoading,
                     onClick = { onChoose(card.personId, Preference.LIKE) },
                 ) { Text("Gefällt") }
             }

@@ -35,6 +35,113 @@ pub struct SourceFilterCatalog {
     pub groups: Vec<SourceFilterGroup>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FrequentFilter {
+    pub group: String,
+    pub value: String,
+    pub count: u32,
+}
+
+/// Derive usage from committed search runs; never write a second usage database.
+pub(crate) fn frequent(core: &crate::LadiesCore) -> Result<Vec<FrequentFilter>, CoreError> {
+    let db = core.connection()?;
+    let mut query = db.prepare(
+        "SELECT filters_json FROM search_runs WHERE finished_at IS NOT NULL AND filters_json IS NOT NULL",
+    )?;
+    let rows = query.query_map([], |r| r.get::<_, String>(0))?;
+    let mut counts: BTreeMap<(String, String), u32> = BTreeMap::new();
+    let catalog = catalog();
+    for raw in rows {
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw?) else {
+            continue;
+        };
+        let mut used = BTreeSet::new();
+        if let Some(category) = json.get("category").and_then(|v| v.as_str())
+            && let Some(value) = catalog.categories.get(category)
+            && !value.is_empty()
+        {
+            used.insert(("category".to_owned(), value.clone()));
+        }
+        if let Some(selected) = json.get("selected").and_then(|v| v.as_object()) {
+            for (raw_group, values) in selected {
+                let Some(group) = catalog.groups.get(raw_group) else {
+                    continue;
+                };
+                let Some(allowed) = catalog.values.get(group) else {
+                    continue;
+                };
+                let Some(values) = values.as_array() else {
+                    continue;
+                };
+                for value in values.iter().filter_map(|v| v.as_str()) {
+                    let clean = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                    let slug = allowed
+                        .get(&clean)
+                        .or_else(|| allowed.values().find(|slug| *slug == &clean));
+                    if let Some(slug) = slug
+                        && !skip_frequent(group, slug)
+                    {
+                        used.insert((group.clone(), slug.clone()));
+                    }
+                }
+            }
+        }
+        for key in used {
+            let count = counts.entry(key).or_default();
+            *count = count.saturating_add(1);
+        }
+    }
+    let mut result: Vec<_> = counts
+        .into_iter()
+        .filter_map(|((group, slug), count)| {
+            let value = if group == "category" {
+                slug
+            } else {
+                canonical_label(catalog.values.get(&group)?, &slug)?
+            };
+            Some(FrequentFilter {
+                group,
+                value,
+                count,
+            })
+        })
+        .collect();
+    result.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then(a.group.cmp(&b.group))
+            .then(a.value.cmp(&b.value))
+    });
+    result.truncate(5);
+    Ok(result)
+}
+
+fn canonical_label(allowed: &BTreeMap<String, String>, slug: &str) -> Option<String> {
+    let preferred = match slug {
+        "ab18" => Some("Mit 18+ Inhalten"),
+        "girlfriendsex" => Some("Girlfriend-Sex"),
+        _ => None,
+    };
+    if let Some(label) = preferred
+        && allowed.get(label).is_some_and(|value| value == slug)
+    {
+        return Some(label.to_owned());
+    }
+    allowed
+        .iter()
+        .find(|(_, value)| value.as_str() == slug)
+        .map(|(label, _)| label.clone())
+}
+
+fn skip_frequent(group: &str, slug: &str) -> bool {
+    (group == "geschlecht" && slug == "weiblich")
+        || (group == "treff"
+            && matches!(
+                slug,
+                "treffen-besuchbar" | "treffen-haus" | "treffen-hotel" | "treffen-buero"
+            ))
+}
+
 pub(crate) fn available() -> SourceFilterCatalog {
     let catalog = catalog();
     let mut categories = vec![String::new()];
@@ -49,7 +156,12 @@ pub(crate) fn available() -> SourceFilterCatalog {
         .filter_map(|key| {
             catalog.values.get(key).map(|values| SourceFilterGroup {
                 key: key.clone(),
-                options: values.keys().cloned().collect(),
+                options: values
+                    .values()
+                    .filter_map(|slug| canonical_label(values, slug))
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
             })
         })
         .collect();
@@ -133,14 +245,12 @@ pub(crate) fn canonicalize_request(mut request: SearchRequest) -> Result<SearchR
             .ok_or_else(|| invalid(format!("Unknown filter values for {group}")))?;
         for raw_value in raw_values {
             let clean = raw_value.split_whitespace().collect::<Vec<_>>().join(" ");
-            let label = if allowed.contains_key(&clean) {
-                clean
-            } else {
-                allowed
-                    .iter()
-                    .find_map(|(name, slug)| (slug == &clean).then(|| name.clone()))
-                    .ok_or_else(|| invalid(format!("Unknown filter value in {group}: {clean}")))?
-            };
+            let slug = allowed
+                .get(&clean)
+                .map(String::as_str)
+                .unwrap_or(clean.as_str());
+            let label = canonical_label(allowed, slug)
+                .ok_or_else(|| invalid(format!("Unknown filter value in {group}: {clean}")))?;
             normalized.entry(group.clone()).or_default().insert(label);
         }
     }
@@ -223,6 +333,41 @@ pub(super) fn filter_path(request: &SearchRequest) -> Result<String, CoreError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frequent_counts_only_committed_runs_once_per_canonical_filter() {
+        let core = crate::LadiesCore::new(":memory:".into()).unwrap();
+        {
+            let db = core.connection().unwrap();
+            for (filters, finished) in [
+                (
+                    r#"{"category":"locations","selected":{"figur":["mittel","normal"],"treff":["Hausbesuche"],"geschlecht":["weiblich"]}}"#,
+                    true,
+                ),
+                (
+                    r#"{"category":"bordelle-laufhaeuser","selected":{"figur":["normal"],"haarfarbe":["blond"]}}"#,
+                    true,
+                ),
+                (r#"{"selected":{"figur":["mollig"]}}"#, false),
+                ("malformed", true),
+            ] {
+                db.execute(
+                    "INSERT INTO search_runs (filters_json,finished_at) VALUES (?1,CASE WHEN ?2 THEN '2026-11-18T12:00:00Z' END)",
+                    rusqlite::params![filters, finished],
+                )
+                .unwrap();
+            }
+        }
+        let result = frequent(&core).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].group, "category");
+        assert_eq!(result[0].value, "bordelle-laufhaeuser");
+        assert_eq!(result[0].count, 2);
+        assert_eq!(result[1].value, "mittel");
+        assert_eq!(result[1].count, 2);
+        assert_eq!(result[2].value, "blond");
+        assert_eq!(frequent(&core).unwrap(), result);
+    }
 
     #[test]
     fn category_aliases_and_legacy_filter_slugs() {

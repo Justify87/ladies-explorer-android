@@ -543,6 +543,36 @@ fn append_page(
     Ok(AppendPageOutcome::Cards)
 }
 
+pub(super) fn preview_search(
+    client: &SourceHttp,
+    request: &SearchRequest,
+    control: &RequestControl,
+) -> Result<super::SearchPreview, CoreError> {
+    preview_search_using(client, request, Some(control))
+}
+
+fn preview_search_using<T: Transport>(
+    client: &T,
+    request: &SearchRequest,
+    control: Option<&RequestControl>,
+) -> Result<super::SearchPreview, CoreError> {
+    filter::validate_request(request)?;
+    let mut first_page = request.clone();
+    first_page.max_pages = 1;
+    let result = fetch_search_controlled(client, &first_page, control)?;
+    if let Some(control) = control {
+        control.check()?;
+    }
+    // A 404 or missing radius is not a confirmed zero. Ignore contradictory counts.
+    let server_count = result
+        .server_count
+        .filter(|count| result.radius_verified && *count as usize >= result.cards.len());
+    Ok(super::SearchPreview {
+        server_count,
+        radius_verified: result.radius_verified,
+    })
+}
+
 pub(super) fn fetch_search(
     client: &SourceHttp,
     request: &SearchRequest,
@@ -895,6 +925,61 @@ mod tests {
             200,
             location(),
         )
+    }
+
+    #[test]
+    fn preview_uses_only_first_page_and_verified_metadata() {
+        let html = format!(
+            r#"{} totalPages: Number.parseInt(replaceWithDefault("4", 1)), advertCount: Number.parseInt(replaceWithDefault("30", 1)), distanceSearched: Number.parseInt(replaceWithDefault("20", 1))"#,
+            card(1)
+        );
+        let client =
+            with_city(Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, &html));
+        let result = preview_search_using(&client, &SearchRequest::for_test(), None).unwrap();
+        assert_eq!(result.server_count, Some(30));
+        assert!(result.radius_verified);
+    }
+
+    #[test]
+    fn preview_never_confirms_unverified_404_or_missing_count() {
+        let request = SearchRequest::for_test();
+        let url = search_url("leipzig", 20, 1, "", false);
+        let missing = with_city(Mock::default().with(&url, 200, &card(1)));
+        let result = preview_search_using(&missing, &request, None).unwrap();
+        assert_eq!(result.server_count, None);
+        let not_found = with_city(Mock::default().with(&url, 404, ""));
+        let result = preview_search_using(&not_found, &request, None).unwrap();
+        assert_eq!(result.server_count, None);
+        assert!(!result.radius_verified);
+    }
+
+    #[test]
+    fn preview_accepts_explicit_verified_zero_but_not_invented_zero() {
+        let request = SearchRequest::for_test();
+        let url = search_url("leipzig", 20, 1, "", false);
+        let client = with_city(Mock::default().with(
+            &url,
+            200,
+            r#"totalPages: Number.parseInt(replaceWithDefault("0", 1)), advertCount: Number.parseInt(replaceWithDefault("0", 1)), distanceSearched: Number.parseInt(replaceWithDefault("20", 1))"#,
+        ));
+        let result = preview_search_using(&client, &request, None).unwrap();
+        assert_eq!(result.server_count, Some(0));
+        assert!(result.radius_verified);
+    }
+
+    #[test]
+    fn preview_rejects_wrong_radius_and_cancellation() {
+        let html = format!(
+            r#"{} advertCount: Number.parseInt(replaceWithDefault("2", 1)), distanceSearched: Number.parseInt(replaceWithDefault("50", 1))"#,
+            card(1)
+        );
+        let client =
+            with_city(Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, &html));
+        let request = SearchRequest::for_test();
+        assert!(preview_search_using(&client, &request, None).is_err());
+        let control = RequestControl::default();
+        control.cancel();
+        assert!(preview_search_using(&Mock::default(), &request, Some(&control)).is_err());
     }
 
     #[test]

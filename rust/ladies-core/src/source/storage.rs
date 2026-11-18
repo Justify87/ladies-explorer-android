@@ -123,6 +123,8 @@ pub(super) fn save_search_with_control(
     }
     tx.commit()?;
     Ok(SearchResponse {
+        query: request.clone(),
+        local: crate::saved_search::LocalVisibility::default(),
         search_run_id: run_id,
         city: downloaded.city,
         requested_radius_km: request.radius_km,

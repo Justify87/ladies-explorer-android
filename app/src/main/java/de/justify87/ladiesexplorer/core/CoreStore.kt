@@ -151,11 +151,23 @@ class CoreStore(context: Context) {
         }
     }
 
-    suspend fun search(query: SearchRequest, control: RequestControl): SearchResponse = withContext(Dispatchers.IO) {
+    suspend fun preview(query: SearchRequest, control: RequestControl): SearchPreview =
+        withContext(Dispatchers.IO) {
+            recorded("preview city=${query.city} radius=${query.radiusKm}") {
+                engine.previewSource(query, control)
+            }
+        }
+
+    suspend fun search(query: SearchRequest, local: LocalVisibility, control: RequestControl): SearchResponse = withContext(Dispatchers.IO) {
         recorded("search city=${query.city} radius=${query.radiusKm}") {
-            engine.searchSource(query, control)
+            engine.searchSource(query, local, control)
         }
     }
+
+    suspend fun activeSearchCards(runId: Long, local: LocalVisibility): List<DiscoveryCard> =
+        withContext(Dispatchers.IO) {
+            engine.activeSearchCards(runId, local)
+        }
 
     suspend fun archiveProfileMedia(snapshotId: Long, control: RequestControl): MediaArchiveReport =
         withContext(Dispatchers.IO) {
@@ -173,6 +185,9 @@ class CoreStore(context: Context) {
     suspend fun cachedProfile(listingId: Long): ProfileResponse? = withContext(Dispatchers.IO) {
         engine.cachedSourceProfile(listingId)
     }
+
+    suspend fun frequentFilters(): List<FrequentFilter> =
+        withContext(Dispatchers.IO) { engine.frequentFilters() }
 
     suspend fun sourceFilterCatalog(): SourceFilterCatalog = withContext(Dispatchers.IO) {
         engine.sourceFilterCatalog()
@@ -214,14 +229,14 @@ class CoreStore(context: Context) {
     suspend fun savedSearches(): List<SavedSearchInfo> =
         withContext(Dispatchers.IO) { engine.listSavedSearches() }
 
-    suspend fun saveSearch(name: String, request: SearchRequest): String =
-        withContext(Dispatchers.IO) { engine.saveNativeSearch(name, request) }
+    suspend fun saveSearch(name: String, request: SearchRequest, local: LocalVisibility): String =
+        withContext(Dispatchers.IO) { engine.saveSearchDefinition(name, request, local) }
 
-    suspend fun updateSavedSearch(id: String, name: String, request: SearchRequest) =
-        withContext(Dispatchers.IO) { engine.updateNativeSearch(id, name, request) }
+    suspend fun updateSavedSearch(id: String, name: String, request: SearchRequest, local: LocalVisibility) =
+        withContext(Dispatchers.IO) { engine.updateSearchDefinition(id, name, request, local) }
 
-    suspend fun loadSavedSearch(id: String): SearchRequest =
-        withContext(Dispatchers.IO) { engine.loadSavedSearch(id) }
+    suspend fun loadSavedSearch(id: String): SavedSearchDefinition =
+        withContext(Dispatchers.IO) { engine.loadSearchDefinition(id) }
 
     suspend fun savedSearchResults(
         id: String,

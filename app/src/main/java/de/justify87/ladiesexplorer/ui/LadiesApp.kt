@@ -36,6 +36,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.RadioButton
 import de.justify87.ladiesexplorer.core.CaptureMode
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
@@ -72,6 +73,16 @@ fun LadiesApp(
         save = { it.encode() }, restore = { ShellRoute.decode(it) },
     )) { mutableStateOf(ShellRoute()) }
     val stateHolder = rememberSaveableStateHolder()
+    var lastPresentedRun by rememberSaveable { mutableStateOf(search.response?.searchRunId) }
+    LaunchedEffect(search.response?.searchRunId) {
+        val run = search.response?.searchRunId
+        if (run != null && run != lastPresentedRun) {
+            lastPresentedRun = run
+            if (!search.profileOpen && (route.root == RootDestination.Search || route.root == RootDestination.Discover)) {
+                route = route.select(DiscoverMode.Swipe)
+            }
+        }
+    }
     val mapVisible = route.mapVisible && !search.profileOpen
     LaunchedEffect(mapVisible) {
         if (mapVisible) viewModel.refreshMap()
@@ -195,10 +206,21 @@ fun LadiesApp(
             stateHolder.SaveableStateProvider(route.stateKey) {
                 when (route.root) {
                     RootDestination.Discover -> Column(modifier = modifier) {
+                        if (route.discovery == DiscoverMode.Swipe) {
+                            Column(Modifier.padding(horizontal = 16.dp)) {
+                                AvailabilitySelector(search.headerAvailability(), !search.loading && !home.loading && !discovery.busy) {
+                                    viewModel.runAvailability(it)
+                                }
+                            }
+                        }
+                        if (route.discovery == DiscoverMode.Swipe) {
+                            SearchRunStatus(search, viewModel::cancelActiveSearch)
+                        }
                         DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
                         if (route.discovery == DiscoverMode.Swipe) {
                             DiscoverScreen(
                                 state = discovery,
+                                searchLoading = search.loading,
                                 onRefresh = viewModel::refreshDiscovery,
                                 onSkip = viewModel::skipCard,
                                 onChoose = viewModel::choosePreference,
@@ -220,6 +242,7 @@ fun LadiesApp(
                     }
                     RootDestination.Search -> SearchScreen(
                         state=search,
+                        canStartSearch = !home.loading && !discovery.busy,
                         onCity=viewModel::setSearchCity,
                         onRadius=viewModel::setSearchRadius,
                         onCategory=viewModel::setCategory,
@@ -227,6 +250,10 @@ fun LadiesApp(
                         onHeight=viewModel::setHeightRange,
                         onPages=viewModel::setMaxPages,
                         onToggleFilter=viewModel::toggleFilter,
+                        onAvailability=viewModel::setAvailability,
+                        onLocalVisibility=viewModel::setLocalVisibility,
+                        onReset=viewModel::resetSearchDraft,
+                        onPreviewVisible=viewModel::setPreviewVisible,
                         onSearch={viewModel.startSearch()},
                         onCancelSearch=viewModel::cancelActiveSearch,
                         onSave=viewModel::saveCurrentSearch,
@@ -263,6 +290,30 @@ fun LadiesApp(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val active = state.response
+        if (active != null) {
+            Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
+                style = MaterialTheme.typography.labelMedium)
+            if (active.partial || !active.radiusVerified) {
+                Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        if (state.loading) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Suche läuft …", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onCancel) { Text("Abbrechen") }
+            }
+        }
+        state.error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 3)
         }
     }
 }

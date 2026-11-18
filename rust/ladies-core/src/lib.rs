@@ -148,10 +148,13 @@ pub use map::{MapOverview, MapProfile};
 pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
 pub use saved_search::{
-    SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage,
+    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchInfo,
+    SavedSearchResultPage,
 };
-pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
-pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
+pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
+pub use source::{
+    MediaReference, ProfileResponse, SearchCard, SearchPreview, SearchRequest, SearchResponse,
+};
 
 #[derive(uniffi::Object)]
 pub struct LadiesCore {
@@ -294,14 +297,38 @@ impl LadiesCore {
             .map_err(|e| CoreError::Storage(format!("HAR export failed: {e}")))
     }
 
-    pub fn search_source(
+    pub fn preview_source(
         &self,
         query: SearchRequest,
         control: Arc<RequestControl>,
+    ) -> Result<SearchPreview, CoreError> {
+        self.diagnostics.timed("SEARCH", "preview_source", || {
+            source::preview(self, query, &control)
+        })
+    }
+
+    pub fn search_source(
+        &self,
+        query: SearchRequest,
+        local: LocalVisibility,
+        control: Arc<RequestControl>,
     ) -> Result<SearchResponse, CoreError> {
         self.diagnostics.timed("SEARCH", "search_source", || {
-            source::search(self, query, Some(&control))
+            saved_search::validate_local(&local)?;
+            let mut response = source::search(self, query, Some(&control))?;
+            control.check()?;
+            saved_search::apply_local_visibility(self, &mut response, local)?;
+            control.check()?;
+            Ok(response)
         })
+    }
+
+    pub fn active_search_cards(
+        &self,
+        run_id: i64,
+        local: LocalVisibility,
+    ) -> Result<Vec<DiscoveryCard>, CoreError> {
+        discovery::active_search_cards(self, run_id, &local)
     }
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
@@ -380,6 +407,33 @@ impl LadiesCore {
 
     pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
         discovery::media(self, snapshot_id)
+    }
+
+    pub fn frequent_filters(&self) -> Result<Vec<FrequentFilter>, CoreError> {
+        source::filter::frequent(self)
+    }
+
+    pub fn save_search_definition(
+        &self,
+        name: String,
+        request: SearchRequest,
+        local: LocalVisibility,
+    ) -> Result<String, CoreError> {
+        saved_search::save_with_local(self, name, request, local)
+    }
+
+    pub fn update_search_definition(
+        &self,
+        id: String,
+        name: String,
+        request: SearchRequest,
+        local: LocalVisibility,
+    ) -> Result<(), CoreError> {
+        saved_search::update_with_local(self, id, name, request, Some(local))
+    }
+
+    pub fn load_search_definition(&self, id: String) -> Result<SavedSearchDefinition, CoreError> {
+        saved_search::load_definition(self, id)
     }
 
     pub fn source_filter_catalog(&self) -> SourceFilterCatalog {
