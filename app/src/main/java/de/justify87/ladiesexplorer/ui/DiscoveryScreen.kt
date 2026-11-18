@@ -41,7 +41,7 @@ fun DiscoverScreen(
     val context = LocalContext.current
     val core = (context.applicationContext as LadiesApplication).coreStore
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
-    val visible = lifecycle.isAtLeast(Lifecycle.State.STARTED) && !searchLoading
+    val visible = lifecycle.isAtLeast(Lifecycle.State.STARTED) && !searchLoading && !state.loading && !state.busy
     val enabled = !state.busy && !state.loading && !searchLoading
     val decks = remember(state.activeRunId) { mutableStateMapOf<Long, SwipeProfile>() }
     var retry by remember(card?.listingId) { mutableIntStateOf(0) }
@@ -56,6 +56,7 @@ fun DiscoverScreen(
         readError = null
         try {
             decks[card.listingId] = core.readSwipeProfile(card.listingId, control, refresh = true)
+            retry = 0
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (failure: Exception) {
@@ -92,7 +93,7 @@ fun DiscoverScreen(
                 else "Aktive Suche · ${state.activeVisibleCount} sichtbar · ${state.cards.size} im Deck",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onRefresh, enabled = enabled) { Text("Aktualisieren") }
+            TextButton(onClick = { decks.clear(); onRefresh() }, enabled = enabled) { Text("Aktualisieren") }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (state.activeRunId != null) FilterChip(
@@ -100,7 +101,7 @@ fun DiscoverScreen(
                 label = { Text("Likes erneut zeigen") },
             )
             TextButton(onClick = onUndo, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
-            TextButton(onClick = onReset, enabled = enabled) { Text("Reset") }
+            TextButton(onClick = { decks.clear(); onReset() }, enabled = enabled) { Text("Reset") }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (state.loading && card == null) {
@@ -161,7 +162,7 @@ fun DiscoverScreen(
                         profile?.warning?.let { Text(it) }
                         readError?.let {
                             Text(it, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = { retry++ }, enabled = enabled) { Text("Profil erneut laden") }
+                            TextButton(onClick = { decks.remove(card.listingId); retry++ }, enabled = enabled) { Text("Profil erneut laden") }
                         }
                         if (profile == null && readError == null && visible) CircularProgressIndicator(Modifier.size(24.dp))
                     }
