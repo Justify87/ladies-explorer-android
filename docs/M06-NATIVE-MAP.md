@@ -44,3 +44,13 @@
 - Referenzen: [MapLibre Quickstart](https://maplibre.org/maplibre-native/android/examples/getting-started/), [CameraPositionActivity](https://maplibre.org/maplibre-native/android/examples/camera/cameraposition/), [GeoJSON-Updates](https://maplibre.org/maplibre-native/android/examples/geojson-guide/), [Android Lifecycle](https://developer.android.com/reference/androidx/lifecycle/Lifecycle), [Nominatim Policy](https://operations.osmfoundation.org/policies/nominatim/).
 
 - Compose-Interop: [Views in Compose](https://developer.android.com/develop/ui/compose/migrate/interoperability-apis/views-in-compose). Nach Geocoding keine doppelte Übertragung der Kartenliste über UniFFI; der DB-Überblick und der Auftragsstatus bleiben getrennt.
+
+### Gerätetest nach dem Review
+
+- Karte wiederholt öffnen und verlassen, Home/Resume und Rotation prüfen; Kamera und Auswahl beim Öffnen/Schließen eines Profils kontrollieren.
+- Kartenstil offline laden, Fehlerzustand prüfen und nach Wiederherstellung der Verbindung erneut laden.
+- Geocoding starten, abbrechen, Favoritenfilter wechseln und sofort einen erneuten Start versuchen. Der alte Auftrag muss enden, bevor ein neuer gestartet wird; Cache-Teilergebnisse bleiben sichtbar.
+- Während eines Geocoding-Auftrags die Suche oder Favoriten ändern. Nach Ende muss der aktuelle Datenstand angezeigt werden.
+- HAR-Aufzeichnung einschalten: Test einer Geocoder-Antwort und Export in der vorhandenen Diagnose. Kachelrequests sind ausdrücklich nicht Teil der HAR-Abnahme.
+
+Automatisierte Tests verwenden ausschließlich synthetische Daten und einen lokalen HTTP-Testserver, nicht die öffentlichen Geocoder.

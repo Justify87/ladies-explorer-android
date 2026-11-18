@@ -266,10 +266,7 @@ fn chosen_location<'a>(
     (None, pending)
 }
 
-fn build_overview(
-    people: Vec<Candidate>,
-    cache: &HashMap<String, CachedLocation>,
-) -> MapOverview {
+fn build_overview(people: Vec<Candidate>, cache: &HashMap<String, CachedLocation>) -> MapOverview {
     let total_profiles = people.len().min(u32::MAX as usize) as u32;
     let mut profiles = Vec::new();
     let mut pending = HashSet::new();
@@ -403,6 +400,15 @@ fn geocode(
     .build()
     .map_err(|error| CoreError::Source(format!("Geocoding request failed: {error}")))?;
 
+    execute_geocoding(core, client, request, postal)
+}
+
+fn execute_geocoding(
+    core: &LadiesCore,
+    client: &Client,
+    request: reqwest::blocking::Request,
+    postal: bool,
+) -> Result<Lookup, CoreError> {
     let started = Instant::now();
     let (mode, epoch) = core.recorder.mode_epoch();
     let mut observation = (mode != CaptureMode::Off).then(|| HttpObservation {
@@ -693,7 +699,12 @@ mod tests {
             parse_geocoding(r#"{"places":[]}"#, true).unwrap(),
             Lookup::NotFound
         );
-        for body in ["{}", "null", r#"[{"lat":"51"}]"#, r#"[{"lat":"NaN","lon":"12"}]"#] {
+        for body in [
+            "{}",
+            "null",
+            r#"[{"lat":"51"}]"#,
+            r#"[{"lat":"NaN","lon":"12"}]"#,
+        ] {
             assert!(parse_geocoding(body, false).is_err());
         }
         assert!(parse_geocoding(r#"{"error":"maintenance"}"#, true).is_err());
@@ -745,6 +756,76 @@ mod tests {
         let core = seed();
         let _lease = core.geocoding.lock().unwrap();
         assert!(resolve(&core, false, 15, &RequestControl::new()).is_err());
+    }
+
+    #[test]
+    fn geocoder_records_real_http_response_in_existing_har_session() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::TcpListener;
+
+        let root = tempfile::tempdir().unwrap();
+        let database = root.path().join("map.sqlite");
+        let core = LadiesCore::new(database.to_string_lossy().into_owned()).unwrap();
+        core.recorder.set_mode(CaptureMode::Text);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || {
+            listener.set_nonblocking(true).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "local HTTP client did not connect");
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(error) => panic!("{error}"),
+                }
+            };
+            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut reader = BufReader::new(&mut stream);
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
+                    break;
+                }
+            }
+            drop(reader);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]")
+                .unwrap();
+        });
+        let client = Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .unwrap();
+        let url = format!("http://{address}/search");
+        let request = client.get(&url).build().unwrap();
+        let result = execute_geocoding(&core, &client, request, false);
+        worker.join().unwrap();
+        assert_eq!(result.unwrap(), Lookup::NotFound);
+        assert_eq!(core.recorder.status().entries, 1);
+        let export = core.recorder.export(root.path()).unwrap();
+        let har: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(export).unwrap()).unwrap();
+        let entry = &har["log"]["entries"][0];
+        assert_eq!(entry["request"]["url"], url);
+        assert_eq!(entry["response"]["status"], 200);
+        assert_eq!(entry["response"]["content"]["text"], "[]");
+    }
+
+    #[test]
+    fn cancelled_city_request_does_not_wait_or_claim_a_new_slot() {
+        let previous = Instant::now();
+        let mut state = GeocodeState {
+            last_city_request: Some(previous),
+            ..Default::default()
+        };
+        let control = RequestControl::new();
+        control.cancel();
+        assert!(state.wait_for_city(&control).is_err());
+        assert_eq!(state.last_city_request, Some(previous));
     }
 
     #[test]
