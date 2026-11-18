@@ -320,7 +320,8 @@ pub(crate) fn import_bundle(
     fs::create_dir(&staged_assets)?;
     let assets_started = Instant::now();
     let media_file_count = unpack_media(&mut archive, &source, &staged_assets)?;
-    core.diagnostics.phase("IMPORT", "unpack_and_hash_media", assets_started);
+    core.diagnostics
+        .phase("IMPORT", "unpack_and_hash_media", assets_started);
     let sqlite_started = Instant::now();
     let mut target = core.connection()?;
     if target_has_data(&target)? {
@@ -344,7 +345,8 @@ pub(crate) fn import_bundle(
         let _ = fs::remove_dir_all(&final_assets);
         return Err(CoreError::from(err));
     }
-    core.diagnostics.phase("IMPORT", "sqlite_import_commit", sqlite_started);
+    core.diagnostics
+        .phase("IMPORT", "sqlite_import_commit", sqlite_started);
     Ok(ImportReport {
         persons: count(&counts, "persons"),
         listings: count(&counts, "listings"),

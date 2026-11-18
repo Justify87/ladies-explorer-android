@@ -71,22 +71,39 @@ pub(crate) struct HttpRecorder {
 }
 
 pub(crate) fn started_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64).unwrap_or_default()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_default()
 }
 
 pub(crate) fn headers(map: &reqwest::header::HeaderMap) -> Vec<HttpHeader> {
-    map.iter().map(|(name, value)| HttpHeader {
-        name: name.to_string(),
-        value: value.to_str().unwrap_or("<non-text>").to_owned(),
-    }).collect()
+    map.iter()
+        .map(|(name, value)| HttpHeader {
+            name: name.to_string(),
+            value: value.to_str().unwrap_or("<non-text>").to_owned(),
+        })
+        .collect()
 }
 
 fn is_secret(name: &str) -> bool {
     let key = name.to_ascii_lowercase();
-    ["cookie", "authorization", "auth", "token", "secret", "api-key",
-        "apikey", "password", "session", "jwt", "credential", "signature"]
-        .iter().any(|needle| key.contains(needle))
+    [
+        "cookie",
+        "authorization",
+        "auth",
+        "token",
+        "secret",
+        "api-key",
+        "apikey",
+        "password",
+        "session",
+        "jwt",
+        "credential",
+        "signature",
+    ]
+    .iter()
+    .any(|needle| key.contains(needle))
 }
 
 fn redacted_headers(headers: &mut [HttpHeader]) {
@@ -98,12 +115,21 @@ fn redacted_headers(headers: &mut [HttpHeader]) {
 }
 
 fn redacted_url(input: &str) -> String {
-    let Ok(mut url) = Url::parse(input) else { return input.to_owned() };
+    let Ok(mut url) = Url::parse(input) else {
+        return input.to_owned();
+    };
     if url.query().is_some() {
-        let pairs: Vec<_> = url.query_pairs().map(|(k, v)| {
-            let value = if is_secret(&k) { "[REDACTED]".to_owned() } else { v.into_owned() };
-            (k.into_owned(), value)
-        }).collect();
+        let pairs: Vec<_> = url
+            .query_pairs()
+            .map(|(k, v)| {
+                let value = if is_secret(&k) {
+                    "[REDACTED]".to_owned()
+                } else {
+                    v.into_owned()
+                };
+                (k.into_owned(), value)
+            })
+            .collect();
         url.query_pairs_mut().clear().extend_pairs(pairs);
     }
     url.to_string()
@@ -111,9 +137,11 @@ fn redacted_url(input: &str) -> String {
 
 fn is_text(mime: Option<&str>) -> bool {
     let mime = mime.unwrap_or("").to_ascii_lowercase();
-    mime.starts_with("text/") || mime.contains("json") ||
-        mime.contains("xml") || mime.contains("javascript") ||
-        mime.contains("x-www-form-urlencoded")
+    mime.starts_with("text/")
+        || mime.contains("json")
+        || mime.contains("xml")
+        || mime.contains("javascript")
+        || mime.contains("x-www-form-urlencoded")
 }
 
 impl HttpRecorder {
@@ -121,12 +149,20 @@ impl HttpRecorder {
         let path = if database_path == ":memory:" {
             None
         } else {
-            Path::new(database_path).parent()
+            Path::new(database_path)
+                .parent()
                 .map(|p| p.join("diagnostics/ladies-http.jsonl"))
         };
-        let bytes = path.as_ref().and_then(|p| fs::metadata(p).ok()).map_or(0, |m| m.len());
-        let entries = path.as_ref().and_then(|p| File::open(p).ok())
-            .map_or(0, |f| BufReader::new(f).lines().filter(Result::is_ok).count() as u32);
+        let bytes = path
+            .as_ref()
+            .and_then(|p| fs::metadata(p).ok())
+            .map_or(0, |m| m.len());
+        let entries = path
+            .as_ref()
+            .and_then(|p| File::open(p).ok())
+            .map_or(0, |f| {
+                BufReader::new(f).lines().filter(Result::is_ok).count() as u32
+            });
         Self {
             path,
             state: Mutex::new(State {
@@ -147,7 +183,10 @@ impl HttpRecorder {
     }
 
     pub(crate) fn mode(&self) -> CaptureMode {
-        self.state.lock().map(|s| s.mode).unwrap_or(CaptureMode::Off)
+        self.state
+            .lock()
+            .map(|s| s.mode)
+            .unwrap_or(CaptureMode::Off)
     }
 
     pub(crate) fn status(&self) -> CaptureStatus {
@@ -160,17 +199,26 @@ impl HttpRecorder {
                 last_error: s.last_error.clone(),
             },
             Err(_) => CaptureStatus {
-                mode: CaptureMode::Off, entries: 0, bytes: 0, stopped: true,
+                mode: CaptureMode::Off,
+                entries: 0,
+                bytes: 0,
+                stopped: true,
                 last_error: Some("HTTP recorder lock poisoned".into()),
-            }
+            },
         }
     }
 
     /// Recorder errors never alter a source request or an image load.
     pub(crate) fn record(&self, mut event: HttpObservation) {
-        let Ok(mut state) = self.state.lock() else { return };
-        if state.mode == CaptureMode::Off || state.stopped { return };
-        let Some(path) = self.path.as_ref() else { return };
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        if state.mode == CaptureMode::Off || state.stopped {
+            return;
+        };
+        let Some(path) = self.path.as_ref() else {
+            return;
+        };
         event.url = redacted_url(&event.url);
         event.final_url = redacted_url(&event.final_url);
         redacted_headers(&mut event.request_headers);
@@ -184,7 +232,11 @@ impl HttpRecorder {
         } else if !is_text(event.mime.as_deref()) {
             event.body = None;
             event.body_omitted = Some("non_text_mime".into());
-        } else if event.body.as_ref().is_some_and(|b| b.len() > MAX_BODY_BYTES) {
+        } else if event
+            .body
+            .as_ref()
+            .is_some_and(|b| b.len() > MAX_BODY_BYTES)
+        {
             event.body = None;
             event.body_omitted = Some("body_over_2_mib".into());
         }
@@ -212,7 +264,9 @@ impl HttpRecorder {
             return;
         }
         let write_result = (|| -> io::Result<()> {
-            if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
             let mut file = OpenOptions::new().create(true).append(true).open(path)?;
             file.write_all(&line)?;
             file.write_all(b"\n")?;
@@ -228,7 +282,10 @@ impl HttpRecorder {
     }
 
     pub(crate) fn clear(&self) -> io::Result<()> {
-        let mut state = self.state.lock().map_err(|_| io::Error::other("Recorder lock poisoned"))?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| io::Error::other("Recorder lock poisoned"))?;
         if let Some(path) = &self.path {
             match fs::remove_file(path) {
                 Ok(()) => {}
@@ -248,23 +305,38 @@ impl HttpRecorder {
     }
 
     pub(crate) fn export(&self, directory: &Path) -> io::Result<PathBuf> {
-        let _state = self.state.lock().map_err(|_| io::Error::other("Recorder lock poisoned"))?;
-        let path = self.path.as_ref().ok_or_else(|| io::Error::other("Recorder requires file storage"))?;
+        let _state = self
+            .state
+            .lock()
+            .map_err(|_| io::Error::other("Recorder lock poisoned"))?;
+        let path = self
+            .path
+            .as_ref()
+            .ok_or_else(|| io::Error::other("Recorder requires file storage"))?;
         let file = File::open(path)?;
-        let entries = BufReader::new(file).lines()
-            .filter_map(|line| line.ok().and_then(|s| serde_json::from_str::<HttpObservation>(&s).ok()))
+        let entries = BufReader::new(file)
+            .lines()
+            .filter_map(|line| {
+                line.ok()
+                    .and_then(|s| serde_json::from_str::<HttpObservation>(&s).ok())
+            })
             .map(|item| har_entry(&item))
             .collect::<Vec<_>>();
         fs::create_dir_all(directory)?;
         let mut tmp = Builder::new()
-            .prefix("ladies-http-").suffix(".har").tempfile_in(directory)?;
-        serde_json::to_writer_pretty(&mut tmp, &json!({
-            "log": {
-                "version": "1.2",
-                "creator": {"name": "Ladies Explorer Android", "version": "0.1.0"},
-                "entries": entries
-            }
-        }))?;
+            .prefix("ladies-http-")
+            .suffix(".har")
+            .tempfile_in(directory)?;
+        serde_json::to_writer_pretty(
+            &mut tmp,
+            &json!({
+                "log": {
+                    "version": "1.2",
+                    "creator": {"name": "Ladies Explorer Android", "version": "0.1.0"},
+                    "entries": entries
+                }
+            }),
+        )?;
         tmp.write_all(b"\n")?;
         tmp.as_file_mut().sync_all()?;
         let (_, path) = tmp.keep().map_err(|error| error.error)?;
@@ -273,16 +345,24 @@ impl HttpRecorder {
 }
 
 fn har_entry(event: &HttpObservation) -> Value {
-    let timestamp = time::OffsetDateTime::from_unix_timestamp_nanos(event.started_ms as i128 * 1_000_000)
-        .ok().and_then(|dt| dt.format(&Rfc3339).ok())
-        .unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
-    let query = Url::parse(&event.url).ok().map(|url| {
-        url.query_pairs().map(|(name, value)| {
-            json!({"name": name, "value": value})
-        }).collect::<Vec<_>>()
-    }).unwrap_or_default();
+    let timestamp =
+        time::OffsetDateTime::from_unix_timestamp_nanos(event.started_ms as i128 * 1_000_000)
+            .ok()
+            .and_then(|dt| dt.format(&Rfc3339).ok())
+            .unwrap_or_else(|| "1970-01-01T00:00:00Z".into());
+    let query = Url::parse(&event.url)
+        .ok()
+        .map(|url| {
+            url.query_pairs()
+                .map(|(name, value)| json!({"name": name, "value": value}))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let to_headers = |values: &[HttpHeader]| -> Vec<Value> {
-        values.iter().map(|h| json!({"name": h.name, "value": h.value})).collect()
+        values
+            .iter()
+            .map(|h| json!({"name": h.name, "value": h.value}))
+            .collect()
     };
     let mut content = json!({
         "size": event.response_size.unwrap_or_default(),
@@ -291,7 +371,9 @@ fn har_entry(event: &HttpObservation) -> Value {
     if let Some(body) = &event.body {
         content["text"] = json!(body);
     }
-    let total = event.headers_elapsed_ms.saturating_add(event.body_elapsed_ms);
+    let total = event
+        .headers_elapsed_ms
+        .saturating_add(event.body_elapsed_ms);
     // The pre-header interval is measured, but includes connection and redirects.
     // It is NOT a separately measured TTFB.
     json!({
@@ -342,15 +424,28 @@ mod tests {
     use super::*;
     fn sample() -> HttpObservation {
         HttpObservation {
-            method: "GET".into(), url: "https://www.ladies.de/api/list?token=abc".into(),
+            method: "GET".into(),
+            url: "https://www.ladies.de/api/list?token=abc".into(),
             final_url: "https://www.ladies.de/api/list?token=abc".into(),
-            status: Some(200), http_version: "HTTP/2.0".into(),
-            request_headers: vec![HttpHeader {name: "Authorization".into(),value: "Bearer secret".into()}],
-            response_headers: vec![HttpHeader {name: "Set-Cookie".into(),value: "session=test".into()}],
-            mime: Some("application/json".into()), response_size: Some(7),
-            started_ms: started_ms(), headers_elapsed_ms: 25, body_elapsed_ms: 5,
-            body: Some("{\"a\":1}".into()), is_media: false,
-            error: None, body_omitted: None
+            status: Some(200),
+            http_version: "HTTP/2.0".into(),
+            request_headers: vec![HttpHeader {
+                name: "Authorization".into(),
+                value: "Bearer secret".into(),
+            }],
+            response_headers: vec![HttpHeader {
+                name: "Set-Cookie".into(),
+                value: "session=test".into(),
+            }],
+            mime: Some("application/json".into()),
+            response_size: Some(7),
+            started_ms: started_ms(),
+            headers_elapsed_ms: 25,
+            body_elapsed_ms: 5,
+            body: Some("{\"a\":1}".into()),
+            is_media: false,
+            error: None,
+            body_omitted: None,
         }
     }
 
@@ -402,11 +497,22 @@ mod tests {
         let mut media = sample();
         media.is_media = true;
         recorder.record(media);
-        let har: Value = serde_json::from_slice(&fs::read(recorder.export(root.path()).unwrap()).unwrap()).unwrap();
+        let har: Value =
+            serde_json::from_slice(&fs::read(recorder.export(root.path()).unwrap()).unwrap())
+                .unwrap();
         let entries = har["log"]["entries"].as_array().unwrap();
         assert!(entries[0]["response"]["content"].get("text").is_none());
-        assert_eq!(entries[1]["response"]["content"]["text"].as_str().unwrap().len(), MAX_BODY_BYTES);
-        assert_eq!(entries[2]["_diagnostics"]["body_omitted"], "body_over_2_mib");
+        assert_eq!(
+            entries[1]["response"]["content"]["text"]
+                .as_str()
+                .unwrap()
+                .len(),
+            MAX_BODY_BYTES
+        );
+        assert_eq!(
+            entries[2]["_diagnostics"]["body_omitted"],
+            "body_over_2_mib"
+        );
         assert!(entries[3]["response"]["content"].get("text").is_none());
     }
 
@@ -440,7 +546,8 @@ mod tests {
             if recorder.status().entries > 0 {
                 let har: Value = serde_json::from_slice(
                     &fs::read(recorder.export(root.path()).unwrap()).unwrap(),
-                ).unwrap();
+                )
+                .unwrap();
                 assert!(har["log"]["entries"].as_array().is_some());
             }
         }
@@ -475,11 +582,17 @@ mod tests {
         recorder.record(sample());
         let status = recorder.status();
         assert!(status.stopped);
-        assert!(status.last_error.as_deref().unwrap_or("").contains("25 MiB"));
+        assert!(
+            status
+                .last_error
+                .as_deref()
+                .unwrap_or("")
+                .contains("25 MiB")
+        );
         assert_eq!(status.entries, 1);
-        let har: Value = serde_json::from_slice(
-            &fs::read(recorder.export(root.path()).unwrap()).unwrap(),
-        ).unwrap();
+        let har: Value =
+            serde_json::from_slice(&fs::read(recorder.export(root.path()).unwrap()).unwrap())
+                .unwrap();
         assert_eq!(har["log"]["entries"].as_array().unwrap().len(), 1);
     }
 
@@ -491,21 +604,26 @@ mod tests {
         let mut redirected = sample();
         redirected.final_url = "https://www.ladies.de/profile".into();
         redirected.response_headers.push(HttpHeader {
-            name: "Location".into(), value: "/profile".into()
+            name: "Location".into(),
+            value: "/profile".into(),
         });
         recorder.record(redirected);
         let mut error = sample();
         error.status = None;
         error.error = Some("timeout".into());
         recorder.record(error);
-        let har: Value = serde_json::from_slice(&fs::read(recorder.export(root.path()).unwrap()).unwrap()).unwrap();
+        let har: Value =
+            serde_json::from_slice(&fs::read(recorder.export(root.path()).unwrap()).unwrap())
+                .unwrap();
         let entries = har["log"]["entries"].as_array().unwrap();
-        assert_eq!(entries[0]["_diagnostics"]["final_url"], "https://www.ladies.de/profile");
+        assert_eq!(
+            entries[0]["_diagnostics"]["final_url"],
+            "https://www.ladies.de/profile"
+        );
         assert_eq!(entries[0]["response"]["redirectURL"], "/profile");
         assert_eq!(entries[1]["response"]["status"], 0);
         assert_eq!(entries[1]["_diagnostics"]["error"], "timeout");
         assert_eq!(entries[1]["timings"]["dns"], -1);
         assert_eq!(entries[1]["timings"]["connect"], -1);
     }
-
 }

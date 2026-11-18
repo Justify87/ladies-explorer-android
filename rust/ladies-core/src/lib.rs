@@ -185,7 +185,8 @@ impl LadiesCore {
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
         diagnostics.event("CORE", "SQLite schema ready");
-        let source_session = source::SourceSession::new(Arc::clone(&diagnostics), Arc::clone(&recorder))?;
+        let source_session =
+            source::SourceSession::new(Arc::clone(&diagnostics), Arc::clone(&recorder))?;
         Ok(Arc::new(Self {
             db: Mutex::new(db),
             diagnostics,
@@ -202,9 +203,11 @@ impl LadiesCore {
     ) -> Result<ImportReport, CoreError> {
         self.diagnostics
             .event("IMPORT", "Legacy data import requested");
-        let result = self.diagnostics.timed("IMPORT", "import_legacy_bundle", || {
-            legacy_import::import_bundle(self, &bundle_path, &app_files_directory)
-        });
+        let result = self
+            .diagnostics
+            .timed("IMPORT", "import_legacy_bundle", || {
+                legacy_import::import_bundle(self, &bundle_path, &app_files_directory)
+            });
         match &result {
             Ok(report) => self.diagnostics.event(
                 "IMPORT",
@@ -279,11 +282,14 @@ impl LadiesCore {
     }
 
     pub fn clear_http_capture(&self) -> Result<(), CoreError> {
-        self.recorder.clear().map_err(|e| CoreError::Storage(e.to_string()))
+        self.recorder
+            .clear()
+            .map_err(|e| CoreError::Storage(e.to_string()))
     }
 
     pub fn export_http_har(&self, directory: String) -> Result<String, CoreError> {
-        self.recorder.export(std::path::Path::new(&directory))
+        self.recorder
+            .export(std::path::Path::new(&directory))
             .map(|p| p.to_string_lossy().into_owned())
             .map_err(|e| CoreError::Storage(format!("HAR export failed: {e}")))
     }
@@ -293,11 +299,16 @@ impl LadiesCore {
         query: SearchRequest,
         control: Arc<RequestControl>,
     ) -> Result<SearchResponse, CoreError> {
-        self.diagnostics.timed("SEARCH", "search_source", || source::search(self, query, Some(&control)))
+        self.diagnostics.timed("SEARCH", "search_source", || {
+            source::search(self, query, Some(&control))
+        })
     }
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
-        self.diagnostics.timed("PROFILE", "load_source_profile", || source::load_profile(self, listing_id))
+        self.diagnostics
+            .timed("PROFILE", "load_source_profile", || {
+                source::load_profile(self, listing_id)
+            })
     }
 
     pub fn cached_source_profile(
@@ -313,7 +324,10 @@ impl LadiesCore {
         include_videos: bool,
         control: Arc<RequestControl>,
     ) -> Result<MediaArchiveReport, CoreError> {
-        self.diagnostics.timed("MEDIA", "archive_profile_media", || media::archive(self, snapshot_id, include_videos, &control))
+        self.diagnostics
+            .timed("MEDIA", "archive_profile_media", || {
+                media::archive(self, snapshot_id, include_videos, &control)
+            })
     }
 
     pub fn list_identity_candidates(
@@ -1011,30 +1025,67 @@ mod tests {
         use std::thread;
         let first = tempfile::tempdir().unwrap();
         let second = tempfile::tempdir().unwrap();
-        let a = LadiesCore::new(first.path().join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
-        let b = LadiesCore::new(second.path().join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
+        let a = LadiesCore::new(
+            first
+                .path()
+                .join("ladies.sqlite")
+                .to_string_lossy()
+                .into_owned(),
+        )
+        .unwrap();
+        let b = LadiesCore::new(
+            second
+                .path()
+                .join("ladies.sqlite")
+                .to_string_lossy()
+                .into_owned(),
+        )
+        .unwrap();
         let jobs: Vec<_> = [(a.clone(), "core-alpha"), (b.clone(), "core-beta")]
-            .into_iter().map(|(core, label)| {
+            .into_iter()
+            .map(|(core, label)| {
                 thread::spawn(move || {
                     for n in 0..200 {
                         core.record_debug_event("TEST".into(), format!("{label}-{n}"));
                     }
                 })
-            }).collect();
+            })
+            .collect();
         for _ in 0..5 {
             for (core, directory) in [(&a, &first), (&b, &second)] {
-                let snapshot = core.export_diagnostic_snapshot(directory.path().join("exports").to_string_lossy().into_owned()).unwrap();
+                let snapshot = core
+                    .export_diagnostic_snapshot(
+                        directory
+                            .path()
+                            .join("exports")
+                            .to_string_lossy()
+                            .into_owned(),
+                    )
+                    .unwrap();
                 let data = fs::read_to_string(snapshot).unwrap();
                 assert!(data.ends_with('\n'));
             }
         }
-        for job in jobs { job.join().unwrap(); }
-        let export_a = fs::read_to_string(a.export_diagnostic_snapshot(first.path().join("exports").to_string_lossy().into_owned()).unwrap()).unwrap();
-        let export_b = fs::read_to_string(b.export_diagnostic_snapshot(second.path().join("exports").to_string_lossy().into_owned()).unwrap()).unwrap();
+        for job in jobs {
+            job.join().unwrap();
+        }
+        let export_a = fs::read_to_string(
+            a.export_diagnostic_snapshot(
+                first.path().join("exports").to_string_lossy().into_owned(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let export_b = fs::read_to_string(
+            b.export_diagnostic_snapshot(
+                second.path().join("exports").to_string_lossy().into_owned(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         assert!(export_a.contains("core-alpha-199"));
         assert!(!export_a.contains("core-beta-"));
         assert!(export_b.contains("core-beta-199"));
         assert!(!export_b.contains("core-alpha-"));
     }
-
 }

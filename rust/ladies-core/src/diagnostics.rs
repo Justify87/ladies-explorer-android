@@ -2,8 +2,8 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use tempfile::Builder;
@@ -55,8 +55,12 @@ impl Write for EventWriter {
 
 impl Drop for EventWriter {
     fn drop(&mut self) {
-        let Some(path) = &self.journal.path else { return };
-        let Ok(mut state) = self.journal.state.lock() else { return };
+        let Some(path) = &self.journal.path else {
+            return;
+        };
+        let Ok(mut state) = self.journal.state.lock() else {
+            return;
+        };
         if let Err(error) = append(path, &self.buffer) {
             state.last_write_error = Some(error.to_string());
             eprintln!("Ladies Explorer diagnostics: {error}");
@@ -123,7 +127,13 @@ impl Diagnostics {
 
     pub(crate) fn set_debug(&self, enabled: bool) {
         self.debug.store(enabled, Ordering::Relaxed);
-        self.event("CORE", format!("Diagnostic level={}", if enabled { "DEBUG" } else { "INFO" }));
+        self.event(
+            "CORE",
+            format!(
+                "Diagnostic level={}",
+                if enabled { "DEBUG" } else { "INFO" }
+            ),
+        );
     }
 
     pub(crate) fn debug_enabled(&self) -> bool {
@@ -156,7 +166,10 @@ impl Diagnostics {
 
     pub(crate) fn html(&self, stage: &str, body: &str) {
         // Response bodies are never emitted into general-purpose logging.
-        self.debug("HTTP", format!("body discarded stage={stage} bytes={}", body.len()));
+        self.debug(
+            "HTTP",
+            format!("body discarded stage={stage} bytes={}", body.len()),
+        );
     }
 
     pub(crate) fn phase(&self, component: &str, phase: &str, elapsed: Instant) {
@@ -181,7 +194,10 @@ impl Diagnostics {
     }
 
     pub(crate) fn status(&self) -> io::Result<(bool, u64, Option<String>)> {
-        let state = self.journal.state.lock()
+        let state = self
+            .journal
+            .state
+            .lock()
             .map_err(|_| io::Error::other("Diagnostic journal lock poisoned"))?;
         let (available, size) = match self.journal.path.as_ref() {
             Some(path) => match fs::metadata(path) {
@@ -196,7 +212,10 @@ impl Diagnostics {
 
     /// The same mutex serializes whole events, rotations, and immutable export snapshots.
     pub(crate) fn snapshot(&self, directory: &Path) -> io::Result<PathBuf> {
-        let _state = self.journal.state.lock()
+        let _state = self
+            .journal
+            .state
+            .lock()
             .map_err(|_| io::Error::other("Diagnostic journal lock poisoned"))?;
         let source = self.journal.path.as_ref().ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "Diagnostic journal is disabled")
@@ -230,7 +249,8 @@ mod tests {
         for n in 0..2_800 {
             log.event("HTTP", format!("event={n} {}", "x".repeat(650)));
         }
-        let content = fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
+        let content =
+            fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
         assert!(content.len() < MAX_BYTES + 2048);
         assert!(content.contains("event=2799"));
     }
@@ -293,7 +313,8 @@ mod tests {
         log.debug("CORE", "hidden");
         log.set_debug(true);
         log.debug("CORE", "shown");
-        let data = fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
+        let data =
+            fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
         assert!(!data.contains("hidden"));
         assert!(data.contains("shown"));
     }

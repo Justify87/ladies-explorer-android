@@ -10,8 +10,12 @@ use reqwest::blocking::Client;
 use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
-use crate::{CoreError, LadiesCore, identity, operation::RequestControl,
-    http_capture::{self, HttpRecorder, HttpObservation, HttpHeader, CaptureMode}};
+use crate::{
+    CoreError, LadiesCore,
+    http_capture::{self, CaptureMode, HttpHeader, HttpObservation, HttpRecorder},
+    identity,
+    operation::RequestControl,
+};
 
 const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES: u64 = 48 * 1024 * 1024;
@@ -93,18 +97,38 @@ impl Fetcher for HttpFetcher {
         }
         let started = Instant::now();
         let mut observation = (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
-            method: "GET".into(), url: url.into(), final_url: url.into(),
-            status: None, http_version: "unknown".into(),
+            method: "GET".into(),
+            url: url.into(),
+            final_url: url.into(),
+            status: None,
+            http_version: "unknown".into(),
             request_headers: vec![
-                HttpHeader { name: "Referer".into(), value: "https://www.ladies.de/".into() },
-                HttpHeader { name: "User-Agent".into(), value: "Mozilla/5.0 LadiesExplorerAndroid/1".into() },
+                HttpHeader {
+                    name: "Referer".into(),
+                    value: "https://www.ladies.de/".into(),
+                },
+                HttpHeader {
+                    name: "User-Agent".into(),
+                    value: "Mozilla/5.0 LadiesExplorerAndroid/1".into(),
+                },
             ],
-            response_headers: Vec::new(), mime: None, response_size: None,
-            started_ms: http_capture::started_ms(), headers_elapsed_ms: 0,
-            body_elapsed_ms: 0, body: None, is_media: true, error: None, body_omitted: None,
+            response_headers: Vec::new(),
+            mime: None,
+            response_size: None,
+            started_ms: http_capture::started_ms(),
+            headers_elapsed_ms: 0,
+            body_elapsed_ms: 0,
+            body: None,
+            is_media: true,
+            error: None,
+            body_omitted: None,
         });
-        let sent = self.client.get(url).timeout(timeout)
-            .header("Referer", "https://www.ladies.de/").send();
+        let sent = self
+            .client
+            .get(url)
+            .timeout(timeout)
+            .header("Referer", "https://www.ladies.de/")
+            .send();
         let mut response = match sent {
             Ok(response) => response,
             Err(error) => {
@@ -122,13 +146,21 @@ impl Fetcher for HttpFetcher {
             obs.http_version = format!("{:?}", response.version());
             obs.final_url = response.url().to_string();
             obs.response_headers = http_capture::headers(response.headers());
-            obs.mime = response.headers().get(reqwest::header::CONTENT_TYPE)
-                .and_then(|h| h.to_str().ok()).map(ToOwned::to_owned);
+            obs.mime = response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|h| h.to_str().ok())
+                .map(ToOwned::to_owned);
             obs.response_size = response.content_length();
         }
         if !response.status().is_success() {
-            if let Some(obs) = observation.take() { self.recorder.record(obs); }
-            return Err(CoreError::Media(format!("Media HTTP status {}", response.status())));
+            if let Some(obs) = observation.take() {
+                self.recorder.record(obs);
+            }
+            return Err(CoreError::Media(format!(
+                "Media HTTP status {}",
+                response.status()
+            )));
         }
         if response.content_length().is_some_and(|size| size > limit) {
             if let Some(mut obs) = observation.take() {
@@ -137,13 +169,27 @@ impl Fetcher for HttpFetcher {
             }
             return Err(CoreError::Media("Media exceeds byte limit".into()));
         }
-        let mime = response.headers().get(reqwest::header::CONTENT_TYPE)
+        let mime = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
-            .map(|h| h.split(';').next().unwrap_or("").trim().to_ascii_lowercase());
-        let etag = response.headers().get(reqwest::header::ETAG)
-            .and_then(|h| h.to_str().ok()).map(ToOwned::to_owned);
-        let last_modified = response.headers().get(reqwest::header::LAST_MODIFIED)
-            .and_then(|h| h.to_str().ok()).map(ToOwned::to_owned);
+            .map(|h| {
+                h.split(';')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_ascii_lowercase()
+            });
+        let etag = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|h| h.to_str().ok())
+            .map(ToOwned::to_owned);
+        let last_modified = response
+            .headers()
+            .get(reqwest::header::LAST_MODIFIED)
+            .and_then(|h| h.to_str().ok())
+            .map(ToOwned::to_owned);
         let body_started = Instant::now();
         let mut bytes = Vec::new();
         let mut chunk = [0u8; 32 * 1024];
@@ -169,7 +215,9 @@ impl Fetcher for HttpFetcher {
                     return Err(CoreError::Media(format!("Media response failed: {error}")));
                 }
             };
-            if read == 0 { break; }
+            if read == 0 {
+                break;
+            }
             if bytes.len() as u64 + read as u64 > limit {
                 if let Some(mut obs) = observation.take() {
                     obs.error = Some("Media exceeds byte limit".into());
@@ -188,7 +236,12 @@ impl Fetcher for HttpFetcher {
         if bytes.is_empty() {
             return Err(CoreError::Media("Empty media response".into()));
         }
-        Ok(Download { bytes, mime, etag, last_modified })
+        Ok(Download {
+            bytes,
+            mime,
+            etag,
+            last_modified,
+        })
     }
 }
 
@@ -317,7 +370,8 @@ fn persist(
         };
         (None, None, None, ext)
     };
-    core.diagnostics.phase("MEDIA", "image_hash_and_decode", processing_started);
+    core.diagnostics
+        .phase("MEDIA", "image_hash_and_decode", processing_started);
     // Respect an already imported asset path for the same content hash.
     let existing: Option<String> = {
         let db = core.connection()?;
@@ -411,7 +465,8 @@ fn persist(
         identity::refresh(&tx, reference.listing_id)?;
     }
     tx.commit()?;
-    core.diagnostics.phase("MEDIA", "sqlite_media_write", sqlite_started);
+    core.diagnostics
+        .phase("MEDIA", "sqlite_media_write", sqlite_started);
     Ok(())
 }
 

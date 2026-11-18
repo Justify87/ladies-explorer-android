@@ -8,7 +8,12 @@ use reqwest::blocking::Client;
 use serde_json::Value;
 use url::Url;
 
-use crate::{CoreError, diagnostics::Diagnostics, http_capture::{self, HttpObservation, HttpHeader, HttpRecorder, CaptureMode}, operation::RequestControl};
+use crate::{
+    CoreError,
+    diagnostics::Diagnostics,
+    http_capture::{self, CaptureMode, HttpHeader, HttpObservation, HttpRecorder},
+    operation::RequestControl,
+};
 
 use super::{Card, SearchRequest, filter, parse};
 
@@ -41,8 +46,11 @@ trait Transport {
     }
     fn log_event(&self, component: &str, message: impl AsRef<str>) {
         if let Some(log) = self.diagnostics() {
-            if component == "PARSER" { log.debug(component, message); }
-            else { log.event(component, message); }
+            if component == "PARSER" {
+                log.debug(component, message);
+            } else {
+                log.event(component, message);
+            }
         }
     }
     fn log_html(&self, stage: &str, html: &str) {
@@ -60,7 +68,10 @@ pub(super) struct SourceHttp {
 }
 
 impl SourceHttp {
-    pub(super) fn new(diagnostics: Arc<Diagnostics>, recorder: Arc<HttpRecorder>) -> Result<Self, CoreError> {
+    pub(super) fn new(
+        diagnostics: Arc<Diagnostics>,
+        recorder: Arc<HttpRecorder>,
+    ) -> Result<Self, CoreError> {
         let client = Client::builder()
             .cookie_store(true)
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
@@ -166,7 +177,9 @@ impl Transport for SourceHttp {
             error: None,
             body_omitted: None,
         });
-        let sent = self.client.get(parsed)
+        let sent = self
+            .client
+            .get(parsed)
             .header("Accept", accept)
             .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
             .header("Referer", BASE)
@@ -180,16 +193,21 @@ impl Transport for SourceHttp {
                     obs.error = Some(error.to_string());
                     self.recorder.record(obs);
                 }
-                self.diagnostics.error("HTTP", format!("GET failure {url}: {error}"));
-                return Err(CoreError::Source(format!("Source HTTP request failed: {error}")));
+                self.diagnostics
+                    .error("HTTP", format!("GET failure {url}: {error}"));
+                return Err(CoreError::Source(format!(
+                    "Source HTTP request failed: {error}"
+                )));
             }
         };
         let header_duration = started.elapsed();
         let status = response.status().as_u16();
-        let response_type = response.headers()
+        let response_type = response
+            .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .unwrap_or("not specified").to_owned();
+            .unwrap_or("not specified")
+            .to_owned();
         if let Some(obs) = observation.as_mut() {
             obs.status = Some(status);
             obs.http_version = format!("{:?}", response.version());
@@ -199,27 +217,38 @@ impl Transport for SourceHttp {
             obs.mime = Some(response_type.clone());
             obs.response_size = response.content_length();
         }
-        self.diagnostics.debug("HTTP", format!(
-            "Response status={status} type={response_type} final_url={} content_length={:?}",
-            response.url(), response.content_length()
-        ));
-        self.diagnostics.phase("HTTP", "request_until_headers", started);
+        self.diagnostics.debug(
+            "HTTP",
+            format!(
+                "Response status={status} type={response_type} final_url={} content_length={:?}",
+                response.url(),
+                response.content_length()
+            ),
+        );
+        self.diagnostics
+            .phase("HTTP", "request_until_headers", started);
         let redirected_path = response.url().path().to_owned();
         let body_started = Instant::now();
         let mut bytes = Vec::new();
-        let read_result = response.by_ref().take(MAX_RESPONSE_BYTES + 1).read_to_end(&mut bytes);
+        let read_result = response
+            .by_ref()
+            .take(MAX_RESPONSE_BYTES + 1)
+            .read_to_end(&mut bytes);
         if let Some(obs) = observation.as_mut() {
             obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
             obs.response_size = Some(bytes.len() as u64);
         }
-        self.diagnostics.phase("HTTP", "response_body_read", body_started);
+        self.diagnostics
+            .phase("HTTP", "response_body_read", body_started);
         if let Err(error) = read_result {
             if let Some(mut obs) = observation.take() {
                 obs.error = Some(error.to_string());
                 obs.body_omitted = Some("read_failed".into());
                 self.recorder.record(obs);
             }
-            return Err(CoreError::Source(format!("Source HTTP read failed: {error}")));
+            return Err(CoreError::Source(format!(
+                "Source HTTP read failed: {error}"
+            )));
         }
         if bytes.len() as u64 > MAX_RESPONSE_BYTES {
             if let Some(mut obs) = observation.take() {
@@ -227,7 +256,9 @@ impl Transport for SourceHttp {
                 obs.body_omitted = Some("source_limit".into());
                 self.recorder.record(obs);
             }
-            return Err(CoreError::Source("Source response size limit exceeded".into()));
+            return Err(CoreError::Source(
+                "Source response size limit exceeded".into(),
+            ));
         }
         let body = match String::from_utf8(bytes) {
             Ok(body) => body,
@@ -242,16 +273,26 @@ impl Transport for SourceHttp {
         };
         if let Some(mut obs) = observation {
             obs.response_size = Some(body.len() as u64);
-            if self.recorder.mode() == CaptureMode::Text &&
-                body.len() <= http_capture::MAX_BODY_BYTES {
+            if self.recorder.mode() == CaptureMode::Text
+                && body.len() <= http_capture::MAX_BODY_BYTES
+            {
                 obs.body = Some(body.clone());
             } else if body.len() > http_capture::MAX_BODY_BYTES {
                 obs.body_omitted = Some("body_over_2_mib".into());
             }
             self.recorder.record(obs);
         }
-        self.diagnostics.debug("HTTP", format!("Response bytes={} status={status}", body.len()));
-        check_redirect(&self.diagnostics, &requested_path, &redirected_path, status, &body)?;
+        self.diagnostics.debug(
+            "HTTP",
+            format!("Response bytes={} status={status}", body.len()),
+        );
+        check_redirect(
+            &self.diagnostics,
+            &requested_path,
+            &redirected_path,
+            status,
+            &body,
+        )?;
         if status >= 400 {
             self.diagnostics.html("http_error", &body);
         }
@@ -373,7 +414,9 @@ fn parse_api(response: Response, logger: Option<&Diagnostics>) -> Result<Option<
         }
         CoreError::Source(format!("Invalid source search API payload: {e}"))
     })?;
-    if let Some(log) = logger { log.phase("PARSER", "json_parse", parse_started); }
+    if let Some(log) = logger {
+        log.phase("PARSER", "json_parse", parse_started);
+    }
     if !payload.is_object() {
         if let Some(log) = logger {
             log.html("invalid_api_shape", &response.body);
