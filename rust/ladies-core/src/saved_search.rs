@@ -171,7 +171,7 @@ fn persist_results(core: &LadiesCore, id: &str, result: &SearchResponse) -> Resu
     )?;
     let mut newly_seen = 0u32;
     for (position, card) in result.profiles.iter().enumerate() {
-        let key = format!("LADIES:{}", card.advert_id);
+        let key = card.advert_id.clone();
         if !previous_keys.contains(&key) && existing.is_some() {
             newly_seen += 1;
         }
