@@ -1219,6 +1219,17 @@ mod swipe_preference_tests {
     use super::*;
 
     #[test]
+    fn cancelled_swipe_read_stops_before_profile_lookup() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let control = RequestControl::new();
+        control.cancel();
+        assert!(matches!(
+            core.load_swipe_profile(-1, control),
+            Err(CoreError::Source(message)) if message == "Operation cancelled"
+        ));
+    }
+
+    #[test]
     fn swipe_writes_and_undo_check_owner_and_previous_preference_atomically() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let person = core.create_person(None).unwrap();
