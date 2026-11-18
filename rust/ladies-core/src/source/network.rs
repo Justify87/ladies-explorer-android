@@ -11,7 +11,7 @@ use url::Url;
 use crate::{
     CoreError,
     diagnostics::Diagnostics,
-    http_capture::{self, CaptureMode, HttpHeader, HttpObservation, HttpRecorder},
+    http_capture::{self, CaptureMode, HttpObservation, HttpRecorder},
     operation::RequestControl,
 };
 
@@ -151,21 +151,22 @@ impl Transport for SourceHttp {
         };
         let requested_path = parsed.path().to_owned();
         let started = Instant::now();
+        let request = self
+            .client
+            .get(parsed)
+            .header("Accept", accept)
+            .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
+            .header("Referer", BASE)
+            .header("DNT", "1")
+            .build()
+            .map_err(|error| CoreError::Source(format!("Source HTTP request failed: {error}")))?;
         let mut observation = (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
-            method: "GET".into(),
-            url: url.to_owned(),
-            final_url: url.to_owned(),
+            method: request.method().to_string(),
+            url: request.url().to_string(),
+            final_url: request.url().to_string(),
             status: None,
             http_version: "unknown".into(),
-            request_headers: [
-                ("Accept", accept),
-                ("Accept-Language", "de-DE,de;q=0.9,en;q=0.7"),
-                ("Referer", BASE),
-                ("DNT", "1"),
-                ("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"),
-            ].into_iter().map(|(name, value)| HttpHeader {
-                name: name.into(), value: value.into()
-            }).collect(),
+            request_headers: http_capture::headers(request.headers()),
             response_headers: Vec::new(),
             mime: None,
             response_size: None,
@@ -177,14 +178,7 @@ impl Transport for SourceHttp {
             error: None,
             body_omitted: None,
         });
-        let sent = self
-            .client
-            .get(parsed)
-            .header("Accept", accept)
-            .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
-            .header("Referer", BASE)
-            .header("DNT", "1")
-            .send();
+        let sent = self.client.execute(request);
         let mut response = match sent {
             Ok(response) => response,
             Err(error) => {
