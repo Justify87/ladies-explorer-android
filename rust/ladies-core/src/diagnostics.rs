@@ -1,24 +1,97 @@
-//! Per-core diagnostic journal with serialized writes and immutable export snapshots.
+//! Per-core tracing dispatch and a size-bounded, snapshot-safe file writer.
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 use tempfile::Builder;
+use tracing::Dispatch;
+use tracing_subscriber::fmt::MakeWriter;
 
 const MAX_BYTES: usize = 1_500_000;
 const KEEP_BYTES: usize = 700_000;
-const MAX_HTML_CHARS: usize = 24_000;
 
 #[derive(Default)]
 struct JournalState {
     last_write_error: Option<String>,
 }
 
-pub(crate) struct Diagnostics {
+struct Journal {
     path: Option<PathBuf>,
     state: Mutex<JournalState>,
+}
+
+#[derive(Clone)]
+struct JournalWriter(Arc<Journal>);
+
+struct EventWriter {
+    journal: Arc<Journal>,
+    buffer: Vec<u8>,
+}
+
+impl<'a> MakeWriter<'a> for JournalWriter {
+    type Writer = EventWriter;
+
+    fn make_writer(&'a self) -> EventWriter {
+        EventWriter {
+            journal: Arc::clone(&self.0),
+            buffer: Vec::with_capacity(256),
+        }
+    }
+}
+
+impl Write for EventWriter {
+    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        self.buffer.extend_from_slice(data);
+        Ok(data.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Drop for EventWriter {
+    fn drop(&mut self) {
+        let Some(path) = &self.journal.path else { return };
+        let Ok(mut state) = self.journal.state.lock() else { return };
+        if let Err(error) = append(path, &self.buffer) {
+            state.last_write_error = Some(error.to_string());
+            eprintln!("Ladies Explorer diagnostics: {error}");
+        }
+    }
+}
+
+fn append(path: &Path, buffer: &[u8]) -> io::Result<()> {
+    if buffer.is_empty() {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let size = fs::metadata(path).map(|m| m.len() as usize).unwrap_or(0);
+    if size.saturating_add(buffer.len()) > MAX_BYTES {
+        let bytes = fs::read(path).unwrap_or_default();
+        let start = bytes.len().saturating_sub(KEEP_BYTES);
+        let offset = bytes[start..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map(|index| start + index + 1)
+            .unwrap_or(bytes.len());
+        let mut retained = b"[old diagnostic events truncated]\n".to_vec();
+        retained.extend_from_slice(&bytes[offset..]);
+        fs::write(path, retained)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    file.write_all(buffer)
+}
+
+pub(crate) struct Diagnostics {
+    journal: Arc<Journal>,
+    dispatch: Dispatch,
+    debug: AtomicBool,
 }
 
 impl Diagnostics {
@@ -30,95 +103,102 @@ impl Diagnostics {
                 .parent()
                 .map(|directory| directory.join("diagnostics/ladies-debug.log"))
         };
-        let journal = Self {
+        let journal = Arc::new(Journal {
             path,
             state: Mutex::new(JournalState::default()),
+        });
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(JournalWriter(Arc::clone(&journal)))
+            .with_ansi(false)
+            .with_max_level(tracing::Level::DEBUG)
+            .finish();
+        let service = Self {
+            journal,
+            dispatch: Dispatch::new(subscriber),
+            debug: AtomicBool::new(false),
         };
-        journal.event("CORE", "App diagnostic session opened (v2)");
-        journal
+        service.event("CORE", "App diagnostic session opened");
+        service
     }
 
-    fn append(path: &Path, component: &str, message: &str) -> io::Result<()> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        if fs::metadata(path).is_ok_and(|meta| meta.len() as usize > MAX_BYTES) {
-            let bytes = fs::read(path)?;
-            let first = bytes.len().saturating_sub(KEEP_BYTES);
-            let offset = bytes[first..]
-                .iter()
-                .position(|byte| *byte == b'\n')
-                .map(|index| first + index + 1)
-                .unwrap_or(bytes.len());
-            let mut retained = b"[old diagnostic events truncated]\n".to_vec();
-            retained.extend_from_slice(&bytes[offset..]);
-            fs::write(path, retained)?;
-        }
-        let timestamp_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_millis())
-            .unwrap_or_default();
-        let component: String = component
-            .chars()
-            .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
-            .take(32)
-            .collect();
-        let escaped = message.replace('\0', "\\0");
-        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-        writeln!(file, "[{timestamp_ms}] [{component}] {escaped}")?;
-        Ok(())
+    pub(crate) fn set_debug(&self, enabled: bool) {
+        self.debug.store(enabled, Ordering::Relaxed);
+        self.event("CORE", format!("Diagnostic level={}", if enabled { "DEBUG" } else { "INFO" }));
+    }
+
+    pub(crate) fn debug_enabled(&self) -> bool {
+        self.debug.load(Ordering::Relaxed)
     }
 
     pub(crate) fn event(&self, component: &str, message: impl AsRef<str>) {
-        let Some(path) = self.path.as_ref() else {
+        let message = message.as_ref();
+        tracing::dispatcher::with_default(&self.dispatch, || {
+            tracing::info!(component = %component, message = %message);
+        });
+    }
+
+    pub(crate) fn debug(&self, component: &str, message: impl AsRef<str>) {
+        if !self.debug_enabled() {
             return;
-        };
-        let Ok(mut state) = self.state.lock() else {
-            eprintln!("Ladies Explorer diagnostics: journal lock poisoned");
-            return;
-        };
-        if let Err(error) = Self::append(path, component, message.as_ref()) {
-            state.last_write_error = Some(error.to_string());
-            eprintln!("Ladies Explorer diagnostics: {error}");
         }
+        let message = message.as_ref();
+        tracing::dispatcher::with_default(&self.dispatch, || {
+            tracing::debug!(component = %component, message = %message);
+        });
+    }
+
+    pub(crate) fn error(&self, component: &str, message: impl AsRef<str>) {
+        let message = message.as_ref();
+        tracing::dispatcher::with_default(&self.dispatch, || {
+            tracing::error!(component = %component, message = %message);
+        });
     }
 
     pub(crate) fn html(&self, stage: &str, body: &str) {
-        let excerpt: String = body.chars().take(MAX_HTML_CHARS).collect();
-        self.event(
-            "HTML",
-            format!(
-                "BEGIN {stage} body_bytes={} excerpt_limit={MAX_HTML_CHARS}\n{excerpt}\nEND {stage}",
-                body.len()
-            ),
-        );
+        // Response bodies are never emitted into general-purpose logging.
+        self.debug("HTTP", format!("body discarded stage={stage} bytes={}", body.len()));
+    }
+
+    pub(crate) fn phase(&self, component: &str, phase: &str, elapsed: Instant) {
+        if self.debug_enabled() {
+            tracing::dispatcher::with_default(&self.dispatch, || {
+                tracing::debug!(component = %component, phase = %phase,
+                    elapsed_ms = elapsed.elapsed().as_millis() as u64, "phase completed");
+            });
+        }
+    }
+
+    pub(crate) fn timed<T>(&self, component: &str, operation: &str, work: impl FnOnce() -> T) -> T {
+        tracing::dispatcher::with_default(&self.dispatch, || {
+            let span = tracing::info_span!("operation", component = %component, name = %operation);
+            let _entered = span.enter();
+            let started = Instant::now();
+            let result = work();
+            tracing::info!(component = %component, operation = %operation,
+                elapsed_ms = started.elapsed().as_millis() as u64, "operation completed");
+            result
+        })
     }
 
     pub(crate) fn status(&self) -> io::Result<(bool, u64, Option<String>)> {
-        let state = self
-            .state
-            .lock()
+        let state = self.journal.state.lock()
             .map_err(|_| io::Error::other("Diagnostic journal lock poisoned"))?;
-        let (available, size) = match self.path.as_ref() {
+        let (available, size) = match self.journal.path.as_ref() {
             Some(path) => match fs::metadata(path) {
-                Ok(metadata) => (metadata.is_file(), metadata.len()),
+                Ok(meta) => (meta.is_file(), meta.len()),
                 Err(error) if error.kind() == io::ErrorKind::NotFound => (false, 0),
-                Err(error) => {
-                    return Ok((false, 0, Some(error.to_string())));
-                }
+                Err(error) => return Ok((false, 0, Some(error.to_string()))),
             },
             None => (false, 0),
         };
         Ok((available, size, state.last_write_error.clone()))
     }
 
-    /// Copy while holding the same lock as appends/rotation; consumers never see a live log.
+    /// The same mutex serializes whole events, rotations, and immutable export snapshots.
     pub(crate) fn snapshot(&self, directory: &Path) -> io::Result<PathBuf> {
-        let _state = self
-            .state
-            .lock()
+        let _state = self.journal.state.lock()
             .map_err(|_| io::Error::other("Diagnostic journal lock poisoned"))?;
-        let source = self.path.as_ref().ok_or_else(|| {
+        let source = self.journal.path.as_ref().ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "Diagnostic journal is disabled")
         })?;
         let mut input = File::open(source)?;
@@ -137,7 +217,6 @@ impl Diagnostics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use std::thread;
 
     fn logger(directory: &Path) -> Diagnostics {
@@ -148,32 +227,26 @@ mod tests {
     fn journal_rotates_and_retains_recent_events() {
         let directory = tempfile::tempdir().unwrap();
         let log = logger(directory.path());
-        log.event("HTTP", "<div class='ladies-card'>unknown</div>");
         for n in 0..2_800 {
             log.event("HTTP", format!("event={n} {}", "x".repeat(650)));
         }
-        let content =
-            fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
+        let content = fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
         assert!(content.len() < MAX_BYTES + 2048);
         assert!(content.contains("event=2799"));
     }
 
     #[test]
     fn separate_core_journals_do_not_redirect_each_other() {
-        let first = tempfile::tempdir().unwrap();
-        let second = tempfile::tempdir().unwrap();
-        let a = logger(first.path());
-        let b = logger(second.path());
+        let a_dir = tempfile::tempdir().unwrap();
+        let b_dir = tempfile::tempdir().unwrap();
+        let a = logger(a_dir.path());
+        let b = logger(b_dir.path());
         a.event("CORE", "first-only");
         b.event("CORE", "second-only");
-        let content_a =
-            fs::read_to_string(first.path().join("diagnostics/ladies-debug.log")).unwrap();
-        let content_b =
-            fs::read_to_string(second.path().join("diagnostics/ladies-debug.log")).unwrap();
-        assert!(content_a.contains("first-only"));
-        assert!(!content_a.contains("second-only"));
-        assert!(content_b.contains("second-only"));
-        assert!(!content_b.contains("first-only"));
+        let a_text = fs::read_to_string(a_dir.path().join("diagnostics/ladies-debug.log")).unwrap();
+        let b_text = fs::read_to_string(b_dir.path().join("diagnostics/ladies-debug.log")).unwrap();
+        assert!(a_text.contains("first-only") && !a_text.contains("second-only"));
+        assert!(b_text.contains("second-only") && !b_text.contains("first-only"));
     }
 
     #[test]
@@ -182,12 +255,8 @@ mod tests {
         fs::write(directory.path().join("diagnostics"), "not a directory").unwrap();
         let log = logger(directory.path());
         let (available, _, error) = log.status().unwrap();
-        assert!(!available);
-        assert!(error.is_some());
-        assert!(
-            log.snapshot(directory.path().join("export").as_path())
-                .is_err()
-        );
+        assert!(!available && error.is_some());
+        assert!(log.snapshot(&directory.path().join("export")).is_err());
     }
 
     #[test]
@@ -210,11 +279,23 @@ mod tests {
         for export in exports {
             let content = fs::read_to_string(export).unwrap();
             assert!(content.ends_with('\n'));
-            assert!(!content.contains("\0"));
+            assert!(!content.contains('\0'));
             for line in content.lines() {
-                assert!(line.starts_with('['));
+                assert!(!line.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn debug_only_appears_when_enabled() {
+        let directory = tempfile::tempdir().unwrap();
+        let log = logger(directory.path());
+        log.debug("CORE", "hidden");
+        log.set_debug(true);
+        log.debug("CORE", "shown");
+        let data = fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
+        assert!(!data.contains("hidden"));
+        assert!(data.contains("shown"));
     }
 
     #[test]
