@@ -381,8 +381,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateActiveSearch()
         // Bind the pending load to the new list immediately. Never page the previous cursor
         // under the new generation; Back can invalidate the pending first page as well.
-        _searchUiState.update { it.copy(showingSavedSearchId = id, savedResultCards = emptyList(),
-            savedResultCursor = null, savedResultsLoadingMore = true, error = null) }
+        _searchUiState.update { it.beginSavedResults(id) }
         val epoch = searchGeneration.value
         viewModelScope.launch {
             try {
