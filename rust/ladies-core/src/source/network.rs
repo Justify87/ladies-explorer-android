@@ -2,13 +2,13 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use serde_json::Value;
 use url::Url;
 
-use crate::{CoreError, diagnostics::Diagnostics, operation::RequestControl};
+use crate::{CoreError, diagnostics::Diagnostics, http_capture::{self, HttpObservation, HttpHeader, HttpRecorder, CaptureMode}, operation::RequestControl};
 
 use super::{Card, SearchRequest, filter, parse};
 
@@ -55,10 +55,11 @@ trait Transport {
 pub(super) struct SourceHttp {
     client: Client,
     diagnostics: Arc<Diagnostics>,
+    recorder: Arc<HttpRecorder>,
 }
 
 impl SourceHttp {
-    pub(super) fn new(diagnostics: Arc<Diagnostics>) -> Result<Self, CoreError> {
+    pub(super) fn new(diagnostics: Arc<Diagnostics>, recorder: Arc<HttpRecorder>) -> Result<Self, CoreError> {
         let client = Client::builder()
             .cookie_store(true)
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
@@ -83,6 +84,7 @@ impl SourceHttp {
         Ok(Self {
             client,
             diagnostics,
+            recorder,
         })
     }
 
@@ -136,60 +138,119 @@ impl Transport for SourceHttp {
             "text/html, application/xhtml+xml, */*"
         };
         let requested_path = parsed.path().to_owned();
-        self.diagnostics.event("HTTP", format!("GET {url}"));
-        let mut response = self
-            .client
-            .get(parsed)
+        let started = Instant::now();
+        let mut observation = (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
+            method: "GET".into(),
+            url: url.to_owned(),
+            final_url: url.to_owned(),
+            status: None,
+            http_version: "unknown".into(),
+            request_headers: [
+                ("Accept", accept),
+                ("Accept-Language", "de-DE,de;q=0.9,en;q=0.7"),
+                ("Referer", BASE),
+                ("DNT", "1"),
+                ("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"),
+            ].into_iter().map(|(name, value)| HttpHeader {
+                name: name.into(), value: value.into()
+            }).collect(),
+            response_headers: Vec::new(),
+            mime: None,
+            response_size: None,
+            started_ms: http_capture::started_ms(),
+            headers_elapsed_ms: 0,
+            body_elapsed_ms: 0,
+            body: None,
+            is_media: false,
+            error: None,
+            body_omitted: None,
+        });
+        let sent = self.client.get(parsed)
             .header("Accept", accept)
             .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
             .header("Referer", BASE)
             .header("DNT", "1")
-            .send()
-            .map_err(|e| {
-                self.diagnostics
-                    .event("HTTP", format!("GET failure {url}: {e}"));
-                CoreError::Source(format!("Source HTTP request failed: {e}"))
-            })?;
+            .send();
+        let mut response = match sent {
+            Ok(response) => response,
+            Err(error) => {
+                if let Some(mut obs) = observation.take() {
+                    obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
+                    obs.error = Some(error.to_string());
+                    self.recorder.record(obs);
+                }
+                self.diagnostics.error("HTTP", format!("GET failure {url}: {error}"));
+                return Err(CoreError::Source(format!("Source HTTP request failed: {error}")));
+            }
+        };
+        let header_duration = started.elapsed();
         let status = response.status().as_u16();
-        let response_type = response
-            .headers()
+        let response_type = response.headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .unwrap_or("not specified")
-            .to_owned();
-        self.diagnostics.event(
-            "HTTP",
-            format!(
-                "Response status={status} type={response_type} final_url={} content_length={:?}",
-                response.url(),
-                response.content_length()
-            ),
-        );
-        let redirected_path = response.url().path().to_owned();
-        let mut bytes = Vec::new();
-        response
-            .by_ref()
-            .take(MAX_RESPONSE_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| CoreError::Source(format!("Source HTTP read failed: {e}")))?;
-        if bytes.len() as u64 > MAX_RESPONSE_BYTES {
-            return Err(CoreError::Source(
-                "Source response size limit exceeded".into(),
-            ));
+            .unwrap_or("not specified").to_owned();
+        if let Some(obs) = observation.as_mut() {
+            obs.status = Some(status);
+            obs.http_version = format!("{:?}", response.version());
+            obs.headers_elapsed_ms = header_duration.as_millis() as u64;
+            obs.final_url = response.url().to_string();
+            obs.response_headers = http_capture::headers(response.headers());
+            obs.mime = Some(response_type.clone());
+            obs.response_size = response.content_length();
         }
-        let body = String::from_utf8(bytes)
-            .map_err(|_| CoreError::Source("Source response is not UTF-8".into()))?;
-        self.diagnostics.event(
-            "HTTP",
-            format!("Response bytes={} status={status}", body.len()),
-        );
-        check_redirect(
-            &self.diagnostics,
-            &requested_path,
-            &redirected_path,
-            status,
-            &body,
-        )?;
+        self.diagnostics.debug("HTTP", format!(
+            "Response status={status} type={response_type} final_url={} content_length={:?}",
+            response.url(), response.content_length()
+        ));
+        self.diagnostics.phase("HTTP", "request_until_headers", started);
+        let redirected_path = response.url().path().to_owned();
+        let body_started = Instant::now();
+        let mut bytes = Vec::new();
+        let read_result = response.by_ref().take(MAX_RESPONSE_BYTES + 1).read_to_end(&mut bytes);
+        if let Some(obs) = observation.as_mut() {
+            obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
+            obs.response_size = Some(bytes.len() as u64);
+        }
+        self.diagnostics.phase("HTTP", "response_body_read", body_started);
+        if let Err(error) = read_result {
+            if let Some(mut obs) = observation.take() {
+                obs.error = Some(error.to_string());
+                obs.body_omitted = Some("read_failed".into());
+                self.recorder.record(obs);
+            }
+            return Err(CoreError::Source(format!("Source HTTP read failed: {error}")));
+        }
+        if bytes.len() as u64 > MAX_RESPONSE_BYTES {
+            if let Some(mut obs) = observation.take() {
+                obs.error = Some("Source response size limit exceeded".into());
+                obs.body_omitted = Some("source_limit".into());
+                self.recorder.record(obs);
+            }
+            return Err(CoreError::Source("Source response size limit exceeded".into()));
+        }
+        let body = match String::from_utf8(bytes) {
+            Ok(body) => body,
+            Err(_) => {
+                if let Some(mut obs) = observation.take() {
+                    obs.error = Some("Source response is not UTF-8".into());
+                    obs.body_omitted = Some("invalid_utf8".into());
+                    self.recorder.record(obs);
+                }
+                return Err(CoreError::Source("Source response is not UTF-8".into()));
+            }
+        };
+        if let Some(mut obs) = observation {
+            obs.response_size = Some(body.len() as u64);
+            if self.recorder.mode() == CaptureMode::Text &&
+                body.len() <= http_capture::MAX_BODY_BYTES {
+                obs.body = Some(body.clone());
+            } else if body.len() > http_capture::MAX_BODY_BYTES {
+                obs.body_omitted = Some("body_over_2_mib".into());
+            }
+            self.recorder.record(obs);
+        }
+        self.diagnostics.debug("HTTP", format!("Response bytes={} status={status}", body.len()));
+        check_redirect(&self.diagnostics, &requested_path, &redirected_path, status, &body)?;
         if status >= 400 {
             self.diagnostics.html("http_error", &body);
         }
