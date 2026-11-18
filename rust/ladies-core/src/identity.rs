@@ -525,6 +525,32 @@ mod tests {
         assert_eq!(compare_images(&[0xffffffffffffffff], &[0]).0, 0);
     }
     #[test]
+    fn phone_only_is_a_candidate_and_ties_are_ambiguous() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let original = core.create_person(Some("Original".into())).unwrap();
+        let first = core.create_person(Some("Candidate A".into())).unwrap();
+        let second = core.create_person(Some("Candidate B".into())).unwrap();
+        let listing=core.add_listing(original,None,"LADIES".into(),"35".into(),None).unwrap();
+        {
+            let db=core.connection().unwrap();
+            record_phone(&db,first,listing,Some("0170 1234567")).unwrap();
+            record_phone(&db,second,listing,Some("0170 1234567")).unwrap();
+            db.execute("INSERT INTO listing_snapshots
+                (listing_id,fingerprint,normalized_phone) VALUES (?1,'fp','+491701234567')",
+                [listing]).unwrap();
+            db.execute("UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(),listing]).unwrap();
+            refresh(&db,listing).unwrap();
+            let state:(String,Option<i64>)=db.query_row(
+                "SELECT match_decision,candidate_person_id FROM listings WHERE listing_id=?1",
+                [listing],|r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+            assert_eq!(state,("AMBIGUOUS".into(),None));
+        }
+        assert_eq!(core.list_identity_candidates(listing).unwrap().len(),2);
+        assert_eq!(core.status().unwrap().person_count,3);
+    }
+
+    #[test]
     fn confirmed_merge_preserves_person_state_and_listing_links() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let source = core.create_person(Some("From".into())).unwrap();

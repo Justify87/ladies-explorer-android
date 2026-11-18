@@ -545,6 +545,28 @@ mod tests {
     }
 
     #[test]
+    fn failed_download_keeps_profile_and_remote_media_references() {
+        let (_temp,core,snapshot,listing)=fixture();
+        struct Offline;
+        impl Fetcher for Offline{
+            fn get(&self,_:&str,_:u64)->Result<Download,CoreError>{
+                Err(CoreError::Media("Network unavailable".into()))
+            }
+        }
+        let report=archive_with(&core,snapshot,false,&Offline).unwrap();
+        assert_eq!((report.failed,report.downloaded),(2,0));
+        let db=core.connection().unwrap();
+        let snapshots:i64=db.query_row(
+            "SELECT COUNT(*) FROM listing_snapshots WHERE listing_id=?1",
+            [listing],|r|r.get(0)).unwrap();
+        assert_eq!(snapshots,1);
+        let links:i64=db.query_row(
+            "SELECT COUNT(*) FROM snapshot_media WHERE snapshot_id=?1 AND media_asset_id IS NULL",
+            [snapshot],|r|r.get(0)).unwrap();
+        assert_eq!(links,2);
+    }
+
+    #[test]
     fn only_whitelisted_cdn_hosts_are_downloaded() {
         assert!(validate_media_url("https://bilder1.ladies-cdn.de/Bilder/1.jpg", "IMAGE").is_ok());
         assert!(
