@@ -2,7 +2,8 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+use regex::Regex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -87,7 +88,7 @@ pub(crate) fn headers(map: &reqwest::header::HeaderMap) -> Vec<HttpHeader> {
 }
 
 fn is_secret(name: &str) -> bool {
-    let key = name.to_ascii_lowercase();
+    let key = name.to_ascii_lowercase().replace('_', "-");
     [
         "cookie",
         "authorization",
@@ -101,6 +102,9 @@ fn is_secret(name: &str) -> bool {
         "jwt",
         "credential",
         "signature",
+        "key",
+        "access-key",
+        "client-secret",
     ]
     .iter()
     .any(|needle| key.contains(needle))
@@ -110,6 +114,13 @@ fn redacted_headers(headers: &mut [HttpHeader]) {
     for header in headers {
         if is_secret(&header.name) {
             header.value = "[REDACTED]".to_owned();
+        } else if header.name.eq_ignore_ascii_case("location")
+            || header.name.eq_ignore_ascii_case("referer")
+            || header.name.eq_ignore_ascii_case("referrer")
+        {
+            header.value = redacted_reference(&header.value);
+        } else {
+            header.value = redacted_text(&header.value);
         }
     }
 }
@@ -118,6 +129,14 @@ fn redacted_url(input: &str) -> String {
     let Ok(mut url) = Url::parse(input) else {
         return input.to_owned();
     };
+    if !url.username().is_empty() {
+        let _ = url.set_username("[REDACTED]");
+    }
+    if url.password().is_some() {
+        let _ = url.set_password(Some("[REDACTED]"));
+    }
+    // Fragments are not transmitted by HTTP and may carry application tokens.
+    url.set_fragment(None);
     if url.query().is_some() {
         let pairs: Vec<_> = url
             .query_pairs()
@@ -133,6 +152,34 @@ fn redacted_url(input: &str) -> String {
         url.query_pairs_mut().clear().extend_pairs(pairs);
     }
     url.to_string()
+}
+
+fn redacted_reference(input: &str) -> String {
+    if input.starts_with('/') || input.starts_with('?') {
+        let base = Url::parse("https://har-redaction.invalid/").expect("static URL");
+        if let Ok(joined) = base.join(input) {
+            let sanitized = redacted_url(joined.as_str());
+            if let Some(relative) = sanitized.strip_prefix("https://har-redaction.invalid") {
+                return relative.to_owned();
+            }
+        }
+    }
+    redacted_text(input)
+}
+
+fn redacted_text(input: &str) -> String {
+    static URLS: OnceLock<Regex> = OnceLock::new();
+    static TOKENS: OnceLock<Regex> = OnceLock::new();
+    let urls = URLS.get_or_init(|| Regex::new(r#"(?i)https?://[^\s<>"']+"#).expect("static regex"));
+    let with_urls = urls.replace_all(input, |caps: &regex::Captures<'_>| {
+        let matched = caps.get(0).expect("match").as_str();
+        let trimmed = matched.trim_end_matches(['.', ',', ';', ')', ']']);
+        format!("{}{}", redacted_url(trimmed), &matched[trimmed.len()..])
+    });
+    let tokens = TOKENS.get_or_init(|| {
+        Regex::new(r"(?i)\b(token|auth|authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|session|signature)=([^\s&]+)").expect("static regex")
+    });
+    tokens.replace_all(&with_urls, "$1=[REDACTED]").into_owned()
 }
 
 fn is_text(mime: Option<&str>) -> bool {
@@ -156,24 +203,17 @@ impl HttpRecorder {
                 .parent()
                 .map(|p| p.join("diagnostics/ladies-http.jsonl"))
         };
-        let bytes = path
+        let (bytes, entries, last_error, invalid_file) = path
             .as_ref()
-            .and_then(|p| fs::metadata(p).ok())
-            .map_or(0, |m| m.len());
-        let entries = path
-            .as_ref()
-            .and_then(|p| File::open(p).ok())
-            .map_or(0, |f| {
-                BufReader::new(f).lines().filter(Result::is_ok).count() as u32
-            });
+            .map_or((0, 0, None, false), |p| recover_session(p));
         Self {
             path,
             state: Mutex::new(State {
                 mode: CaptureMode::Off,
                 entries,
                 bytes,
-                stopped: bytes >= MAX_SESSION_BYTES,
-                last_error: None,
+                stopped: invalid_file || bytes >= MAX_SESSION_BYTES,
+                last_error,
             }),
         }
     }
@@ -226,6 +266,7 @@ impl HttpRecorder {
         event.final_url = redacted_url(&event.final_url);
         redacted_headers(&mut event.request_headers);
         redacted_headers(&mut event.response_headers);
+        event.error = event.error.as_deref().map(redacted_text);
         if state.mode != CaptureMode::Text {
             event.body = None;
             event.body_omitted = Some("metadata_mode".into());
@@ -266,21 +307,31 @@ impl HttpRecorder {
             state.last_error = Some("HTTP session reached 25 MiB limit".into());
             return;
         }
+        line.push(b'\n');
         let write_result = (|| -> io::Result<()> {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
             let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-            file.write_all(&line)?;
-            file.write_all(b"\n")?;
-            file.flush()
+            let original_len = file.metadata()?.len();
+            if original_len != state.bytes {
+                return Err(io::Error::other("HTTP session size changed unexpectedly"));
+            }
+            if let Err(error) = file.write_all(&line).and_then(|_| file.flush()) {
+                file.set_len(original_len)?;
+                return Err(error);
+            }
+            Ok(())
         })();
         match write_result {
             Ok(()) => {
-                state.bytes += line.len() as u64 + 1;
+                state.bytes += line.len() as u64;
                 state.entries += 1;
             }
-            Err(error) => state.last_error = Some(error.to_string()),
+            Err(error) => {
+                state.last_error = Some(error.to_string());
+                state.stopped = true;
+            },
         }
     }
 
@@ -319,12 +370,12 @@ impl HttpRecorder {
         let file = File::open(path)?;
         let entries = BufReader::new(file)
             .lines()
-            .filter_map(|line| {
-                line.ok()
-                    .and_then(|s| serde_json::from_str::<HttpObservation>(&s).ok())
+            .map(|line| {
+                let item: HttpObservation = serde_json::from_str(&line?)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+                Ok(har_entry(&item))
             })
-            .map(|item| har_entry(&item))
-            .collect::<Vec<_>>();
+            .collect::<io::Result<Vec<_>>>()?;
         fs::create_dir_all(directory)?;
         let mut tmp = Builder::new()
             .prefix("ladies-http-")
@@ -344,6 +395,43 @@ impl HttpRecorder {
         tmp.as_file_mut().sync_all()?;
         let (_, path) = tmp.keep().map_err(|error| error.error)?;
         Ok(path)
+    }
+}
+
+fn recover_session(path: &Path) -> (u64, u32, Option<String>, bool) {
+    let data = match fs::read(path) {
+        Ok(data) => data,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return (0, 0, None, false);
+        }
+        Err(error) => return (0, 0, Some(error.to_string()), true),
+    };
+    let mut valid_bytes = 0u64;
+    let mut entries = 0u32;
+    for record in data.split_inclusive(|byte| *byte == b'\n') {
+        if !record.ends_with(b"\n")
+            || serde_json::from_slice::<HttpObservation>(record).is_err()
+        {
+            break;
+        }
+        valid_bytes += record.len() as u64;
+        entries += 1;
+    }
+    if valid_bytes == data.len() as u64 {
+        return (valid_bytes, entries, None, false);
+    }
+    let recovery = OpenOptions::new()
+        .write(true)
+        .open(path)
+        .and_then(|file| file.set_len(valid_bytes));
+    match recovery {
+        Ok(()) => (
+            valid_bytes,
+            entries,
+            Some("An incomplete HTTP journal tail was discarded on startup".into()),
+            false,
+        ),
+        Err(error) => (valid_bytes, entries, Some(format!("HTTP journal recovery failed: {error}")), true),
     }
 }
 
@@ -368,7 +456,7 @@ fn har_entry(event: &HttpObservation) -> Value {
             .collect()
     };
     let mut content = json!({
-        "size": event.response_size.unwrap_or_default(),
+        "size": event.response_size.map(|bytes| bytes as i64).unwrap_or(-1),
         "mimeType": event.mime.as_deref().unwrap_or("application/octet-stream"),
     });
     if let Some(body) = &event.body {
@@ -409,8 +497,10 @@ fn har_entry(event: &HttpObservation) -> Value {
             "blocked": -1,
             "dns": -1,
             "connect": -1,
-            "send": -1,
-            "wait": -1,
+            // HAR requires nonnegative send/wait/receive. The observed pre-header
+            // aggregate is mapped to wait; it is NOT an isolated server TTFB.
+            "send": 0,
+            "wait": event.headers_elapsed_ms,
             "receive": event.body_elapsed_ms
         },
         "_diagnostics": {
@@ -418,7 +508,7 @@ fn har_entry(event: &HttpObservation) -> Value {
             "error": event.error,
             "body_omitted": event.body_omitted,
             "headers_elapsed_ms": event.headers_elapsed_ms,
-            "timing_note": "The observed pre-header interval includes unmeasured connection, redirects and response headers; it is not a measured HAR wait/TTFB phase. Receive is only time spent reading the response body.",
+            "timing_note": "HAR requires send/wait/receive to be nonnegative. The measured request-to-headers aggregate is represented in wait, but includes unmeasured connection phases; it is not a measured server TTFB. receive is time spent reading the response body.",
         }
     })
 }
