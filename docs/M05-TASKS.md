@@ -29,8 +29,8 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | T4.4 | 4.2,4.3 | P23 | Begrenzte Vorausladung für nächste Profile/Medien; Cancel bei Suche/Navigation, kein unkontrolliertes Archivieren. | Keine stale Updates, begrenzte Requests, Diagnosebeleg | REVIEW | PR #17, Implementierung und Regressionen committed; Full-CI ausstehend; DEVICE_PENDING |
 | T4a.1 | 4.4 | P42–P44 | Quellen-HTTP-Vertrag, statisches Review, Scope und Gate dokumentieren. | Kein ladies.de/CDN-HTTP außerhalb Rust; MapLibre/externe Intents ausgenommen | REVIEW | Architekturvertrag und Scope im Branch; Integration erst nach G4 |
 | T4a.2 | 4a.1 | P42 | Rust-Anzeigeabruf über vorhandenen Medientransport, Limits, URL-Prüfung, Cancellation. | Keine Archivmutation, synthetische Tests | REVIEW | Rust-API und Fixture-Tests implementiert; CI ausstehend |
-| T4a.3 | 4a.2 | P42/P43 | Coil-Transport auf Rust umstellen, Cache/Prefetch/Offline erhalten. | Keine direkte Coil-/OkHttp-Netzwerkroute | TODO | — |
-| T4a.4 | 4a.3 | P43 | Kotlin-HTTP-Recorder und redundante Abhängigkeit entfernen. | Rust-HAR inkl. Anzeigeabruf; Kermit bleibt | TODO | — |
+| T4a.3 | 4a.2 | P42/P43 | Coil-Transport auf Rust umstellen, Cache/Prefetch/Offline erhalten. | Keine direkte Coil-/OkHttp-Netzwerkroute | REVIEW | Coil NetworkClient delegiert über CoreStore; CI und Geräteprüfung offen |
+| T4a.4 | 4a.3 | P43 | Kotlin-HTTP-Recorder und redundante Abhängigkeit entfernen. | Rust-HAR inkl. Anzeigeabruf; Kermit bleibt | REVIEW | Kotlin-HTTP-Listener und direkte OkHttp-Abhängigkeit entfernt; CI offen |
 | T4a.5 | 4a.3 | P43 | Begrenzte Parallelität, Abbruch, Cache/Revision, doppelte Archiv-/Anzeigeabrufe prüfen. | Gezielte Tests, Gerätebelege separat | TODO | — |
 | T4a.6 | 4a.4, 4a.5 | P44 | Architekturcheck in vorhandener CI, Regression und Gesamtreview. | Full-CI, kein direkter Quellenpfad, DEVICE_PENDING separat | TODO | — |
 | T5.1 | 4.4 | P24 | Gemeinsame LazyVerticalGrid-Karte: zwei Spalten, Bild-Cover, Gradient, Name/Alter, Placeholder. | Synthetische Screenshot-/Scrollprüfung und stabile IDs | TODO | — |

@@ -283,11 +283,6 @@ impl LadiesCore {
         self.recorder.status()
     }
 
-    pub fn record_image_http(&self, mut event: HttpObservation) {
-        event.is_media = true;
-        self.recorder.record(event);
-    }
-
     pub fn clear_http_capture(&self) -> Result<(), CoreError> {
         self.recorder
             .clear()
