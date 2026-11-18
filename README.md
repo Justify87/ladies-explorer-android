@@ -78,13 +78,11 @@ Source HTML may change and must be verified on-device with real pages.
 See [docs/SOURCE-M03.md](docs/SOURCE-M03.md) for behavior, compatibility
 choices, offline tests and what is explicitly deferred to M04/M05.
 
-## Debug log export
+## Lokale Diagnose
 
-The native source service records bounded local diagnostics, including request
-metadata, parser failures, Rust/SQLite outcomes and a limited HTML excerpt when
-parsing fails. Under Settings, choose **Debug-Log als Datei speichern** or
-**Debug-Log teilen** to export the TXT file through Android's system UI.
-See [docs/DEBUG-LOG.md](docs/DEBUG-LOG.md) for details and privacy notes.
+Rust-Tracing und Kotlin/Kermit erfassen app-private, rotierende TXT-Logs mit INFO-/DEBUG-Stufen. Ein optionaler HTTP-Recorder sammelt in einer begrenzten Sitzung Metadaten echter Rust- und Coil-3/OkHttp-Netzwerkrequests sowie ausdrücklich aktivierte HTML-/JSON-Antworten (max. 2 MiB pro Textantwort, 25 MiB insgesamt). Die Aufzeichnung ist auch nach jedem Neustart **aus**. Unter Einstellungen lassen sich TXT-Logs und HAR 1.2 als Dateien speichern oder bewusst teilen. Keine automatische Weitergabe.
+
+Anleitung und Datenschutz: [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
 
 ## What comes next
 
