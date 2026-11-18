@@ -996,7 +996,7 @@ mod tests {
             for (core, directory) in [(&a, &first), (&b, &second)] {
                 let snapshot = core.export_diagnostic_snapshot(directory.path().join("exports").to_string_lossy().into_owned()).unwrap();
                 let data = fs::read_to_string(snapshot).unwrap();
-                assert!(data.ends_with('\\n'));
+                assert!(data.ends_with('\n'));
             }
         }
         for job in jobs { job.join().unwrap(); }
