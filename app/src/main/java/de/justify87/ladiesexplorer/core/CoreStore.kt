@@ -186,6 +186,15 @@ class CoreStore(context: Context) {
         engine.discoveryCards(favoritesOnly, 50u, cursor, excludedPeople)
     }
 
+    suspend fun mapOverview(favoritesOnly: Boolean): MapOverview = withContext(Dispatchers.IO) {
+        recorded("mapOverview") { engine.mapOverview(favoritesOnly) }
+    }
+
+    suspend fun resolveMapLocations(favoritesOnly: Boolean, control: RequestControl): UInt =
+        withContext(Dispatchers.IO) {
+            recorded("resolveMapLocations") { engine.resolveMapLocations(favoritesOnly, 15u, control) }
+        }
+
     suspend fun profileMedia(snapshotId: Long): List<ProfileMediaItem> =
         withContext(Dispatchers.IO) { engine.profileMedia(snapshotId) }
 

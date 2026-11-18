@@ -7,6 +7,7 @@ mod history;
 mod http_capture;
 mod identity;
 mod legacy_import;
+mod map;
 mod media;
 mod media_url;
 mod operation;
@@ -143,6 +144,7 @@ pub use discovery::{DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaI
 pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
+pub use map::{MapOverview, MapProfile};
 pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
 pub use saved_search::{
@@ -158,6 +160,7 @@ pub struct LadiesCore {
     recorder: Arc<http_capture::HttpRecorder>,
     source_session: source::SourceSession,
     media_root: Option<std::path::PathBuf>,
+    geocoding: Mutex<map::GeocodeState>,
 }
 
 #[uniffi::export]
@@ -193,6 +196,7 @@ impl LadiesCore {
             recorder,
             source_session,
             media_root,
+            geocoding: Mutex::new(map::GeocodeState::default()),
         }))
     }
 
@@ -357,6 +361,21 @@ impl LadiesCore {
         excluded_person_ids: Vec<i64>,
     ) -> Result<DiscoveryPage, CoreError> {
         discovery::page(self, favorites_only, limit, cursor, &excluded_person_ids)
+    }
+
+    pub fn map_overview(&self, favorites_only: bool) -> Result<MapOverview, CoreError> {
+        map::overview(self, favorites_only)
+    }
+
+    pub fn resolve_map_locations(
+        &self,
+        favorites_only: bool,
+        max_requests: u32,
+        control: Arc<RequestControl>,
+    ) -> Result<u32, CoreError> {
+        self.diagnostics.timed("MAP", "resolve_map_locations", || {
+            map::resolve(self, favorites_only, max_requests, &control)
+        })
     }
 
     pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {

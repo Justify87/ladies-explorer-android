@@ -5,7 +5,7 @@ Material 3 Expressive**, **Rust**, **UniFFI** and **SQLite**.
 
 This is a staged native migration, not yet a complete Ladies Explorer replacement.
 The Android app imports legacy SQLite/media bundles locally and provides a native Rust
-search/profile extraction engine. Native discovery, search/filter, saved searches and profile screens are implemented in M05; maps remain planned for M06. No personal records are stored in this repository.
+search/profile extraction engine. Native discovery, search/filter, saved searches and profile screens are implemented in M05; maps are implemented in M06. No personal records are stored in this repository.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ There is no embedded Python, Flask, Node.js, messaging client or price-extractio
 
 ## Scaffold features
 
-- Four native tabs: Entdecken, Suche, Favoriten and Einstellungen, with full-screen profile details.
+- Five native tabs: Entdecken, Suche, Karte, Favoriten and Einstellungen, with full-screen profile details.
 - Material 3 theme with Android dynamic colors.
 - Settings tab shows the Rust-owned database schema version and domain counts.
 - Rust unit tests verify schema identity, versioned migrations, saved-search history, source/listing uniqueness, foreign keys, paging and persistence.
@@ -78,6 +78,10 @@ Source HTML may change and must be verified on-device with real pages.
 See [docs/SOURCE-M03.md](docs/SOURCE-M03.md) for behavior, compatibility
 choices, offline tests and what is explicitly deferred to M04/M05.
 
+## Kartenansicht (M06)
+
+Die native MapLibre-Ansicht zeigt ausschließlich ungefähre Postleitzahl-/Stadtzentren aus dem Rust-eigenen, lokal gespeicherten Geocoding-Cache. Koordinaten werden nur nach einer ausdrücklichen Benutzeraktion aufgelöst (ZIPPOPOTAM bzw. Nominatim). Zu einem Kartenpunkt gehörige Profile lassen sich aus der Karte öffnen. Favoriten können separat gefiltert werden. Ohne Internet bleibt die Profildatenbank nutzbar; Kartenkacheln können fehlen. Siehe [docs/M06-NATIVE-MAP.md](docs/M06-NATIVE-MAP.md).
+
 ## Lokale Diagnose
 
 Rust-Tracing und Kotlin/Kermit erfassen app-private, rotierende TXT-Logs mit INFO-/DEBUG-Stufen. Ein optionaler HTTP-Recorder sammelt in einer begrenzten Sitzung Metadaten echter Rust- und Coil-3/OkHttp-Netzwerkrequests sowie ausdrücklich aktivierte HTML-/JSON-Antworten (max. 2 MiB pro Textantwort, 25 MiB insgesamt). Die Aufzeichnung ist auch nach jedem Neustart **aus**. Unter Einstellungen lassen sich TXT-Logs und HAR 1.2 als Dateien speichern oder bewusst teilen. Keine automatische Weitergabe.
@@ -89,7 +93,7 @@ Anleitung und Datenschutz: [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
 M04 adds transition-based profile history, explicit identity candidates/merging,
 local SHA-256/dHash image archiving and optional video archiving. See
 [docs/M04-IDENTITY-MEDIA-HISTORY.md](docs/M04-IDENTITY-MEDIA-HISTORY.md).
-The native profile UI and swipe discovery are implemented in M05. See [docs/M05-NATIVE-EXPLORER.md](docs/M05-NATIVE-EXPLORER.md). MapLibre follows in M06.
+The native profile UI and swipe discovery are implemented in M05. See [docs/M05-NATIVE-EXPLORER.md](docs/M05-NATIVE-EXPLORER.md). M06 provides the native MapLibre view with cached, coarse German postcode/city locations.
 WhatsApp is an external-open button only; integrated messaging and AI price
 extraction are explicitly excluded.
 

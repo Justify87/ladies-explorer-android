@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -34,6 +35,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -42,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 private enum class Tab(val title: String) {
     Discover("Entdecken"),
     Search("Suche"),
+    Map("Karte"),
     Favorites("Favoriten"),
     Settings("Einstellungen"),
 }
@@ -59,8 +62,13 @@ fun LadiesApp(
     val home by viewModel.uiState.collectAsStateWithLifecycle()
     val search by viewModel.searchUiState.collectAsStateWithLifecycle()
     val discovery by viewModel.discoverState.collectAsStateWithLifecycle()
+    val map by viewModel.mapState.collectAsStateWithLifecycle()
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val tabs = Tab.entries
+    val mapStateHolder = rememberSaveableStateHolder()
+    LaunchedEffect(tabs[selected], search.profileOpen) {
+        if (tabs[selected] == Tab.Map && !search.profileOpen) viewModel.refreshMap()
+    }
 
     // Refresh the displayed session size while the capture settings are visible.
     LaunchedEffect(selected, home.httpCaptureMode, search.profileOpen) {
@@ -98,6 +106,7 @@ fun LadiesApp(
                                 when (tab) {
                                     Tab.Discover,Tab.Favorites -> viewModel.refreshDiscovery()
                                     Tab.Search -> viewModel.refreshSearchDefinitions()
+                                    Tab.Map -> Unit // entry effect also handles restored navigation
                                     Tab.Settings -> viewModel.refresh()
                                 }
                             },
@@ -105,6 +114,7 @@ fun LadiesApp(
                                 when (tab) {
                                     Tab.Discover -> Icon(Icons.Default.FavoriteBorder,contentDescription=null)
                                     Tab.Search -> Icon(Icons.Default.Search,contentDescription=null)
+                                    Tab.Map -> Icon(Icons.Default.Map,contentDescription=null)
                                     Tab.Favorites -> Icon(Icons.Default.Favorite,contentDescription=null)
                                     Tab.Settings -> Icon(Icons.Default.Settings,contentDescription=null)
                                 }
@@ -160,6 +170,17 @@ fun LadiesApp(
                     onProfile=viewModel::loadProfile,
                     modifier=modifier,
                 )
+                Tab.Map -> mapStateHolder.SaveableStateProvider("map") {
+                    MapScreen(
+                        state=map,
+                        onRefresh=viewModel::refreshMap,
+                        onResolve=viewModel::resolveMapLocations,
+                        onCancel=viewModel::cancelMapResolution,
+                        onFavoritesOnly=viewModel::setMapFavoritesOnly,
+                        onProfile=viewModel::loadProfile,
+                        modifier=modifier,
+                    )
+                }
                 Tab.Favorites -> FavoritesScreen(
                     state=discovery,
                     onRefresh=viewModel::refreshDiscovery,
