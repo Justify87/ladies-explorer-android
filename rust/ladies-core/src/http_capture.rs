@@ -406,15 +406,16 @@ fn har_entry(event: &HttpObservation) -> Value {
             "blocked": -1,
             "dns": -1,
             "connect": -1,
-            "send": 0,
-            "wait": event.headers_elapsed_ms,
+            "send": -1,
+            "wait": -1,
             "receive": event.body_elapsed_ms
         },
         "_diagnostics": {
             "final_url": event.final_url,
             "error": event.error,
             "body_omitted": event.body_omitted,
-            "timing_note": "Wait includes unmeasured connection, redirects and response headers; it is not server TTFB. Receive is only time spent reading an instrumented body.",
+            "headers_elapsed_ms": event.headers_elapsed_ms,
+            "timing_note": "The observed pre-header interval includes unmeasured connection, redirects and response headers; it is not a measured HAR wait/TTFB phase. Receive is only time spent reading the response body.",
         }
     })
 }
