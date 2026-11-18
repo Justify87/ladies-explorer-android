@@ -60,12 +60,6 @@ fun SearchSmokeScreen(viewModel: MainViewModel) {
                     response.fetchedPages.toString() + "/" + response.totalPages.toString() + " Seiten",
                 style = MaterialTheme.typography.titleMedium,
             )
-            if (!response.radiusVerified && response.profiles.isNotEmpty()) {
-                Text(
-                    "Der tatsächliche Suchradius konnte nicht vollständig bestätigt werden.",
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
             val expectedCount = response.serverCount
             if (response.partial) {
                 val reason = when {
