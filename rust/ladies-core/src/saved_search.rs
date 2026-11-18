@@ -17,6 +17,17 @@ pub struct SavedSearchInfo {
     pub last_error: Option<String>,
     pub unread_new_results: bool,
     pub definition_supported: bool,
+    pub local_filter_summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct SavedSearchDefinition {
+    query: SearchRequest,
+    local: LocalVisibility,
+}
+
+fn encode_definition(definition: &SavedSearchDefinition) -> Result<String, CoreError> {
+    serde_json::to_string(definition).map_err(|e| CoreError::Storage(e.to_string()))
 }
 
 pub(crate) fn save(
@@ -31,8 +42,10 @@ pub(crate) fn save(
             "Search name must have 1–100 characters".into(),
         ));
     }
-    let definition =
-        serde_json::to_string(&request).map_err(|e| CoreError::Storage(e.to_string()))?;
+    let definition = encode_definition(&SavedSearchDefinition {
+        query: request,
+        local: LocalVisibility::default(),
+    })?;
     let db = core.connection()?;
     db.execute(
         "INSERT INTO saved_searches (saved_search_id,name,filters_json,definition_version)
@@ -60,8 +73,6 @@ pub(crate) fn update(
             "Search name must have 1–100 characters".into(),
         ));
     }
-    let definition =
-        serde_json::to_string(&request).map_err(|e| CoreError::Storage(e.to_string()))?;
     let mut db = core.connection()?;
     let tx = db.transaction()?;
     let previous: String = tx
@@ -73,9 +84,14 @@ pub(crate) fn update(
         .optional()?
         .ok_or_else(|| CoreError::InvalidInput("Saved search not found".into()))?;
     // Filter changes invalidate the old result baseline, but renaming never does.
-    let changed = decode_definition(&previous).map_or(true, |old| {
-        serde_json::to_value(old).ok() != serde_json::to_value(&request).ok()
-    });
+    let previous = decode_definition(&previous)?;
+    // Imported local filters belong to the saved definition and survive source edits.
+    let next = SavedSearchDefinition {
+        query: request,
+        local: previous.local.clone(),
+    };
+    let changed = previous != next;
+    let definition = encode_definition(&next)?;
     if changed {
         tx.execute(
             "DELETE FROM saved_search_results WHERE saved_search_id=?1",
@@ -102,16 +118,24 @@ pub(crate) fn update(
     Ok(())
 }
 
-fn decode_definition(definition: &str) -> Result<SearchRequest, CoreError> {
+fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreError> {
+    if let Ok(parsed) = serde_json::from_str::<SavedSearchDefinition>(definition) {
+        source::filter::validate_request(&parsed.query)?;
+        validate_local(&parsed.local)?;
+        return Ok(parsed);
+    }
     if let Ok(request) = serde_json::from_str::<SearchRequest>(definition) {
         source::filter::validate_request(&request)?;
-        return Ok(request);
+        return Ok(SavedSearchDefinition {
+            query: request,
+            local: LocalVisibility::default(),
+        });
     }
     // Imported definitions use camelCase ranges and a nested selected filter map.
     // Translate the intent into the native request rather than preserving a Python pipeline.
     let legacy: serde_json::Value = serde_json::from_str(definition)
         .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
-    local_visibility(definition)?;
+    let local = local_visibility(definition)?;
     let number = |camel: &str, snake: &str, default: u32| {
         legacy
             .get(camel)
@@ -147,7 +171,7 @@ fn decode_definition(definition: &str) -> Result<SearchRequest, CoreError> {
         max_pages: 50,
     };
     source::filter::validate_request(&request)?;
-    Ok(request)
+    Ok(SavedSearchDefinition { query: request, local })
 }
 
 fn definition(core: &LadiesCore, id: &str) -> Result<(String, i64), CoreError> {
@@ -162,7 +186,7 @@ fn definition(core: &LadiesCore, id: &str) -> Result<(String, i64), CoreError> {
 }
 
 fn request(core: &LadiesCore, id: &str) -> Result<SearchRequest, CoreError> {
-    decode_definition(&definition(core, id)?.0)
+    Ok(decode_definition(&definition(core, id)?.0)?.query)
 }
 
 pub(crate) fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreError> {
@@ -191,12 +215,13 @@ pub(crate) fn list(core: &LadiesCore) -> Result<Vec<SavedSearchInfo>, CoreError>
         Ok(SavedSearchInfo {
             search_id,
             name,
-            city: parsed.as_ref().map_or(String::new(), |r| r.city.clone()),
-            radius_km: parsed.as_ref().map_or(0, |r| r.radius_km),
+            city: parsed.as_ref().map_or(String::new(), |r| r.query.city.clone()),
+            radius_km: parsed.as_ref().map_or(0, |r| r.query.radius_km),
             last_run_at,
             last_error,
             unread_new_results: unread != 0,
             definition_supported: parsed.is_some(),
+            local_filter_summary: parsed.as_ref().map_or(String::new(), |r| r.local.summary()),
         })
     })
     .collect()
@@ -364,13 +389,46 @@ fn persist_results(
     Ok(())
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct LocalVisibility {
     video_only: bool,
     photos_only: bool,
     hide_dislikes: bool,
     hide_likes: bool,
     image_mode: String,
+}
+
+impl LocalVisibility {
+    fn summary(&self) -> String {
+        let mut active = Vec::new();
+        if self.video_only {
+            active.push("Nur Video");
+        }
+        if self.photos_only {
+            active.push("Nur Fotos");
+        }
+        if self.hide_dislikes {
+            active.push("Ohne Dislikes");
+        }
+        if self.hide_likes {
+            active.push("Ohne Likes");
+        }
+        match self.image_mode.as_str() {
+            "AI" => active.push("KI-Bilder"),
+            "NATURAL" => active.push("Ohne KI-Bilder"),
+            _ => {}
+        }
+        active.join(" · ")
+    }
+}
+
+fn validate_local(local: &LocalVisibility) -> Result<(), CoreError> {
+    if !matches!(local.image_mode.as_str(), "" | "ALL" | "AI" | "NATURAL") {
+        return Err(CoreError::InvalidInput(
+            "Image classification is not available in this native search".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
@@ -386,10 +444,7 @@ fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
         let supported = match key.as_str() {
             "videoOnly" | "photosOnly" | "hideDislikes" | "hideLikes" => value.is_boolean(),
             "imageMode" => value.as_str().is_some_and(|mode| {
-                matches!(
-                    mode.to_ascii_uppercase().as_str(),
-                    "ALL" | "AI" | "NATURAL" | "STUDIO" | "FACEAPP"
-                )
+                matches!(mode.to_ascii_uppercase().as_str(), "ALL" | "AI" | "NATURAL")
             }),
             _ => false,
         };
@@ -400,7 +455,7 @@ fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
         }
     }
     let flag = |key: &str| local.get(key).and_then(|v| v.as_bool());
-    Ok(LocalVisibility {
+    let rules = LocalVisibility {
         video_only: flag("videoOnly") == Some(true),
         photos_only: flag("photosOnly") == Some(true),
         hide_dislikes: flag("hideDislikes") != Some(false),
@@ -409,8 +464,10 @@ fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
             .get("imageMode")
             .and_then(|v| v.as_str())
             .unwrap_or("ALL")
-            .to_uppercase(),
-    })
+            .to_ascii_uppercase(),
+    };
+    validate_local(&rules)?;
+    Ok(rules)
 }
 
 fn apply_local_visibility(
@@ -421,9 +478,6 @@ fn apply_local_visibility(
     let db = core.connection()?;
     let mut person_query =
         db.prepare("SELECT preference FROM person_user_state WHERE person_id=?1")?;
-    let mut marker_query = db.prepare(
-        "SELECT markers_json FROM search_results WHERE search_run_id=?1 AND listing_id=?2",
-    )?;
     let mut visible = Vec::new();
     for card in response.profiles.drain(..) {
         if (rules.video_only && !card.has_video)
@@ -440,20 +494,6 @@ fn apply_local_visibility(
         let image_allowed = match rules.image_mode.as_str() {
             "AI" => card.has_ai_content,
             "NATURAL" => !card.has_ai_content,
-            "STUDIO" | "FACEAPP" => {
-                let markers: Option<String> = marker_query
-                    .query_row(params![response.search_run_id, card.listing_id], |r| {
-                        r.get(0)
-                    })
-                    .optional()?
-                    .flatten();
-                let marker = markers.unwrap_or_default().to_lowercase();
-                marker.contains(if rules.image_mode == "STUDIO" {
-                    "studio"
-                } else {
-                    "face"
-                })
-            }
             _ => true,
         };
         if image_allowed {
@@ -466,12 +506,11 @@ fn apply_local_visibility(
 
 pub(crate) fn run(core: &LadiesCore, id: String) -> Result<SearchResponse, CoreError> {
     let (stored_definition, version) = definition(core, &id)?;
-    let request = decode_definition(&stored_definition)?;
-    let rules = local_visibility(&stored_definition)?;
-    let fetched = source::search(core, request);
+    let definition = decode_definition(&stored_definition)?;
+    let fetched = source::search(core, definition.query);
     match fetched {
         Ok(mut response) => {
-            apply_local_visibility(core, &mut response, rules)?;
+            apply_local_visibility(core, &mut response, definition.local)?;
             if !response.partial && response.radius_verified {
                 persist_results(core, &id, &response, &stored_definition, version)?;
             } else {
@@ -524,7 +563,7 @@ mod tests {
     #[test]
     fn imported_search_definition_converts_ranges_and_source_filters() {
         let legacy = r#"{"city":"Leipzig","radius":30,"category":"escort","ageMin":22,"ageMax":45,"heightMin":150,"heightMax":190,"selected":{"figur":["schlank"]},"local":{"videoOnly":true}}"#;
-        let q = decode_definition(legacy).unwrap();
+        let q = decode_definition(legacy).unwrap().query;
         assert_eq!(
             (q.city.as_str(), q.radius_km, q.age_min, q.age_max),
             ("Leipzig", 30, 22, 45)
@@ -549,6 +588,39 @@ mod tests {
         let imported = list(&core).unwrap();
         assert!(!imported[0].definition_supported);
         assert!(load(&core, "unsupported".into()).is_err());
+    }
+
+    #[test]
+    fn imported_local_filters_survive_rename_and_source_edits() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let legacy = r#"{"city":"Leipzig","radius":20,"local":{"videoOnly":true,"hideDislikes":true,"imageMode":"AI"}}"#;
+        core.connection().unwrap().execute(
+            "INSERT INTO saved_searches (saved_search_id,name,filters_json) VALUES ('legacy','Imported',?1)",
+            [legacy],
+        ).unwrap();
+        let loaded = load(&core, "legacy".into()).unwrap();
+        update(&core, "legacy".into(), "Renamed".into(), loaded.clone()).unwrap();
+        let (raw, _) = definition(&core, "legacy").unwrap();
+        let renamed = decode_definition(&raw).unwrap();
+        assert!(renamed.local.video_only);
+        assert!(renamed.local.hide_dislikes);
+        assert_eq!(renamed.local.image_mode, "AI");
+        assert!(list(&core).unwrap()[0].local_filter_summary.contains("Nur Video"));
+        let mut changed = loaded;
+        changed.radius_km = 30;
+        update(&core, "legacy".into(), "Edited".into(), changed).unwrap();
+        let (raw, _) = definition(&core, "legacy").unwrap();
+        assert_eq!(decode_definition(&raw).unwrap().local, renamed.local);
+    }
+
+    #[test]
+    fn unsupported_image_classifiers_cannot_be_applied_to_unclassified_cards() {
+        for mode in ["STUDIO", "FACEAPP"] {
+            let legacy = format!(
+                r#"{{"city":"Leipzig","local":{{"imageMode":"{mode}"}}}}"#
+            );
+            assert!(decode_definition(&legacy).is_err(), "{mode}");
+        }
     }
 
     #[test]

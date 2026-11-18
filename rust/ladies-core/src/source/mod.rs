@@ -14,7 +14,7 @@ impl SourceSession {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct SearchRequest {
     pub city: String,
     pub radius_km: u32,
