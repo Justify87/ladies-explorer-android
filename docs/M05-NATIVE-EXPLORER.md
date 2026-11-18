@@ -65,6 +65,27 @@ kein Messenger, keine Chat-Synchronisierung und keine eigene Videoengine.
 Vermeiden Sie automatische Zusammenführungen: Identitätskandidaten erfordern
 eine zweite explizite Bestätigung.
 
+## Konsistenz und Offline-Betrieb
+
+- Profilansichten laden zuerst die aktuellen Quelldaten. Scheitert dieser Abruf,
+  rekonstruiert Rust das letzte vorhandene Profil vollständig aus dem aktiven
+  SQLite-Snapshot einschließlich gespeicherter Medienreferenzen. Die UI weist
+  ausdrücklich auf die fehlgeschlagene Aktualisierung hin und versucht in diesem
+  Fall nicht erneut, Medien aus dem Netz zu archivieren. Für noch nie
+  gespeicherte Profile bleibt ein Abruffehler sichtbar.
+- Eine laufende gespeicherte Suche verwendet eine unveränderliche Definition.
+  Vor dem Schreiben von Suchergebnis-Deltas prüft Rust innerhalb derselben
+  SQLite-Transaktion die Definition und ihre Version. Nach einer Änderung
+  oder Löschung werden veraltete Ergebnisse nicht in die neue Suche geschrieben.
+  Auch spätere Fehlermeldungen werden nur der ursprünglichen Definition
+  zugeordnet.
+- Nicht interpretierbare lokale Filter aus importierten Definitionen werden
+  als nicht unterstützt angezeigt und niemals stillschweigend ignoriert.
+- Medienarchivierung und Identitätsbestätigung verwenden jeweils den aktuellen
+  Personenbesitz des Inserats innerhalb der Transaktion. Die Oberfläche
+  bricht die Archivierung vor einer bestätigten Zusammenführung ab und
+  unterdrückt nach einer Navigation veraltete UI-Aktualisierungen.
+
 ## Prüfung und Abnahme
 
 - Rust-Unit-Tests: Dislike-/Favoriten-Logik, eine Karte pro Person,
