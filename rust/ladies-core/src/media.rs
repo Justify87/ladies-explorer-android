@@ -1,7 +1,8 @@
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Cursor, Read, Write};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use image::imageops::FilterType;
 use reqwest::blocking::Client;
@@ -14,6 +15,32 @@ use crate::{CoreError, LadiesCore, identity};
 const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES: u64 = 48 * 1024 * 1024;
 const MAX_REFERENCES: usize = 80;
+const MAX_ARCHIVE_DURATION: Duration = Duration::from_secs(75);
+const MAX_REQUEST_DURATION: Duration = Duration::from_secs(8);
+const MAX_PIXELS: u64 = 24_000_000;
+
+#[derive(Default, uniffi::Object)]
+pub struct MediaArchiveControl {
+    cancelled: AtomicBool,
+}
+
+#[uniffi::export]
+impl MediaArchiveControl {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+}
+
+impl MediaArchiveControl {
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+}
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct MediaArchiveReport {
@@ -49,7 +76,9 @@ struct Download {
 }
 
 trait Fetcher {
-    fn get(&self, url: &str, limit: u64) -> Result<Download, CoreError>;
+    fn get(
+        &self, url: &str, limit: u64, timeout: Duration, control: &MediaArchiveControl,
+    ) -> Result<Download, CoreError>;
 }
 
 struct HttpFetcher(Client);
@@ -66,112 +95,108 @@ impl HttpFetcher {
     }
 }
 
-fn validate_media_url(raw: &str, kind: &str) -> Result<Url, CoreError> {
-    let url = Url::parse(raw).map_err(|_| CoreError::Media("Malformed source media URL".into()))?;
+// The HTML parser and HTTP downloader must agree on permitted media hosts.
+pub(crate) fn validate_media_url(raw: &str, kind: Option<&str>) -> Result<Url, CoreError> {
+    let base = Url::parse("https://www.ladies.de/").expect("constant source URL");
+    let url = base.join(raw.trim()).map_err(|_| CoreError::Media("Malformed source media URL".into()))?;
     let host = url.host_str().unwrap_or_default();
-    let is_numbered = |prefix: &str| -> bool {
+    let numbered = |prefix: &str| {
         host.strip_prefix(prefix)
             .and_then(|s| s.strip_suffix(".ladies-cdn.de"))
-            .is_some_and(|middle| !middle.is_empty() && middle.bytes().all(|b| b.is_ascii_digit()))
+            .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
     };
+    let source = matches!(host, "www.ladies.de" | "m.ladies.de");
     let accepted = match kind {
-        "IMAGE" => is_numbered("bilder") || host == "www.ladies.de",
-        "VIDEO" => is_numbered("video") || host == "www.ladies.de",
+        Some("IMAGE") => source || numbered("bilder"),
+        Some("VIDEO") => source || numbered("video"),
+        None => source || numbered("bilder") || numbered("video"),
         _ => false,
     };
-    if url.scheme() != "https"
-        || url.port().is_some()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || !accepted
-    {
-        return Err(CoreError::Media(
-            "Media host or scheme is not allowed".into(),
-        ));
+    if url.scheme() != "https" || url.port().is_some()
+        || !url.username().is_empty() || url.password().is_some() || !accepted {
+        return Err(CoreError::Media("Media host or scheme is not allowed".into()));
     }
     Ok(url)
 }
 
 impl Fetcher for HttpFetcher {
-    fn get(&self, url: &str, limit: u64) -> Result<Download, CoreError> {
-        let response = self
-            .0
-            .get(url)
+    fn get(
+        &self, url: &str, limit: u64, timeout: Duration, control: &MediaArchiveControl,
+    ) -> Result<Download, CoreError> {
+        if control.is_cancelled() {
+            return Err(CoreError::Media("Media archive cancelled".into()));
+        }
+        let mut response = self.0.get(url).timeout(timeout)
             .header("Referer", "https://www.ladies.de/")
-            .send()
-            .map_err(|e| CoreError::Media(format!("Media request failed: {e}")))?;
+            .send().map_err(|e| CoreError::Media(format!("Media request failed: {e}")))?;
         if !response.status().is_success() {
-            return Err(CoreError::Media(format!(
-                "Media HTTP status {}",
-                response.status()
-            )));
+            return Err(CoreError::Media(format!("Media HTTP status {}", response.status())));
         }
         if response.content_length().is_some_and(|size| size > limit) {
             return Err(CoreError::Media("Media exceeds byte limit".into()));
         }
-        let mime = response
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
+        let mime = response.headers().get(reqwest::header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
-            .map(|h| {
-                h.split(';')
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .to_ascii_lowercase()
-            });
-        let etag = response
-            .headers()
-            .get(reqwest::header::ETAG)
-            .and_then(|h| h.to_str().ok())
-            .map(ToOwned::to_owned);
-        let last_modified = response
-            .headers()
-            .get(reqwest::header::LAST_MODIFIED)
-            .and_then(|h| h.to_str().ok())
-            .map(ToOwned::to_owned);
+            .map(|h| h.split(';').next().unwrap_or("").trim().to_ascii_lowercase());
+        let etag = response.headers().get(reqwest::header::ETAG)
+            .and_then(|h| h.to_str().ok()).map(ToOwned::to_owned);
+        let last_modified = response.headers().get(reqwest::header::LAST_MODIFIED)
+            .and_then(|h| h.to_str().ok()).map(ToOwned::to_owned);
         let mut bytes = Vec::new();
-        response.take(limit + 1).read_to_end(&mut bytes)?;
-        if bytes.len() as u64 > limit {
-            return Err(CoreError::Media("Media exceeds byte limit".into()));
+        let mut chunk = [0u8; 32 * 1024];
+        loop {
+            if control.is_cancelled() {
+                return Err(CoreError::Media("Media archive cancelled".into()));
+            }
+            let read = response.read(&mut chunk)
+                .map_err(|e| CoreError::Media(format!("Media response failed: {e}")))?;
+            if read == 0 { break; }
+            if bytes.len() as u64 + read as u64 > limit {
+                return Err(CoreError::Media("Media exceeds byte limit".into()));
+            }
+            bytes.extend_from_slice(&chunk[..read]);
         }
         if bytes.is_empty() {
             return Err(CoreError::Media("Empty media response".into()));
         }
-        Ok(Download {
-            bytes,
-            mime,
-            etag,
-            last_modified,
-        })
+        Ok(Download { bytes, mime, etag, last_modified })
     }
 }
 
 fn image_dhash(bytes: &[u8]) -> Result<(String, u32, u32, &'static str), CoreError> {
-    let img = image::load_from_memory(bytes)
-        .map_err(|e| CoreError::Media(format!("Cannot decode image: {e}")))?;
-    let (width, height) = (img.width(), img.height());
-    if width == 0 || height == 0 {
-        return Err(CoreError::Media("Invalid image dimensions".into()));
+    let reader = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format().map_err(|e| CoreError::Media(e.to_string()))?;
+    let format = reader.format()
+        .ok_or_else(|| CoreError::Media("Unsupported image format".into()))?;
+    let (width, height) = reader.into_dimensions()
+        .map_err(|e| CoreError::Media(format!("Cannot read image dimensions: {e}")))?;
+    if width == 0 || height == 0 || width > 8192 || height > 8192
+        || u64::from(width) * u64::from(height) > MAX_PIXELS {
+        return Err(CoreError::Media("Image dimensions exceed safe decode budget".into()));
     }
-    let mono = img
-        .grayscale()
-        .resize_exact(9, 8, FilterType::Lanczos3)
-        .to_luma8();
+    let mut decoder = image::ImageReader::with_format(Cursor::new(bytes), format);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    decoder.limits(limits);
+    let img = decoder.decode()
+        .map_err(|e| CoreError::Media(format!("Cannot decode image: {e}")))?;
+    let mono = img.grayscale().resize_exact(9, 8, FilterType::Lanczos3).to_luma8();
     let mut hash = 0u64;
     for y in 0..8 {
         for x in 0..8 {
             hash = (hash << 1) | u64::from(mono.get_pixel(x, y)[0] > mono.get_pixel(x + 1, y)[0]);
         }
     }
-    let format = match image::guess_format(bytes).ok() {
-        Some(image::ImageFormat::Jpeg) => ".jpg",
-        Some(image::ImageFormat::Png) => ".png",
-        Some(image::ImageFormat::WebP) => ".webp",
-        Some(image::ImageFormat::Gif) => ".gif",
+    let ext = match format {
+        image::ImageFormat::Jpeg => ".jpg",
+        image::ImageFormat::Png => ".png",
+        image::ImageFormat::WebP => ".webp",
+        image::ImageFormat::Gif => ".gif",
         _ => ".img",
     };
-    Ok((format!("{hash:016x}"), width, height, format))
+    Ok((format!("{hash:016x}"), width, height, ext))
 }
 
 fn relative_path(kind: &str, sha: &str, ext: &str) -> String {
@@ -337,6 +362,7 @@ fn archive_with(
     snapshot_id: i64,
     include_videos: bool,
     fetcher: &impl Fetcher,
+    control: &MediaArchiveControl,
 ) -> Result<MediaArchiveReport, CoreError> {
     let root = core
         .media_root
@@ -350,8 +376,13 @@ fn archive_with(
         failed: 0,
         deferred: 0,
     };
+    let started = Instant::now();
     for (index, reference) in refs.iter().enumerate() {
-        if index >= MAX_REFERENCES || (reference.kind == "VIDEO" && !include_videos) {
+        if control.is_cancelled() || started.elapsed() >= MAX_ARCHIVE_DURATION || index >= MAX_REFERENCES {
+            report.deferred += (refs.len() - index) as u32;
+            break;
+        }
+        if reference.kind == "VIDEO" && !include_videos {
             report.deferred += 1;
             continue;
         }
@@ -388,18 +419,29 @@ fn archive_with(
             continue;
         }
         let result = (|| -> Result<(), CoreError> {
-            let url = validate_media_url(&reference.url, &reference.kind)?;
+            let url = validate_media_url(&reference.url, Some(&reference.kind))?;
             let limit = if reference.kind == "IMAGE" {
                 MAX_IMAGE_BYTES
             } else {
                 MAX_VIDEO_BYTES
             };
-            let response = fetcher.get(url.as_str(), limit)?;
+            let timeout = MAX_REQUEST_DURATION.min(MAX_ARCHIVE_DURATION.saturating_sub(started.elapsed()));
+            if timeout.is_zero() || control.is_cancelled() {
+                return Err(CoreError::Media("Media archive interrupted".into()));
+            }
+            let response = fetcher.get(url.as_str(), limit, timeout, control)?;
+            if control.is_cancelled() {
+                return Err(CoreError::Media("Media archive cancelled".into()));
+            }
             persist(core, root, reference, response)?;
             Ok(())
         })();
         match result {
             Ok(()) => report.downloaded += 1,
+            Err(_) if control.is_cancelled() => {
+                report.deferred += (refs.len() - index) as u32;
+                break;
+            }
             Err(error) => {
                 report.failed += 1;
                 core.diagnostics.event(
@@ -421,9 +463,10 @@ pub(crate) fn archive(
     core: &LadiesCore,
     snapshot_id: i64,
     include_videos: bool,
+    control: &MediaArchiveControl,
 ) -> Result<MediaArchiveReport, CoreError> {
     let http = HttpFetcher::new()?;
-    archive_with(core, snapshot_id, include_videos, &http)
+    archive_with(core, snapshot_id, include_videos, &http, control)
 }
 
 #[cfg(test)]
@@ -431,7 +474,7 @@ mod tests {
     use super::*;
     struct FixtureFetcher(Vec<u8>);
     impl Fetcher for FixtureFetcher {
-        fn get(&self, _: &str, _: u64) -> Result<Download, CoreError> {
+        fn get(&self, _: &str, _: u64, _: Duration, _: &MediaArchiveControl) -> Result<Download, CoreError> {
             Ok(Download {
                 bytes: self.0.clone(),
                 mime: Some("image/png".into()),
@@ -489,9 +532,9 @@ mod tests {
             .write_to(&mut png, image::ImageFormat::Png)
             .unwrap();
         let fetcher = FixtureFetcher(png.into_inner());
-        let first = archive_with(&core, snapshot, false, &fetcher).unwrap();
+        let first = archive_with(&core, snapshot, false, &fetcher, &MediaArchiveControl::default()).unwrap();
         assert_eq!((first.downloaded, first.failed), (2, 0));
-        let again = archive_with(&core, snapshot, false, &fetcher).unwrap();
+        let again = archive_with(&core, snapshot, false, &fetcher, &MediaArchiveControl::default()).unwrap();
         assert_eq!((again.reused, again.downloaded), (2, 0));
         let db = core.connection().unwrap();
         let assets: i64 = db
@@ -525,7 +568,7 @@ mod tests {
             .write_to(&mut image, image::ImageFormat::Png)
             .unwrap();
         let fetcher = FixtureFetcher(image.into_inner());
-        archive_with(&core, first, false, &fetcher).unwrap();
+        archive_with(&core, first, false, &fetcher, &MediaArchiveControl::default()).unwrap();
         let db = core.connection().unwrap();
         db.execute(
             "INSERT INTO listing_snapshots(listing_id,fingerprint)
@@ -548,11 +591,11 @@ mod tests {
         drop(db);
         struct Offline;
         impl Fetcher for Offline {
-            fn get(&self, _: &str, _: u64) -> Result<Download, CoreError> {
+            fn get(&self, _: &str, _: u64, _: Duration, _: &MediaArchiveControl) -> Result<Download, CoreError> {
                 Err(CoreError::Media("No network allowed".into()))
             }
         }
-        let reused = archive_with(&core, second, false, &Offline).unwrap();
+        let reused = archive_with(&core, second, false, &Offline, &MediaArchiveControl::default()).unwrap();
         assert_eq!((reused.reused, reused.failed), (2, 0));
         let db = core.connection().unwrap();
         let count:i64=db.query_row(
@@ -567,11 +610,11 @@ mod tests {
         let (_temp, core, snapshot, listing) = fixture();
         struct Offline;
         impl Fetcher for Offline {
-            fn get(&self, _: &str, _: u64) -> Result<Download, CoreError> {
+            fn get(&self, _: &str, _: u64, _: Duration, _: &MediaArchiveControl) -> Result<Download, CoreError> {
                 Err(CoreError::Media("Network unavailable".into()))
             }
         }
-        let report = archive_with(&core, snapshot, false, &Offline).unwrap();
+        let report = archive_with(&core, snapshot, false, &Offline, &MediaArchiveControl::default()).unwrap();
         assert_eq!((report.failed, report.downloaded), (2, 0));
         let db = core.connection().unwrap();
         let snapshots: i64 = db
@@ -589,13 +632,43 @@ mod tests {
     }
 
     #[test]
+    fn cancelled_archive_preserves_pending_assets() {
+        let (_temp, core, snapshot, _) = fixture();
+        let control = MediaArchiveControl::default();
+        control.cancel();
+        struct Never;
+        impl Fetcher for Never {
+            fn get(&self, _: &str, _: u64, _: Duration, _: &MediaArchiveControl) -> Result<Download, CoreError> {
+                panic!("Cancelled archive attempted an HTTP request")
+            }
+        }
+        let report = archive_with(&core, snapshot, false, &Never, &control).unwrap();
+        assert_eq!((report.downloaded, report.failed, report.deferred), (0, 0, 2));
+    }
+
+    #[test]
+    fn oversized_pixel_dimensions_are_rejected_before_decode() {
+        let png = {
+            let mut cursor = Cursor::new(Vec::new());
+            image::DynamicImage::new_rgb8(2, 2)
+                .write_to(&mut cursor, image::ImageFormat::Png).unwrap();
+            let mut bytes = cursor.into_inner();
+            // PNG IHDR width and height are big-endian at offsets 16 and 20.
+            bytes[16..20].copy_from_slice(&9000u32.to_be_bytes());
+            bytes[20..24].copy_from_slice(&9000u32.to_be_bytes());
+            bytes
+        };
+        assert!(image_dhash(&png).is_err());
+    }
+
+    #[test]
     fn only_whitelisted_cdn_hosts_are_downloaded() {
-        assert!(validate_media_url("https://bilder1.ladies-cdn.de/Bilder/1.jpg", "IMAGE").is_ok());
+        assert!(validate_media_url("https://bilder1.ladies-cdn.de/Bilder/1.jpg", Some("IMAGE")).is_ok());
         assert!(
-            validate_media_url("https://bilder1.ladies-cdn.de.evil.test/a.jpg", "IMAGE").is_err()
+            validate_media_url("https://bilder1.ladies-cdn.de.evil.test/a.jpg", Some("IMAGE")).is_err()
         );
-        assert!(validate_media_url("http://bilder1.ladies-cdn.de/a.jpg", "IMAGE").is_err());
-        assert!(validate_media_url("https://127.0.0.1/a.jpg", "IMAGE").is_err());
-        assert!(validate_media_url("https://video2.ladies-cdn.de/a.mp4", "VIDEO").is_ok());
+        assert!(validate_media_url("http://bilder1.ladies-cdn.de/a.jpg", Some("IMAGE")).is_err());
+        assert!(validate_media_url("https://127.0.0.1/a.jpg", Some("IMAGE")).is_err());
+        assert!(validate_media_url("https://video2.ladies-cdn.de/a.mp4", Some("VIDEO")).is_ok());
     }
 }
