@@ -101,6 +101,16 @@ fun SearchSmokeScreen(viewModel: MainViewModel) {
                 Text("Vorschau auf 30 Ergebnisse begrenzt. Alle Suchergebnisse sind lokal gespeichert.")
             }
         }
+        state.mediaArchive?.let { archive ->
+            Text(
+                "Medienarchiv: ${archive.downloaded} gespeichert, ${archive.reused} vorhanden, " +
+                    "${archive.failed} fehlgeschlagen, ${archive.deferred} zurückgestellt.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        state.mediaWarning?.let { warning ->
+            Text(warning, color = MaterialTheme.colorScheme.error)
+        }
         state.profile?.let { profile ->
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

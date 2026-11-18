@@ -5,6 +5,7 @@ mod diagnostics;
 mod history;
 mod identity;
 mod legacy_import;
+mod media;
 mod schema;
 mod source;
 
@@ -35,6 +36,8 @@ pub enum CoreError {
     Import(String),
     #[error("Ladies source request or parsing failed: {0}")]
     Source(String),
+    #[error("Media archive error: {0}")]
+    Media(String),
     #[error("No LADIES listing with id {0}")]
     ListingNotFound(i64),
     #[error("Incompatible local database schema: {0}")]
@@ -133,6 +136,7 @@ pub struct ImportReport {
 
 pub use history::ChangeRecord;
 pub use identity::IdentityCandidate;
+pub use media::MediaArchiveReport;
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 
 #[derive(uniffi::Object)]
@@ -140,6 +144,7 @@ pub struct LadiesCore {
     db: Mutex<Connection>,
     diagnostics: Arc<diagnostics::Diagnostics>,
     source_session: source::SourceSession,
+    media_root: Option<std::path::PathBuf>,
 }
 
 #[uniffi::export]
@@ -151,6 +156,14 @@ impl LadiesCore {
                 "Database path must not be empty".into(),
             ));
         }
+        let media_root = if database_path == ":memory:" {
+            None
+        } else {
+            std::path::Path::new(&database_path)
+                .parent()
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|parent| parent.join("ladies_data"))
+        };
         let diagnostics = Arc::new(diagnostics::Diagnostics::new(&database_path));
         diagnostics.event("CORE", "Opening SQLite");
         let mut db = Connection::open(database_path)?;
@@ -163,6 +176,7 @@ impl LadiesCore {
             db: Mutex::new(db),
             diagnostics,
             source_session,
+            media_root,
         }))
     }
 
@@ -223,6 +237,10 @@ impl LadiesCore {
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
         source::load_profile(self, listing_id)
+    }
+
+    pub fn archive_profile_media(&self, snapshot_id: i64, include_videos: bool) -> Result<MediaArchiveReport, CoreError> {
+        media::archive(self, snapshot_id, include_videos)
     }
 
     pub fn list_identity_candidates(&self, listing_id: i64) -> Result<Vec<IdentityCandidate>, CoreError> {

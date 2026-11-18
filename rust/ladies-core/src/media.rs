@@ -1,0 +1,350 @@
+use std::fs;
+use std::io::{Read, Write};
+use std::path::Path;
+use std::time::Duration;
+
+use image::imageops::FilterType;
+use reqwest::blocking::Client;
+use rusqlite::params;
+use sha2::{Digest, Sha256};
+use url::Url;
+
+use crate::{CoreError, LadiesCore, identity};
+
+const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
+const MAX_VIDEO_BYTES: u64 = 48 * 1024 * 1024;
+const MAX_REFERENCES: usize = 80;
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MediaArchiveReport {
+    pub snapshot_id: i64,
+    pub downloaded: u32,
+    pub reused: u32,
+    pub failed: u32,
+    pub deferred: u32,
+}
+
+#[derive(Debug, Clone)]
+struct Reference {
+    id: i64,
+    listing_id: i64,
+    person_id: i64,
+    kind: String,
+    url: String,
+    base: String,
+    revision: Option<String>,
+    asset_id: Option<i64>,
+    local_path: Option<String>,
+}
+
+struct Download {
+    bytes: Vec<u8>,
+    mime: Option<String>,
+    etag: Option<String>,
+    last_modified: Option<String>,
+}
+
+trait Fetcher {
+    fn get(&self, url: &str, limit: u64) -> Result<Download, CoreError>;
+}
+
+struct HttpFetcher(Client);
+impl HttpFetcher {
+    fn new() -> Result<Self, CoreError> {
+        Ok(Self(Client::builder()
+            .timeout(Duration::from_secs(25))
+            .redirect(reqwest::redirect::Policy::none())
+            .user_agent("Mozilla/5.0 LadiesExplorerAndroid/1")
+            .build().map_err(|e| CoreError::Media(e.to_string()))?))
+    }
+}
+
+fn validate_media_url(raw: &str, kind: &str) -> Result<Url, CoreError> {
+    let url=Url::parse(raw).map_err(|_|CoreError::Media("Malformed source media URL".into()))?;
+    let host=url.host_str().unwrap_or_default();
+    let is_numbered = |prefix: &str| -> bool {
+        host.strip_prefix(prefix).and_then(|s|s.strip_suffix(".ladies-cdn.de"))
+            .is_some_and(|middle| !middle.is_empty() && middle.bytes().all(|b|b.is_ascii_digit()))
+    };
+    let accepted=match kind {
+        "IMAGE" => is_numbered("bilder") || host=="www.ladies.de",
+        "VIDEO" => is_numbered("video") || host=="www.ladies.de",
+        _ => false
+    };
+    if url.scheme()!="https" || url.port().is_some()
+        || !url.username().is_empty() || url.password().is_some() || !accepted {
+        return Err(CoreError::Media("Media host or scheme is not allowed".into()));
+    }
+    Ok(url)
+}
+
+impl Fetcher for HttpFetcher {
+    fn get(&self,url:&str,limit:u64)->Result<Download,CoreError>{
+        let mut response=self.0.get(url)
+            .header("Referer","https://www.ladies.de/")
+            .send().map_err(|e|CoreError::Media(format!("Media request failed: {e}")))?;
+        if !response.status().is_success(){
+            return Err(CoreError::Media(format!("Media HTTP status {}",response.status())));
+        }
+        if response.content_length().is_some_and(|size|size>limit){
+            return Err(CoreError::Media("Media exceeds byte limit".into()));
+        }
+        let mime=response.headers().get(reqwest::header::CONTENT_TYPE)
+            .and_then(|h|h.to_str().ok()).map(|h|h.split(';').next().unwrap_or("").trim().to_ascii_lowercase());
+        let etag=response.headers().get(reqwest::header::ETAG).and_then(|h|h.to_str().ok())
+            .map(ToOwned::to_owned);
+        let last_modified=response.headers().get(reqwest::header::LAST_MODIFIED)
+            .and_then(|h|h.to_str().ok()).map(ToOwned::to_owned);
+        let mut bytes=Vec::new();
+        response.take(limit+1).read_to_end(&mut bytes)?;
+        if bytes.len() as u64>limit {
+            return Err(CoreError::Media("Media exceeds byte limit".into()));
+        }
+        if bytes.is_empty(){
+            return Err(CoreError::Media("Empty media response".into()));
+        }
+        Ok(Download{bytes,mime,etag,last_modified})
+    }
+}
+
+fn image_dhash(bytes:&[u8])->Result<(String,u32,u32,&'static str),CoreError>{
+    let img=image::load_from_memory(bytes)
+        .map_err(|e|CoreError::Media(format!("Cannot decode image: {e}")))?;
+    let (width,height)=(img.width(),img.height());
+    if width==0 || height==0 {
+        return Err(CoreError::Media("Invalid image dimensions".into()));
+    }
+    let mono=img.resize_exact(9,8,FilterType::Lanczos3).to_luma8();
+    let mut hash=0u64;
+    for y in 0..8{
+        for x in 0..8{
+            hash=(hash<<1) | u64::from(mono.get_pixel(x,y)[0] > mono.get_pixel(x+1,y)[0]);
+        }
+    }
+    let format=match image::guess_format(bytes).ok() {
+        Some(image::ImageFormat::Jpeg)=>".jpg",
+        Some(image::ImageFormat::Png)=>".png",
+        Some(image::ImageFormat::WebP)=>".webp",
+        Some(image::ImageFormat::Gif)=>".gif",
+        _=>".img"
+    };
+    Ok((format!("{hash:016x}"),width,height,format))
+}
+
+fn relative_path(kind:&str, sha:&str, ext:&str)->String{
+    let sub=if kind=="IMAGE"{"images"} else {"videos"};
+    format!("media/{sub}/{}/{sha}{ext}",&sha[..2])
+}
+
+fn snapshot_refs(core:&LadiesCore,snapshot_id:i64)->Result<Vec<Reference>,CoreError>{
+    let db=core.connection()?;
+    let mut query=db.prepare(
+        "SELECT m.snapshot_media_id, s.listing_id, l.person_id,
+                m.kind,m.remote_url,COALESCE(m.remote_base_url,m.remote_url),
+                m.revision_token,m.media_asset_id,a.local_path
+         FROM snapshot_media m
+         JOIN listing_snapshots s ON s.snapshot_id=m.snapshot_id
+         JOIN listings l ON l.listing_id=s.listing_id
+         LEFT JOIN media_assets a ON a.media_asset_id=m.media_asset_id
+         WHERE m.snapshot_id=?1 ORDER BY m.position,m.snapshot_media_id"
+    )?;
+    let refs=query.query_map([snapshot_id],|r|Ok(Reference{
+        id:r.get(0)?,listing_id:r.get(1)?,person_id:r.get(2)?,
+        kind:r.get(3)?,url:r.get(4)?,base:r.get(5)?,
+        revision:r.get(6)?,asset_id:r.get(7)?,local_path:r.get(8)?,
+    }))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let exists:bool=db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM listing_snapshots WHERE snapshot_id=?1)",
+        [snapshot_id], |r| r.get(0)
+    )?;
+    if !exists { return Err(CoreError::Media("Unknown profile snapshot".into())); }
+    Ok(refs)
+}
+
+fn persist(core:&LadiesCore,root:&Path,reference:&Reference,download:Download)->Result<(),CoreError>{
+    let hash=format!("{:x}",Sha256::digest(&download.bytes));
+    let (dhash,width,height,ext)=if reference.kind=="IMAGE"{
+        let (hash,w,h,ext)=image_dhash(&download.bytes)?;
+        (Some(hash),Some(w),Some(h),ext)
+    } else {
+        let ext=match download.mime.as_deref(){
+            Some("video/mp4")=>".mp4",
+            Some("video/webm")=>".webm",
+            _=>return Err(CoreError::Media("Unexpected video MIME type".into()))
+        };
+        (None,None,None,ext)
+    };
+    let rel=relative_path(&reference.kind,&hash,ext);
+    let path=root.join(&rel);
+    let parent=path.parent().ok_or_else(||CoreError::Media("Invalid media path".into()))?;
+    fs::create_dir_all(parent)?;
+    if !path.is_file(){
+        let mut temporary=tempfile::NamedTempFile::new_in(parent)?;
+        temporary.write_all(&download.bytes)?;
+        temporary.flush()?;
+        if let Err(error)=temporary.persist_noclobber(&path) {
+            if error.error.kind()!=std::io::ErrorKind::AlreadyExists {
+                return Err(CoreError::Media(error.error.to_string()));
+            }
+        }
+    }
+    let mut db=core.connection()?;
+    let tx=db.transaction()?;
+    tx.execute(
+        "INSERT INTO media_assets
+         (sha256,dhash,kind,mime_type,byte_size,width,height,local_path)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+         ON CONFLICT(sha256) DO UPDATE SET
+         last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+         dhash=COALESCE(media_assets.dhash,excluded.dhash),
+         width=COALESCE(media_assets.width,excluded.width),
+         height=COALESCE(media_assets.height,excluded.height)",
+        params![hash,dhash,reference.kind,download.mime,download.bytes.len() as i64,
+            width,height,rel]
+    )?;
+    let id:i64=tx.query_row("SELECT media_asset_id FROM media_assets WHERE sha256=?1",
+        [&hash],|r|r.get(0))?;
+    tx.execute(
+        "INSERT INTO media_sources
+         (remote_base_url,last_remote_url,revision_token,etag,last_modified,
+          content_length,media_asset_id)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(remote_base_url) DO UPDATE SET
+         last_remote_url=excluded.last_remote_url,
+         revision_token=excluded.revision_token,etag=excluded.etag,
+         last_modified=excluded.last_modified,content_length=excluded.content_length,
+         media_asset_id=excluded.media_asset_id,
+         last_checked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+        params![reference.base,reference.url,reference.revision,
+            download.etag,download.last_modified,download.bytes.len() as i64,id]
+    )?;
+    tx.execute(
+        "UPDATE snapshot_media SET media_asset_id=?1,etag=?2,last_modified=?3
+         WHERE snapshot_media_id=?4",
+        params![id,download.etag,download.last_modified,reference.id]
+    )?;
+    if let Some(ref dhash)=dhash {
+        identity::record_image_hash(&tx,reference.person_id,reference.listing_id,dhash)?;
+        identity::refresh(&tx,reference.listing_id)?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+fn archive_with(
+    core:&LadiesCore, snapshot_id:i64, include_videos:bool, fetcher:&impl Fetcher
+)->Result<MediaArchiveReport,CoreError>{
+    let root=core.media_root.as_ref()
+        .ok_or_else(||CoreError::Media("Media archive requires a file-backed database".into()))?;
+    let refs=snapshot_refs(core,snapshot_id)?;
+    let mut report=MediaArchiveReport {
+        snapshot_id,downloaded:0,reused:0,failed:0,deferred:0
+    };
+    for (index,reference) in refs.iter().enumerate(){
+        if index>=MAX_REFERENCES || (reference.kind=="VIDEO" && !include_videos) {
+            report.deferred+=1;
+            continue;
+        }
+        if reference.asset_id.is_some() && reference.local_path.as_deref()
+            .is_some_and(|p| root.join(p).is_file()){
+            report.reused+=1;
+            continue;
+        }
+        let result=(||->Result<(),CoreError>{
+            let url=validate_media_url(&reference.url,&reference.kind)?;
+            let limit=if reference.kind=="IMAGE"{MAX_IMAGE_BYTES}else{MAX_VIDEO_BYTES};
+            let response=fetcher.get(url.as_str(),limit)?;
+            persist(core,root,reference,response)?;
+            Ok(())
+        })();
+        match result {
+            Ok(())=>report.downloaded+=1,
+            Err(error)=>{
+                report.failed+=1;
+                core.diagnostics.event("MEDIA",format!(
+                    "Asset for snapshot={} position={} failed: {}",
+                    snapshot_id,index+1,error
+                ));
+            }
+        }
+    }
+    Ok(report)
+}
+
+pub(crate) fn archive(
+    core:&LadiesCore,snapshot_id:i64,include_videos:bool
+)->Result<MediaArchiveReport,CoreError>{
+    let http=HttpFetcher::new()?;
+    archive_with(core,snapshot_id,include_videos,&http)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct FixtureFetcher(Vec<u8>);
+    impl Fetcher for FixtureFetcher {
+        fn get(&self,_:&str,_:u64)->Result<Download,CoreError>{
+            Ok(Download{bytes:self.0.clone(),mime:Some("image/png".into()),
+                etag:None,last_modified:None})
+        }
+    }
+    fn fixture() -> (tempfile::TempDir,std::sync::Arc<LadiesCore>,i64,i64) {
+        let temp=tempfile::tempdir().unwrap();
+        let path=temp.path().join("ladies.sqlite").to_string_lossy().to_string();
+        let core=LadiesCore::new(path).unwrap();
+        let person=core.create_person(Some("Anna".into())).unwrap();
+        let listing=core.add_listing(person,None,"LADIES".into(),"100".into(),None).unwrap();
+        let db=core.connection().unwrap();
+        db.execute(
+            "INSERT INTO listing_snapshots(listing_id,fingerprint) VALUES (?1,'test')",[listing]
+        ).unwrap();
+        let snapshot=db.last_insert_rowid();
+        db.execute(
+            "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+            params![snapshot,listing]
+        ).unwrap();
+        for index in 0..2 {
+            db.execute(
+                "INSERT INTO snapshot_media
+                 (snapshot_id,position,kind,role,remote_url,remote_base_url)
+                 VALUES (?1,?2,'IMAGE','GALLERY',?3,?4)",
+                params![snapshot,index+1,
+                    format!("https://bilder1.ladies-cdn.de/Bilder/1/{index}-A1.JPG?rev=1"),
+                    format!("https://bilder1.ladies-cdn.de/Bilder/1/{index}-A1.JPG")]
+            ).unwrap();
+        }
+        drop(db);
+        (temp,core,snapshot,listing)
+    }
+    #[test]
+    fn archive_is_content_addressed_and_repeatable() {
+        let (_temp,core,snapshot,listing)=fixture();
+        let mut png=std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(16,16).write_to(&mut png,image::ImageFormat::Png).unwrap();
+        let fetcher=FixtureFetcher(png.into_inner());
+        let first=archive_with(&core,snapshot,false,&fetcher).unwrap();
+        assert_eq!((first.downloaded,first.failed),(2,0));
+        let again=archive_with(&core,snapshot,false,&fetcher).unwrap();
+        assert_eq!((again.reused,again.downloaded),(2,0));
+        let db=core.connection().unwrap();
+        let assets:i64=db.query_row("SELECT COUNT(*) FROM media_assets",[],|r|r.get(0)).unwrap();
+        assert_eq!(assets,1);
+        let hashes:i64=db.query_row(
+            "SELECT COUNT(*) FROM person_identifiers WHERE kind='IMAGE_DHASH'",
+            [],|r|r.get(0)).unwrap();
+        assert_eq!(hashes,1);
+        let links:i64=db.query_row(
+            "SELECT COUNT(*) FROM snapshot_media WHERE media_asset_id IS NOT NULL",
+            [],|r|r.get(0)).unwrap();
+        assert_eq!(links,2);
+        assert_eq!(core.list_identity_candidates(listing).unwrap().len(),0);
+    }
+    #[test]
+    fn only_whitelisted_cdn_hosts_are_downloaded() {
+        assert!(validate_media_url("https://bilder1.ladies-cdn.de/Bilder/1.jpg","IMAGE").is_ok());
+        assert!(validate_media_url("https://bilder1.ladies-cdn.de.evil.test/a.jpg","IMAGE").is_err());
+        assert!(validate_media_url("http://bilder1.ladies-cdn.de/a.jpg","IMAGE").is_err());
+        assert!(validate_media_url("https://127.0.0.1/a.jpg","IMAGE").is_err());
+        assert!(validate_media_url("https://video2.ladies-cdn.de/a.mp4","VIDEO").is_ok());
+    }
+}

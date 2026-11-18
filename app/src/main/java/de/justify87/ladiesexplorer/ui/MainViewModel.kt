@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import de.justify87.ladiesexplorer.core.CoreStore
+import de.justify87.ladiesexplorer.core.MediaArchiveReport
 import de.justify87.ladiesexplorer.core.ImportReport
 import de.justify87.ladiesexplorer.core.ProfileResponse
 import de.justify87.ladiesexplorer.core.SearchRequest
@@ -37,6 +38,8 @@ data class SearchUiState(
     val loading: Boolean = false,
     val response: SearchResponse? = null,
     val profile: ProfileResponse? = null,
+    val mediaArchive: MediaArchiveReport? = null,
+    val mediaWarning: String? = null,
     val error: String? = null,
 )
 
@@ -51,13 +54,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSearchCity(city: String) {
         _searchUiState.update {
-            it.copy(city = city, response = null, profile = null, error = null)
+            it.copy(city = city, response = null, profile = null, mediaArchive = null, mediaWarning = null, error = null)
         }
     }
 
     fun setSearchRadius(radiusKm: UInt) {
         _searchUiState.update {
-            it.copy(radiusKm = radiusKm, response = null, profile = null, error = null)
+            it.copy(radiusKm = radiusKm, response = null, profile = null, mediaArchive = null, mediaWarning = null, error = null)
         }
     }
 
@@ -65,7 +68,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_searchUiState.value.loading || _uiState.value.loading) return
         val input = _searchUiState.value
         _searchUiState.update {
-            it.copy(loading = true, error = null, profile = null, response = null)
+            it.copy(loading = true, error = null, profile = null, mediaArchive = null, mediaWarning = null, response = null)
         }
         viewModelScope.launch {
             try {
@@ -98,12 +101,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadProfile(listingId: Long) {
         if (_searchUiState.value.loading || _uiState.value.loading) return
-        _searchUiState.update { it.copy(loading = true, error = null, profile = null) }
+        _searchUiState.update { it.copy(loading = true, error = null, profile = null, mediaArchive = null, mediaWarning = null) }
         viewModelScope.launch {
             try {
                 val profile = core.loadProfile(listingId)
                 _searchUiState.update {
                     it.copy(loading = false, profile = profile)
+                }
+                // Media archiving must never invalidate a successfully stored profile.
+                try {
+                    val media = core.archiveProfileMedia(profile.snapshotId)
+                    _searchUiState.update { it.copy(mediaArchive = media) }
+                } catch (failure: Exception) {
+                    _searchUiState.update {
+                        it.copy(mediaWarning = failure.message ?: "Medienarchivierung fehlgeschlagen")
+                    }
                 }
             } catch (cancellation: CancellationException) {
                 _searchUiState.update { it.copy(loading = false) }
