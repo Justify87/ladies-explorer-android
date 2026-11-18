@@ -359,6 +359,7 @@ pub(crate) fn acknowledge(core: &LadiesCore, id: String) -> Result<(), CoreError
     Ok(())
 }
 
+#[cfg(test)]
 fn persist_results(
     core: &LadiesCore,
     id: &str,
@@ -366,6 +367,27 @@ fn persist_results(
     expected_definition: &str,
     expected_version: i64,
 ) -> Result<(), CoreError> {
+    persist_results_with_control(
+        core,
+        id,
+        result,
+        expected_definition,
+        expected_version,
+        None,
+    )
+}
+
+fn persist_results_with_control(
+    core: &LadiesCore,
+    id: &str,
+    result: &SearchResponse,
+    expected_definition: &str,
+    expected_version: i64,
+    control: Option<&RequestControl>,
+) -> Result<(), CoreError> {
+    if let Some(control) = control {
+        control.check()?;
+    }
     let mut db = core.connection()?;
     let tx = db.transaction()?;
     let (existing, current_definition, current_version): (Option<String>, String, i64) = tx
@@ -395,6 +417,9 @@ fn persist_results(
     )?;
     let mut newly_seen = 0u32;
     for (position, card) in result.profiles.iter().enumerate() {
+        if let Some(control) = control {
+            control.check()?;
+        }
         let key = card.advert_id.clone();
         if !previous_keys.contains(&key) && existing.is_some() {
             newly_seen += 1;
@@ -437,6 +462,9 @@ fn persist_results(
          WHERE saved_search_id=?1",
         params![id,json!({"new":newly_seen,"removed":removed,"current":result.profiles.len()}).to_string(),newly_seen],
     )?;
+    if let Some(control) = control {
+        control.check()?;
+    }
     tx.commit()?;
     Ok(())
 }
@@ -574,8 +602,18 @@ pub(crate) fn run(
                 control.check()?;
             }
             if !response.partial && response.radius_verified {
-                persist_results(core, &id, &response, &stored_definition, version)?;
+                persist_results_with_control(
+                    core,
+                    &id,
+                    &response,
+                    &stored_definition,
+                    version,
+                    control,
+                )?;
             } else {
+                if let Some(control) = control {
+                    control.check()?;
+                }
                 core.connection()?.execute(
                     "UPDATE saved_searches
                      SET last_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
