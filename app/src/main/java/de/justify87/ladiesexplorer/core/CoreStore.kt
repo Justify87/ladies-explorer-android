@@ -186,6 +186,9 @@ class CoreStore(context: Context) {
         engine.cachedSourceProfile(listingId)
     }
 
+    suspend fun frequentFilters(): List<FrequentFilter> =
+        withContext(Dispatchers.IO) { engine.frequentFilters() }
+
     suspend fun sourceFilterCatalog(): SourceFilterCatalog = withContext(Dispatchers.IO) {
         engine.sourceFilterCatalog()
     }
@@ -226,14 +229,14 @@ class CoreStore(context: Context) {
     suspend fun savedSearches(): List<SavedSearchInfo> =
         withContext(Dispatchers.IO) { engine.listSavedSearches() }
 
-    suspend fun saveSearch(name: String, request: SearchRequest): String =
-        withContext(Dispatchers.IO) { engine.saveNativeSearch(name, request) }
+    suspend fun saveSearch(name: String, request: SearchRequest, local: LocalVisibility): String =
+        withContext(Dispatchers.IO) { engine.saveSearchDefinition(name, request, local) }
 
-    suspend fun updateSavedSearch(id: String, name: String, request: SearchRequest) =
-        withContext(Dispatchers.IO) { engine.updateNativeSearch(id, name, request) }
+    suspend fun updateSavedSearch(id: String, name: String, request: SearchRequest, local: LocalVisibility) =
+        withContext(Dispatchers.IO) { engine.updateSearchDefinition(id, name, request, local) }
 
-    suspend fun loadSavedSearch(id: String): SearchRequest =
-        withContext(Dispatchers.IO) { engine.loadSavedSearch(id) }
+    suspend fun loadSavedSearch(id: String): SavedSearchDefinition =
+        withContext(Dispatchers.IO) { engine.loadSearchDefinition(id) }
 
     suspend fun savedSearchResults(
         id: String,

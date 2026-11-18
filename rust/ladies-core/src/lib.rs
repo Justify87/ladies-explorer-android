@@ -148,9 +148,9 @@ pub use map::{MapOverview, MapProfile};
 pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
 pub use saved_search::{
-    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage,
+    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchInfo, SavedSearchResultPage,
 };
-pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
+pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchPreview, SearchRequest, SearchResponse};
 
 #[derive(uniffi::Object)]
@@ -404,6 +404,33 @@ impl LadiesCore {
 
     pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
         discovery::media(self, snapshot_id)
+    }
+
+    pub fn frequent_filters(&self) -> Result<Vec<FrequentFilter>, CoreError> {
+        source::filter::frequent(self)
+    }
+
+    pub fn save_search_definition(
+        &self,
+        name: String,
+        request: SearchRequest,
+        local: LocalVisibility,
+    ) -> Result<String, CoreError> {
+        saved_search::save_with_local(self, name, request, local)
+    }
+
+    pub fn update_search_definition(
+        &self,
+        id: String,
+        name: String,
+        request: SearchRequest,
+        local: LocalVisibility,
+    ) -> Result<(), CoreError> {
+        saved_search::update_with_local(self, id, name, request, Some(local))
+    }
+
+    pub fn load_search_definition(&self, id: String) -> Result<SavedSearchDefinition, CoreError> {
+        saved_search::load_definition(self, id)
     }
 
     pub fn source_filter_catalog(&self) -> SourceFilterCatalog {

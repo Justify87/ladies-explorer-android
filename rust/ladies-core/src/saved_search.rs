@@ -21,10 +21,10 @@ pub struct SavedSearchInfo {
     pub local_filter_summary: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct SavedSearchDefinition {
-    query: SearchRequest,
-    local: LocalVisibility,
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Record)]
+pub struct SavedSearchDefinition {
+    pub query: SearchRequest,
+    pub local: LocalVisibility,
 }
 
 fn encode_definition(definition: &SavedSearchDefinition) -> Result<String, CoreError> {
@@ -36,6 +36,16 @@ pub(crate) fn save(
     name: String,
     request: SearchRequest,
 ) -> Result<String, CoreError> {
+    save_with_local(core, name, request, LocalVisibility::default())
+}
+
+pub(crate) fn save_with_local(
+    core: &LadiesCore,
+    name: String,
+    request: SearchRequest,
+    local: LocalVisibility,
+) -> Result<String, CoreError> {
+    validate_local(&local)?;
     let request = source::filter::canonicalize_request(request)?;
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {
@@ -45,7 +55,7 @@ pub(crate) fn save(
     }
     let definition = encode_definition(&SavedSearchDefinition {
         query: request,
-        local: LocalVisibility::default(),
+        local,
     })?;
     let db = core.connection()?;
     db.execute(
@@ -67,6 +77,19 @@ pub(crate) fn update(
     name: String,
     request: SearchRequest,
 ) -> Result<(), CoreError> {
+    update_with_local(core, id, name, request, None)
+}
+
+pub(crate) fn update_with_local(
+    core: &LadiesCore,
+    id: String,
+    name: String,
+    request: SearchRequest,
+    local: Option<LocalVisibility>,
+) -> Result<(), CoreError> {
+    if let Some(ref rules) = local {
+        validate_local(rules)?;
+    }
     let request = source::filter::canonicalize_request(request)?;
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {
@@ -89,7 +112,7 @@ pub(crate) fn update(
     // Imported local filters belong to the saved definition and survive source edits.
     let next = SavedSearchDefinition {
         query: request,
-        local: previous.local.clone(),
+        local: local.unwrap_or_else(|| previous.local.clone()),
     };
     let changed = previous != next;
     let definition = encode_definition(&next)?;
@@ -189,6 +212,11 @@ fn definition(core: &LadiesCore, id: &str) -> Result<(String, i64), CoreError> {
 
 fn request(core: &LadiesCore, id: &str) -> Result<SearchRequest, CoreError> {
     Ok(decode_definition(&definition(core, id)?.0)?.query)
+}
+
+pub(crate) fn load_definition(core: &LadiesCore, id: String) -> Result<SavedSearchDefinition, CoreError> {
+    let (stored, _) = definition(core, &id)?;
+    decode_definition(&stored)
 }
 
 pub(crate) fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreError> {

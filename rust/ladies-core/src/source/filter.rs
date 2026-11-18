@@ -35,6 +35,68 @@ pub struct SourceFilterCatalog {
     pub groups: Vec<SourceFilterGroup>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FrequentFilter {
+    pub group: String,
+    pub value: String,
+    pub count: u32,
+}
+
+/// Derive usage from committed search runs; never write a second usage database.
+pub(crate) fn frequent(core: &crate::LadiesCore) -> Result<Vec<FrequentFilter>, CoreError> {
+    let db = core.connection()?;
+    let mut query = db.prepare(
+        "SELECT filters_json FROM search_runs WHERE finished_at IS NOT NULL AND filters_json IS NOT NULL",
+    )?;
+    let rows = query.query_map([], |r| r.get::<_, String>(0))?;
+    let mut counts: BTreeMap<(String, String), u32> = BTreeMap::new();
+    let catalog = catalog();
+    for raw in rows {
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw?) else {
+            continue;
+        };
+        let Some(selected) = json.get("selected").and_then(|v| v.as_object()) else {
+            continue;
+        };
+        let mut used = BTreeSet::new();
+        for (raw_group, values) in selected {
+            let Some(group) = catalog.groups.get(raw_group) else {
+                continue;
+            };
+            let Some(allowed) = catalog.values.get(group) else {
+                continue;
+            };
+            let Some(values) = values.as_array() else {
+                continue;
+            };
+            for value in values.iter().filter_map(|v| v.as_str()) {
+                let clean = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                let slug = allowed
+                    .get(&clean)
+                    .or_else(|| allowed.values().find(|slug| *slug == &clean));
+                if let Some(slug) = slug {
+                    used.insert((group.clone(), slug.clone()));
+                }
+            }
+        }
+        for key in used {
+            let count = counts.entry(key).or_default();
+            *count = count.saturating_add(1);
+        }
+    }
+    let mut result: Vec<_> = counts
+        .into_iter()
+        .filter_map(|((group, slug), count)| {
+            let value = catalog.values.get(&group)?.iter()
+                .find(|(_, v)| *v == &slug)?.0.clone();
+            Some(FrequentFilter { group, value, count })
+        })
+        .collect();
+    result.sort_by(|a, b| b.count.cmp(&a.count).then(a.group.cmp(&b.group)).then(a.value.cmp(&b.value)));
+    result.truncate(5);
+    Ok(result)
+}
+
 pub(crate) fn available() -> SourceFilterCatalog {
     let catalog = catalog();
     let mut categories = vec![String::new()];
