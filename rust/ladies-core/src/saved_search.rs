@@ -428,8 +428,11 @@ mod tests {
     fn imported_search_definition_converts_ranges_and_source_filters() {
         let legacy = r#"{"city":"Leipzig","radius":30,"category":"escort","ageMin":22,"ageMax":45,"heightMin":150,"heightMax":190,"selected":{"figur":["schlank"]},"local":{"videoOnly":true}}"#;
         let q = decode_definition(legacy).unwrap();
-        assert_eq!((q.city.as_str(),q.radius_km,q.age_min,q.age_max),("Leipzig",30,22,45));
-        assert_eq!(q.category,"escort");
+        assert_eq!(
+            (q.city.as_str(), q.radius_km, q.age_min, q.age_max),
+            ("Leipzig", 30, 22, 45)
+        );
+        assert_eq!(q.category, "escort");
         assert!(q.filters_json.contains("schlank"));
     }
 
@@ -437,51 +440,85 @@ mod tests {
     fn saved_search_deltas_and_rename_are_persistent() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let req = SearchRequest::for_test();
-        let id = save(&core,"Leipzig".into(),req.clone()).unwrap();
+        let id = save(&core, "Leipzig".into(), req.clone()).unwrap();
         let a = core.create_person(Some("A".into())).unwrap();
         let b = core.create_person(Some("B".into())).unwrap();
         let c = core.create_person(Some("C".into())).unwrap();
-        let la = core.add_listing(a,None,"LADIES".into(),"101".into(),None).unwrap();
-        let lb = core.add_listing(b,None,"LADIES".into(),"102".into(),None).unwrap();
-        let lc = core.add_listing(c,None,"LADIES".into(),"103".into(),None).unwrap();
-        let card = |listing_id,person_id,advert_id: &str| source::SearchCard {
-            listing_id,person_id,advert_id:advert_id.into(),
-            name:advert_id.into(),city:"Leipzig".into(),category:"".into(),
-            profile_url:"https://www.ladies.de/sex-anzeigen/x".into(),
-            thumbnail_url:None,has_video:false,is_premium:false,
-            has_ai_content:false,has_18plus:false,has_stars:false,
+        let la = core
+            .add_listing(a, None, "LADIES".into(), "101".into(), None)
+            .unwrap();
+        let lb = core
+            .add_listing(b, None, "LADIES".into(), "102".into(), None)
+            .unwrap();
+        let lc = core
+            .add_listing(c, None, "LADIES".into(), "103".into(), None)
+            .unwrap();
+        let card = |listing_id, person_id, advert_id: &str| source::SearchCard {
+            listing_id,
+            person_id,
+            advert_id: advert_id.into(),
+            name: advert_id.into(),
+            city: "Leipzig".into(),
+            category: "".into(),
+            profile_url: "https://www.ladies.de/sex-anzeigen/x".into(),
+            thumbnail_url: None,
+            has_video: false,
+            is_premium: false,
+            has_ai_content: false,
+            has_18plus: false,
+            has_stars: false,
         };
         let mut result = SearchResponse {
-            search_run_id:1,city:"Leipzig".into(),requested_radius_km:20,
-            server_count:Some(2),total_pages:1,fetched_pages:1,
-            partial:false,radius_boundary_stopped:false,radius_verified:true,
-            profiles: vec![card(la,a,"101"),card(lb,b,"102")],
+            search_run_id: 1,
+            city: "Leipzig".into(),
+            requested_radius_km: 20,
+            server_count: Some(2),
+            total_pages: 1,
+            fetched_pages: 1,
+            partial: false,
+            radius_boundary_stopped: false,
+            radius_verified: true,
+            profiles: vec![card(la, a, "101"), card(lb, b, "102")],
         };
-        persist_results(&core,&id,&result).unwrap();
-        update(&core,id.clone(),"Umbenannt".into(),req.clone()).unwrap();
+        persist_results(&core, &id, &result).unwrap();
+        update(&core, id.clone(), "Umbenannt".into(), req.clone()).unwrap();
         assert!(list(&core).unwrap()[0].last_run_at.is_some());
-        result.profiles=vec![card(lb,b,"102"),card(lc,c,"103")];
-        persist_results(&core,&id,&result).unwrap();
-        let db=core.connection().unwrap();
-        let delta: String=db.query_row(
-            "SELECT last_delta_json FROM saved_searches WHERE saved_search_id=?1",
-            [&id],|r|r.get(0)
-        ).unwrap();
-        assert_eq!(serde_json::from_str::<serde_json::Value>(&delta).unwrap()["new"],1);
-        assert_eq!(serde_json::from_str::<serde_json::Value>(&delta).unwrap()["removed"],1);
+        result.profiles = vec![card(lb, b, "102"), card(lc, c, "103")];
+        persist_results(&core, &id, &result).unwrap();
+        let db = core.connection().unwrap();
+        let delta: String = db
+            .query_row(
+                "SELECT last_delta_json FROM saved_searches WHERE saved_search_id=?1",
+                [&id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&delta).unwrap()["new"],
+            1
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&delta).unwrap()["removed"],
+            1
+        );
         drop(db);
         assert!(list(&core).unwrap()[0].unread_new_results);
-        acknowledge(&core,id.clone()).unwrap();
+        acknowledge(&core, id.clone()).unwrap();
         assert!(!list(&core).unwrap()[0].unread_new_results);
         let mut changed = req;
-        changed.radius_km=30;
-        update(&core,id.clone(),"Umbenannt".into(),changed).unwrap();
+        changed.radius_km = 30;
+        update(&core, id.clone(), "Umbenannt".into(), changed).unwrap();
         assert!(list(&core).unwrap()[0].last_run_at.is_none());
-        let remaining:i64=core.connection().unwrap().query_row(
-            "SELECT COUNT(*) FROM saved_search_results WHERE saved_search_id=?1",
-            [&id],|r|r.get(0)
-        ).unwrap();
-        assert_eq!(remaining,0);
+        let remaining: i64 = core
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM saved_search_results WHERE saved_search_id=?1",
+                [&id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 0);
     }
 
     #[test]
