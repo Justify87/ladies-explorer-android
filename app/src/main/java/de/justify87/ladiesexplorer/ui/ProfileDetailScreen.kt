@@ -70,64 +70,64 @@ fun ProfileDetailScreen(
         )
     }
     BoxWithConstraints(modifier.fillMaxSize()) {
-    val heroHeight = (maxHeight * .84f).coerceIn(220.dp, 720.dp)
-    LazyColumn(
-        state = detailListState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        if (profile == null) item {
-            TextButton(onClick = onBack) { Text("Zurück") }
-        }
-        if (state.loading) item { CircularProgressIndicator() }
-        state.error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
-        state.actionError?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
-        if (profile != null) {
-            item(key = "media") {
-                ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
-                    onBack = onBack, originalUrl = state.profileIdentity?.profileUrl)
+        val heroHeight = (maxHeight * .84f).coerceIn(220.dp, 720.dp)
+        LazyColumn(
+            state = detailListState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (profile == null) item {
+                TextButton(onClick = onBack) { Text("Zurück") }
             }
-            item(key = "identity") {
-                val age = jsonRows(profile.traitsJson).firstOrNull { it.first.equals("Alter", true) }
-                    ?.second?.let { Regex("""^([0-9]{2})(?:\s*Jahre?)?$""").matchEntire(it.trim())?.groupValues?.get(1) }
-                ProfileIdentityHeader(
-                    name = profile.name,
-                    place = listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
-                    age = age,
-                    identity = state.profileIdentity,
-                    person = state.selectedPerson,
-                    hasVideo = state.profileMedia.any { it.kind == "VIDEO" },
-                )
-                profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            }
-            item(key = "actions") {
-                ProfileActionRail(state.selectedPerson, profile.phoneDisplay,
-                    actionsBusy || state.actionBusy, onFavorite, onPreference)
-            }
-            if (state.archiving) {
-                item {
-                    Row(verticalAlignment=Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier=Modifier.width(28.dp).height(28.dp))
-                        Text("  Medien werden lokal archiviert",modifier=Modifier.weight(1f))
-                        TextButton(onClick=onCancelArchive) { Text("Stoppen") }
+            if (state.loading) item { CircularProgressIndicator() }
+            state.error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
+            state.actionError?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
+            if (profile != null) {
+                item(key = "media") {
+                    ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
+                        onBack = onBack, originalUrl = state.profileIdentity?.profileUrl)
+                }
+                item(key = "identity") {
+                    val age = jsonRows(profile.traitsJson).firstOrNull { it.first.equals("Alter", true) }
+                        ?.second?.let { Regex("""^([0-9]{2})(?:\s*Jahre?)?$""").matchEntire(it.trim())?.groupValues?.get(1) }
+                    ProfileIdentityHeader(
+                        name = profile.name,
+                        place = listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
+                        age = age,
+                        identity = state.profileIdentity,
+                        person = state.selectedPerson,
+                        hasVideo = state.profileMedia.any { it.kind == "VIDEO" },
+                    )
+                    profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                }
+                item(key = "actions") {
+                    ProfileActionRail(state.selectedPerson, profile.phoneDisplay,
+                        actionsBusy || state.actionBusy, onFavorite, onPreference)
+                }
+                if (state.archiving) {
+                    item {
+                        Row(verticalAlignment=Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier=Modifier.width(28.dp).height(28.dp))
+                            Text("  Medien werden lokal archiviert",modifier=Modifier.weight(1f))
+                            TextButton(onClick=onCancelArchive) { Text("Stoppen") }
+                        }
                     }
                 }
-            }
-            state.mediaArchive?.let { report ->
-                item {
-                    Text(
-                        "Archiv: ${report.downloaded} geladen · ${report.reused} wiederverwendet · ${report.failed} fehlgeschlagen · ${report.deferred} zurückgestellt",
-                        style=MaterialTheme.typography.bodySmall,
-                    )
+                state.mediaArchive?.let { report ->
+                    item {
+                        Text(
+                            "Archiv: ${report.downloaded} geladen · ${report.reused} wiederverwendet · ${report.failed} fehlgeschlagen · ${report.deferred} zurückgestellt",
+                            style=MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
+                state.mediaWarning?.let {
+                    item { Text(it,color=MaterialTheme.colorScheme.error) }
+                }
+                profileContent(state, actionsBusy) { confirmTarget = it }
             }
-            state.mediaWarning?.let {
-                item { Text(it,color=MaterialTheme.colorScheme.error) }
-            }
-            profileContent(state, actionsBusy) { confirmTarget = it }
         }
-    }
     }
 }
 
@@ -173,7 +173,7 @@ internal fun LazyListScope.profileContent(
                 Text("Diese Hinweise führen niemals automatisch zu einer Zusammenführung.")
             }
         }
-        items(state.identityCandidates,key={it.personId}) { candidate ->
+        items(state.identityCandidates,key={"candidate/" + it.personId}) { candidate ->
             Card {
                 Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
                     Text("Person #${candidate.personId} · ${candidate.decision}")
@@ -197,7 +197,7 @@ internal fun LazyListScope.profileContent(
             HorizontalDivider()
             Text("Änderungshistorie",style=MaterialTheme.typography.titleLarge)
         }
-        items(state.changeEvents,key={it.changeEventId}) { event ->
+        items(state.changeEvents,key={"event/" + it.changeEventId}) { event ->
             Column(verticalArrangement=Arrangement.spacedBy(3.dp)) {
                 Text(
                     "${event.createdAt.take(16)} · ${event.eventType}",
