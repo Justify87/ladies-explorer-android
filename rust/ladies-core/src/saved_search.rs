@@ -556,13 +556,13 @@ mod tests {
             radius_verified: true,
             profiles: vec![card(la, a, "101"), card(lb, b, "102")],
         };
-        let (definition, version) = definition(&core, &id).unwrap();
-        persist_results(&core, &id, &result, &definition, version).unwrap();
+        let (stored_definition, version) = definition(&core, &id).unwrap();
+        persist_results(&core, &id, &result, &stored_definition, version).unwrap();
         update(&core, id.clone(), "Umbenannt".into(), req.clone()).unwrap();
         assert!(list(&core).unwrap()[0].last_run_at.is_some());
         result.profiles = vec![card(lb, b, "102"), card(lc, c, "103")];
-        let (definition, version) = definition(&core, &id).unwrap();
-        persist_results(&core, &id, &result, &definition, version).unwrap();
+        let (stored_definition, version) = definition(&core, &id).unwrap();
+        persist_results(&core, &id, &result, &stored_definition, version).unwrap();
         let stored = results(&core, id.clone()).unwrap();
         assert_eq!(stored.len(), 2);
         assert_eq!(stored[0].listing_id, Some(lb));
@@ -652,10 +652,10 @@ mod tests {
             radius_verified: true,
             profiles: Vec::new(),
         };
-        let (definition, version) = definition(&core, &id).unwrap();
-        persist_results(&core, &id, &response, &definition, version).unwrap();
+        let (stored_definition, version) = definition(&core, &id).unwrap();
+        persist_results(&core, &id, &response, &stored_definition, version).unwrap();
         assert!(!list(&core).unwrap()[0].unread_new_results);
-        persist_results(&core, &id, &response, &definition, version).unwrap();
+        persist_results(&core, &id, &response, &stored_definition, version).unwrap();
         assert!(!list(&core).unwrap()[0].unread_new_results);
     }
 }
