@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use image::imageops::FilterType;
 use reqwest::blocking::Client;
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
 use url::Url;
 
@@ -94,7 +94,7 @@ fn validate_media_url(raw: &str, kind: &str) -> Result<Url, CoreError> {
 
 impl Fetcher for HttpFetcher {
     fn get(&self, url: &str, limit: u64) -> Result<Download, CoreError> {
-        let mut response = self
+        let response = self
             .0
             .get(url)
             .header("Referer", "https://www.ladies.de/")
