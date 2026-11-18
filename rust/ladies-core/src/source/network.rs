@@ -731,6 +731,20 @@ mod tests {
     }
 
     #[test]
+    fn cancelled_search_stops_before_any_network_request() {
+        let control = RequestControl::default();
+        control.cancel();
+        assert!(
+            fetch_search_controlled(
+                &Mock::default(),
+                &SearchRequest::for_test(),
+                Some(&control)
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn november_location_api_uses_title_case_keys() {
         let client = Mock::default().with(
             "https://www.ladies.de/api/location?searchString=Leipzi&searchAddAlleRegionen=false",

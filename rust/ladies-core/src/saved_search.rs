@@ -853,6 +853,49 @@ mod tests {
     }
 
     #[test]
+    fn cancelled_result_transaction_preserves_the_old_baseline() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let id = save(&core, "Leipzig".into(), SearchRequest::for_test()).unwrap();
+        let response = SearchResponse {
+            search_run_id: 1,
+            city: "Leipzig".into(),
+            requested_radius_km: 20,
+            server_count: Some(0),
+            total_pages: 1,
+            fetched_pages: 1,
+            partial: false,
+            radius_boundary_stopped: false,
+            radius_verified: true,
+            profiles: Vec::new(),
+        };
+        let (definition, version) = definition(&core, &id).unwrap();
+        persist_results(&core, &id, &response, &definition, version).unwrap();
+        let control = RequestControl::default();
+        control.cancel();
+        assert!(
+            persist_results_with_control(
+                &core,
+                &id,
+                &response,
+                &definition,
+                version,
+                Some(&control)
+            )
+            .is_err()
+        );
+        let last_run: String = core
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT last_run_at FROM saved_searches WHERE saved_search_id=?1",
+                [&id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(!last_run.is_empty());
+    }
+
+    #[test]
     fn saved_results_can_be_paged_beyond_the_previous_fixed_limit() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "Paging".into(), SearchRequest::for_test()).unwrap();

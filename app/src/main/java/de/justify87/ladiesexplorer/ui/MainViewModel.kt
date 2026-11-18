@@ -431,7 +431,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
                         it.copy(
-                            cards = cards.cards, nextCursor = cards.nextCursor,
+                            cards = cards.cards.filterNot { card -> card.personId in skippedPeople },
+                            nextCursor = cards.nextCursor,
                             favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
                             loading = false, error = null,
                         )
@@ -463,7 +464,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _discoverState.update {
                         val known = it.cards.mapTo(mutableSetOf()) { card -> card.personId }
                         it.copy(
-                            cards = it.cards + page.cards.filter { card -> known.add(card.personId) },
+                            cards = it.cards + page.cards.filter { card ->
+                                card.personId !in skippedPeople && known.add(card.personId)
+                            },
                             nextCursor = page.nextCursor,
                             loadingMore = false,
                         )
@@ -533,7 +536,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
                         it.copy(
-                            cards = cards.cards, nextCursor = cards.nextCursor,
+                            cards = cards.cards.filterNot { card -> card.personId in skippedPeople },
+                            nextCursor = cards.nextCursor,
                             favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
                             busy = false, loadingMore = false, favoritesLoadingMore = false,
                         )
@@ -567,7 +571,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
                         it.copy(
-                            cards = cards.cards, nextCursor = cards.nextCursor,
+                            cards = cards.cards.filterNot { card -> card.personId in skippedPeople },
+                            nextCursor = cards.nextCursor,
                             favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
                             busy = false, loadingMore = false, favoritesLoadingMore = false, error = null,
                         )
