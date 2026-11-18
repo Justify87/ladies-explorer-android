@@ -776,13 +776,18 @@ mod tests {
                 match listener.accept() {
                     Ok((stream, _)) => break stream,
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                        assert!(Instant::now() < deadline, "local HTTP client did not connect");
+                        assert!(
+                            Instant::now() < deadline,
+                            "local HTTP client did not connect"
+                        );
                         std::thread::sleep(Duration::from_millis(10));
                     }
                     Err(error) => panic!("{error}"),
                 }
             };
-            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
             let mut reader = BufReader::new(&mut stream);
             loop {
                 let mut line = String::new();
