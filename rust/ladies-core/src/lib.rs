@@ -958,4 +958,36 @@ mod tests {
             .unwrap();
         assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
     }
+    #[test]
+    fn independent_core_exports_remain_consistent_under_parallel_writes() {
+        use std::fs;
+        use std::thread;
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let a = LadiesCore::new(first.path().join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
+        let b = LadiesCore::new(second.path().join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
+        let jobs: Vec<_> = [(a.clone(), "core-alpha"), (b.clone(), "core-beta")]
+            .into_iter().map(|(core, label)| {
+                thread::spawn(move || {
+                    for n in 0..200 {
+                        core.record_debug_event("TEST".into(), format!("{label}-{n}"));
+                    }
+                })
+            }).collect();
+        for _ in 0..5 {
+            for (core, directory) in [(&a, &first), (&b, &second)] {
+                let snapshot = core.export_diagnostic_snapshot(directory.path().join("exports").to_string_lossy().into_owned()).unwrap();
+                let data = fs::read_to_string(snapshot).unwrap();
+                assert!(data.ends_with('\\n'));
+            }
+        }
+        for job in jobs { job.join().unwrap(); }
+        let export_a = fs::read_to_string(a.export_diagnostic_snapshot(first.path().join("exports").to_string_lossy().into_owned()).unwrap()).unwrap();
+        let export_b = fs::read_to_string(b.export_diagnostic_snapshot(second.path().join("exports").to_string_lossy().into_owned()).unwrap()).unwrap();
+        assert!(export_a.contains("core-alpha-199"));
+        assert!(!export_a.contains("core-beta-"));
+        assert!(export_b.contains("core-beta-199"));
+        assert!(!export_b.contains("core-alpha-"));
+    }
+
 }
