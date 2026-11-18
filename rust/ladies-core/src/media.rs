@@ -18,6 +18,8 @@ use crate::{CoreError, LadiesCore, identity};
 const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES: u64 = 48 * 1024 * 1024;
 const MAX_REFERENCES: usize = 80;
+const MAX_IMAGE_PIXELS: u64 = 40_000_000;
+const MAX_IMAGE_DIMENSION: u32 = 12_000;
 const MAX_ARCHIVE_DURATION: Duration = Duration::from_secs(150);
 const MAX_REQUEST_DURATION: Duration = Duration::from_secs(15);
 const MAX_PIXELS: u64 = 24_000_000;
@@ -522,6 +524,17 @@ mod tests {
             })
         }
     }
+    #[test]
+    fn rejects_oversized_image_dimensions_before_decode() {
+        // PNG header announces 12001x1 pixels; decoding must not be attempted.
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(1, 1)
+            .write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let mut bytes = png.into_inner();
+        bytes[16..20].copy_from_slice(&12_001u32.to_be_bytes());
+        assert!(image_dhash(&bytes).is_err());
+    }
+
     fn fixture() -> (tempfile::TempDir, std::sync::Arc<LadiesCore>, i64, i64) {
         let temp = tempfile::tempdir().unwrap();
         let path = temp
