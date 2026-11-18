@@ -553,10 +553,8 @@ fn fetch_search_using<T: Transport>(
                     )? == AppendPageOutcome::RadiusTransition
                     {
                         boundary_stopped = true;
-                        client.log_event(
-                            "SEARCH",
-                            "Stopped at page=2 radius transition placeholder",
-                        );
+                        client
+                            .log_event("SEARCH", "Stopped at page=2 radius transition placeholder");
                     }
                 }
             } else {
