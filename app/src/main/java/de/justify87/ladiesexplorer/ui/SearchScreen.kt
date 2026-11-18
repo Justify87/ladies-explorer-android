@@ -178,7 +178,7 @@ fun SearchScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${state.activeCards.size} sichtbare Treffer", style = MaterialTheme.typography.titleLarge)
-                    Text("Quellzahl: ${response.serverCount ?: "unbekannt"}", style = MaterialTheme.typography.bodyMedium)
+                    Text("Quellzahl: ${response.serverCount?.takeIf { response.radiusVerified } ?: "unbekannt"}", style = MaterialTheme.typography.bodyMedium)
                     Text(
                         "${response.fetchedPages} von ${response.totalPages} Seiten · ${response.city} · ${response.requestedRadiusKm} km",
                         style = MaterialTheme.typography.bodyMedium,

@@ -299,7 +299,7 @@ private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         val active = state.response
         if (active != null) {
-            Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount ?: "unbekannt"}",
+            Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
                 style = MaterialTheme.typography.labelMedium)
             if (active.partial || !active.radiusVerified) {
                 Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,

@@ -175,7 +175,11 @@ internal fun LazyListScope.searchFilterEditor(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 listOf("ALL" to "Alle", "NATURAL" to "Natürlich", "AI" to "KI-markiert").forEach { (mode, label) ->
                     FilterChip(selected = state.local.imageMode.ifBlank { "ALL" } == mode, enabled = !state.loading,
-                        onClick = { onLocalVisibility(state.local.copy(imageMode = mode)) }, label = { Text(label) })
+                        onClick = {
+                            if (state.local.imageMode.ifBlank { "ALL" } != mode) {
+                                onLocalVisibility(state.local.copy(imageMode = mode))
+                            }
+                        }, label = { Text(label) })
                 }
             }
             LocalFilterRow("Nur mit Bildern", state.local.photosOnly, !state.loading) {
