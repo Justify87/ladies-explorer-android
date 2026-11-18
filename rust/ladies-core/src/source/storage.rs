@@ -317,20 +317,20 @@ pub(super) fn save_profile(
     url: &str,
     profile: Profile,
 ) -> Result<ProfileResponse, CoreError> {
-    let fingerprint = parse::fingerprint(&profile);
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    let person_id: Option<i64> = tx
+    let row: Option<(i64, Option<String>)> = tx
         .query_row(
-            "SELECT person_id FROM listings WHERE listing_id=?1 AND source='LADIES'
+            "SELECT person_id, category FROM listings WHERE listing_id=?1 AND source='LADIES'
          AND external_listing_id=?2",
             params![listing_id, profile.advert_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let Some(person_id) = person_id else {
+    let Some((person_id, category)) = row else {
         return Err(CoreError::ListingNotFound(listing_id));
     };
+    let fingerprint = parse::fingerprint(&profile, category.as_deref());
     if let Some(external_id) = profile.source_profile_id.as_deref() {
         link_source_profile_or_record_conflict(
             &tx,
@@ -361,9 +361,7 @@ pub(super) fn save_profile(
              (listing_id, fingerprint, source_url, name, city, postal_code,
               hidden_location, category, description, published_at, external_profile_id,
               canonical_id, phone_display, traits_json, services_json, opening_times_json)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,
-                (SELECT category FROM listings WHERE listing_id=?1),
-                ?8,?9,?10,?11,?12,?13,?14,?15)",
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
             params![
                 listing_id,
                 fingerprint,
@@ -372,6 +370,7 @@ pub(super) fn save_profile(
                 profile.city,
                 profile.postal_code,
                 profile.hidden_location,
+                category,
                 profile.description,
                 profile.published_at,
                 profile.source_profile_id,
@@ -605,6 +604,22 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM search_runs", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn category_only_change_produces_snapshot_and_history() {
+        let core = core();
+        let found = save_cards(&core, vec![card("101", "Anna")]);
+        let listing = found.profiles[0].listing_id;
+        let first = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute("UPDATE listings SET category='new-category' WHERE listing_id=?1", [listing]).unwrap();
+        }
+        let second = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        assert_ne!(first.snapshot_id, second.snapshot_id);
+        let changes = core.list_change_events(found.profiles[0].person_id, 20).unwrap();
+        assert!(changes.iter().any(|c| c.field_key.as_deref() == Some("category")));
     }
 
     #[test]

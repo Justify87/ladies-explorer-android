@@ -611,8 +611,9 @@ pub(super) fn parse_profile(html: &str, fallback: &Card) -> Result<Profile, Core
     })
 }
 
-pub(super) fn fingerprint(profile: &Profile) -> String {
+pub(super) fn fingerprint(profile: &Profile, category: Option<&str>) -> String {
     let content = json!({
+        "category": category,
         "name": profile.name,
         "city": profile.city,
         "postal_code": profile.postal_code,
