@@ -226,25 +226,27 @@ impl Transport for SourceHttp {
                     .get(reqwest::header::LOCATION)
                     .and_then(|header| header.to_str().ok());
                 let next = redirect_target(response.url(), status, location, followed);
-                if let Some(mut obs) = observation.take() {
-                    obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
-                    obs.status = Some(status);
-                    obs.http_version = format!("{:?}", response.version());
-                    obs.response_headers = http_capture::headers(response.headers());
-                    obs.response_size = response.content_length();
-                    obs.mime = response.headers()
-                        .get(reqwest::header::CONTENT_TYPE)
-                        .and_then(|header| header.to_str().ok())
-                        .map(ToOwned::to_owned);
-                    obs.body_omitted = Some("redirect_body_not_read".into());
-                    self.recorder.record(obs);
+                if next.as_ref().is_err() || matches!(next, Ok(Some(_))) {
+                    if let Some(mut obs) = observation.take() {
+                        obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
+                        obs.status = Some(status);
+                        obs.http_version = format!("{:?}", response.version());
+                        obs.response_headers = http_capture::headers(response.headers());
+                        obs.response_size = response.content_length();
+                        obs.mime = response.headers()
+                            .get(reqwest::header::CONTENT_TYPE)
+                            .and_then(|header| header.to_str().ok())
+                            .map(ToOwned::to_owned);
+                        obs.body_omitted = Some("redirect_body_not_read".into());
+                        self.recorder.record(obs);
+                    }
                 }
                 if let Some(target) = next? {
                     current_url = target;
                     followed += 1;
                     continue;
                 }
-                // A 3xx without Location is a terminal response.
+                // A 3xx without Location is a terminal response and body is processed below.
             }
             break (response, observation, started);
         };
@@ -1016,7 +1018,27 @@ mod tests {
     }
 
     #[test]
-    fn rejected_redirect_does_not_leak_response_html_to_debug_log() {
+    fn redirect_target_preserves_validated_get_and_rejects_external_hosts() {
+        let origin = Url::parse("https://www.ladies.de/leipzig/sex-anzeigen").unwrap();
+        assert_eq!(
+            redirect_target(&origin, 302, Some("/jugendschutz?session=1"), 0)
+                .unwrap().unwrap().as_str(),
+            "https://www.ladies.de/jugendschutz?session=1",
+        );
+        assert_eq!(
+            redirect_target(&origin, 302, Some("https://ladies.de/path"), 1)
+                .unwrap().unwrap().host_str(),
+            Some("ladies.de"),
+        );
+        assert!(redirect_target(&origin, 302, Some("https://evil.example/path"), 0).is_err());
+        assert!(redirect_target(&origin, 302, Some("http://www.ladies.de/path"), 0).is_err());
+        assert!(redirect_target(&origin, 302, Some("/path"), 5).is_err());
+        assert!(redirect_target(&origin, 304, Some("/not-a-redirect"), 0).unwrap().is_none());
+        assert!(redirect_target(&origin, 302, None, 0).unwrap().is_none());
+    }
+
+    #[test]
+        fn rejected_redirect_does_not_leak_response_html_to_debug_log() {
         let directory = tempfile::tempdir().unwrap();
         let log = Diagnostics::new(directory.path().join("ladies.sqlite").to_str().unwrap());
         log.set_debug(true);
