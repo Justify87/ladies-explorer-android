@@ -66,7 +66,8 @@ fun DiscoverScreen(
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    "${state.cards.size} Profile zum Entdecken",
+                    if (state.activeRunId == null) "Lokaler Bestand · ${state.cards.size} unbewertete Profile"
+                    else "Aktive Suche · ${state.activeVisibleCount} sichtbar · ${state.cards.size} unbewertet",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -79,7 +80,8 @@ fun DiscoverScreen(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Keine neuen Profile", style = MaterialTheme.typography.titleLarge)
-                    Text("Starte eine Suche oder aktualisiere deine Ergebnisse. Bereits abgelehnte Profile werden nicht erneut vorgeschlagen.")
+                    Text(if (state.activeRunId == null) "Starte eine Suche oder aktualisiere den lokalen Bestand."
+                        else "Keine unbewerteten Treffer in diesem Suchlauf. Ändere die Filter oder starte eine neue Suche.")
                     OutlinedButton(onClick = onRefresh) { Text("Erneut laden") }
                 }
             }

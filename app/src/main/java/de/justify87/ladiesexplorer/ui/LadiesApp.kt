@@ -72,6 +72,16 @@ fun LadiesApp(
         save = { it.encode() }, restore = { ShellRoute.decode(it) },
     )) { mutableStateOf(ShellRoute()) }
     val stateHolder = rememberSaveableStateHolder()
+    var lastPresentedRun by rememberSaveable { mutableStateOf(search.response?.searchRunId) }
+    LaunchedEffect(search.response?.searchRunId) {
+        val run = search.response?.searchRunId
+        if (run != null && run != lastPresentedRun) {
+            lastPresentedRun = run
+            if (!search.profileOpen && (route.root == RootDestination.Search || route.root == RootDestination.Discover)) {
+                route = route.select(DiscoverMode.Swipe)
+            }
+        }
+    }
     val mapVisible = route.mapVisible && !search.profileOpen
     LaunchedEffect(mapVisible) {
         if (mapVisible) viewModel.refreshMap()
@@ -195,6 +205,13 @@ fun LadiesApp(
             stateHolder.SaveableStateProvider(route.stateKey) {
                 when (route.root) {
                     RootDestination.Discover -> Column(modifier = modifier) {
+                        if (route.discovery == DiscoverMode.Swipe) {
+                            Column(Modifier.padding(horizontal = 16.dp)) {
+                                AvailabilitySelector(availabilityMode(search.selectedFilters), !search.loading) {
+                                    viewModel.setAvailability(it, run = true)
+                                }
+                            }
+                        }
                         DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
                         if (route.discovery == DiscoverMode.Swipe) {
                             DiscoverScreen(
@@ -227,6 +244,10 @@ fun LadiesApp(
                         onHeight=viewModel::setHeightRange,
                         onPages=viewModel::setMaxPages,
                         onToggleFilter=viewModel::toggleFilter,
+                        onAvailability={viewModel.setAvailability(it)},
+                        onLocalVisibility=viewModel::setLocalVisibility,
+                        onReset=viewModel::resetSearchDraft,
+                        onPreviewVisible=viewModel::setPreviewVisible,
                         onSearch={viewModel.startSearch()},
                         onCancelSearch=viewModel::cancelActiveSearch,
                         onSave=viewModel::saveCurrentSearch,
