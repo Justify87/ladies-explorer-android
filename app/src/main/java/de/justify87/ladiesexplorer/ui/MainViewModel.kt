@@ -111,12 +111,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // Media archiving must never invalidate a successfully stored profile.
                 try {
                     val media = core.archiveProfileMedia(profile.snapshotId)
-                    _searchUiState.update { it.copy(mediaArchive = media) }
+                    _searchUiState.update { current ->
+                        if (current.profile?.snapshotId == profile.snapshotId) {
+                            current.copy(mediaArchive = media)
+                        } else current
+                    }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (failure: Exception) {
-                    _searchUiState.update {
-                        it.copy(mediaWarning = failure.message ?: "Medienarchivierung fehlgeschlagen")
+                    _searchUiState.update { current ->
+                        if (current.profile?.snapshotId == profile.snapshotId) {
+                            current.copy(mediaWarning = failure.message ?: "Medienarchivierung fehlgeschlagen")
+                        } else current
                     }
                 }
             } catch (cancellation: CancellationException) {
