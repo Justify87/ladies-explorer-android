@@ -582,6 +582,46 @@ mod tests {
         (temp, core, snapshot, listing)
     }
     #[test]
+    fn archive_uses_current_owner_after_listing_is_reassigned() {
+        let (_temp, core, snapshot, listing) = fixture();
+        let pending = snapshot_refs(&core, snapshot).unwrap()[0].clone();
+        let new_owner = core.create_person(Some("New owner".into())).unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listings SET person_id=?1 WHERE listing_id=?2",
+                params![new_owner, listing],
+            )
+            .unwrap();
+        }
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(16, 16)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        persist(
+            &core,
+            core.media_root.as_ref().unwrap(),
+            &pending,
+            Download {
+                bytes: png.into_inner(),
+                mime: Some("image/png".into()),
+                etag: None,
+                last_modified: None,
+            },
+        )
+        .unwrap();
+        let db = core.connection().unwrap();
+        let owner: i64 = db
+            .query_row(
+                "SELECT person_id FROM person_identifiers WHERE kind='IMAGE_DHASH'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(owner, new_owner);
+    }
+
+    #[test]
     fn archive_is_content_addressed_and_repeatable() {
         let (_temp, core, snapshot, listing) = fixture();
         let mut png = std::io::Cursor::new(Vec::new());
