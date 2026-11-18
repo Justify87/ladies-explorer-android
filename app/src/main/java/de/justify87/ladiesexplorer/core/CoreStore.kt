@@ -3,9 +3,8 @@ package de.justify87.ladiesexplorer.core
 import android.content.Context
 import android.os.SystemClock
 import co.touchlab.kermit.Logger
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.ThreadPoolExecutor
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -17,10 +16,22 @@ class CoreStore(context: Context) {
     private val logger = Logger.withTag("LadiesExplorer")
     @Volatile var imageCaptureMode: CaptureMode = CaptureMode.OFF
         private set
-    private val logBridge = ThreadPoolExecutor(
-        1, 1, 0L, TimeUnit.MILLISECONDS, LinkedBlockingQueue<Runnable>(128),
-        ThreadPoolExecutor.DiscardPolicy(),
-    )
+    // Only best-effort events are bounded. Control barriers are never rejected.
+    private val logBridge = Executors.newSingleThreadExecutor()
+    private val pendingEvents = AtomicInteger(0)
+    private fun dispatchEvent(work: () -> Unit) {
+        if (pendingEvents.incrementAndGet() > 128) {
+            pendingEvents.decrementAndGet()
+            return
+        }
+        logBridge.execute {
+            try {
+                work()
+            } finally {
+                pendingEvents.decrementAndGet()
+            }
+        }
+    }
     private val database = File(appFiles, "ladies.sqlite")
     private val engine: LadiesCore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         LadiesCore(database.absolutePath).also {
@@ -58,14 +69,14 @@ class CoreStore(context: Context) {
         }
         if (failure == null) logger.i { message } else logger.e(failure) { message }
         // The bounded bridge never blocks a Compose callback or an OkHttp hot path.
-        logBridge.execute {
+        dispatchEvent {
             runCatching { engine.recordKotlinEvent("ANDROID", message, false) }
         }
     }
 
     fun enqueueImageObservation(observation: HttpObservation) {
         if (imageCaptureMode == CaptureMode.OFF) return
-        logBridge.execute {
+        dispatchEvent {
             runCatching { engine.recordImageHttp(observation) }
         }
     }
@@ -82,7 +93,7 @@ class CoreStore(context: Context) {
         // Serialize with all pending image observations before deleting the session.
         imageCaptureMode = CaptureMode.OFF
         engine.setHttpCaptureMode(CaptureMode.OFF)
-        // Drain any already queued events before removing the session.
+        // An unbounded control barrier follows at most 128 pending diagnostic events.
         logBridge.submit(Runnable { }).get()
         engine.clearHttpCapture()
     }
