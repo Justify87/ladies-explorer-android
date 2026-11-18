@@ -154,6 +154,6 @@ G4 REVIEW, Full-CI und manuelle Geräte-/Live-Quellprüfung offen (DEVICE_PENDIN
 
 | ID | Anforderung | Ist-Evidenz / Status | Task |
 |---|---|---|---|
-| P42 | Alle app-internen HTTP-Abrufe von ladies.de und Medien-CDNs ausschließlich Rust | RustImageNetworkClient/CoreStore/load_display_image; keine direkte Coil-OkHttp-Anbindung; Review/CI offen | T4a.1–T4a.3 |
-| P43 | Coil-Cache, Offline, Prefetch und HAR ohne direkten Android-Transport | Standard-Coil-Netzwerkcache mit Rust-Adapter; Rust-HAR; Review/CI/Gerät offen | T4a.3–T4a.5 |
-| P44 | CI schützt die Quellen-HTTP-Grenze; MapLibre und externe Intents ausgenommen | tools/check-source-http.py in Android-CI; Review/CI offen | T4a.6 |
+| P42 | Alle app-internen HTTP-Abrufe von ladies.de und Medien-CDNs ausschließlich Rust | RustImageNetworkClient/CoreStore/load_display_image; keine direkte Coil-OkHttp-Anbindung; Full-CI #333 grün, DEVICE_PENDING | T4a.1–T4a.3 |
+| P43 | Coil-Cache, Offline, Prefetch und HAR ohne direkten Android-Transport | Standard-Coil-Netzwerkcache mit Rust-Adapter; Rust-HAR; Full-CI #333 grün, DEVICE_PENDING | T4a.3–T4a.5 |
+| P44 | CI schützt die Quellen-HTTP-Grenze; MapLibre und externe Intents ausgenommen | tools/check-source-http.py in Android-CI; Full-CI #333 grün | T4a.6 |

@@ -6,9 +6,9 @@ import org.junit.Test
 class ShellRouteTest {
     @Test fun rootsAndDiscoverModesHaveDistinctStateKeys() {
         val start = ShellRoute()
-        val routes = RootDestination.entries.map(start::select) + start.select(DiscoverMode.Map)
+        val routes = RootDestination.entries.map(start::select) + DiscoverMode.entries.filter { it != DiscoverMode.Swipe }.map(start::select)
         assertEquals(4, RootDestination.entries.size)
-        assertEquals(5, routes.map { it.stateKey }.toSet().size)
+        assertEquals(6, routes.map { it.stateKey }.toSet().size)
     }
 
     @Test fun modeSurvivesRootSwitchAndRestoration() {
@@ -25,6 +25,14 @@ class ShellRouteTest {
         assertFalse(swipe.mapVisible)
         assertFalse(swipe.canGoBack)
         assertEquals(swipe, swipe.back())
+    }
+
+    @Test fun gridHasOwnRestorableRouteAndDoesNotActivateMap() {
+        val grid = ShellRoute().select(DiscoverMode.Grid)
+        assertFalse(grid.mapVisible)
+        assertEquals(grid, grid.select(RootDestination.Search).back())
+        assertEquals(grid, ShellRoute.decode(grid.encode()))
+        assertEquals(ShellRoute(), grid.back())
     }
 
     @Test fun backClosesOverlaysBeforeChangingRoot() {

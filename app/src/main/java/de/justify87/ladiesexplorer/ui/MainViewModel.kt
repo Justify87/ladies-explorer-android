@@ -821,6 +821,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshDiscovery()
     }
 
+    /** Grid mutations never advance the swipe cursor and never load a source profile. */
+    fun toggleGridLike(listingId: Long) {
+        val state = _discoverState.value
+        val search = _searchUiState.value
+        if (state.busy || state.loading || search.loading || search.actionBusy) return
+        val card = gridCards(state, search).firstOrNull { it.listingId == listingId } ?: return
+        val epoch = ++discoveryEpoch
+        _discoverState.update { it.copy(busy = true, error = null, loadingMore = false, favoritesLoadingMore = false) }
+        viewModelScope.launch {
+            var committed = false
+            var projected = false
+            try {
+                core.setSwipePreference(card.listingId, card.personId, card.preference, gridLikeTarget(card.preference))
+                committed = true
+                val page = discoveryPage()
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                publishDiscovery(epoch, page, favorites)
+                projected = true
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) _discoverState.update {
+                    it.copy(error = if (committed) "Like gespeichert; Ansicht wird aktualisiert."
+                        else failure.message ?: "Like konnte nicht gespeichert werden")
+                }
+            } finally {
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update { it.copy(busy = false) }
+                    if (committed && !projected) recoverSwipeProjection()
+                }
+            }
+        }
+    }
+
     fun choosePreference(personId: Long, preference: Preference) {
         if (_discoverState.value.busy || _searchUiState.value.actionBusy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
         val epoch = ++discoveryEpoch

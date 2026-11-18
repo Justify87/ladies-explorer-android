@@ -7,9 +7,9 @@ internal enum class RootDestination(val title: String) {
     Settings("Einstellungen"),
 }
 
-// Grid is introduced by M05.5. No inactive or placeholder destination.
 internal enum class DiscoverMode(val title: String) {
     Swipe("Swipe"),
+    Grid("Grid"),
     Map("Karte"),
 }
 
