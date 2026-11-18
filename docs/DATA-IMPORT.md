@@ -1,4 +1,4 @@
-# M02 – Import der bisherigen Web-App-Daten
+# Import der bisherigen Web-App-Daten
 
 ## Einmaliger Export (macOS oder Linux)
 
@@ -81,9 +81,6 @@ Web-App-Datenverzeichnis bleibt unverändert.
   Android-App-Installation erforderlich. Vorher alle bereits neu
   erfassten Android-Daten separat sichern.
 
-## Weiterer Funktionsumfang
+## Nutzung nach dem Import
 
-Die Datensätze sind danach lokal vorhanden. Profilsuche, Anzeige,
-Swipe-Deck, MapLibre und Online-Extraktion werden in nachfolgenden
-Meilensteinen implementiert. Dieses Paket benötigt **keinen**
-Server, kein Python auf Android und kein Backend im Heimnetz.
+Die Datensätze stehen der nativen Suche, Profilansicht, Entdecken, Favoriten und Karte zur Verfügung, soweit die jeweiligen Daten vorhanden sind. Gespeicherte Suchen bleiben erhalten; nicht ausführbare Legacy-Filter werden sichtbar gekennzeichnet ([SOURCE.md](SOURCE.md)). Ein importierter Datensatz bedeutet nicht automatisch, dass sämtliche früheren Bearbeitungsfunktionen in Android verfügbar sind ([ROADMAP.md](ROADMAP.md)). Kein Server, Python auf Android oder Backend im Heimnetz erforderlich.

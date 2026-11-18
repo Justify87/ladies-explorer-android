@@ -1,7 +1,7 @@
-# M06 – Native Karte mit MapLibre
+# Native Karte mit MapLibre
 
 ## Umfang
-- Fünfter Tab **Karte** mit nativer MapLibre-Android-Karte in Compose, GeoJSON-Clustern, Profilauswahl und Öffnen der bestehenden Profilansicht.
+- Tab **Karte** mit nativer MapLibre-Android-Karte in Compose, GeoJSON-Clustern, Profilauswahl und Öffnen der bestehenden Profilansicht.
 - **Alle Profile / nur Favoriten**, ein aktuelles Inserat pro Person. Rust liefert die Marker per UniFFI; SQLite bleibt ausschließlich Rust-verwaltet.
 - Auflösung ausschließlich ungefährer Standorte: deutsche **PLZ-Zentren**, sonst **Stadtzentren**. Keine Haus-, Straßen- oder GPS-Position eines Profils; es werden keine exakten `hidden_location`-Adressen an Geocoder übertragen.
 - `app_settings` hält den lokalen Koordinatencache unter `map:postal:DE:...` bzw. `map:city:DE:...`. Deshalb **keine Schema-Migration**. Cache bleibt nach Neustarts offline abrufbar.
@@ -9,7 +9,7 @@
 
 ## Externe Infrastruktur
 
-- Kartendarstellung: **MapLibre Android SDK 13.5.4**, eingebettet in Compose per `AndroidView` (kein WebView und kein eigener Server).
+- Kartendarstellung: **MapLibre Android SDK** (Version in [libs.versions.toml](../gradle/libs.versions.toml)), eingebettet in Compose per `AndroidView` (kein WebView und kein eigener Server).
 - Kartenstil/Kacheln: `https://tiles.openfreemap.org/styles/liberty`. Die Basiskarte benötigt Netzwerk, solange benötigte Kacheln nicht gecacht sind.
 - PLZ: `https://api.zippopotam.us/DE/<plz>`. Fehlende Postleitzahlen erhalten bei einer späteren Benutzeraktion einen Stadt-Fallback.
 - Stadt: `https://nominatim.openstreetmap.org/search`; nur Deutschland, maximal ein Ergebnis, mindestens 1,1 Sekunden Abstand zwischen Aufrufen auch über Vorgänge hinweg.
@@ -23,7 +23,7 @@
 2. Rust liest vorhandene gültige Cachekoordinaten. `mapOverview(favoritesOnly)` ist vollständig offline und löst niemals Netzwerkanfragen aus.
 3. Ein ausdrücklicher Nutzerauftrag `resolveMapLocations(favoritesOnly, 15, control)` ergänzt den Cache und liefert die Anzahl fehlgeschlagener Abfragen zurück. Die UI fragt den aktuellen Kartenbestand einmal neu ab.
 4. Compose aktualisiert die GeoJSON-Quelle; MapLibre clustert die Positionen. Tippen auf ein einzelnes Profil zeigt die lokale Profilauswahl. Profile am gleichen PLZ-/Stadtzentrum werden gemeinsam angeboten.
-5. Der vorhandene `loadProfile(listingId, personId)`-Datenfluss zeigt wie in M05 zunächst aktuelle Quelldaten und fällt bei Netzproblemen auf die archivierte Version zurück.
+5. Der vorhandene `loadProfile(listingId, personId)`-Datenfluss zeigt zunächst aktuelle Quelldaten und fällt bei Netzproblemen auf die archivierte Version zurück.
 
 ## Einschränkungen und Abnahme
 
@@ -32,20 +32,20 @@
 - Ohne passenden Geocoding-Eintrag werden keine Ersatzkoordinaten erfunden.
 - Nicht alle Städte und Schreibweisen lassen sich über öffentliche Geocoder zuverlässig auflösen. Den Fehlzähler beachten, später erneut versuchen.
 - Native Karte benötigt keinen eigenen App-Prozess; MapView-Lifecycle ist an den Compose-Screen gebunden.
-- Automatische Hintergrundstandortauflösung, manuelle Kartenmarker, Navigation/Routing, Treffpunkte und lokale Offline-Kachelpakete sind bewusst nicht Bestandteil von M06.
+- Automatische Hintergrundstandortauflösung, manuelle Kartenmarker, Navigation/Routing, Treffpunkte und lokale Offline-Kachelpakete sind nicht implementiert.
 
-**Prüfung:** Rust-Regressionsfälle zu Identitäts-Deduplizierung, Favoriten, Offline-Cache, deutscher PLZ und Stadt-Fallback. CI: Rust format/test/clippy sowie ARM64 Android/UniFFI-Build, JVM-Tests, Android Lint. Reale Karte/Kacheln und Geocoder müssen zusätzlich auf einem Android-Gerät verifiziert werden.
+**Prüfung:** Rust-Regressionsfälle zu Identitäts-Deduplizierung, Favoriten, Offline-Cache, deutscher PLZ und Stadt-Fallback. Zentrale CI-Prüfungen siehe [README](../README.md). Reale Karte/Kacheln und Geocoder müssen zusätzlich auf einem Android-Gerät verifiziert werden.
 
-## Review-Korrekturen
+## Lifecycle, Auftragskonsistenz und Diagnose
 
 - Kartenkamera und Profilauswahl werden über Compose SaveableStateHolder bei Tab- und Profilwechseln erhalten. Der AndroidView-Factory/onRelease-Lifecycle besitzt die native MapView; der Lifecycle-Observer synchronisiert sie genau einmal und leitet auch Speicherdruck weiter. Ladefehler haben eine native Wiederholmöglichkeit.
 - Rust hält eine zentrale Geocoding-Auftragslease und die Nominatim-Pause über alle Läufe. Nach Abschluss oder Abbruch liest die UI den aktuellen DB-Stand erneut. Bereits gecachte Stadtzentren bleiben während der PLZ-Auflösung sichtbar.
-- Der bestehende HTTP-Recorder erfasst Geocoder-Anfragen im bewusst aktivierten HAR-Modus. MapLibre-Kachelrequests werden nicht über den Rust-/Coil-Recorder erfasst.
+- Geocoder-Anfragen werden im bewusst aktivierten HAR-Modus erfasst; MapLibre-Kachelrequests nicht ([DIAGNOSTICS.md](DIAGNOSTICS.md)).
 - Referenzen: [MapLibre Quickstart](https://maplibre.org/maplibre-native/android/examples/getting-started/), [CameraPositionActivity](https://maplibre.org/maplibre-native/android/examples/camera/cameraposition/), [GeoJSON-Updates](https://maplibre.org/maplibre-native/android/examples/geojson-guide/), [Android Lifecycle](https://developer.android.com/reference/androidx/lifecycle/Lifecycle), [Nominatim Policy](https://operations.osmfoundation.org/policies/nominatim/).
 
 - Compose-Interop: [Views in Compose](https://developer.android.com/develop/ui/compose/migrate/interoperability-apis/views-in-compose). Nach Geocoding keine doppelte Übertragung der Kartenliste über UniFFI; der DB-Überblick und der Auftragsstatus bleiben getrennt.
 
-### Gerätetest nach dem Review
+## Gerätetest
 
 - Karte wiederholt öffnen und verlassen, Home/Resume und Rotation prüfen; Kamera und Auswahl beim Öffnen/Schließen eines Profils kontrollieren.
 - Kartenstil offline laden, Fehlerzustand prüfen und nach Wiederherstellung der Verbindung erneut laden.
