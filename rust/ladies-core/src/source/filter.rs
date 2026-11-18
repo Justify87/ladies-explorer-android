@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use serde::Deserialize;
 
@@ -14,9 +15,45 @@ struct Catalog {
     order: Vec<String>,
 }
 
-fn catalog() -> Catalog {
-    serde_json::from_str(include_str!("filter_catalog.json"))
-        .expect("the checked-in source filter catalog is valid JSON")
+fn catalog() -> &'static Catalog {
+    static CATALOG: OnceLock<Catalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        serde_json::from_str(include_str!("filter_catalog.json"))
+            .expect("the checked-in source filter catalog is valid JSON")
+    })
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SourceFilterGroup {
+    pub key: String,
+    pub options: Vec<String>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SourceFilterCatalog {
+    pub categories: Vec<String>,
+    pub groups: Vec<SourceFilterGroup>,
+}
+
+pub(crate) fn available() -> SourceFilterCatalog {
+    let catalog = catalog();
+    let mut categories = vec![String::new()];
+    for category in catalog.categories.values() {
+        if !categories.contains(category) {
+            categories.push(category.clone());
+        }
+    }
+    let groups = catalog
+        .order
+        .iter()
+        .filter_map(|key| {
+            catalog.values.get(key).map(|values| SourceFilterGroup {
+                key: key.clone(),
+                options: values.keys().cloned().collect(),
+            })
+        })
+        .collect();
+    SourceFilterCatalog { categories, groups }
 }
 
 fn invalid(why: impl Into<String>) -> CoreError {
