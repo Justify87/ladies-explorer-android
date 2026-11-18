@@ -6,6 +6,8 @@ import co.touchlab.kermit.Logger
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /** Android access to the Rust database, online source service and diagnostics. */
@@ -19,6 +21,7 @@ class CoreStore(context: Context) {
     fun currentCaptureEpoch(): Long = captureEpoch.get()
     // Only best-effort events are bounded. Control barriers are never rejected.
     private val logBridge = DiagnosticEventQueue()
+    private val captureControls = Mutex()
     private val database = File(appFiles, "ladies.sqlite")
     private val engine: LadiesCore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         LadiesCore(database.absolutePath).also {
@@ -72,30 +75,39 @@ class CoreStore(context: Context) {
     }
 
     suspend fun httpCaptureStatus(): CaptureStatus = withContext(Dispatchers.IO) {
-        engine.httpCaptureStatus().also { imageCaptureMode = it.mode }
+        captureControls.withLock {
+            engine.httpCaptureStatus().also { imageCaptureMode = it.mode }
+        }
     }
 
     suspend fun setHttpCaptureMode(mode: CaptureMode): CaptureStatus = withContext(Dispatchers.IO) {
-        captureEpoch.incrementAndGet()
-        engine.setHttpCaptureMode(mode).also { imageCaptureMode = it.mode }
+        captureControls.withLock {
+            captureEpoch.incrementAndGet()
+            engine.setHttpCaptureMode(mode).also { imageCaptureMode = it.mode }
+        }
     }
 
     suspend fun clearHttpCapture() = withContext(Dispatchers.IO) {
-        // Serialize with all pending image observations before deleting the session.
-        captureEpoch.incrementAndGet()
-        imageCaptureMode = CaptureMode.OFF
-        engine.setHttpCaptureMode(CaptureMode.OFF)
-        // An unbounded control barrier follows at most 128 pending diagnostic events.
-        logBridge.barrier()
-        engine.clearHttpCapture()
+        captureControls.withLock {
+            // Old in-flight requests are invalidated before the queue is drained.
+            captureEpoch.incrementAndGet()
+            imageCaptureMode = CaptureMode.OFF
+            engine.setHttpCaptureMode(CaptureMode.OFF)
+            logBridge.barrier()
+            engine.clearHttpCapture()
+        }
     }
 
     suspend fun createHarSnapshot(): File = withContext(Dispatchers.IO) {
-        val oldestAllowed = System.currentTimeMillis() - 48L * 60L * 60L * 1_000L
-        diagnosticExports.listFiles()
-            ?.filter { it.isFile && it.name.startsWith("ladies-http-") && it.lastModified() < oldestAllowed }
-            ?.forEach(File::delete)
-        File(engine.exportHttpHar(diagnosticExports.absolutePath))
+        captureControls.withLock {
+            val oldestAllowed = System.currentTimeMillis() - 48L * 60L * 60L * 1_000L
+            diagnosticExports.listFiles()
+                ?.filter { it.isFile && it.name.startsWith("ladies-http-") && it.lastModified() < oldestAllowed }
+                ?.forEach(File::delete)
+            // Snapshot includes every image event queued before this barrier.
+            logBridge.barrier()
+            File(engine.exportHttpHar(diagnosticExports.absolutePath))
+        }
     }
 
     private inline fun <T> recorded(operation: String, work: () -> T): T {
