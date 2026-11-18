@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::media_url::validate_media_url;
@@ -9,7 +10,8 @@ use reqwest::blocking::Client;
 use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
-use crate::{CoreError, LadiesCore, identity, operation::RequestControl};
+use crate::{CoreError, LadiesCore, identity, operation::RequestControl,
+    http_capture::{self, HttpRecorder, HttpObservation, HttpHeader, CaptureMode}};
 
 const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES: u64 = 48 * 1024 * 1024;
@@ -60,17 +62,21 @@ trait Fetcher {
     ) -> Result<Download, CoreError>;
 }
 
-struct HttpFetcher(Client);
+struct HttpFetcher {
+    client: Client,
+    recorder: Arc<HttpRecorder>,
+}
 impl HttpFetcher {
-    fn new() -> Result<Self, CoreError> {
-        Ok(Self(
-            Client::builder()
+    fn new(recorder: Arc<HttpRecorder>) -> Result<Self, CoreError> {
+        Ok(Self {
+            client: Client::builder()
                 .timeout(Duration::from_secs(25))
                 .redirect(reqwest::redirect::Policy::none())
                 .user_agent("Mozilla/5.0 LadiesExplorerAndroid/1")
                 .build()
                 .map_err(|e| CoreError::Media(e.to_string()))?,
-        ))
+            recorder,
+        })
     }
 }
 
@@ -85,69 +91,104 @@ impl Fetcher for HttpFetcher {
         if control.is_cancelled() {
             return Err(CoreError::Media("Media archive cancelled".into()));
         }
-        let mut response = self
-            .0
-            .get(url)
-            .timeout(timeout)
-            .header("Referer", "https://www.ladies.de/")
-            .send()
-            .map_err(|e| CoreError::Media(format!("Media request failed: {e}")))?;
+        let started = Instant::now();
+        let mut observation = (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
+            method: "GET".into(), url: url.into(), final_url: url.into(),
+            status: None, http_version: "unknown".into(),
+            request_headers: vec![
+                HttpHeader { name: "Referer".into(), value: "https://www.ladies.de/".into() },
+                HttpHeader { name: "User-Agent".into(), value: "Mozilla/5.0 LadiesExplorerAndroid/1".into() },
+            ],
+            response_headers: Vec::new(), mime: None, response_size: None,
+            started_ms: http_capture::started_ms(), headers_elapsed_ms: 0,
+            body_elapsed_ms: 0, body: None, is_media: true, error: None, body_omitted: None,
+        });
+        let sent = self.client.get(url).timeout(timeout)
+            .header("Referer", "https://www.ladies.de/").send();
+        let mut response = match sent {
+            Ok(response) => response,
+            Err(error) => {
+                if let Some(mut obs) = observation.take() {
+                    obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
+                    obs.error = Some(error.to_string());
+                    self.recorder.record(obs);
+                }
+                return Err(CoreError::Media(format!("Media request failed: {error}")));
+            }
+        };
+        if let Some(obs) = observation.as_mut() {
+            obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
+            obs.status = Some(response.status().as_u16());
+            obs.http_version = format!("{:?}", response.version());
+            obs.final_url = response.url().to_string();
+            obs.response_headers = http_capture::headers(response.headers());
+            obs.mime = response.headers().get(reqwest::header::CONTENT_TYPE)
+                .and_then(|h| h.to_str().ok()).map(ToOwned::to_owned);
+            obs.response_size = response.content_length();
+        }
         if !response.status().is_success() {
-            return Err(CoreError::Media(format!(
-                "Media HTTP status {}",
-                response.status()
-            )));
+            if let Some(obs) = observation.take() { self.recorder.record(obs); }
+            return Err(CoreError::Media(format!("Media HTTP status {}", response.status())));
         }
         if response.content_length().is_some_and(|size| size > limit) {
+            if let Some(mut obs) = observation.take() {
+                obs.body_omitted = Some("media_size_limit".into());
+                self.recorder.record(obs);
+            }
             return Err(CoreError::Media("Media exceeds byte limit".into()));
         }
-        let mime = response
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
+        let mime = response.headers().get(reqwest::header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
-            .map(|h| {
-                h.split(';')
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .to_ascii_lowercase()
-            });
-        let etag = response
-            .headers()
-            .get(reqwest::header::ETAG)
-            .and_then(|h| h.to_str().ok())
-            .map(ToOwned::to_owned);
-        let last_modified = response
-            .headers()
-            .get(reqwest::header::LAST_MODIFIED)
-            .and_then(|h| h.to_str().ok())
-            .map(ToOwned::to_owned);
+            .map(|h| h.split(';').next().unwrap_or("").trim().to_ascii_lowercase());
+        let etag = response.headers().get(reqwest::header::ETAG)
+            .and_then(|h| h.to_str().ok()).map(ToOwned::to_owned);
+        let last_modified = response.headers().get(reqwest::header::LAST_MODIFIED)
+            .and_then(|h| h.to_str().ok()).map(ToOwned::to_owned);
+        let body_started = Instant::now();
         let mut bytes = Vec::new();
         let mut chunk = [0u8; 32 * 1024];
         loop {
             if control.is_cancelled() {
+                if let Some(mut obs) = observation.take() {
+                    obs.error = Some("Media archive cancelled".into());
+                    obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
+                    obs.response_size = Some(bytes.len() as u64);
+                    self.recorder.record(obs);
+                }
                 return Err(CoreError::Media("Media archive cancelled".into()));
             }
-            let read = response
-                .read(&mut chunk)
-                .map_err(|e| CoreError::Media(format!("Media response failed: {e}")))?;
-            if read == 0 {
-                break;
-            }
+            let read = match response.read(&mut chunk) {
+                Ok(read) => read,
+                Err(error) => {
+                    if let Some(mut obs) = observation.take() {
+                        obs.error = Some(error.to_string());
+                        obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
+                        obs.response_size = Some(bytes.len() as u64);
+                        self.recorder.record(obs);
+                    }
+                    return Err(CoreError::Media(format!("Media response failed: {error}")));
+                }
+            };
+            if read == 0 { break; }
             if bytes.len() as u64 + read as u64 > limit {
+                if let Some(mut obs) = observation.take() {
+                    obs.error = Some("Media exceeds byte limit".into());
+                    obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
+                    self.recorder.record(obs);
+                }
                 return Err(CoreError::Media("Media exceeds byte limit".into()));
             }
             bytes.extend_from_slice(&chunk[..read]);
         }
+        if let Some(mut obs) = observation {
+            obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
+            obs.response_size = Some(bytes.len() as u64);
+            self.recorder.record(obs);
+        }
         if bytes.is_empty() {
             return Err(CoreError::Media("Empty media response".into()));
         }
-        Ok(Download {
-            bytes,
-            mime,
-            etag,
-            last_modified,
-        })
+        Ok(Download { bytes, mime, etag, last_modified })
     }
 }
 
@@ -263,6 +304,7 @@ fn persist(
     reference: &Reference,
     download: Download,
 ) -> Result<(), CoreError> {
+    let processing_started = Instant::now();
     let hash = format!("{:x}", Sha256::digest(&download.bytes));
     let (dhash, width, height, ext) = if reference.kind == "IMAGE" {
         let (hash, w, h, ext) = image_dhash(&download.bytes)?;
@@ -275,6 +317,7 @@ fn persist(
         };
         (None, None, None, ext)
     };
+    core.diagnostics.phase("MEDIA", "image_hash_and_decode", processing_started);
     // Respect an already imported asset path for the same content hash.
     let existing: Option<String> = {
         let db = core.connection()?;
@@ -303,6 +346,7 @@ fn persist(
             }
         }
     }
+    let sqlite_started = Instant::now();
     let mut db = core.connection()?;
     let tx = db.transaction()?;
     tx.execute(
@@ -367,6 +411,7 @@ fn persist(
         identity::refresh(&tx, reference.listing_id)?;
     }
     tx.commit()?;
+    core.diagnostics.phase("MEDIA", "sqlite_media_write", sqlite_started);
     Ok(())
 }
 
@@ -487,7 +532,7 @@ pub(crate) fn archive(
     include_videos: bool,
     control: &RequestControl,
 ) -> Result<MediaArchiveReport, CoreError> {
-    let http = HttpFetcher::new()?;
+    let http = HttpFetcher::new(Arc::clone(&core.recorder))?;
     archive_with(core, snapshot_id, include_videos, &http, control)
 }
 
