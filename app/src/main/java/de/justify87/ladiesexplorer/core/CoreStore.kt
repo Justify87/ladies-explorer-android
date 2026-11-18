@@ -93,6 +93,10 @@ class CoreStore(context: Context) {
         }
     }
 
+    suspend fun cachedProfile(listingId: Long): ProfileResponse? = withContext(Dispatchers.IO) {
+        engine.cachedSourceProfile(listingId)
+    }
+
     suspend fun sourceFilterCatalog(): SourceFilterCatalog = withContext(Dispatchers.IO) {
         engine.sourceFilterCatalog()
     }
