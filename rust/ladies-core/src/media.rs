@@ -18,6 +18,7 @@ use crate::{CoreError, LadiesCore, identity};
 const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES: u64 = 48 * 1024 * 1024;
 const MAX_REFERENCES: usize = 80;
+const MAX_ARCHIVE_DURATION: Duration = Duration::from_secs(90);
 const MAX_IMAGE_PIXELS: u64 = 40_000_000;
 const MAX_IMAGE_DIMENSION: u32 = 12_000;
 const MAX_ARCHIVE_DURATION: Duration = Duration::from_secs(150);
@@ -400,6 +401,7 @@ fn archive_with(
         .as_ref()
         .ok_or_else(|| CoreError::Media("Media archive requires a file-backed database".into()))?;
     let refs = snapshot_refs(core, snapshot_id)?;
+    let started = Instant::now();
     let mut report = MediaArchiveReport {
         snapshot_id,
         downloaded: 0,
