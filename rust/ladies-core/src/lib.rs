@@ -301,7 +301,12 @@ impl LadiesCore {
         saved_search::save(self, name, request)
     }
 
-    pub fn update_native_search(&self, id: String, name: String, request: SearchRequest) -> Result<(), CoreError> {
+    pub fn update_native_search(
+        &self,
+        id: String,
+        name: String,
+        request: SearchRequest,
+    ) -> Result<(), CoreError> {
         saved_search::update(self, id, name, request)
     }
 
