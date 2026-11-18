@@ -5,6 +5,7 @@ import android.os.SystemClock
 import co.touchlab.kermit.Logger
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -16,6 +17,8 @@ class CoreStore(context: Context) {
     private val logger = Logger.withTag("LadiesExplorer")
     @Volatile var imageCaptureMode: CaptureMode = CaptureMode.OFF
         private set
+    private val captureEpoch = AtomicLong(0)
+    fun currentCaptureEpoch(): Long = captureEpoch.get()
     // Only best-effort events are bounded. Control barriers are never rejected.
     private val logBridge = Executors.newSingleThreadExecutor()
     private val pendingEvents = AtomicInteger(0)
@@ -74,10 +77,13 @@ class CoreStore(context: Context) {
         }
     }
 
-    fun enqueueImageObservation(observation: HttpObservation) {
-        if (imageCaptureMode == CaptureMode.OFF) return
+    fun enqueueImageObservation(observation: HttpObservation, epoch: Long) {
+        if (imageCaptureMode == CaptureMode.OFF || epoch != captureEpoch.get()) return
         dispatchEvent {
-            runCatching { engine.recordImageHttp(observation) }
+            // In-flight image calls from a previous recording session cannot leak into the new one.
+            if (epoch == captureEpoch.get()) {
+                runCatching { engine.recordImageHttp(observation) }
+            }
         }
     }
 
@@ -86,11 +92,13 @@ class CoreStore(context: Context) {
     }
 
     suspend fun setHttpCaptureMode(mode: CaptureMode): CaptureStatus = withContext(Dispatchers.IO) {
+        captureEpoch.incrementAndGet()
         engine.setHttpCaptureMode(mode).also { imageCaptureMode = it.mode }
     }
 
     suspend fun clearHttpCapture() = withContext(Dispatchers.IO) {
         // Serialize with all pending image observations before deleting the session.
+        captureEpoch.incrementAndGet()
         imageCaptureMode = CaptureMode.OFF
         engine.setHttpCaptureMode(CaptureMode.OFF)
         // An unbounded control barrier follows at most 128 pending diagnostic events.
