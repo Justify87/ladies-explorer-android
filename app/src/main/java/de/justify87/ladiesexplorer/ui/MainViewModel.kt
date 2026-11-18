@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import de.justify87.ladiesexplorer.core.*
+import de.justify87.ladiesexplorer.LadiesApplication
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,11 @@ data class HomeUiState(
     val listingCount: String = "0",
     val lastImport: ImportReport? = null,
     val debugLoggingEnabled: Boolean = false,
+    val httpCaptureMode: CaptureMode = CaptureMode.OFF,
+    val httpCaptureEntries: UInt = 0u,
+    val httpCaptureBytes: ULong = 0uL,
+    val httpCaptureStopped: Boolean = false,
+    val httpCaptureError: String? = null,
     val diagnosticAvailable: Boolean = false,
     val diagnosticSizeBytes: Long = 0,
     val diagnosticLastError: String? = null,
@@ -78,7 +84,7 @@ data class SearchUiState(
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
-    private val core = CoreStore(app.applicationContext)
+    private val core = (app as LadiesApplication).coreStore
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
     private val _discoverState = MutableStateFlow(DiscoverUiState())
@@ -706,12 +712,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val status = core.status()
                 val diagnostic = core.diagnosticStatus()
+                val capture = core.httpCaptureStatus()
                 _uiState.update {
                     it.copy(loading=false,schemaVersion=status.schemaVersion.toString(),
                         personCount=status.personCount.toString(),sourceProfileCount=status.sourceProfileCount.toString(),
                         listingCount=status.listingCount.toString(),diagnosticAvailable=diagnostic.available,
                         diagnosticSizeBytes=diagnostic.sizeBytes.toLong(),
                         debugLoggingEnabled=core.isDebugLoggingEnabled(),
+                        httpCaptureMode=capture.mode,
+                        httpCaptureEntries=capture.entries,
+                        httpCaptureBytes=capture.bytes,
+                        httpCaptureStopped=capture.stopped,
+                        httpCaptureError=capture.lastError,
                         diagnosticLastError=diagnostic.lastWriteError)
                 }
             } catch (cancellation: CancellationException) {
@@ -760,6 +772,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .onFailure { failure -> _uiState.update { state -> state.copy(error = failure.message) } }
         }
     }
+
+    fun setHttpCaptureMode(mode: CaptureMode) {
+        viewModelScope.launch {
+            runCatching { core.setHttpCaptureMode(mode) }
+                .onSuccess { capture ->
+                    _uiState.update { state -> state.copy(
+                        httpCaptureMode = capture.mode, httpCaptureEntries = capture.entries,
+                        httpCaptureBytes = capture.bytes, httpCaptureStopped = capture.stopped,
+                        httpCaptureError = capture.lastError,
+                    ) }
+                }
+                .onFailure { failure ->
+                    _uiState.update { state -> state.copy(error = failure.message) }
+                }
+        }
+    }
+
+    fun clearHttpCapture() {
+        viewModelScope.launch {
+            runCatching { core.clearHttpCapture() }
+                .onSuccess { refresh() }
+                .onFailure { failure ->
+                    _uiState.update { state -> state.copy(error = failure.message) }
+                }
+        }
+    }
+
+    suspend fun prepareHarSnapshot(): File = core.createHarSnapshot()
 
     suspend fun prepareDiagnosticSnapshot(): File = core.createDiagnosticSnapshot()
 }
