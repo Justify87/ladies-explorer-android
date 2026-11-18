@@ -307,8 +307,10 @@ fn geocode(client: &Client, value: &str, postal: bool) -> Result<Lookup, CoreErr
     let response = response.error_for_status().map_err(|error| {
         CoreError::Source(format!("Geocoding provider rejected the request: {error}"))
     })?;
-    let payload: serde_json::Value = response
-        .json()
+    let body = response.text().map_err(|error| {
+        CoreError::Source(format!("Unable to read geocoding response: {error}"))
+    })?;
+    let payload: serde_json::Value = serde_json::from_str(&body)
         .map_err(|error| CoreError::Source(format!("Invalid geocoding response: {error}")))?;
     let mut coordinates = Vec::new();
     if postal {
