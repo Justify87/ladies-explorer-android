@@ -242,6 +242,7 @@ fun LadiesApp(
                     }
                     RootDestination.Search -> SearchScreen(
                         state=search,
+                        canStartSearch = !home.loading && !discovery.busy,
                         onCity=viewModel::setSearchCity,
                         onRadius=viewModel::setSearchRadius,
                         onCategory=viewModel::setCategory,

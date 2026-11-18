@@ -42,6 +42,7 @@ import de.justify87.ladiesexplorer.core.LocalVisibility
 @Composable
 fun SearchScreen(
     state: SearchUiState,
+    canStartSearch: Boolean,
     onCity: (String) -> Unit,
     onRadius: (UInt) -> Unit,
     onCategory: (String) -> Unit,
@@ -284,7 +285,7 @@ fun SearchScreen(
                                 Text("Ergebnisse")
                             }
                             TextButton(
-                                enabled=saved.definitionSupported && !state.loading,
+                                enabled=saved.definitionSupported && !state.loading && canStartSearch,
                                 onClick={ onRunSaved(saved.searchId) },
                             ) { Text("Ausführen") }
                             if (saved.unreadNewResults) {
@@ -310,10 +311,12 @@ fun SearchScreen(
                         else -> "Quellzahl noch nicht geprüft"
                     }, style = MaterialTheme.typography.bodySmall, maxLines = 3)
                     Text("Lokale Filter werden nach der Suche angewendet.", style = MaterialTheme.typography.labelSmall)
+                    if (state.response != null) Text("Der letzte Suchlauf bleibt bis zur neuen Suche erhalten.",
+                        style = MaterialTheme.typography.labelSmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { filterQuery = ""; onReset() }, enabled = !state.loading) { Text("Reset") }
                         Button(onClick = if (state.loading) onCancelSearch else onSearch,
-                            enabled = state.loading || state.city.isNotBlank(), modifier = Modifier.weight(1f)) {
+                            enabled = state.loading || (canStartSearch && state.city.isNotBlank()), modifier = Modifier.weight(1f)) {
                             Text(if (state.loading) "Abbrechen" else "Suchen")
                         }
                     }

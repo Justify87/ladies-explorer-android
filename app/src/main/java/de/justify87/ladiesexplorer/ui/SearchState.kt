@@ -1,6 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
+import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.LocalVisibility
+import de.justify87.ladiesexplorer.core.SearchResponse
 import de.justify87.ladiesexplorer.core.SearchRequest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -52,3 +54,31 @@ internal fun SearchRequest.withAvailabilityMode(mode: AvailabilityMode): SearchR
 internal fun SearchUiState.headerAvailability(): AvailabilityMode =
     response?.query?.let { availabilityMode(decodeSelectedFilters(it.filtersJson)) }
         ?: availabilityMode(selectedFilters)
+
+/** Main-thread-owned generation; invalidated before cancel or replacing a request. */
+internal class RequestGeneration {
+    var value: Long = 0L
+        private set
+
+    fun invalidate() { value++ }
+    fun isCurrent(ticket: Long): Boolean = ticket == value
+}
+
+internal fun SearchUiState.beginRun(): SearchUiState = copy(
+    loading = true, error = null, profile = null, profileOpen = false,
+    showingSavedSearchId = null, savedResultCards = emptyList(),
+    savedResultCursor = null, savedResultsLoadingMore = false,
+)
+
+internal fun SearchUiState.endRun(errorMessage: String? = null): SearchUiState =
+    copy(loading = false, error = errorMessage)
+
+internal fun SearchUiState.acceptRun(
+    run: SearchResponse,
+    cards: List<DiscoveryCard>,
+): SearchUiState = copy(loading = false, error = null, response = run, activeCards = cards)
+
+internal fun SearchUiState.applyDraftChange(next: SearchUiState): SearchUiState =
+    next.copy(response = response, activeCards = activeCards, error = null,
+        showingSavedSearchId = null, savedResultCards = emptyList(),
+        savedResultCursor = null, savedResultsLoadingMore = false)
