@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import de.justify87.ladiesexplorer.core.CoreStore
+import de.justify87.ladiesexplorer.core.MediaArchiveControl
+import de.justify87.ladiesexplorer.core.MediaArchiveReport
 import de.justify87.ladiesexplorer.core.ImportReport
 import de.justify87.ladiesexplorer.core.ProfileResponse
 import de.justify87.ladiesexplorer.core.SearchRequest
@@ -37,6 +39,9 @@ data class SearchUiState(
     val loading: Boolean = false,
     val response: SearchResponse? = null,
     val profile: ProfileResponse? = null,
+    val mediaArchive: MediaArchiveReport? = null,
+    val archiving: Boolean = false,
+    val mediaWarning: String? = null,
     val error: String? = null,
 )
 
@@ -48,24 +53,46 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _searchUiState = MutableStateFlow(SearchUiState())
     val searchUiState: StateFlow<SearchUiState> = _searchUiState
 
+    private var archiveControl: MediaArchiveControl? = null
+    private var profileRequestId = 0L
+
+    private fun invalidateProfileRequest() {
+        profileRequestId++
+        archiveControl?.cancel()
+        archiveControl = null
+    }
+
+    fun cancelMediaArchive() {
+        invalidateProfileRequest()
+        _searchUiState.update { it.copy(archiving = false) }
+    }
+
+    override fun onCleared() {
+        invalidateProfileRequest()
+        super.onCleared()
+    }
+
 
     fun setSearchCity(city: String) {
+        invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(city = city, response = null, profile = null, error = null)
+            it.copy(city = city, response = null, profile = null, mediaArchive = null, archiving = false, mediaWarning = null, error = null)
         }
     }
 
     fun setSearchRadius(radiusKm: UInt) {
+        invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(radiusKm = radiusKm, response = null, profile = null, error = null)
+            it.copy(radiusKm = radiusKm, response = null, profile = null, mediaArchive = null, archiving = false, mediaWarning = null, error = null)
         }
     }
 
     fun startSearch() {
         if (_searchUiState.value.loading || _uiState.value.loading) return
         val input = _searchUiState.value
+        invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(loading = true, error = null, profile = null, response = null)
+            it.copy(loading = true, error = null, profile = null, mediaArchive = null, archiving = false, mediaWarning = null, response = null)
         }
         viewModelScope.launch {
             try {
@@ -98,19 +125,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadProfile(listingId: Long) {
         if (_searchUiState.value.loading || _uiState.value.loading) return
-        _searchUiState.update { it.copy(loading = true, error = null, profile = null) }
+        invalidateProfileRequest()
+        val requestId = profileRequestId
+        _searchUiState.update {
+            it.copy(loading = true, error = null, profile = null, mediaArchive = null,
+                archiving = false, mediaWarning = null)
+        }
         viewModelScope.launch {
             try {
                 val profile = core.loadProfile(listingId)
-                _searchUiState.update {
-                    it.copy(loading = false, profile = profile)
+                if (requestId != profileRequestId) return@launch
+                _searchUiState.update { it.copy(loading = false, profile = profile, archiving = true) }
+                val control = MediaArchiveControl()
+                archiveControl = control
+                try {
+                    val media = core.archiveProfileMedia(profile.snapshotId, control)
+                    if (requestId == profileRequestId) {
+                        _searchUiState.update { it.copy(mediaArchive = media) }
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (failure: Exception) {
+                    if (requestId == profileRequestId) {
+                        _searchUiState.update {
+                            it.copy(mediaWarning = failure.message ?: "Medienarchivierung fehlgeschlagen")
+                        }
+                    }
+                } finally {
+                    if (archiveControl === control) archiveControl = null
+                    if (requestId == profileRequestId) {
+                        _searchUiState.update { it.copy(archiving = false) }
+                    }
                 }
             } catch (cancellation: CancellationException) {
-                _searchUiState.update { it.copy(loading = false) }
+                if (requestId == profileRequestId) {
+                    _searchUiState.update { it.copy(loading = false, archiving = false) }
+                }
                 throw cancellation
             } catch (failure: Exception) {
-                _searchUiState.update {
-                    it.copy(loading = false, error = failure.message ?: "Profil konnte nicht geladen werden")
+                if (requestId == profileRequestId) {
+                    _searchUiState.update {
+                        it.copy(loading = false, archiving = false,
+                            error = failure.message ?: "Profil konnte nicht geladen werden")
+                    }
                 }
             }
         }

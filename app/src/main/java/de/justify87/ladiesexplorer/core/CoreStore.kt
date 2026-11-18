@@ -76,6 +76,13 @@ class CoreStore(context: Context) {
         }
     }
 
+    suspend fun archiveProfileMedia(snapshotId: Long, control: MediaArchiveControl): MediaArchiveReport =
+        withContext(Dispatchers.IO) {
+            recorded("archiveProfileMedia snapshotId=$snapshotId") {
+                engine.archiveProfileMedia(snapshotId, false, control)
+            }
+        }
+
     suspend fun loadProfile(listingId: Long): ProfileResponse = withContext(Dispatchers.IO) {
         recorded("loadProfile listingId=$listingId") {
             engine.loadSourceProfile(listingId)

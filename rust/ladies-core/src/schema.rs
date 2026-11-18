@@ -2,10 +2,10 @@ use rusqlite::Connection;
 
 use crate::CoreError;
 
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 const APPLICATION_ID: i32 = 0x4C44_5850; // LDXP: Ladies Explorer Android
 
-const VERSION_1: &str = r#"
+pub(crate) const VERSION_1: &str = r#"
 CREATE TABLE persons (
     person_id INTEGER PRIMARY KEY,
     display_name TEXT,
@@ -378,6 +378,30 @@ CREATE TABLE app_settings (
 );
 "#;
 
+// A merge creates historical identity IDs. They must not cascade when a person is removed.
+const VERSION_2: &str = r#"
+CREATE TABLE identity_events_v2 (
+    identity_event_id INTEGER PRIMARY KEY,
+    listing_id INTEGER NOT NULL REFERENCES listings(listing_id) ON DELETE CASCADE,
+    previous_person_id INTEGER,
+    new_person_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    evidence_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+INSERT INTO identity_events_v2
+ (identity_event_id, listing_id, previous_person_id, new_person_id, action, evidence_json, created_at)
+ SELECT identity_event_id, listing_id,
+        COALESCE(previous_person_id,
+            CASE WHEN json_valid(evidence_json)
+                 THEN json_extract(evidence_json, '$.previous_person_id')
+            END),
+        new_person_id, action, evidence_json, created_at
+ FROM identity_events;
+DROP TABLE identity_events;
+ALTER TABLE identity_events_v2 RENAME TO identity_events;
+"#;
+
 fn schema_manifest(db: &Connection) -> Result<Vec<(String, String, String)>, CoreError> {
     let mut query = db.prepare(
         "SELECT type, name, sql FROM sqlite_master
@@ -388,13 +412,16 @@ fn schema_manifest(db: &Connection) -> Result<Vec<(String, String, String)>, Cor
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
-fn validate_schema(db: &Connection) -> Result<(), CoreError> {
+fn validate_schema(db: &Connection, version: u32) -> Result<(), CoreError> {
     let reference = Connection::open_in_memory()?;
     reference.execute_batch(VERSION_1)?;
+    if version == 2 {
+        reference.execute_batch(VERSION_2)?;
+    }
     if schema_manifest(db)? != schema_manifest(&reference)? {
-        return Err(CoreError::SchemaMismatch(
-            "Database tables, indexes or triggers do not match schema v1".into(),
-        ));
+        return Err(CoreError::SchemaMismatch(format!(
+            "Database objects do not match schema v{version}"
+        )));
     }
     Ok(())
 }
@@ -403,51 +430,60 @@ pub fn migrate(db: &mut Connection) -> Result<(), CoreError> {
     db.execute_batch("PRAGMA foreign_keys = ON;")?;
     let version: u32 = db.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let application_id: i32 = db.pragma_query_value(None, "application_id", |row| row.get(0))?;
-
     if version > VERSION {
         return Err(CoreError::UnsupportedSchema(version));
     }
-    if version == VERSION {
+    if version > 0 {
         if application_id != APPLICATION_ID {
             return Err(CoreError::SchemaMismatch(
                 "This SQLite database is not a Ladies Explorer Android database".into(),
             ));
         }
-        return validate_schema(db);
-    }
-    if application_id != 0 {
-        return Err(CoreError::SchemaMismatch(
-            "Unrecognized application ID for an unversioned database".into(),
-        ));
-    }
-
-    // Only a completely new database or the known technical demo may be upgraded.
-    let existing = schema_manifest(db)?;
-    let names: Vec<&str> = existing
-        .iter()
-        .filter(|(kind, _, _)| kind == "table")
-        .map(|(_, name, _)| name.as_str())
-        .collect();
-    if !names.is_empty() && names != ["scaffold_notes"] {
-        return Err(CoreError::UnsupportedSchema(version));
-    }
-    if names == ["scaffold_notes"] {
-        let mut query = db.prepare("PRAGMA table_info(scaffold_notes)")?;
-        let columns = query
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        if columns != ["note_key", "note_value"] || existing.len() != 1 {
+        validate_schema(db, version)?;
+        if version == VERSION {
+            return Ok(());
+        }
+    } else {
+        if application_id != 0 {
+            return Err(CoreError::SchemaMismatch(
+                "Unrecognized application ID for an unversioned database".into(),
+            ));
+        }
+        let existing = schema_manifest(db)?;
+        let names: Vec<&str> = existing
+            .iter()
+            .filter(|(kind, _, _)| kind == "table")
+            .map(|(_, name, _)| name.as_str())
+            .collect();
+        if !names.is_empty() && names != ["scaffold_notes"] {
             return Err(CoreError::UnsupportedSchema(version));
         }
+        if names == ["scaffold_notes"] {
+            let mut query = db.prepare("PRAGMA table_info(scaffold_notes)")?;
+            let columns = query
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            if columns != ["note_key", "note_value"] || existing.len() != 1 {
+                return Err(CoreError::UnsupportedSchema(version));
+            }
+        }
     }
-
-    let transaction = db.transaction()?;
-    transaction.execute_batch(VERSION_1)?;
-    transaction.execute_batch("DROP TABLE IF EXISTS scaffold_notes;")?;
-    transaction.pragma_update(None, "application_id", APPLICATION_ID)?;
-    transaction.pragma_update(None, "user_version", VERSION)?;
-    validate_schema(&transaction)?;
-    transaction.commit()?;
+    let tx = db.transaction()?;
+    if version == 0 {
+        tx.execute_batch(VERSION_1)?;
+        tx.execute_batch("DROP TABLE IF EXISTS scaffold_notes;")?;
+        tx.pragma_update(None, "application_id", APPLICATION_ID)?;
+    }
+    tx.execute_batch(VERSION_2)?;
+    tx.pragma_update(None, "user_version", VERSION)?;
+    validate_schema(&tx, VERSION)?;
+    let broken: bool = tx.prepare("PRAGMA foreign_key_check")?.exists([])?;
+    if broken {
+        return Err(CoreError::SchemaMismatch(
+            "Migration violates foreign keys".into(),
+        ));
+    }
+    tx.commit()?;
     Ok(())
 }
 
@@ -476,6 +512,48 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn version_one_migration_preserves_historical_identity_references() {
+        let mut db = Connection::open_in_memory().unwrap();
+        db.execute_batch(VERSION_1).unwrap();
+        db.pragma_update(None, "application_id", APPLICATION_ID)
+            .unwrap();
+        db.pragma_update(None, "user_version", 1).unwrap();
+        db.execute_batch(
+            r#"PRAGMA foreign_keys=ON;
+            INSERT INTO persons(person_id) VALUES (1),(2);
+            INSERT INTO listings(listing_id,person_id,external_listing_id) VALUES (10,2,'old');
+            INSERT INTO identity_events
+            (identity_event_id,listing_id,previous_person_id,new_person_id,action,evidence_json)
+            VALUES (20,10,1,2,'MANUAL_MATCH','{"previous_person_id":1}');
+            DELETE FROM persons WHERE person_id=1;"#,
+        )
+        .unwrap();
+        let old_before: Option<i64> = db
+            .query_row(
+                "SELECT previous_person_id FROM identity_events WHERE identity_event_id=20",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(old_before, None);
+        migrate(&mut db).unwrap();
+        let old: i64 = db
+            .query_row(
+                "SELECT previous_person_id FROM identity_events WHERE identity_event_id=20",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(old, 1);
+        assert_eq!(
+            db.pragma_query_value::<u32, _>(None, "user_version", |r| r.get(0))
+                .unwrap(),
+            2
+        );
+        migrate(&mut db).unwrap();
     }
 
     #[test]

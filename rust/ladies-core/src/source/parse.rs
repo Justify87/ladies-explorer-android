@@ -321,14 +321,12 @@ fn media_url(raw: &str) -> Option<Url> {
                 .trim_end_matches([')', ',', ';']),
         )
         .ok()?;
-    if url.scheme() != "https" || url.username() != "" || url.password().is_some() {
-        return None;
-    }
-    let host = url.host_str()?;
-    let source_host = matches!(host, "www.ladies.de" | "m.ladies.de");
-    let image_cdn = host.starts_with("bilder") && host.ends_with(".ladies-cdn.de");
-    let video_cdn = host.starts_with("video") && host.ends_with(".ladies-cdn.de");
-    (source_host || image_cdn || video_cdn).then_some(url)
+    let kind = if video_variant(&url).is_some() {
+        "VIDEO"
+    } else {
+        "IMAGE"
+    };
+    crate::media_url::validate_media_url(url.as_str(), Some(kind)).ok()
 }
 
 fn image_number(url: &Url) -> Option<(u32, String)> {
@@ -611,9 +609,11 @@ pub(super) fn parse_profile(html: &str, fallback: &Card) -> Result<Profile, Core
     })
 }
 
-pub(super) fn fingerprint(profile: &Profile) -> String {
+pub(super) fn fingerprint(profile: &Profile, category: Option<&str>) -> String {
     let content = json!({
+        "category": category,
         "name": profile.name,
+        "category": category,
         "city": profile.city,
         "postal_code": profile.postal_code,
         "hidden_location": profile.hidden_location,

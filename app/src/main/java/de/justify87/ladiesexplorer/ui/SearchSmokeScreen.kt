@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -24,6 +25,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun SearchSmokeScreen(viewModel: MainViewModel) {
     val state by viewModel.searchUiState.collectAsStateWithLifecycle()
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.cancelMediaArchive() }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Online-Suche", style = MaterialTheme.typography.headlineMedium)
         OutlinedTextField(
@@ -100,6 +104,22 @@ fun SearchSmokeScreen(viewModel: MainViewModel) {
             if (response.profiles.size > 30) {
                 Text("Vorschau auf 30 Ergebnisse begrenzt. Alle Suchergebnisse sind lokal gespeichert.")
             }
+        }
+        if (state.archiving) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Medien werden archiviert …")
+                TextButton(onClick = viewModel::cancelMediaArchive) { Text("Abbrechen") }
+            }
+        }
+        state.mediaArchive?.let { archive ->
+            Text(
+                "Medienarchiv: ${archive.downloaded} gespeichert, ${archive.reused} vorhanden, " +
+                    "${archive.failed} fehlgeschlagen, ${archive.deferred} zurückgestellt.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        state.mediaWarning?.let { warning ->
+            Text(warning, color = MaterialTheme.colorScheme.error)
         }
         state.profile?.let { profile ->
             Card(modifier = Modifier.fillMaxWidth()) {
