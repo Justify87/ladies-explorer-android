@@ -112,7 +112,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(profileOpen = false, profile = null, selectedPersonId = null,
                 selectedPerson = null, profileMedia = emptyList(), loading = false,
                 archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
-                actionError = null, error = null)
+                actionBusy = false, actionError = null, error = null)
         }
     }
 
@@ -406,7 +406,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update {
             it.copy(profileOpen=true,selectedPersonId=personId,selectedPerson=null,
                 loading=true,profile=null,profileMedia=emptyList(),changeEvents=emptyList(),
-                identityCandidates=emptyList(),error=null,actionError=null,
+                identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false)
         }
         viewModelScope.launch {
@@ -469,26 +469,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun confirmIdentity(listingId: Long, targetPersonId: Long) {
-        if (_searchUiState.value.actionBusy) return
+        val active = _searchUiState.value
+        if (active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
+        val requestId = profileRequestId
+        archiveControl?.cancel()
         _searchUiState.update { it.copy(actionBusy=true,actionError=null) }
         viewModelScope.launch {
             try {
                 core.confirmIdentityMatch(listingId,targetPersonId)
                 val history = core.changeEvents(targetPersonId)
                 val candidates = core.identityCandidates(listingId)
-                _searchUiState.update {
-                    it.copy(actionBusy=false,selectedPersonId=targetPersonId,
-                        selectedPerson=core.person(targetPersonId),
-                        changeEvents=history,identityCandidates=candidates)
+                val person = core.person(targetPersonId)
+                if (requestId == profileRequestId) {
+                    _searchUiState.update {
+                        if (it.profile?.listingId == listingId) {
+                            it.copy(actionBusy=false,selectedPersonId=targetPersonId,
+                                selectedPerson=person,changeEvents=history,identityCandidates=candidates)
+                        } else it
+                    }
                 }
                 refreshDiscovery()
                 refresh()
             } catch (cancellation: CancellationException) {
-                _searchUiState.update { it.copy(actionBusy=false) }
+                if (requestId == profileRequestId) {
+                    _searchUiState.update { it.copy(actionBusy=false) }
+                }
                 throw cancellation
             } catch (failure: Exception) {
-                _searchUiState.update {
-                    it.copy(actionBusy=false,actionError=failure.message ?: "Zusammenführung fehlgeschlagen")
+                if (requestId == profileRequestId) {
+                    _searchUiState.update {
+                        it.copy(actionBusy=false,actionError=failure.message ?: "Zusammenführung fehlgeschlagen")
+                    }
                 }
             }
         }
