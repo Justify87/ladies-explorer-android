@@ -137,7 +137,7 @@ pub struct ImportReport {
     pub media_files: u32,
 }
 
-pub use discovery::DiscoveryCard;
+pub use discovery::{DiscoveryCard, ProfileMediaItem};
 pub use history::ChangeRecord;
 pub use saved_search::SavedSearchInfo;
 pub use source::filter::{SourceFilterCatalog, SourceFilterGroup};
@@ -279,6 +279,10 @@ impl LadiesCore {
 
     pub fn discovery_cards(&self, favorites_only: bool, limit: u32) -> Result<Vec<DiscoveryCard>, CoreError> {
         discovery::list(self, favorites_only, limit)
+    }
+
+    pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
+        discovery::media(self, snapshot_id)
     }
 
     pub fn source_filter_catalog(&self) -> SourceFilterCatalog {
