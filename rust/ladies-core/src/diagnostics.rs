@@ -181,14 +181,33 @@ impl Diagnostics {
         }
     }
 
-    pub(crate) fn timed<T>(&self, component: &str, operation: &str, work: impl FnOnce() -> T) -> T {
+    pub(crate) fn timed<T, E: std::fmt::Display>(
+        &self,
+        component: &str,
+        operation: &str,
+        work: impl FnOnce() -> Result<T, E>,
+    ) -> Result<T, E> {
         tracing::dispatcher::with_default(&self.dispatch, || {
             let span = tracing::info_span!("operation", component = %component, name = %operation);
             let _entered = span.enter();
             let started = Instant::now();
             let result = work();
-            tracing::info!(component = %component, operation = %operation,
-                elapsed_ms = started.elapsed().as_millis() as u64, "operation completed");
+            let elapsed_ms = started.elapsed().as_millis() as u64;
+            match &result {
+                Ok(_) => tracing::info!(
+                    component = %component,
+                    operation = %operation,
+                    elapsed_ms,
+                    "operation completed"
+                ),
+                Err(error) => tracing::error!(
+                    component = %component,
+                    operation = %operation,
+                    elapsed_ms,
+                    reason = %error,
+                    "operation failed"
+                ),
+            };
             result
         })
     }
