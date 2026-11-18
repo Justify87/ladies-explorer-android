@@ -773,6 +773,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun refreshCaptureStatus() {
+        viewModelScope.launch {
+            runCatching { core.httpCaptureStatus() }
+                .onSuccess { capture ->
+                    _uiState.update { state -> state.copy(
+                        httpCaptureMode = capture.mode,
+                        httpCaptureEntries = capture.entries,
+                        httpCaptureBytes = capture.bytes,
+                        httpCaptureStopped = capture.stopped,
+                        httpCaptureError = capture.lastError,
+                    ) }
+                }
+        }
+    }
+
     fun setHttpCaptureMode(mode: CaptureMode) {
         viewModelScope.launch {
             runCatching { core.setHttpCaptureMode(mode) }
