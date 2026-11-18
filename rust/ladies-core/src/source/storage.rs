@@ -611,15 +611,37 @@ mod tests {
         let core = core();
         let found = save_cards(&core, vec![card("101", "Anna")]);
         let listing = found.profiles[0].listing_id;
-        let first = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        let first = save_profile(
+            &core,
+            listing,
+            &found.profiles[0].profile_url,
+            profile("Anna"),
+        )
+        .unwrap();
         {
             let db = core.connection().unwrap();
-            db.execute("UPDATE listings SET category='new-category' WHERE listing_id=?1", [listing]).unwrap();
+            db.execute(
+                "UPDATE listings SET category='new-category' WHERE listing_id=?1",
+                [listing],
+            )
+            .unwrap();
         }
-        let second = save_profile(&core, listing, &found.profiles[0].profile_url, profile("Anna")).unwrap();
+        let second = save_profile(
+            &core,
+            listing,
+            &found.profiles[0].profile_url,
+            profile("Anna"),
+        )
+        .unwrap();
         assert_ne!(first.snapshot_id, second.snapshot_id);
-        let changes = core.list_change_events(found.profiles[0].person_id, 20).unwrap();
-        assert!(changes.iter().any(|c| c.field_key.as_deref() == Some("category")));
+        let changes = core
+            .list_change_events(found.profiles[0].person_id, 20)
+            .unwrap();
+        assert!(
+            changes
+                .iter()
+                .any(|c| c.field_key.as_deref() == Some("category"))
+        );
     }
 
     #[test]

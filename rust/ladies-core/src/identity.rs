@@ -120,7 +120,12 @@ fn hashes(db: &Connection, snapshot_id: i64) -> Result<Vec<u64>, CoreError> {
         .collect())
 }
 
-fn augment(new_index: usize, edges: &[Vec<usize>], seen: &mut [bool], matched: &mut [Option<usize>]) -> bool {
+fn augment(
+    new_index: usize,
+    edges: &[Vec<usize>],
+    seen: &mut [bool],
+    matched: &mut [Option<usize>],
+) -> bool {
     for &old_index in &edges[new_index] {
         if seen[old_index] {
             continue;
@@ -136,15 +141,24 @@ fn augment(new_index: usize, edges: &[Vec<usize>], seen: &mut [bool], matched: &
 }
 
 fn independent_pairs(new_hashes: &[u64], old_hashes: &[u64], threshold: u32) -> u32 {
-    let edges = new_hashes.iter().map(|hash| {
-        let mut neighbors = old_hashes.iter().enumerate()
-            .filter_map(|(index, old)| {
-                let distance = (hash ^ old).count_ones();
-                (distance <= threshold).then_some((distance, index))
-            }).collect::<Vec<_>>();
-        neighbors.sort_unstable();
-        neighbors.into_iter().map(|(_, index)| index).collect::<Vec<_>>()
-    }).collect::<Vec<_>>();
+    let edges = new_hashes
+        .iter()
+        .map(|hash| {
+            let mut neighbors = old_hashes
+                .iter()
+                .enumerate()
+                .filter_map(|(index, old)| {
+                    let distance = (hash ^ old).count_ones();
+                    (distance <= threshold).then_some((distance, index))
+                })
+                .collect::<Vec<_>>();
+            neighbors.sort_unstable();
+            neighbors
+                .into_iter()
+                .map(|(_, index)| index)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
     let mut order = (0..edges.len()).collect::<Vec<_>>();
     order.sort_unstable_by_key(|&index| (edges[index].len(), index));
     let mut matched = vec![None; old_hashes.len()];
@@ -159,7 +173,8 @@ fn independent_pairs(new_hashes: &[u64], old_hashes: &[u64], threshold: u32) -> 
 }
 
 fn compare_images(new_hashes: &[u64], old_hashes: &[u64]) -> (u32, u32, Option<u32>) {
-    let best = new_hashes.iter()
+    let best = new_hashes
+        .iter()
         .flat_map(|new| old_hashes.iter().map(move |old| (new ^ old).count_ones()))
         .min();
     (
@@ -607,28 +622,45 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let source = core.create_person(Some("Source".into())).unwrap();
         let target = core.create_person(Some("Target".into())).unwrap();
-        let listing = core.add_listing(source, None, "LADIES".into(), "44".into(), None).unwrap();
-        let target_listing = core.add_listing(target, None, "LADIES".into(), "45".into(), None).unwrap();
-        core.set_preference(source, crate::Preference::Like).unwrap();
-        core.set_preference(target, crate::Preference::Dislike).unwrap();
+        let listing = core
+            .add_listing(source, None, "LADIES".into(), "44".into(), None)
+            .unwrap();
+        let target_listing = core
+            .add_listing(target, None, "LADIES".into(), "45".into(), None)
+            .unwrap();
+        core.set_preference(source, crate::Preference::Like)
+            .unwrap();
+        core.set_preference(target, crate::Preference::Dislike)
+            .unwrap();
         {
             let db = core.connection().unwrap();
             record_phone(&db, source, listing, Some("0170 5556677")).unwrap();
             record_phone(&db, target, target_listing, Some("0170 5556677")).unwrap();
             db.execute(
                 "INSERT INTO listing_snapshots (listing_id,fingerprint,normalized_phone)
-                 VALUES (?1,'conflict','+491705556677')", [listing],
-            ).unwrap();
-            db.execute("UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
-                params![db.last_insert_rowid(), listing]).unwrap();
+                 VALUES (?1,'conflict','+491705556677')",
+                [listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), listing],
+            )
+            .unwrap();
         }
         assert!(matches!(
             core.confirm_identity_match(listing, target),
             Err(CoreError::IdentityConflict(_))
         ));
         assert_eq!(core.status().unwrap().person_count, 2);
-        assert_eq!(core.get_person(source).unwrap().unwrap().preference, crate::Preference::Like);
-        assert_eq!(core.get_person(target).unwrap().unwrap().preference, crate::Preference::Dislike);
+        assert_eq!(
+            core.get_person(source).unwrap().unwrap().preference,
+            crate::Preference::Like
+        );
+        assert_eq!(
+            core.get_person(target).unwrap().unwrap().preference,
+            crate::Preference::Dislike
+        );
     }
 
     #[test]
@@ -675,10 +707,13 @@ mod tests {
             )
             .unwrap();
         assert_eq!(owner, (target, target));
-        let event_previous: i64 = db.query_row(
-            "SELECT previous_person_id FROM identity_events WHERE listing_id=?1",
-            [listing], |row| row.get(0)
-        ).unwrap();
+        let event_previous: i64 = db
+            .query_row(
+                "SELECT previous_person_id FROM identity_events WHERE listing_id=?1",
+                [listing],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(event_previous, source);
     }
 }

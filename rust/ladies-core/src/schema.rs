@@ -445,14 +445,18 @@ pub fn migrate(db: &mut Connection) -> Result<(), CoreError> {
             ));
         }
         let existing = schema_manifest(db)?;
-        let names: Vec<&str> = existing.iter().filter(|(kind, _, _)| kind == "table")
-            .map(|(_, name, _)| name.as_str()).collect();
+        let names: Vec<&str> = existing
+            .iter()
+            .filter(|(kind, _, _)| kind == "table")
+            .map(|(_, name, _)| name.as_str())
+            .collect();
         if !names.is_empty() && names != ["scaffold_notes"] {
             return Err(CoreError::UnsupportedSchema(version));
         }
         if names == ["scaffold_notes"] {
             let mut query = db.prepare("PRAGMA table_info(scaffold_notes)")?;
-            let columns = query.query_map([], |row| row.get::<_, String>(1))?
+            let columns = query
+                .query_map([], |row| row.get::<_, String>(1))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             if columns != ["note_key", "note_value"] || existing.len() != 1 {
                 return Err(CoreError::UnsupportedSchema(version));
@@ -470,7 +474,9 @@ pub fn migrate(db: &mut Connection) -> Result<(), CoreError> {
     validate_schema(&tx, VERSION)?;
     let broken: bool = tx.prepare("PRAGMA foreign_key_check")?.exists([])?;
     if broken {
-        return Err(CoreError::SchemaMismatch("Migration violates foreign keys".into()));
+        return Err(CoreError::SchemaMismatch(
+            "Migration violates foreign keys".into(),
+        ));
     }
     tx.commit()?;
     Ok(())
@@ -507,7 +513,8 @@ mod tests {
     fn version_one_migration_preserves_historical_identity_references() {
         let mut db = Connection::open_in_memory().unwrap();
         db.execute_batch(VERSION_1).unwrap();
-        db.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
+        db.pragma_update(None, "application_id", APPLICATION_ID)
+            .unwrap();
         db.pragma_update(None, "user_version", 1).unwrap();
         db.execute_batch(
             "INSERT INTO persons(person_id) VALUES (1),(2);
@@ -516,12 +523,21 @@ mod tests {
              VALUES (20,10,1,2,'MANUAL_MATCH');"
         ).unwrap();
         migrate(&mut db).unwrap();
-        db.execute("DELETE FROM persons WHERE person_id=1", []).unwrap();
-        let old: i64 = db.query_row(
-            "SELECT previous_person_id FROM identity_events WHERE identity_event_id=20", [], |r| r.get(0)
-        ).unwrap();
+        db.execute("DELETE FROM persons WHERE person_id=1", [])
+            .unwrap();
+        let old: i64 = db
+            .query_row(
+                "SELECT previous_person_id FROM identity_events WHERE identity_event_id=20",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(old, 1);
-        assert_eq!(db.pragma_query_value::<u32>(None, "user_version", |r| r.get(0)).unwrap(), 2);
+        assert_eq!(
+            db.pragma_query_value::<u32>(None, "user_version", |r| r.get(0))
+                .unwrap(),
+            2
+        );
         migrate(&mut db).unwrap();
     }
 
