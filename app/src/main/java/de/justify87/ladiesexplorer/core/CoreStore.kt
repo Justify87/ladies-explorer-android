@@ -182,6 +182,18 @@ class CoreStore(context: Context) {
         }
     }
 
+    // One current/standalone profile request at a time for the swipe window.
+    private val swipeProfileMutex = Mutex()
+
+    suspend fun loadSwipeProfile(listingId: Long, control: RequestControl): ProfileResponse =
+        swipeProfileMutex.withLock {
+            withContext(Dispatchers.IO) {
+                recorded("loadSwipeProfile listingId=$listingId") {
+                    engine.loadSwipeProfile(listingId, control)
+                }
+            }
+        }
+
     suspend fun cachedProfile(listingId: Long): ProfileResponse? = withContext(Dispatchers.IO) {
         engine.cachedSourceProfile(listingId)
     }
