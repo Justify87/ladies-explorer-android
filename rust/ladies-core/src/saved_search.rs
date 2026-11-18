@@ -198,7 +198,7 @@ fn persist_results(core: &LadiesCore, id: &str, result: &SearchResponse) -> Resu
     let current_keys: HashSet<String> = result
         .profiles
         .iter()
-        .map(|card| format!("LADIES:{}", card.advert_id))
+        .map(|card| card.advert_id.clone())
         .collect();
     let removed = previous_keys.difference(&current_keys).count();
     tx.execute(
