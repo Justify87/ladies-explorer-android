@@ -885,9 +885,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
-                val message = failure.message ?: "Zusammenführung fehlgeschlagen"
+                val message = if (committed) "Zusammenführung gespeichert; Profil konnte nicht aktualisiert werden."
+                    else failure.message ?: "Zusammenführung fehlgeschlagen"
                 if (requestId == profileRequestId) {
-                    _searchUiState.update { it.copy(actionError = message) }
+                    _searchUiState.update {
+                        if (committed) it.copy(actionError = message, selectedPersonId = null,
+                            selectedPerson = null, profileIdentity = null, identityCandidates = emptyList(),
+                            changeEvents = emptyList())
+                        else it.copy(actionError = message)
+                    }
                 } else {
                     _discoverState.update { it.copy(error = message) }
                 }
