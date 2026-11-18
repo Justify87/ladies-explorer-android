@@ -68,8 +68,9 @@ private class ImageHttpListener(private val recorder: CoreStore, private val epo
             httpVersion = response.protocol.toString(),
             requestHeaders = outgoing.headers.asCaptureHeaders(),
             responseHeaders = response.headers.asCaptureHeaders(),
-            mime = response.body?.contentType()?.toString(),
-            responseSize = response.body?.contentLength()?.takeIf { it >= 0L }?.toULong(),
+            mime = response.header("Content-Type"),
+            responseSize = response.header("Content-Length")?.toLongOrNull()
+                ?.takeIf { it >= 0L }?.toULong(),
             startedMs = startedMs.toULong(),
             headersElapsedMs = ((headersNanos - startedNanos) / 1_000_000).toULong(),
             bodyElapsedMs = 0uL,
