@@ -137,6 +137,9 @@ class CoreStore(context: Context) {
         recorded("people") { engine.listPeople(limit, cursor) }
     }
 
+    suspend fun setSwipePreference(listingId: Long, personId: Long, expected: Preference?, preference: Preference): Preference =
+        withContext(Dispatchers.IO) { engine.setSwipePreference(listingId, personId, expected, preference) }
+
     suspend fun setPreference(personId: Long, preference: Preference) = withContext(Dispatchers.IO) {
         recorded("setPreference") { engine.setPreference(personId, preference) }
     }
