@@ -145,7 +145,7 @@ pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
 pub use map::{MapOverview, MapProfile};
-pub use media::MediaArchiveReport;
+pub use media::{DisplayImage, MediaArchiveReport};
 pub use operation::RequestControl;
 pub use saved_search::{
     LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchInfo,
@@ -163,6 +163,7 @@ pub struct LadiesCore {
     diagnostics: Arc<diagnostics::Diagnostics>,
     recorder: Arc<http_capture::HttpRecorder>,
     source_session: source::SourceSession,
+    media_http: media::HttpFetcher,
     media_root: Option<std::path::PathBuf>,
     geocoding: Mutex<map::GeocodeState>,
 }
@@ -194,11 +195,13 @@ impl LadiesCore {
         diagnostics.event("CORE", "SQLite schema ready");
         let source_session =
             source::SourceSession::new(Arc::clone(&diagnostics), Arc::clone(&recorder))?;
+        let media_http = media::HttpFetcher::new(Arc::clone(&recorder))?;
         Ok(Arc::new(Self {
             db: Mutex::new(db),
             diagnostics,
             recorder,
             source_session,
+            media_http,
             media_root,
             geocoding: Mutex::new(map::GeocodeState::default()),
         }))
@@ -354,6 +357,16 @@ impl LadiesCore {
         listing_id: i64,
     ) -> Result<Option<ProfileResponse>, CoreError> {
         discovery::cached_profile(self, listing_id)
+    }
+
+    pub fn load_display_image(
+        &self,
+        url: String,
+        control: Arc<RequestControl>,
+    ) -> Result<DisplayImage, CoreError> {
+        self.diagnostics.timed("MEDIA", "display_image", || {
+            media::display_image(self, &url, &control)
+        })
     }
 
     pub fn archive_profile_media(

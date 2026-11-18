@@ -66,12 +66,12 @@ trait Fetcher {
     ) -> Result<Download, CoreError>;
 }
 
-struct HttpFetcher {
+pub(crate) struct HttpFetcher {
     client: Client,
     recorder: Arc<HttpRecorder>,
 }
 impl HttpFetcher {
-    fn new(recorder: Arc<HttpRecorder>) -> Result<Self, CoreError> {
+    pub(crate) fn new(recorder: Arc<HttpRecorder>) -> Result<Self, CoreError> {
         Ok(Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(25))
@@ -93,7 +93,7 @@ impl Fetcher for HttpFetcher {
         control: &RequestControl,
     ) -> Result<Download, CoreError> {
         if control.is_cancelled() {
-            return Err(CoreError::Media("Media archive cancelled".into()));
+            return Err(CoreError::Media("Media request cancelled".into()));
         }
         let started = Instant::now();
         let request = self
@@ -575,19 +575,92 @@ fn archive_with(
     Ok(report)
 }
 
+/// Encoded image for display/cache only; no SQLite or archive mutation.
+#[derive(Debug, uniffi::Record)]
+pub struct DisplayImage {
+    pub bytes: Vec<u8>,
+    pub mime: String,
+}
+
+fn display_image_with(
+    raw_url: &str,
+    fetcher: &impl Fetcher,
+    control: &RequestControl,
+) -> Result<DisplayImage, CoreError> {
+    control.check()?;
+    let url = validate_media_url(raw_url, Some("IMAGE"))?;
+    let response = fetcher.get(url.as_str(), MAX_IMAGE_BYTES, MAX_REQUEST_DURATION, control)?;
+    control.check()?;
+    let mime = match image::guess_format(&response.bytes) {
+        Ok(image::ImageFormat::Jpeg) => "image/jpeg",
+        Ok(image::ImageFormat::Png) => "image/png",
+        Ok(image::ImageFormat::WebP) => "image/webp",
+        Ok(image::ImageFormat::Gif) => "image/gif",
+        _ => return Err(CoreError::Media("Unsupported display image".into())),
+    };
+    if response.mime.as_deref().is_some_and(|value| {
+        !value.starts_with("image/") && value != "application/octet-stream"
+    }) {
+        return Err(CoreError::Media("Unexpected display image content type".into()));
+    }
+    Ok(DisplayImage {
+        bytes: response.bytes,
+        mime: mime.into(),
+    })
+}
+
+pub(crate) fn display_image(
+    core: &LadiesCore,
+    url: &str,
+    control: &RequestControl,
+) -> Result<DisplayImage, CoreError> {
+    display_image_with(url, &core.media_http, control)
+}
+
 pub(crate) fn archive(
     core: &LadiesCore,
     snapshot_id: i64,
     include_videos: bool,
     control: &RequestControl,
 ) -> Result<MediaArchiveReport, CoreError> {
-    let http = HttpFetcher::new(Arc::clone(&core.recorder))?;
-    archive_with(core, snapshot_id, include_videos, &http, control)
+    archive_with(core, snapshot_id, include_videos, &core.media_http, control)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn display_image_rejects_disallowed_hosts_and_cancelled_requests() {
+        struct NeverFetch;
+        impl Fetcher for NeverFetch {
+            fn get(
+                &self,
+                _: &str,
+                _: u64,
+                _: Duration,
+                _: &RequestControl,
+            ) -> Result<Download, CoreError> {
+                panic!("invalid or cancelled request must not fetch")
+            }
+        }
+        let control = RequestControl::new();
+        assert!(display_image_with("https://example.org/a.jpg", &NeverFetch, &control).is_err());
+        assert!(display_image_with("https://video1.ladies-cdn.de/a.mp4", &NeverFetch, &control).is_err());
+        control.cancel();
+        assert!(display_image_with("https://bilder1.ladies-cdn.de/a.jpg", &NeverFetch, &control).is_err());
+    }
+
+    #[test]
+    fn display_image_reuses_transport_and_rejects_non_image() {
+        let control = RequestControl::new();
+        let url = "https://bilder1.ladies-cdn.de/a.jpg";
+        let image = display_image_with(url, &FixtureFetcher(vec![0xff, 0xd8, 0xff, 0xe0]), &control)
+            .unwrap();
+        assert_eq!(image.mime, "image/jpeg");
+        assert_eq!(image.bytes, vec![0xff, 0xd8, 0xff, 0xe0]);
+        assert!(display_image_with(url, &FixtureFetcher(b"<html>".to_vec()), &control).is_err());
+    }
+
     struct FixtureFetcher(Vec<u8>);
     impl Fetcher for FixtureFetcher {
         fn get(
