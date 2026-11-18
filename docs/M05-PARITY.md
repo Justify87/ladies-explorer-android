@@ -138,3 +138,14 @@ Die Ausgangsmatrix oben bleibt historische Referenz. Aktueller Codebeleg bis `31
 | P19 | ProfileDetailScreen.kt: profileContent; DiscoveryScreen.kt nutzt ProfileImage/ProfileIdentityHeader | Standalone vollständig integriert; Swipe-Vollprofil T4, Tabs T6. |
 
 Technische Abnahme G3 bestanden: [Full-CI #321](https://github.com/Justify87/ladies-explorer-android/actions/runs/44399925013) auf `1174eeec` (143 reguläre Rust-Tests, gezielter Importtest, Rustfmt, Clippy, JVM-Tests, Lint, APK/Upload). Review-Korrekturen: Publikationsdatum aus aktivem Snapshot, expliziter Archivstatus, isolierte Coil-Fallback-Versuche, invalidierte Feed-Generationen bei Identitätsmutation. P15–P19 technisch umgesetzt; manuelle native Layout-, Gesten-, Offline- und Intent-Abnahme DEVICE_PENDING. PR #16 noch nicht integriert; T4/T6 bewusst nicht vorgezogen.
+
+## M05.4 – Umsetzungsabgleich (PR #17)
+
+| IDs | Implementierungsbelege | Restgrenze |
+| --- | --- | --- |
+| P20 | SwipeDeckState.kt, MainViewModel.kt: discoveryPage/queue/setReplayLikes | Dieselbe Rust-gefilterte aktive Ergebnismenge; kanonische Person dedupliziert; separater lokaler Feed. |
+| P21 | DiscoveryScreen.kt, ProfileComponents.kt, ProfileDetailScreen.kt | Gemeinsamer Hero und Profilinhalt; horizontale Geste auf Hero, vertikale Details, Tap und Buttons; Geräteprüfung offen. |
+| P22 | SwipeStep/SwipeSession; MainViewModel: decideSwipe/undoSwipe/resetSwipe; Rust set_swipe_preference | Atomare Owner-/Präferenzprüfung; Undo auf ehemaligem Listing soweit sichtbar; keine DB-Löschung, Favorit unabhängig. |
+| P23 | SwipeProfile.kt, CoreStore, source/mod.rs/network.rs; DiscoveryScreen lifecycle effects | 2 kommende Profile, 2 Bilder pro Profil; vorhandene Snapshots/Coil, keine Archivdownloads; kooperativer Abbruch mit bestehendem begrenztem HTTP-Timeout. |
+
+G4 REVIEW, Full-CI und manuelle Geräte-/Live-Quellprüfung offen (DEVICE_PENDING).
