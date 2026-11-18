@@ -149,17 +149,19 @@ fn decode_definition(definition: &str) -> Result<SearchRequest, CoreError> {
     Ok(request)
 }
 
-fn request(core: &LadiesCore, id: &str) -> Result<SearchRequest, CoreError> {
+fn definition(core: &LadiesCore, id: &str) -> Result<(String, i64), CoreError> {
     let db = core.connection()?;
-    let definition: String = db
-        .query_row(
-            "SELECT filters_json FROM saved_searches WHERE saved_search_id=?1",
-            [id],
-            |r| r.get(0),
-        )
-        .optional()?
-        .ok_or_else(|| CoreError::InvalidInput("Saved search not found".into()))?;
-    decode_definition(&definition)
+    db.query_row(
+        "SELECT filters_json, definition_version FROM saved_searches WHERE saved_search_id=?1",
+        [id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .optional()?
+    .ok_or_else(|| CoreError::InvalidInput("Saved search not found".into()))
+}
+
+fn request(core: &LadiesCore, id: &str) -> Result<SearchRequest, CoreError> {
+    decode_definition(&definition(core, id)?.0)
 }
 
 pub(crate) fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreError> {
@@ -279,17 +281,29 @@ pub(crate) fn acknowledge(core: &LadiesCore, id: String) -> Result<(), CoreError
     Ok(())
 }
 
-fn persist_results(core: &LadiesCore, id: &str, result: &SearchResponse) -> Result<(), CoreError> {
+fn persist_results(
+    core: &LadiesCore,
+    id: &str,
+    result: &SearchResponse,
+    expected_definition: &str,
+    expected_version: i64,
+) -> Result<(), CoreError> {
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    let existing: Option<String> = tx
+    let (existing, current_definition, current_version): (Option<String>, String, i64) = tx
         .query_row(
-            "SELECT last_run_at FROM saved_searches WHERE saved_search_id=?1",
+            "SELECT last_run_at, filters_json, definition_version
+             FROM saved_searches WHERE saved_search_id=?1",
             [id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()?
         .ok_or_else(|| CoreError::InvalidInput("Saved search was deleted".into()))?;
+    if current_version != expected_version || current_definition != expected_definition {
+        return Err(CoreError::InvalidInput(
+            "Saved search changed during execution; stale results discarded".into(),
+        ));
+    }
     let previous_keys: HashSet<String> = {
         let mut query = tx.prepare(
             "SELECT result_key FROM saved_search_results WHERE saved_search_id=?1 AND present=1",
@@ -358,14 +372,8 @@ struct LocalVisibility {
     image_mode: String,
 }
 
-fn local_visibility(core: &LadiesCore, id: &str) -> Result<LocalVisibility, CoreError> {
-    let db = core.connection()?;
-    let definition: String = db.query_row(
-        "SELECT filters_json FROM saved_searches WHERE saved_search_id=?1",
-        [id],
-        |r| r.get(0),
-    )?;
-    let parsed: serde_json::Value = serde_json::from_str(&definition)
+fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
+    let parsed: serde_json::Value = serde_json::from_str(definition)
         .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
     let Some(local) = parsed.get("local").and_then(|v| v.as_object()) else {
         return Ok(LocalVisibility::default());
@@ -436,29 +444,32 @@ fn apply_local_visibility(
 }
 
 pub(crate) fn run(core: &LadiesCore, id: String) -> Result<SearchResponse, CoreError> {
-    let definition = request(core, &id)?;
-    let rules = local_visibility(core, &id)?;
-    let fetched = source::search(core, definition);
+    let (stored_definition, version) = definition(core, &id)?;
+    let request = decode_definition(&stored_definition)?;
+    let rules = local_visibility(&stored_definition)?;
+    let fetched = source::search(core, request);
     match fetched {
         Ok(mut response) => {
             apply_local_visibility(core, &mut response, rules)?;
-            // An incomplete search cannot be used to infer removals.
             if !response.partial && response.radius_verified {
-                persist_results(core, &id, &response)?;
+                persist_results(core, &id, &response, &stored_definition, version)?;
             } else {
                 core.connection()?.execute(
-                    "UPDATE saved_searches SET last_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-                     last_error='Search incomplete; saved results not updated'
-                     WHERE saved_search_id=?1",[&id]
+                    "UPDATE saved_searches
+                     SET last_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                         last_error='Search incomplete; saved results not updated'
+                     WHERE saved_search_id=?1 AND definition_version=?2 AND filters_json=?3",
+                    params![id, version, stored_definition],
                 )?;
             }
             Ok(response)
         }
         Err(error) => {
             core.connection()?.execute(
-                "UPDATE saved_searches SET last_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-                 last_error=?2 WHERE saved_search_id=?1",
-                params![id, error.to_string()],
+                "UPDATE saved_searches
+                 SET last_attempt_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'), last_error=?2
+                 WHERE saved_search_id=?1 AND definition_version=?3 AND filters_json=?4",
+                params![id, error.to_string(), version, stored_definition],
             )?;
             Err(error)
         }
@@ -545,11 +556,13 @@ mod tests {
             radius_verified: true,
             profiles: vec![card(la, a, "101"), card(lb, b, "102")],
         };
-        persist_results(&core, &id, &result).unwrap();
+        let (definition, version) = definition(&core, &id).unwrap();
+        persist_results(&core, &id, &result, &definition, version).unwrap();
         update(&core, id.clone(), "Umbenannt".into(), req.clone()).unwrap();
         assert!(list(&core).unwrap()[0].last_run_at.is_some());
         result.profiles = vec![card(lb, b, "102"), card(lc, c, "103")];
-        persist_results(&core, &id, &result).unwrap();
+        let (definition, version) = definition(&core, &id).unwrap();
+        persist_results(&core, &id, &result, &definition, version).unwrap();
         let stored = results(&core, id.clone()).unwrap();
         assert_eq!(stored.len(), 2);
         assert_eq!(stored[0].listing_id, Some(lb));
@@ -590,6 +603,40 @@ mod tests {
     }
 
     #[test]
+    fn stale_results_do_not_replace_a_redefined_saved_search() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let id = save(&core, "Original".into(), SearchRequest::for_test()).unwrap();
+        let (initial, initial_version) = definition(&core, &id).unwrap();
+        let mut changed = SearchRequest::for_test();
+        changed.radius_km = 30;
+        update(&core, id.clone(), "Changed".into(), changed).unwrap();
+        let empty = SearchResponse {
+            search_run_id: 1,
+            city: "Leipzig".into(),
+            requested_radius_km: 20,
+            server_count: Some(0),
+            total_pages: 1,
+            fetched_pages: 1,
+            partial: false,
+            radius_boundary_stopped: false,
+            radius_verified: true,
+            profiles: Vec::new(),
+        };
+        assert!(persist_results(&core, &id, &empty, &initial, initial_version).is_err());
+        let db = core.connection().unwrap();
+        let (count, last_run): (i64, Option<String>) = db
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM saved_search_results WHERE saved_search_id=?1),
+                        last_run_at FROM saved_searches WHERE saved_search_id=?1",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+        assert_eq!(last_run, None);
+    }
+
+    #[test]
     fn saved_result_changes_are_atomic_and_old_absences_need_complete_search() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "test".into(), SearchRequest::for_test()).unwrap();
@@ -605,9 +652,10 @@ mod tests {
             radius_verified: true,
             profiles: Vec::new(),
         };
-        persist_results(&core, &id, &response).unwrap();
+        let (definition, version) = definition(&core, &id).unwrap();
+        persist_results(&core, &id, &response, &definition, version).unwrap();
         assert!(!list(&core).unwrap()[0].unread_new_results);
-        persist_results(&core, &id, &response).unwrap();
+        persist_results(&core, &id, &response, &definition, version).unwrap();
         assert!(!list(&core).unwrap()[0].unread_new_results);
     }
 }
