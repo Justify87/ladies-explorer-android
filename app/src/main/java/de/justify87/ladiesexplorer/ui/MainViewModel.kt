@@ -782,6 +782,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadProfile(listingId: Long, personId: Long) {
+        if (_discoverState.value.busy) return
         cancelPreview()
         invalidateActiveSearch()
         invalidateProfileRequest()
@@ -860,10 +861,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_discoverState.value.busy || active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
         val requestId = profileRequestId
         archiveControl?.cancel()
-        _searchUiState.update { it.copy(actionBusy=true,actionError=null) }
+        // The mutation outlives the detail screen. Keep the shared write guard until
+        // it finishes even if Back clears the screen's own actionBusy flag.
+        _discoverState.update { it.copy(busy = true, error = null) }
+        _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
         viewModelScope.launch {
+            var committed = false
             try {
-                core.confirmIdentityMatch(listingId,targetPersonId)
+                core.confirmIdentityMatch(listingId, targetPersonId)
+                committed = true
                 val identity = core.profileIdentity(listingId)
                 val history = core.changeEvents(identity.personId)
                 val candidates = core.identityCandidates(listingId)
@@ -871,24 +877,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (requestId == profileRequestId) {
                     _searchUiState.update {
                         if (it.profile?.listingId == listingId) {
-                            it.copy(actionBusy=false,selectedPersonId=identity.personId,profileIdentity=identity,
-                                selectedPerson=person,changeEvents=history,identityCandidates=candidates)
+                            it.copy(selectedPersonId = identity.personId, profileIdentity = identity,
+                                selectedPerson = person, changeEvents = history, identityCandidates = candidates)
                         } else it
                     }
                 }
-                refreshDiscovery()
-                refreshMap()
-                refresh()
             } catch (cancellation: CancellationException) {
-                if (requestId == profileRequestId) {
-                    _searchUiState.update { it.copy(actionBusy=false) }
-                }
                 throw cancellation
             } catch (failure: Exception) {
+                val message = failure.message ?: "Zusammenführung fehlgeschlagen"
                 if (requestId == profileRequestId) {
-                    _searchUiState.update {
-                        it.copy(actionBusy=false,actionError=failure.message ?: "Zusammenführung fehlgeschlagen")
-                    }
+                    _searchUiState.update { it.copy(actionError = message) }
+                } else {
+                    _discoverState.update { it.copy(error = message) }
+                }
+            } finally {
+                if (requestId == profileRequestId) _searchUiState.update { it.copy(actionBusy = false) }
+                _discoverState.update { it.copy(busy = false) }
+                if (committed) {
+                    refreshDiscovery()
+                    refreshMap()
+                    refresh()
                 }
             }
         }
