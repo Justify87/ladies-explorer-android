@@ -534,7 +534,7 @@ mod tests {
             .unwrap();
         assert_eq!(old, 1);
         assert_eq!(
-            db.pragma_query_value::<u32>(None, "user_version", |r| r.get(0))
+            db.pragma_query_value::<u32, _>(None, "user_version", |r| r.get(0))
                 .unwrap(),
             2
         );

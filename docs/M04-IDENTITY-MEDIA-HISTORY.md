@@ -55,3 +55,23 @@ records the real transition.
   generation, Compose/Kotlin compilation and ARM64 debug APK artifact.
 - Real Android testing remains required for current Ladies HTML/CDN behavior
   and full-size media galleries. A green offline CI cannot verify remote sites.
+
+## Review-Nachbesserungen
+
+- Die Zuordnung von Bild-hashes verwendet eine maximale eindeutige Paarbildung statt
+  lokaler Greedy-Treffer; Bilder können Kandidaten nicht mehrfach künstlich stärken.
+- Ein bestätigter Merge verwirft niemals widersprüchliche LIKE/DISLIKE- oder
+  Wiederholungsentscheidungen: Solche Konflikte müssen vor dem Merge geklärt werden.
+- Mit Schema v2 bleiben `previous_person_id` und `new_person_id` als historische
+  Werte erhalten, auch wenn Personen nach einem bestätigten Merge gelöscht werden.
+  Datenbanken mit gültigem Schema v1 werden transaktional migriert.
+- Die Kategorie gehört zum Snapshot-Fingerprint, damit reine Kategorieänderungen
+  als echte Profiländerung historisiert werden.
+- Eine gemeinsame URL-Validierung wird von Parser und Downloader verwendet;
+  zugelassene mobile Quellhosts und nummerierte CDN-Hosts werden konsistent behandelt.
+- Bilddimensionen und Pixelbudget werden vor vollständiger Dekodierung begrenzt.
+- Der Medienabruf verfügt über einen UniFFI-Abbruchcontroller pro Operation sowie
+  Gesamt- und Anfragezeitbudgets. Das ViewModel beendet Aufträge bei Ansichtswechsel,
+  explizitem Abbruch und Lebenszyklusende. Alte Antworten aktualisieren keine neueren Profile.
+- Profil-Snapshots und bereits gespeicherte Dateien bleiben unabhängig von
+  Medienabbruch oder Downloadfehlern erhalten.

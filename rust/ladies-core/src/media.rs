@@ -18,8 +18,8 @@ use crate::{CoreError, LadiesCore, identity};
 const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES: u64 = 48 * 1024 * 1024;
 const MAX_REFERENCES: usize = 80;
-const MAX_ARCHIVE_DURATION: Duration = Duration::from_secs(75);
-const MAX_REQUEST_DURATION: Duration = Duration::from_secs(8);
+const MAX_ARCHIVE_DURATION: Duration = Duration::from_secs(150);
+const MAX_REQUEST_DURATION: Duration = Duration::from_secs(15);
 const MAX_PIXELS: u64 = 24_000_000;
 
 #[derive(Default, uniffi::Object)]
@@ -775,18 +775,11 @@ mod tests {
 
     #[test]
     fn oversized_pixel_dimensions_are_rejected_before_decode() {
-        let png = {
-            let mut cursor = Cursor::new(Vec::new());
-            image::DynamicImage::new_rgb8(2, 2)
-                .write_to(&mut cursor, image::ImageFormat::Png)
-                .unwrap();
-            let mut bytes = cursor.into_inner();
-            // PNG IHDR width and height are big-endian at offsets 16 and 20.
-            bytes[16..20].copy_from_slice(&9000u32.to_be_bytes());
-            bytes[20..24].copy_from_slice(&9000u32.to_be_bytes());
-            bytes
-        };
-        assert!(image_dhash(&png).is_err());
+        let mut png = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(8193, 1)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        assert!(matches!(image_dhash(&png.into_inner()), Err(CoreError::Media(_))));
     }
 
     #[test]
@@ -804,5 +797,7 @@ mod tests {
         assert!(validate_media_url("http://bilder1.ladies-cdn.de/a.jpg", Some("IMAGE")).is_err());
         assert!(validate_media_url("https://127.0.0.1/a.jpg", Some("IMAGE")).is_err());
         assert!(validate_media_url("https://video2.ladies-cdn.de/a.mp4", Some("VIDEO")).is_ok());
+        assert!(validate_media_url("https://m.ladies.de/Bilder/gallery.jpg", Some("IMAGE")).is_ok());
+        assert!(validate_media_url("https://bilder1.ladies-cdn.de/a.jpg", Some("VIDEO")).is_err());
     }
 }
