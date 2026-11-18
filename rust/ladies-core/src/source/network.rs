@@ -142,7 +142,9 @@ fn redirect_target(
     if target.scheme() != "https"
         || !matches!(target.host_str(), Some("www.ladies.de" | "ladies.de"))
     {
-        return Err(CoreError::Source("Source redirected outside ladies.de".into()));
+        return Err(CoreError::Source(
+            "Source redirected outside ladies.de".into(),
+        ));
     }
     Ok(Some(target))
 }
@@ -184,25 +186,28 @@ impl Transport for SourceHttp {
                 .header("Referer", BASE)
                 .header("DNT", "1")
                 .build()
-                .map_err(|error| CoreError::Source(format!("Source HTTP request failed: {error}")))?;
-            let mut observation = (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
-                method: request.method().to_string(),
-                url: request.url().to_string(),
-                final_url: request.url().to_string(),
-                status: None,
-                http_version: "unknown".into(),
-                request_headers: http_capture::headers(request.headers()),
-                response_headers: Vec::new(),
-                mime: None,
-                response_size: None,
-                started_ms: http_capture::started_ms(),
-                headers_elapsed_ms: 0,
-                body_elapsed_ms: 0,
-                body: None,
-                is_media: false,
-                error: None,
-                body_omitted: None,
-            });
+                .map_err(|error| {
+                    CoreError::Source(format!("Source HTTP request failed: {error}"))
+                })?;
+            let mut observation =
+                (self.recorder.mode() != CaptureMode::Off).then(|| HttpObservation {
+                    method: request.method().to_string(),
+                    url: request.url().to_string(),
+                    final_url: request.url().to_string(),
+                    status: None,
+                    http_version: "unknown".into(),
+                    request_headers: http_capture::headers(request.headers()),
+                    response_headers: Vec::new(),
+                    mime: None,
+                    response_size: None,
+                    started_ms: http_capture::started_ms(),
+                    headers_elapsed_ms: 0,
+                    body_elapsed_ms: 0,
+                    body: None,
+                    is_media: false,
+                    error: None,
+                    body_omitted: None,
+                });
             let sent = self.client.execute(request);
             let response = match sent {
                 Ok(response) => response,
@@ -233,7 +238,8 @@ impl Transport for SourceHttp {
                         obs.http_version = format!("{:?}", response.version());
                         obs.response_headers = http_capture::headers(response.headers());
                         obs.response_size = response.content_length();
-                        obs.mime = response.headers()
+                        obs.mime = response
+                            .headers()
                             .get(reqwest::header::CONTENT_TYPE)
                             .and_then(|header| header.to_str().ok())
                             .map(ToOwned::to_owned);
@@ -1022,23 +1028,31 @@ mod tests {
         let origin = Url::parse("https://www.ladies.de/leipzig/sex-anzeigen").unwrap();
         assert_eq!(
             redirect_target(&origin, 302, Some("/jugendschutz?session=1"), 0)
-                .unwrap().unwrap().as_str(),
+                .unwrap()
+                .unwrap()
+                .as_str(),
             "https://www.ladies.de/jugendschutz?session=1",
         );
         assert_eq!(
             redirect_target(&origin, 302, Some("https://ladies.de/path"), 1)
-                .unwrap().unwrap().host_str(),
+                .unwrap()
+                .unwrap()
+                .host_str(),
             Some("ladies.de"),
         );
         assert!(redirect_target(&origin, 302, Some("https://evil.example/path"), 0).is_err());
         assert!(redirect_target(&origin, 302, Some("http://www.ladies.de/path"), 0).is_err());
         assert!(redirect_target(&origin, 302, Some("/path"), 5).is_err());
-        assert!(redirect_target(&origin, 304, Some("/not-a-redirect"), 0).unwrap().is_none());
+        assert!(
+            redirect_target(&origin, 304, Some("/not-a-redirect"), 0)
+                .unwrap()
+                .is_none()
+        );
         assert!(redirect_target(&origin, 302, None, 0).unwrap().is_none());
     }
 
     #[test]
-        fn rejected_redirect_does_not_leak_response_html_to_debug_log() {
+    fn rejected_redirect_does_not_leak_response_html_to_debug_log() {
         let directory = tempfile::tempdir().unwrap();
         let log = Diagnostics::new(directory.path().join("ladies.sqlite").to_str().unwrap());
         log.set_debug(true);

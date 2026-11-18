@@ -1,9 +1,9 @@
 //! App-private, bounded HTTP observations and a single HAR 1.2 export.
+use regex::Regex;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use regex::Regex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -331,7 +331,7 @@ impl HttpRecorder {
             Err(error) => {
                 state.last_error = Some(error.to_string());
                 state.stopped = true;
-            },
+            }
         }
     }
 
@@ -409,9 +409,7 @@ fn recover_session(path: &Path) -> (u64, u32, Option<String>, bool) {
     let mut valid_bytes = 0u64;
     let mut entries = 0u32;
     for record in data.split_inclusive(|byte| *byte == b'\n') {
-        if !record.ends_with(b"\n")
-            || serde_json::from_slice::<HttpObservation>(record).is_err()
-        {
+        if !record.ends_with(b"\n") || serde_json::from_slice::<HttpObservation>(record).is_err() {
             break;
         }
         valid_bytes += record.len() as u64;
@@ -431,7 +429,12 @@ fn recover_session(path: &Path) -> (u64, u32, Option<String>, bool) {
             Some("An incomplete HTTP journal tail was discarded on startup".into()),
             false,
         ),
-        Err(error) => (valid_bytes, entries, Some(format!("HTTP journal recovery failed: {error}")), true),
+        Err(error) => (
+            valid_bytes,
+            entries,
+            Some(format!("HTTP journal recovery failed: {error}")),
+            true,
+        ),
     }
 }
 
@@ -753,7 +756,8 @@ mod tests {
         let recorder = HttpRecorder::new(&root.path().join("db.sqlite").to_string_lossy());
         recorder.set_mode(CaptureMode::Metadata);
         let mut event = sample();
-        event.url = "https://alice:pwd@www.ladies.de/path?api_key=request-key&keep=yes#token".into();
+        event.url =
+            "https://alice:pwd@www.ladies.de/path?api_key=request-key&keep=yes#token".into();
         event.request_headers.push(HttpHeader {
             name: "Referer".into(),
             value: "https://www.ladies.de/start?access_token=ref-secret".into(),
@@ -768,8 +772,14 @@ mod tests {
         recorder.record(event);
         let har = fs::read_to_string(recorder.export(root.path()).unwrap()).unwrap();
         for secret in [
-            "request-key", "ref-secret", "redirect-secret", "error-secret",
-            "plain-secret", "alice", "pwd", "#token",
+            "request-key",
+            "ref-secret",
+            "redirect-secret",
+            "error-secret",
+            "plain-secret",
+            "alice",
+            "pwd",
+            "#token",
         ] {
             assert!(!har.contains(secret), "leaked: {secret}");
         }
@@ -809,12 +819,15 @@ mod tests {
         recorder.set_mode(CaptureMode::Metadata);
         recorder.record(sample());
         let journal = root.path().join("diagnostics/ladies-http.jsonl");
-        OpenOptions::new().append(true).open(journal).unwrap()
-            .write_all(b"invalid json\n").unwrap();
+        OpenOptions::new()
+            .append(true)
+            .open(journal)
+            .unwrap()
+            .write_all(b"invalid json\n")
+            .unwrap();
         assert_eq!(
             recorder.export(root.path()).unwrap_err().kind(),
             io::ErrorKind::InvalidData,
         );
     }
-
 }
