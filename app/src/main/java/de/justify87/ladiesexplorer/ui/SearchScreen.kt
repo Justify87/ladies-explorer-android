@@ -280,9 +280,9 @@ fun SearchScreen(
                                 onClick={ onRunSaved(saved.searchId) },
                             ) { Text("Ausführen") }
                             if (saved.unreadNewResults) {
-                                TextButton(onClick={ { onAcknowledge(saved.searchId) } }) { Text("Gelesen") }
+                                TextButton(onClick={ onAcknowledge(saved.searchId) }) { Text("Gelesen") }
                             }
-                            TextButton(onClick={ { onDeleteSaved(saved.searchId) } }) { Text("Löschen") }
+                            TextButton(onClick={ onDeleteSaved(saved.searchId) }) { Text("Löschen") }
                         }
                     }
                 }
