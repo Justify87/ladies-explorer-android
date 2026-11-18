@@ -4,6 +4,7 @@ mod parse;
 mod storage;
 
 use crate::{CoreError, LadiesCore, diagnostics::Diagnostics, operation::RequestControl};
+use std::time::Instant;
 use std::sync::Arc;
 
 pub(crate) struct SourceSession(network::SourceHttp);
@@ -138,16 +139,20 @@ pub(crate) fn search(
     if let Some(control) = control {
         control.check()?;
     }
+    let fetch_started = Instant::now();
     let downloaded =
         network::fetch_search(&core.source_session.0, &request, control).map_err(|error| {
             core.diagnostics
                 .event("SEARCH", format!("Search fetch failed: {error}"));
             error
         })?;
+    core.diagnostics.phase("SEARCH", "source_fetch_and_pagination", fetch_started);
     if let Some(control) = control {
         control.check()?;
     }
+    let storage_started = Instant::now();
     let saved = storage::save_search_with_control(core, &request, downloaded, control);
+    core.diagnostics.phase("STORAGE", "search_sqlite_write", storage_started);
     match &saved {
         Ok(response) => core.diagnostics.event(
             "STORAGE",
@@ -171,7 +176,9 @@ pub(crate) fn load_profile(
     core.diagnostics
         .event("PROFILE", format!("Profile requested listing={listing_id}"));
     let (url, advert_id, name, city, category) = storage::listing_target(core, listing_id)?;
+    let network_started = Instant::now();
     let html = core.source_session.0.get_profile(&url)?;
+    core.diagnostics.phase("HTTP", "profile_fetch", network_started);
     let fallback = Card {
         advert_id,
         name,
@@ -185,6 +192,7 @@ pub(crate) fn load_profile(
         has_18plus: false,
         has_stars: false,
     };
+    let parse_started = Instant::now();
     let profile = parse::parse_profile(&html, &fallback).map_err(|error| {
         core.diagnostics.html("profile_parse_failed", &html);
         core.diagnostics.event(
@@ -193,6 +201,7 @@ pub(crate) fn load_profile(
         );
         error
     })?;
+    core.diagnostics.phase("PROFILE", "html_parse", parse_started);
     core.diagnostics.event(
         "PROFILE",
         format!(
@@ -203,7 +212,9 @@ pub(crate) fn load_profile(
             profile.services_json.len()
         ),
     );
+    let storage_started = Instant::now();
     let result = storage::save_profile(core, listing_id, &url, profile);
+    core.diagnostics.phase("STORAGE", "profile_sqlite_write", storage_started);
     match &result {
         Ok(saved) => core.diagnostics.event(
             "STORAGE",
