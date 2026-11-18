@@ -3,6 +3,8 @@ package de.justify87.ladiesexplorer.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,7 +18,12 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -33,21 +40,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-private enum class Tab(val title: String) {
-    Discover("Entdecken"),
-    Search("Suche"),
-    Map("Karte"),
-    Favorites("Favoriten"),
-    Settings("Einstellungen"),
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,16 +67,29 @@ fun LadiesApp(
     val search by viewModel.searchUiState.collectAsStateWithLifecycle()
     val discovery by viewModel.discoverState.collectAsStateWithLifecycle()
     val map by viewModel.mapState.collectAsStateWithLifecycle()
-    var selected by rememberSaveable { mutableIntStateOf(0) }
-    val tabs = Tab.entries
-    val mapStateHolder = rememberSaveableStateHolder()
-    LaunchedEffect(tabs[selected], search.profileOpen) {
-        if (tabs[selected] == Tab.Map && !search.profileOpen) viewModel.refreshMap()
+    var route by rememberSaveable(stateSaver = listSaver<ShellRoute, String>(
+        save = { it.encode() }, restore = { ShellRoute.decode(it) },
+    )) { mutableStateOf(ShellRoute()) }
+    val stateHolder = rememberSaveableStateHolder()
+    val mapVisible = route.mapVisible && !search.profileOpen
+    LaunchedEffect(mapVisible) {
+        if (mapVisible) viewModel.refreshMap()
     }
 
-    // Refresh the displayed session size while the capture settings are visible.
-    LaunchedEffect(selected, home.httpCaptureMode, search.profileOpen) {
-        if (tabs[selected] == Tab.Settings && !search.profileOpen && home.httpCaptureMode != CaptureMode.OFF) {
+    // Root changes must not reload already paginated lists or discard their scroll state.
+    // Explicit refresh and data mutations remain owned by the ViewModel.
+    fun selectRoot(destination: RootDestination) {
+        if (route.root == destination) return
+        route = route.select(destination)
+        when (destination) {
+            RootDestination.Search -> viewModel.refreshSearchDefinitions()
+            RootDestination.Settings -> viewModel.refresh()
+            else -> Unit
+        }
+    }
+
+    LaunchedEffect(route.root, home.httpCaptureMode, search.profileOpen) {
+        if (route.root == RootDestination.Settings && !search.profileOpen && home.httpCaptureMode != CaptureMode.OFF) {
             while (true) {
                 delay(2_000)
                 viewModel.refreshCaptureStatus()
@@ -80,53 +97,85 @@ fun LadiesApp(
         }
     }
 
-    BackHandler(enabled=search.profileOpen) { viewModel.closeProfile() }
+    val savedResultsOpen = route.root == RootDestination.Search && search.showingSavedSearchId != null
+    fun back() {
+        when {
+            search.profileOpen -> viewModel.closeProfile()
+            savedResultsOpen -> viewModel.closeSavedResults()
+            else -> route = route.back()
+        }
+    }
+    BackHandler(enabled = search.profileOpen || savedResultsOpen || route.canGoBack) { back() }
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(if (search.profileOpen) "Profil" else "Ladies Explorer") },
-                navigationIcon = {
+            TopAppBar(
+                title = {
                     if (search.profileOpen) {
-                        IconButton(onClick=viewModel::closeProfile) {
-                            Icon(Icons.Default.ArrowBack,contentDescription="Zurück")
+                        Text("Profil", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    } else if (savedResultsOpen) {
+                        Text("Gespeicherte Ergebnisse", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    } else {
+                        Column {
+                            Text("Ladies Explorer", color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(route.root.title, style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
                     }
                 },
+                navigationIcon = {
+                    if (search.profileOpen || savedResultsOpen) {
+                        IconButton(onClick = { back() }) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Zurück")
+                        }
+                    }
+                },
+                actions = {
+                    if (!search.profileOpen && route.root == RootDestination.Discover) {
+                        IconButton(onClick = { selectRoot(RootDestination.Search) }) {
+                            Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
         },
         bottomBar = {
             if (!search.profileOpen) {
-                NavigationBar {
-                    tabs.forEachIndexed { index, tab ->
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                    RootDestination.entries.forEach { destination ->
                         NavigationBarItem(
-                            selected=selected==index,
-                            onClick={
-                                selected=index
-                                when (tab) {
-                                    Tab.Discover,Tab.Favorites -> viewModel.refreshDiscovery()
-                                    Tab.Search -> viewModel.refreshSearchDefinitions()
-                                    Tab.Map -> Unit // entry effect also handles restored navigation
-                                    Tab.Settings -> viewModel.refresh()
+                            selected = route.root == destination,
+                            onClick = { selectRoot(destination) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                            icon = {
+                                when (destination) {
+                                    RootDestination.Discover -> Icon(Icons.Default.FavoriteBorder, contentDescription = null)
+                                    RootDestination.Search -> BadgedBox(badge = {
+                                        if (search.savedSearches.any { it.unreadNewResults }) {
+                                            Badge { } // unread indicator, not a count
+                                        }
+                                    }) { Icon(Icons.Default.Search, contentDescription =
+                                        if (search.savedSearches.any { it.unreadNewResults }) "Neue gespeicherte Suchergebnisse" else null) }
+                                    RootDestination.Saved -> Icon(Icons.Default.Favorite, contentDescription = null)
+                                    RootDestination.Settings -> Icon(Icons.Default.Settings, contentDescription = null)
                                 }
                             },
-                            icon={
-                                when (tab) {
-                                    Tab.Discover -> Icon(Icons.Default.FavoriteBorder,contentDescription=null)
-                                    Tab.Search -> Icon(Icons.Default.Search,contentDescription=null)
-                                    Tab.Map -> Icon(Icons.Default.Map,contentDescription=null)
-                                    Tab.Favorites -> Icon(Icons.Default.Favorite,contentDescription=null)
-                                    Tab.Settings -> Icon(Icons.Default.Settings,contentDescription=null)
-                                }
-                            },
-                            label={Text(tab.title)},
+                            label = { Text(destination.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                         )
                     }
                 }
             }
         },
     ) { padding ->
-        val modifier = Modifier.fillMaxSize().padding(padding)
+        val modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
         if (search.profileOpen) {
             ProfileDetailScreen(
                 state=search,
@@ -137,17 +186,33 @@ fun LadiesApp(
                 modifier=modifier,
             )
         } else {
-            when(tabs[selected]) {
-                Tab.Discover -> DiscoverScreen(
+            stateHolder.SaveableStateProvider(route.stateKey) {
+                when (route.root) {
+                RootDestination.Discover -> Column(modifier = modifier) {
+                    DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
+                    if (route.discovery == DiscoverMode.Swipe) {
+                        DiscoverScreen(
                     state=discovery,
                     onRefresh=viewModel::refreshDiscovery,
                     onSkip=viewModel::skipCard,
                     onChoose=viewModel::choosePreference,
                     onFavorite=viewModel::toggleFavorite,
                     onProfile=viewModel::loadProfile,
-                    modifier=modifier,
-                )
-                Tab.Search -> SearchScreen(
+                    modifier=Modifier.weight(1f),
+                        )
+                    } else {
+                        MapScreen(
+                            state = map,
+                            onRefresh = viewModel::refreshMap,
+                            onResolve = viewModel::resolveMapLocations,
+                            onCancel = viewModel::cancelMapResolution,
+                            onFavoritesOnly = viewModel::setMapFavoritesOnly,
+                            onProfile = viewModel::loadProfile,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                RootDestination.Search -> SearchScreen(
                     state=search,
                     onCity=viewModel::setSearchCity,
                     onRadius=viewModel::setSearchRadius,
@@ -170,18 +235,7 @@ fun LadiesApp(
                     onProfile=viewModel::loadProfile,
                     modifier=modifier,
                 )
-                Tab.Map -> mapStateHolder.SaveableStateProvider("map") {
-                    MapScreen(
-                        state=map,
-                        onRefresh=viewModel::refreshMap,
-                        onResolve=viewModel::resolveMapLocations,
-                        onCancel=viewModel::cancelMapResolution,
-                        onFavoritesOnly=viewModel::setMapFavoritesOnly,
-                        onProfile=viewModel::loadProfile,
-                        modifier=modifier,
-                    )
-                }
-                Tab.Favorites -> FavoritesScreen(
+                RootDestination.Saved -> FavoritesScreen(
                     state=discovery,
                     onRefresh=viewModel::refreshDiscovery,
                     onProfile=viewModel::loadProfile,
@@ -189,7 +243,7 @@ fun LadiesApp(
                     onLoadMore=viewModel::loadMoreFavorites,
                     modifier=modifier,
                 )
-                Tab.Settings -> SettingsScreen(
+                RootDestination.Settings -> SettingsScreen(
                     state=home,
                     onRefresh=viewModel::refresh,
                     onPickLegacyBundle=onPickLegacyBundle,
@@ -202,7 +256,28 @@ fun LadiesApp(
                     onShareHar=onShareHar,
                     modifier=modifier,
                 )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        DiscoverMode.entries.forEach { mode ->
+            FilterChip(
+                modifier = Modifier.weight(1f),
+                selected = mode == active,
+                onClick = { onSelect(mode) },
+                label = { Text(mode.title) },
+                leadingIcon = { Icon(if (mode == DiscoverMode.Map) Icons.Default.Map else Icons.Default.FavoriteBorder,
+                    contentDescription = null) },
+            )
         }
     }
 }

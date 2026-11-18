@@ -89,10 +89,11 @@ fun MapScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text("Karte", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+            Text("Lokaler Datenbestand", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Text("Nur Favoriten", style = MaterialTheme.typography.labelMedium)
             Switch(checked = state.favoritesOnly, onCheckedChange = onFavoritesOnly)
         }
+        Text("Unabhängig von der aktuellen Suche", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val overview = state.overview
         if (overview != null) {
             Text(
