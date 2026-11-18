@@ -196,12 +196,16 @@ pub(crate) fn search(
 pub(crate) fn load_profile(
     core: &LadiesCore,
     listing_id: i64,
+    control: Option<&RequestControl>,
 ) -> Result<ProfileResponse, CoreError> {
+    if let Some(control) = control {
+        control.check()?;
+    }
     core.diagnostics
         .event("PROFILE", format!("Profile requested listing={listing_id}"));
     let (url, advert_id, name, city, category) = storage::listing_target(core, listing_id)?;
     let network_started = Instant::now();
-    let html = core.source_session.0.get_profile(&url)?;
+    let html = core.source_session.0.get_profile(&url, control)?;
     core.diagnostics
         .phase("HTTP", "profile_fetch", network_started);
     let fallback = Card {
@@ -238,6 +242,9 @@ pub(crate) fn load_profile(
             profile.services_json.len()
         ),
     );
+    if let Some(control) = control {
+        control.check()?;
+    }
     let storage_started = Instant::now();
     let result = storage::save_profile(core, listing_id, &url, profile);
     core.diagnostics

@@ -14,6 +14,10 @@ import java.io.File
 class CoreStore(context: Context) {
     private val appFiles = context.filesDir
     private val preferences = context.getSharedPreferences("diagnostics", Context.MODE_PRIVATE)
+    private val explorerPreferences = context.getSharedPreferences("explorer", Context.MODE_PRIVATE)
+
+    fun replayLikes(): Boolean = explorerPreferences.getBoolean("replay_likes", true)
+    fun setReplayLikes(value: Boolean) { explorerPreferences.edit().putBoolean("replay_likes", value).apply() }
     private val logger = Logger.withTag("LadiesExplorer")
     @Volatile var imageCaptureMode: CaptureMode = CaptureMode.OFF
         private set
@@ -137,6 +141,9 @@ class CoreStore(context: Context) {
         recorded("people") { engine.listPeople(limit, cursor) }
     }
 
+    suspend fun setSwipePreference(listingId: Long, personId: Long, expected: Preference?, preference: Preference): Preference =
+        withContext(Dispatchers.IO) { engine.setSwipePreference(listingId, personId, expected, preference) }
+
     suspend fun setPreference(personId: Long, preference: Preference) = withContext(Dispatchers.IO) {
         recorded("setPreference") { engine.setPreference(personId, preference) }
     }
@@ -181,6 +188,18 @@ class CoreStore(context: Context) {
             engine.loadSourceProfile(listingId)
         }
     }
+
+    // One current/standalone profile request at a time for the swipe window.
+    private val swipeProfileMutex = Mutex()
+
+    suspend fun loadSwipeProfile(listingId: Long, control: RequestControl): ProfileResponse =
+        swipeProfileMutex.withLock {
+            withContext(Dispatchers.IO) {
+                recorded("loadSwipeProfile listingId=$listingId") {
+                    engine.loadSwipeProfile(listingId, control)
+                }
+            }
+        }
 
     suspend fun cachedProfile(listingId: Long): ProfileResponse? = withContext(Dispatchers.IO) {
         engine.cachedSourceProfile(listingId)

@@ -1,49 +1,36 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import de.justify87.ladiesexplorer.core.Preference
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import de.justify87.ladiesexplorer.LadiesApplication
+import de.justify87.ladiesexplorer.core.*
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun DiscoverScreen(
     state: DiscoverUiState,
     searchLoading: Boolean = false,
     onRefresh: () -> Unit,
+    onReset: () -> Unit,
+    onUndo: () -> Unit,
+    onReplayLikes: (Boolean) -> Unit,
     onSkip: (Long) -> Unit,
     onChoose: (Long, Preference) -> Unit,
     onFavorite: (Long) -> Unit,
@@ -51,109 +38,158 @@ fun DiscoverScreen(
     modifier: Modifier = Modifier,
 ) {
     val card = state.cards.firstOrNull()
+    val context = LocalContext.current
+    val core = (context.applicationContext as LadiesApplication).coreStore
+    val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    val visible = lifecycle.isAtLeast(Lifecycle.State.STARTED) && !searchLoading && !state.loading && !state.busy
+    val enabled = !state.busy && !state.loading && !searchLoading
+    val decks = remember(state.activeRunId) { mutableStateMapOf<Long, SwipeProfile>() }
+    var retry by remember(card?.listingId) { mutableIntStateOf(0) }
+    var readError by remember(card?.listingId) { mutableStateOf<String?>(null) }
+    val current = card?.let { decks[it.listingId] }
+    val upcoming = prefetchCards(state.cards)
+    val window = listOfNotNull(card) + upcoming
+    val control = remember(state.activeRunId, card?.listingId, retry, visible) { RequestControl() }
+    DisposableEffect(control) { onDispose { control.cancel() } }
+    LaunchedEffect(control) {
+        if (!visible || card == null || current != null && retry == 0) return@LaunchedEffect
+        readError = null
+        try {
+            decks[card.listingId] = core.readSwipeProfile(card.listingId, control, refresh = true)
+            retry = 0
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (failure: Exception) {
+            readError = failure.message ?: "Profil konnte nicht geladen werden"
+        }
+    }
+    val prefetchControl = remember(state.activeRunId, window.map { it.listingId }, visible, current != null, state.busy) {
+        RequestControl()
+    }
+    DisposableEffect(prefetchControl) { onDispose { prefetchControl.cancel() } }
+    LaunchedEffect(prefetchControl) {
+        decks.keys.toList().filterNot { id -> window.any { it.listingId == id } }.forEach(decks::remove)
+        if (!visible || state.busy || current == null) return@LaunchedEffect
+        for (next in upcoming) {
+            try {
+                val profile = decks[next.listingId] ?: core.readSwipeProfile(next.listingId, prefetchControl,
+                    refresh = false, allowNetwork = state.activeRunId != null)
+                decks[next.listingId] = profile
+                warmSwipeImages(context, next, profile)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                try { warmSwipeImages(context, next, null) }
+                catch (cancel: CancellationException) { throw cancel }
+                catch (_: Exception) { /* optional cache warming must not fail the deck */ }
+            }
+        }
+    }
+
     Column(
-        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    if (state.activeRunId == null) "Lokaler Bestand · ${state.cards.size} unbewertete Profile"
-                    else "Aktive Suche · ${state.activeVisibleCount} sichtbar · ${state.cards.size} unbewertet",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            TextButton(onClick = onRefresh, enabled = !state.busy && !searchLoading) { Text("Aktualisieren") }
+            Text(
+                if (state.activeRunId == null) "Lokaler Bestand · neutrale Profile"
+                else "Aktive Suche · ${state.activeVisibleCount} sichtbar · ${state.cards.size} im Deck",
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { decks.clear(); onRefresh() }, enabled = enabled) { Text("Aktualisieren") }
         }
-        if (state.loading) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (state.activeRunId != null) FilterChip(
+                selected = state.replayLikes, enabled = enabled, onClick = { onReplayLikes(!state.replayLikes) },
+                label = { Text("Likes erneut zeigen") },
+            )
+            TextButton(onClick = onUndo, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
+            TextButton(onClick = { decks.clear(); onReset() }, enabled = enabled) { Text("Reset") }
+        }
+        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (state.loading && card == null) {
             CircularProgressIndicator()
         } else if (card == null) {
             Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Keine neuen Profile", style = MaterialTheme.typography.titleLarge)
-                    Text(if (state.activeRunId == null) "Starte eine Suche oder aktualisiere den lokalen Bestand."
-                        else "Keine unbewerteten Treffer in diesem Suchlauf. Ändere die Filter oder starte eine neue Suche.")
-                    OutlinedButton(onClick = onRefresh) { Text("Erneut laden") }
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
+                    Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
+                    OutlinedButton(onClick = onReset, enabled = enabled) { Text("Deck neu beginnen") }
                 }
             }
-        } else {
-            var drag by remember(card.personId) { mutableFloatStateOf(0f) }
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .graphicsLayer { translationX = drag; rotationZ = drag / 45f }
-                    .pointerInput(card.personId, state.busy, searchLoading) {
-                        if (!state.busy && !searchLoading) {
-                            detectHorizontalDragGestures(
-                                onHorizontalDrag = { change, delta ->
-                                    change.consume()
-                                    drag = (drag + delta).coerceIn(-300f, 300f)
+        } else key(card.listingId) {
+            val profile = current
+            val matchesOwner = profile == null || profile.identity.personId == card.personId
+            val actions = enabled && matchesOwner
+            val density = LocalDensity.current.density
+            var drag by remember { mutableFloatStateOf(0f) }
+            val listState = rememberLazyListState()
+            val person = profile?.person?.takeIf { matchesOwner }?.copy(
+                preference = card.preference, favorite = card.favorite,
+            )
+            val fallback = listOfNotNull(card.thumbnailUrl?.let {
+                ProfileMediaItem("IMAGE", it, card.localPath, 0u)
+            } ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val heroHeight = (maxHeight * .88f).coerceIn(200.dp, 720.dp)
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    item(key = "hero") {
+                        // Only the image surface owns horizontal decisions. Vertical drags
+                        // remain with LazyColumn; tap zones keep their click semantics.
+                        ProfileMediaHero(
+                            media = profile?.media?.ifEmpty { fallback } ?: fallback,
+                            modifier = Modifier.fillMaxWidth().height(heroHeight)
+                                .graphicsLayer { translationX = drag; rotationZ = drag / (45 * density) }
+                                .pointerInput(card.listingId, actions, density) {
+                                    if (actions) detectHorizontalDragGestures(
+                                        onHorizontalDrag = { change, delta ->
+                                            change.consume()
+                                            drag = (drag + delta).coerceIn(-300 * density, 300 * density)
+                                        },
+                                        onDragEnd = {
+                                            val decision = swipePreference(drag / density)
+                                            drag = 0f
+                                            decision?.let { onChoose(card.listingId, it) }
+                                        },
+                                        onDragCancel = { drag = 0f },
+                                    )
                                 },
-                                onDragEnd = {
-                                    val distance = drag
-                                    drag = 0f
-                                    if (distance > 110f) onChoose(card.personId, Preference.LIKE)
-                                    if (distance < -110f) onChoose(card.personId, Preference.DISLIKE)
-                                },
-                                onDragCancel = { drag = 0f },
-                            )
-                        }
-                    },
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ProfileThumbnail(
-                        url = card.thumbnailUrl,
-                        localPath = card.localPath,
-                        modifier = Modifier.fillMaxWidth().weight(1f).heightIn(min = 200.dp),
-                    )
-                    Column(
-                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        ProfileIdentityHeader(card.name, card.city, hasVideo = card.hasVideo)
-                        card.description?.takeIf { it.isNotBlank() }?.let {
-                            Text(it.take(190), maxLines = 3, style = MaterialTheme.typography.bodyMedium)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(
-                                modifier = Modifier.weight(1f),
-                                onClick = { onProfile(card.listingId, card.personId) },
-                            ) { Text("Profil ansehen") }
-                            IconButton(onClick = { onFavorite(card.personId) }, enabled = !state.busy && !searchLoading) {
-                                Icon(
-                                    if (card.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = if (card.favorite) "Favorit entfernen" else "Zu Favoriten",
-                                )
-                            }
-                        }
+                            originalUrl = profile?.identity?.profileUrl,
+                        )
                     }
+                    item(key = "header") {
+                        if (profile == null) ProfileIdentityHeader(card.name, card.city, hasVideo = card.hasVideo)
+                        else ProfileHeader(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
+                        if (!matchesOwner) Text("Personenzuordnung geändert. Bitte aktualisieren.")
+                        profile?.warning?.let { Text(it) }
+                        readError?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = { decks.remove(card.listingId); retry++ }, enabled = enabled) { Text("Profil erneut laden") }
+                        }
+                        if (profile == null && readError == null && visible) CircularProgressIndicator(Modifier.size(24.dp))
+                    }
+                    item(key = "actions") {
+                        ProfileActionRail(person, profile?.profile?.phoneDisplay, !actions,
+                            onFavorite = onFavorite, onPreference = { _, preference -> onChoose(card.listingId, preference) })
+                        if (person == null) TextButton(onClick = { onFavorite(card.personId) }, enabled = actions) {
+                            Text(if (card.favorite) "Favorit entfernen" else "Favorit")
+                        }
+                        TextButton(onClick = { onProfile(card.listingId, card.personId) }, enabled = enabled) { Text("Profil öffnen") }
+                    }
+                    if (profile != null) profileContent(profile.profile, profile.candidates, profile.history, !actions)
+                    else card.description?.let { item { Text(it) } }
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    enabled = !state.busy && !searchLoading,
-                    onClick = { onChoose(card.personId, Preference.DISLIKE) },
-                ) { Text("Nein") }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    enabled = !state.busy && !searchLoading,
-                    onClick = { onSkip(card.personId) },
-                ) { Text("Später") }
-                Button(
-                    modifier = Modifier.weight(1f),
-                    enabled = !state.busy && !searchLoading,
-                    onClick = { onChoose(card.personId, Preference.LIKE) },
-                ) { Text("Gefällt") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = { onChoose(card.listingId, Preference.DISLIKE) },
+                    enabled = actions, modifier = Modifier.weight(1f)) { Text("Nein") }
+                OutlinedButton(onClick = { onSkip(card.listingId) },
+                    enabled = enabled, modifier = Modifier.weight(1f)) { Text("Später") }
+                Button(onClick = { onChoose(card.listingId, Preference.LIKE) },
+                    enabled = actions, modifier = Modifier.weight(1f)) { Text("Gefällt") }
             }
-            Text("Wischen: links Nein, rechts Gefällt", style = MaterialTheme.typography.labelSmall)
         }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }
 
