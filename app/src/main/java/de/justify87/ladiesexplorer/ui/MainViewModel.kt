@@ -89,6 +89,7 @@ data class SearchUiState(
     val profileOpen: Boolean = false,
     val profileSessionId: Long = 0L,
     val profile: ProfileResponse? = null,
+    val profileIdentity: ProfileIdentity? = null,
     val selectedPersonId: Long? = null,
     val selectedPerson: PersonSummary? = null,
     val profileMedia: List<ProfileMediaItem> = emptyList(),
@@ -168,7 +169,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun closeProfile() {
         invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(profileOpen = false, profile = null, selectedPersonId = null,
+            it.copy(profileOpen = false, profile = null, profileIdentity = null, selectedPersonId = null,
                 savedResultsLoadingMore = false,
                 selectedPerson = null, profileMedia = emptyList(), loading = false,
                 archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
@@ -722,7 +723,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun choosePreference(personId: Long, preference: Preference) {
-        if (_discoverState.value.busy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
+        if (_discoverState.value.busy || _searchUiState.value.actionBusy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
         val epoch = ++discoveryEpoch
         _discoverState.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
@@ -782,7 +783,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update {
             it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
                 savedResultsLoadingMore=false,
-                loading=true,profile=null,profileMedia=emptyList(),changeEvents=emptyList(),
+                loading=true,profile=null,profileIdentity=null,profileMedia=emptyList(),changeEvents=emptyList(),
                 identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false)
         }
@@ -802,12 +803,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 if (requestId != profileRequestId) return@launch
                 val items = core.profileMedia(profile.snapshotId)
-                val person = core.person(personId)
-                val changes = core.changeEvents(personId)
+                val identity = core.profileIdentity(listingId)
+                val person = core.person(identity.personId)
+                val changes = core.changeEvents(identity.personId)
                 val candidates = core.identityCandidates(listingId)
                 if (requestId != profileRequestId) return@launch
                 _searchUiState.update {
-                    it.copy(loading=false,profile=profile,selectedPerson=person,
+                    it.copy(loading=false,profile=profile,profileIdentity=identity,
+                        selectedPersonId=identity.personId,selectedPerson=person,
                         profileMedia=items,changeEvents=changes,identityCandidates=candidates,
                         mediaWarning=refreshError,archiving=!showingArchive)
                 }
@@ -848,20 +851,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun confirmIdentity(listingId: Long, targetPersonId: Long) {
         val active = _searchUiState.value
-        if (active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
+        if (_discoverState.value.busy || active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
         val requestId = profileRequestId
         archiveControl?.cancel()
         _searchUiState.update { it.copy(actionBusy=true,actionError=null) }
         viewModelScope.launch {
             try {
                 core.confirmIdentityMatch(listingId,targetPersonId)
-                val history = core.changeEvents(targetPersonId)
+                val identity = core.profileIdentity(listingId)
+                val history = core.changeEvents(identity.personId)
                 val candidates = core.identityCandidates(listingId)
-                val person = core.person(targetPersonId)
+                val person = core.person(identity.personId)
                 if (requestId == profileRequestId) {
                     _searchUiState.update {
                         if (it.profile?.listingId == listingId) {
-                            it.copy(actionBusy=false,selectedPersonId=targetPersonId,
+                            it.copy(actionBusy=false,selectedPersonId=identity.personId,profileIdentity=identity,
                                 selectedPerson=person,changeEvents=history,identityCandidates=candidates)
                         } else it
                     }
