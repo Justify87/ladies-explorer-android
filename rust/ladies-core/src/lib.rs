@@ -144,8 +144,8 @@ pub use discovery::{DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaI
 pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
-pub use media::MediaArchiveReport;
 pub use map::{MapOverview, MapProfile};
+pub use media::MediaArchiveReport;
 pub use operation::RequestControl;
 pub use saved_search::{
     SavedResultCursor, SavedSearchCard, SavedSearchInfo, SavedSearchResultPage,
