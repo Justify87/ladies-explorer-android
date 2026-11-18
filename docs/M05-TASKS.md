@@ -4,9 +4,9 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 
 | Task | Abh. | Matrix | Umsetzung (eng begrenzt) | Akzeptanz / Test | Status | Evidenz / Rest |
 | --- | --- | --- | --- | --- | --- | --- |
-| T0.1 | — | — | Legacy-Screens, Router, State, CSS, Bootstrap-Nachbearbeitungen sowie native APIs/Tests je P-ID erneut inventarisieren; Zeilen-/Commit-Belege ergänzen. | Vollständige Matrix, Lücken/Abweichungen X-ID, kein unbelegter Sollumfang | TODO | — |
-| T0.2 | 0.1 | — | Synthetische Referenzdaten und Szenarien anlegen; Legacy-Browser und native Ausgangs-UI für Hauptscreens erfassen; falls keine Laufzeit verfügbar, Blocker konkret dokumentieren. | Reproduzierbare Referenz/Viewport/Fixture, keine privaten Daten | TODO | — |
-| T0.3 | 0.1,0.2 | — | Verträge SOURCE, ARCHITECTURE, MAP, Import und Diagnose gegen Plan prüfen; offene Klassifikationen, Video, Kartenbezug, Notiz-Semantik entscheiden/nutzerseitig bestätigen falls Scope-Konflikt. | G0 Review mit expliziten offenen Gerätefällen | TODO | — |
+| T0.1 | — | — | Legacy-Screens, Router, State, CSS, Bootstrap-Nachbearbeitungen sowie native APIs/Tests je P-ID erneut inventarisieren; Zeilen-/Commit-Belege ergänzen. | Vollständige Matrix, Lücken/Abweichungen X-ID, kein unbelegter Sollumfang | DONE | P01–P41 statisch commit-fixiert in M05-PARITY |
+| T0.2 | 0.1 | — | Synthetische Referenzdaten und Szenarien anlegen; Legacy-Hauptscreens quellcodebasiert erfassen; native Ausgangs-UI bei verfügbarer Geräteumgebung manuell prüfen; fehlende Gerätebelege dokumentieren. Keine Browser-Testwerkzeuge. | Reproduzierbare Referenz/Viewport/Fixture, keine privaten Daten | DONE | Generator und Rust-Importtest bestanden in CI 44389833836; synthetische Referenz reproduzierbar. Legacy statisch, native visuelle Abnahme DEVICE_PENDING |
+| T0.3 | 0.1,0.2 | — | Verträge SOURCE, ARCHITECTURE, MAP, Import und Diagnose gegen Plan prüfen; offene Klassifikationen, Video, Kartenbezug, Notiz-Semantik entscheiden/nutzerseitig bestätigen falls Scope-Konflikt. | G0 Review mit expliziten offenen Gerätefällen | DONE | Statischer Vertragsreview unten; Gerätebelege ausdrücklich DEVICE_PENDING |
 | T1.1 | 0.3 | P01 | Theme-Farben/Shapes/Typografie, Dark Mode, Kontrast und wiederverwendbare Tokens; dynamische Defaults ersetzen. | Farb-/Layoutvergleich hell/dunkel, Font Scale/Touch | TODO | — |
 | T1.2 | 1.1 | P02 | Kontextheader, Bottom-Navigation, Insets; vier Root-Ziele, Ansichtswechsel vorbereiten. | Alle vorhandenen Funktionen erreichbar, kein doppelter Header | TODO | — |
 | T1.3 | 1.2 | P03 | Stabile Navigation und Back-Stack; Scroll-/Tab-/Medienposition gezielt erhalten; keine stale Profile. | Back aus jedem Einstieg, Rotation und schneller Wechsel | TODO | — |
@@ -51,7 +51,7 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 
 | Gate | Tasks | Vorgänger | Review-Schwerpunkt | Status | Beleg/PR |
 | --- | --- | --- | --- | --- | --- |
-| G0 | T0.1–T0.3 | — | Referenz, vollständige Zuordnung, Grenzen, reproduzierbare Fixtures | TODO | — |
+| G0 | T0.1–T0.3 | — | Referenz, vollständige Zuordnung, Grenzen, reproduzierbare Fixtures | DONE | G0 technisch abgenommen: P01–P41, Fixture, Import und Full-CI [44390396359](https://github.com/Justify87/ladies-explorer-android/actions/runs/44390396359) auf fb27b6a1; DEVICE_PENDING (G9); Mergefreigabe ausstehend |
 | G1 | T1.1–T1.4 | G0 | Design, Back/Insets, keine verlorenen Root-Funktionen | TODO | — |
 | G2 | T2.1–T2.7 | G1 | Aktive Suche, lokale Filter, Radius/Pagination/Delta | TODO | — |
 | G3 | T3.1–T3.5 | G2 | Gemeinsames Profil/Medien, Archiv/Offline/Intents | TODO | — |
@@ -76,3 +76,15 @@ Vor Beginn eines Meilensteins muss das Vorgänger-Gate erfüllt bzw. eine ausdr�
 ## Agentenstart
 
 Auftrag: „Setze den ersten ausführbaren M05-Task bzw. vereinbarten Teilmeilenstein gemäß AGENTS.md, M05-PLAN.md, M05-PARITY.md und diesem Aufgabenregister um. Prüfe main und Abhängigkeiten, arbeite in neuem Branch/PR, teste, reviewe und aktualisiere Status/Evidenz; kein Merge ohne Freigabe, keine M06/M07-Arbeiten.“ Bei Fortsetzung aus dem Tracker statt der Chat-Historie ableiten, was wirklich noch offen ist.
+
+### G0 – statischer Vertragsreview / offene Abnahmen (18.11.2026)
+
+- Ausgang main `3d210041a35e20acac97a790499a05e1bb39266c`, keine offenen PRs; Legacy `9c514af6ce3659089807fefd4ed5040599975a5a`. P01–P41 verankert. X01–X11 unverändert; keine produktive UI/API-/Datenbankänderung. Die native `FavoritesScreen` liegt in DiscoveryScreen.kt (Matrix korrigiert).
+- P05/P10/P11: Legacy `search_runtime.js` hydratisiert nach ready-Preview transient; Legacy Preview kann aus Seite-1-Karten einen Count bilden. Native verbindlich: keine automatische persistierende Suche, aktiver Run getrennt, echte Gesamtzahl oder unbekannt, keine Radiusaufweitung; `SOURCE` 9–15 + `source/network.rs` 1119–1404. T2.1/T2.5 berücksichtigen, keine Rücknahme des Vertrags.
+- P13: Legacy Business-Website wird über die explizite Klasse `einzelansicht-url` erkannt (`business_profiles.py`), STUDIO/FACEAPP über Marker in selectors. Native SearchCard bietet KI-Bool, nicht diese Klassifizierungen; `SOURCE` 26 und `saved_search.rs` 503–584. Bestehende unsupported Definition bleibt sichtbar/nicht ausführbar; T2.6 prüft Quell-Evidenz, bis dahin kein Klassifizierer.
+- P25: Requested Fixes entfernen neue Likes auch ohne Hide-Likes bis SEARCH_RESULTS; Abweichung zu alleiniger Filterprojektion/Replay. T5.2 muss dieses sichtbare Verhalten bewusst gegen gemeinsame native Projektion prüfen; keine eigenmächtige Änderung der Präferenzregeln. Bei Konflikt Nutzerentscheidung einholen.
+- P31: Legacy PersonUserState.private_note getrennt von Encounter-Notiz; `ARCHITECTURE` 8/51, `DATA-IMPORT` 34–46 und `schema.rs` 17–31. T6.5 nur Personennotiz transaktional ergänzen, Treffen nicht anfassen.
+- P04/P26: `MAP` 22–25/41: DB-weite Personenauswahl, keine Netzabfrage bei overview, Geocoding ausdrücklich gestartet. In M05 nur Oberfläche/Umfang beschriften; Lifecycle erhalten. Video extern, lokale Medien zuerst (`ARCHITECTURE` 57–58); Diagnose TXT/HAR-Vertrag unverändert (`DIAGNOSTICS` 29–40). Kein Scope-Drift, kein Altcode entfernt, keine neuen App-Abhängigkeiten.
+- Generator prüft SQLite-Fremdschlüssel, Anzahl, ZIP-Inhalt; gezielter Rust-Importtest nutzt vorhandenen Importer. CI 44389388237: Generator/Export bestanden, Rustfmt fehlgeschlagen; ursächlich korrigiert. CI [44389833836](https://github.com/Justify87/ladies-explorer-android/actions/runs/44389833836) auf `f21f39c9`: vollständig grün (134 reguläre Rust-Tests + gezielter Importtest bestanden, Clippy, APK, JVM-Tests, Lint). Kein visueller Rendernachweis; Android SDK/ADB lokal nicht verfügbar. G0-Review abgeschlossen: auch Full-CI [44390396359](https://github.com/Justify87/ladies-explorer-android/actions/runs/44390396359) auf `fb27b6a1` bestanden. Geräteprüfung DEVICE_PENDING, Mergefreigabe ausstehend.
+
+- Nutzerentscheidung 18.11.2026: Kein Browser-Testwerkzeug, kein Playwright, keine Ersatzautomatisierung. Der versuchsweise angelegte Adapter wurde vollständig aus dem PR-Diff entfernt; keine Browser-Abhängigkeiten oder CI-Schritte. Legacy-Parität durch statische Quellbelege; manuelle native Geräteprüfung bleibt offen und spätestens G9 erforderlich. M05.1 erst nach G0-Freigabe und Integration; kein automatischer Merge.

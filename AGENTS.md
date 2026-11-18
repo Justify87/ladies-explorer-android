@@ -18,4 +18,4 @@ Dieses Repository ist ein lokales Android-Hobbyprojekt. Arbeitsweise: KISS, evid
 - Erst nach bestandenen Gate-Kriterien und erforderlicher Nutzerfreigabe integrieren; Folgemeilenstein auf integriertem Stand beginnen. Keine Aufgabe ohne Beleg schließen.
 
 ## Prüfkommandos
-Siehe [README](README.md#prüfung--ci) und [CI](.github/workflows/android.yml). Für M05 zusätzlich synthetische UI- und State-Regressionen sowie visuelle Geräteprüfung gemäß M05-Plan. Harness ist eine agentenlesbare Prozessvorgabe, keine eigenständig laufende Automation.
+Siehe [README](README.md#prüfung--ci) und [CI](.github/workflows/android.yml). Für M05 zusätzlich synthetische native UI- und State-Regressionen sowie manuelle visuelle Geräteprüfung gemäß M05-Plan. Legacy-Referenz quellcodebasiert; keine Browser-Testwerkzeuge, Browser-Automatisierung oder Ersatz-Testserver (Nutzerentscheidung). Harness ist eine agentenlesbare Prozessvorgabe, keine eigenständig laufende Automation.
