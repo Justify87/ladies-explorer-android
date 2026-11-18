@@ -14,6 +14,10 @@ import java.io.File
 class CoreStore(context: Context) {
     private val appFiles = context.filesDir
     private val preferences = context.getSharedPreferences("diagnostics", Context.MODE_PRIVATE)
+    private val explorerPreferences = context.getSharedPreferences("explorer", Context.MODE_PRIVATE)
+
+    fun replayLikes(): Boolean = explorerPreferences.getBoolean("replay_likes", true)
+    fun setReplayLikes(value: Boolean) { explorerPreferences.edit().putBoolean("replay_likes", value).apply() }
     private val logger = Logger.withTag("LadiesExplorer")
     @Volatile var imageCaptureMode: CaptureMode = CaptureMode.OFF
         private set
