@@ -74,7 +74,7 @@ class MainActivity : ComponentActivity() {
                 }
                 toast(result.fold(
                     onSuccess = { "HAR gespeichert." },
-                    onFailure = { "HAR-Export fehlgeschlagen: \${it.message}" },
+                    onFailure = { "HAR-Export fehlgeschlagen: ${it.message}" },
                 ))
                 viewModel.refresh()
             }
@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val snapshot = runCatching { create() }
                 .getOrElse { failure ->
-                    toast("Export fehlgeschlagen: \${failure.message}")
+                    toast("Export fehlgeschlagen: ${failure.message}")
                     viewModel.refresh()
                     return@launch
                 }
@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
                 // Keep snapshot in the bounded temporary directory while a receiver reads it.
             } catch (failure: Exception) {
                 snapshot.delete()
-                toast("Teilen fehlgeschlagen: \${failure.message}")
+                toast("Teilen fehlgeschlagen: ${failure.message}")
             }
             viewModel.refresh()
         }
