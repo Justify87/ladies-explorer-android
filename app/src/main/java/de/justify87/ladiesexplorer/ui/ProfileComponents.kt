@@ -166,7 +166,7 @@ internal fun ProfileMediaHero(
     if (fullscreen && item?.kind == "IMAGE") {
         Dialog(onDismissRequest = { fullscreen = false }) {
             ProfileImage(item.url, item.localPath, Modifier.fillMaxWidth().heightIn(min = 240.dp)
-                .aspectRatio(.72f).clickable { fullscreen = false }, ContentScale.Fit)
+                .aspectRatio(.72f).clickable { fullscreen = false }, ContentScale.Fit, allowRetry = true)
         }
     }
     Box(modifier.clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceVariant)) {
@@ -230,13 +230,16 @@ internal fun ProfileIdentityHeader(
     identity: ProfileIdentity? = null,
     person: PersonSummary? = null,
     hasVideo: Boolean = false,
+    fromArchive: Boolean = false,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(listOfNotNull(name.ifBlank { "Unbekannt" }, age).joinToString(", "),
             style = MaterialTheme.typography.headlineMedium)
         Text(place.ifBlank { "Ort unbekannt" }, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val badges = listOfNotNull(
-            statusLabel(identity?.status).takeIf { identity != null },
+            statusLabel(identity?.status).takeIf { identity != null }
+                ?.let { if (fromArchive) "Zuletzt bekannt: $it" else it },
+            "Archivierte Daten".takeIf { fromArchive },
             when {
                 (person?.listingCount ?: 0u) > 1u -> "Person bekannt · ${person?.listingCount} Anzeigen"
                 identity?.personNew == true -> "Person neu erkannt"
