@@ -32,6 +32,10 @@ data class HomeUiState(
 data class DiscoverUiState(
     val cards: List<DiscoveryCard> = emptyList(),
     val favorites: List<DiscoveryCard> = emptyList(),
+    val nextCursor: DiscoveryCursor? = null,
+    val favoritesNextCursor: DiscoveryCursor? = null,
+    val loadingMore: Boolean = false,
+    val favoritesLoadingMore: Boolean = false,
     val loading: Boolean = true,
     val busy: Boolean = false,
     val error: String? = null,
@@ -351,21 +355,93 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_discoverState.value.busy) return
         val epoch = ++discoveryEpoch
         viewModelScope.launch {
-            _discoverState.update { it.copy(loading = true) }
+            _discoverState.update {
+                it.copy(loading = true, loadingMore = false, favoritesLoadingMore = false)
+            }
             try {
-                val cards = core.discoveryCards().filterNot { it.personId in skippedPeople }
-                val favorites = core.discoveryCards(true)
+                val cards = core.discoveryCards(excludedPeople = skippedPeople.toList())
+                val favorites = core.discoveryCards(favoritesOnly = true)
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        it.copy(cards=cards,favorites=favorites,loading=false,error=null)
+                        it.copy(
+                            cards = cards.cards, nextCursor = cards.nextCursor,
+                            favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
+                            loading = false, error = null,
+                        )
                     }
                 }
             } catch (cancellation: CancellationException) {
-                if (epoch == discoveryEpoch) _discoverState.update { it.copy(loading=false) }
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(loading = false) }
                 throw cancellation
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
-                    _discoverState.update { it.copy(loading=false,error=failure.message ?: "Entdecken fehlgeschlagen") }
+                    _discoverState.update {
+                        it.copy(loading = false, error = failure.message ?: "Entdecken fehlgeschlagen")
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadMoreDiscovery() {
+        val state = _discoverState.value
+        val cursor = state.nextCursor ?: return
+        if (state.loading || state.loadingMore || state.busy) return
+        val epoch = discoveryEpoch
+        _discoverState.update { it.copy(loadingMore = true) }
+        viewModelScope.launch {
+            try {
+                val page = core.discoveryCards(cursor = cursor, excludedPeople = skippedPeople.toList())
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        val known = it.cards.mapTo(mutableSetOf()) { card -> card.personId }
+                        it.copy(
+                            cards = it.cards + page.cards.filter { card -> known.add(card.personId) },
+                            nextCursor = page.nextCursor,
+                            loadingMore = false,
+                        )
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(loadingMore = false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(loadingMore = false, error = failure.message ?: "Weitere Profile konnten nicht geladen werden")
+                    }
+                }
+            }
+        }
+    }
+
+    fun loadMoreFavorites() {
+        val state = _discoverState.value
+        val cursor = state.favoritesNextCursor ?: return
+        if (state.loading || state.favoritesLoadingMore || state.busy) return
+        val epoch = discoveryEpoch
+        _discoverState.update { it.copy(favoritesLoadingMore = true) }
+        viewModelScope.launch {
+            try {
+                val page = core.discoveryCards(favoritesOnly = true, cursor = cursor)
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        val known = it.favorites.mapTo(mutableSetOf()) { card -> card.personId }
+                        it.copy(
+                            favorites = it.favorites + page.cards.filter { card -> known.add(card.personId) },
+                            favoritesNextCursor = page.nextCursor,
+                            favoritesLoadingMore = false,
+                        )
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(favoritesLoadingMore = false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(favoritesLoadingMore = false, error = failure.message ?: "Weitere Favoriten konnten nicht geladen werden")
+                    }
                 }
             }
         }
@@ -373,29 +449,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun skipCard(personId: Long) {
         skippedPeople.add(personId)
-        _discoverState.update { it.copy(cards=it.cards.filterNot { card -> card.personId==personId }) }
+        _discoverState.update { it.copy(cards = it.cards.filterNot { card -> card.personId == personId }) }
+        if (_discoverState.value.cards.size < 10) loadMoreDiscovery()
     }
 
     fun choosePreference(personId: Long, preference: Preference) {
         if (_discoverState.value.busy) return
         val epoch = ++discoveryEpoch
-        _discoverState.update { it.copy(busy=true,error=null) }
+        _discoverState.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             try {
-                core.setPreference(personId,preference)
+                core.setPreference(personId, preference)
                 skippedPeople.remove(personId)
-                val cards = core.discoveryCards().filterNot { it.personId in skippedPeople }
-                val favorites = core.discoveryCards(true)
-                if (epoch == discoveryEpoch) _discoverState.update { it.copy(cards=cards,favorites=favorites,busy=false) }
+                val cards = core.discoveryCards(excludedPeople = skippedPeople.toList())
+                val favorites = core.discoveryCards(favoritesOnly = true)
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update {
+                        it.copy(
+                            cards = cards.cards, nextCursor = cards.nextCursor,
+                            favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
+                            busy = false, loadingMore = false, favoritesLoadingMore = false,
+                        )
+                    }
+                }
                 val updatedPerson = core.person(personId)
                 _searchUiState.update {
-                    if (it.selectedPersonId == personId) it.copy(selectedPerson=updatedPerson) else it
+                    if (it.selectedPersonId == personId) it.copy(selectedPerson = updatedPerson) else it
                 }
             } catch (cancellation: CancellationException) {
-                _discoverState.update { it.copy(busy=false) }
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
                 throw cancellation
             } catch (failure: Exception) {
-                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy=false,error=failure.message ?: "Entscheidung nicht gespeichert") }
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update { it.copy(busy = false, error = failure.message ?: "Entscheidung nicht gespeichert") }
+                }
             }
         }
     }
@@ -407,21 +494,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val person = core.person(personId) ?: error("Person nicht gefunden")
-                core.setFavorite(personId,!person.favorite)
-                val cards = core.discoveryCards().filterNot { it.personId in skippedPeople }
-                val favorites = core.discoveryCards(true)
+                core.setFavorite(personId, !person.favorite)
+                val cards = core.discoveryCards(excludedPeople = skippedPeople.toList())
+                val favorites = core.discoveryCards(favoritesOnly = true)
                 if (epoch == discoveryEpoch) {
-                    _discoverState.update { it.copy(cards=cards,favorites=favorites,busy=false,error=null) }
+                    _discoverState.update {
+                        it.copy(
+                            cards = cards.cards, nextCursor = cards.nextCursor,
+                            favorites = favorites.cards, favoritesNextCursor = favorites.nextCursor,
+                            busy = false, loadingMore = false, favoritesLoadingMore = false, error = null,
+                        )
+                    }
                 }
                 val personState = core.person(personId)
                 _searchUiState.update {
-                    if (it.selectedPersonId == personId) it.copy(selectedPerson=personState) else it
+                    if (it.selectedPersonId == personId) it.copy(selectedPerson = personState) else it
                 }
             } catch (cancellation: CancellationException) {
-                _discoverState.update { it.copy(busy=false) }
+                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy = false) }
                 throw cancellation
             } catch (failure: Exception) {
-                if (epoch == discoveryEpoch) _discoverState.update { it.copy(busy=false,error=failure.message ?: "Favorit konnte nicht geändert werden") }
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update { it.copy(busy = false, error = failure.message ?: "Favorit konnte nicht geändert werden") }
+                }
             }
         }
     }

@@ -146,6 +146,7 @@ fun LadiesApp(
                     onRefresh=viewModel::refreshDiscovery,
                     onProfile=viewModel::loadProfile,
                     onFavorite=viewModel::toggleFavorite,
+                    onLoadMore=viewModel::loadMoreFavorites,
                     modifier=modifier,
                 )
                 Tab.Settings -> SettingsScreen(

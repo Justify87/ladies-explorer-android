@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -34,6 +35,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import java.io.File
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -109,6 +113,7 @@ fun DiscoverScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ProfileThumbnail(
                         url = card.thumbnailUrl,
+                        localPath = card.localPath,
                         modifier = Modifier.fillMaxWidth().weight(1f).heightIn(min = 200.dp),
                     )
                     Column(
@@ -167,9 +172,20 @@ fun FavoritesScreen(
     onRefresh: () -> Unit,
     onProfile: (Long, Long) -> Unit,
     onFavorite: (Long) -> Unit,
+    onLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(state.favorites.size, state.favoritesNextCursor) {
+        if (state.favoritesNextCursor != null) {
+            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+                .collect { last ->
+                    if (last >= state.favorites.size - 3) onLoadMore()
+                }
+        }
+    }
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -193,6 +209,7 @@ fun FavoritesScreen(
                 ) {
                     ProfileThumbnail(
                         url = card.thumbnailUrl,
+                        localPath = card.localPath,
                         modifier = Modifier.size(96.dp).clip(RoundedCornerShape(12.dp)),
                     )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -208,20 +225,21 @@ fun FavoritesScreen(
                 }
             }
         }
+        if (state.favoritesLoadingMore) item { CircularProgressIndicator() }
         state.error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
     }
 }
 
 @Composable
-fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier) {
-    if (url.isNullOrBlank()) {
+fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: String? = null) {
+    if (url.isNullOrBlank() && localPath == null) {
         Box(
             modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) { Text("Kein Bild",style = MaterialTheme.typography.bodySmall) }
     } else {
         AsyncImage(
-            model = url,
+            model = localPath?.let(::File) ?: url,
             contentDescription = "Profilbild",
             contentScale = ContentScale.Crop,
             modifier = modifier,

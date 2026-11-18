@@ -101,8 +101,13 @@ class CoreStore(context: Context) {
         engine.sourceFilterCatalog()
     }
 
-    suspend fun discoveryCards(favoritesOnly: Boolean = false): List<DiscoveryCard> =
-        withContext(Dispatchers.IO) { engine.discoveryCards(favoritesOnly, 200u) }
+    suspend fun discoveryCards(
+        favoritesOnly: Boolean = false,
+        cursor: DiscoveryCursor? = null,
+        excludedPeople: List<Long> = emptyList(),
+    ): DiscoveryPage = withContext(Dispatchers.IO) {
+        engine.discoveryCards(favoritesOnly, 50u, cursor, excludedPeople)
+    }
 
     suspend fun profileMedia(snapshotId: Long): List<ProfileMediaItem> =
         withContext(Dispatchers.IO) { engine.profileMedia(snapshotId) }
