@@ -550,6 +550,9 @@ mod tests {
         assert!(list(&core).unwrap()[0].last_run_at.is_some());
         result.profiles = vec![card(lb, b, "102"), card(lc, c, "103")];
         persist_results(&core, &id, &result).unwrap();
+        let stored = results(&core, id.clone()).unwrap();
+        assert_eq!(stored.len(), 2);
+        assert_eq!(stored[0].listing_id, Some(lb));
         let db = core.connection().unwrap();
         let delta: String = db
             .query_row(
