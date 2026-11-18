@@ -273,3 +273,95 @@ impl SearchRequest {
         }
     }
 }
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ProfileIdentity {
+    pub person_id: i64,
+    pub status: String,
+    pub profile_url: Option<String>,
+    pub person_new: bool,
+    pub listing_new: bool,
+    pub has_video: bool,
+}
+
+pub(crate) fn profile_identity(
+    core: &LadiesCore,
+    listing_id: i64,
+) -> Result<ProfileIdentity, CoreError> {
+    let db = core.connection()?;
+    let (person_id, status, url, person_new, listing_new, has_video): (
+        i64,
+        String,
+        Option<String>,
+        bool,
+        bool,
+        bool,
+    ) = db.query_row(
+        "SELECT l.person_id,l.current_status,l.current_url,
+                COALESCE(unixepoch('now')-unixepoch(p.first_seen_at) BETWEEN 0 AND 129599,0),
+                COALESCE(unixepoch('now')-unixepoch(COALESCE(l.published_at,l.first_seen_at))
+                    BETWEEN 0 AND 129599,0),
+                CASE WHEN l.current_snapshot_id IS NOT NULL THEN EXISTS(
+                    SELECT 1 FROM snapshot_media m WHERE m.snapshot_id=l.current_snapshot_id
+                    AND m.kind='VIDEO')
+                ELSE COALESCE((SELECT r.has_video FROM search_results r
+                    WHERE r.listing_id=l.listing_id
+                    ORDER BY r.observed_at DESC,r.search_result_id DESC LIMIT 1),0) END
+         FROM listings l JOIN persons p ON p.person_id=l.person_id
+         WHERE l.listing_id=?1",
+        [listing_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+    )?;
+    Ok(ProfileIdentity {
+        person_id,
+        status: match status.as_str() {
+            "ACTIVE" | "INACTIVE" | "UNAVAILABLE" => status,
+            _ => "UNKNOWN".into(),
+        },
+        profile_url: url.and_then(|value| parse::valid_profile_url(&value)),
+        person_new,
+        listing_new,
+        has_video,
+    })
+}
+
+#[cfg(test)]
+mod profile_identity_tests {
+    use super::*;
+
+    #[test]
+    fn identity_uses_listing_owner_and_only_persisted_status_and_media() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(Some("Fixture".into())).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "42".into(), None)
+            .unwrap();
+        let value = profile_identity(&core, listing).unwrap();
+        assert_eq!(value.person_id, person);
+        assert_eq!(value.status, "UNKNOWN");
+        assert!(value.person_new && value.listing_new);
+        assert!(!value.has_video);
+        assert!(value.profile_url.is_none());
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listings SET current_status='ACTIVE',
+                 current_url='https://m.ladies.de/sex-anzeigen/42' WHERE listing_id=?1",
+                [listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE persons SET first_seen_at='2000-01-01' WHERE person_id=?1",
+                [person],
+            )
+            .unwrap();
+        }
+        let value = profile_identity(&core, listing).unwrap();
+        assert_eq!(value.status, "ACTIVE");
+        assert!(!value.person_new);
+        assert_eq!(
+            value.profile_url.as_deref(),
+            Some("https://www.ladies.de/sex-anzeigen/42")
+        );
+    }
+}
