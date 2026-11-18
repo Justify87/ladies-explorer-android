@@ -149,3 +149,11 @@ Technische Abnahme G3 bestanden: [Full-CI #321](https://github.com/Justify87/lad
 | P23 | SwipeProfile.kt, CoreStore, source/mod.rs/network.rs; DiscoveryScreen lifecycle effects | 2 kommende Profile, 2 Bilder pro Profil; vorhandene Snapshots/Coil, keine Archivdownloads; kooperativer Abbruch mit bestehendem begrenztem HTTP-Timeout. |
 
 G4 REVIEW, Full-CI und manuelle Geräte-/Live-Quellprüfung offen (DEVICE_PENDING).
+
+## Ergänzung M05.4a
+
+| ID | Anforderung | Ist-Evidenz / Status | Task |
+|---|---|---|---|
+| P42 | Alle app-internen HTTP-Abrufe von ladies.de und Medien-CDNs ausschließlich Rust | OkHttp in LadiesApplication.kt; Profil-/Suchabruf bereits Rust; offen | T4a.1–T4a.3 |
+| P43 | Coil-Cache, Offline, Prefetch und HAR ohne direkten Android-Transport | ProfileComponents.kt, SwipeProfile.kt, media.rs, DIAGNOSTICS.md; offen | T4a.3–T4a.5 |
+| P44 | CI schützt die Quellen-HTTP-Grenze; MapLibre und externe Intents ausgenommen | Bestehende CI ohne spezifische Architekturprüfung; offen | T4a.6 |

@@ -42,3 +42,7 @@ Geräteabnahme: realer Import (mit lokalem Testbestand), vollständige Suche mit
 ## Pflege
 
 Der vereinbarte Plan definiert Soll/Scope; Code und Tests im jeweiligen main definieren den nachweisbaren Ist-Stand. Reale Tests belegen tatsächliches Verhalten auf dem Gerät bzw. an der Quelle. Neuere bestätigte Entscheidungen dürfen den Plan ändern, nicht bloße Implementierungsabweichungen. Bei einem PR, der den Vertrag ändert, die zuständige Fachdatei und ggf. den Roadmap-Status im selben PR aktualisieren. Keine neuen historischen Meilensteinberichte als parallele Spezifikation; alte Berichte sind in Git verfügbar.
+
+### Verbindlicher M05-Zwischenschritt M05.4a
+
+Zwischen M05.4 und M05.5: vollständiger Quellen-HTTP-Transport über den Rust-Core (inklusive Bild-/Medien-CDNs), Coil ohne eigenen HTTP-Client, Architekturcheck und konsolidierte Diagnose. MapLibre-Netzwerk und explizite externe Intents bleiben unverändert. Operativer Status ausschließlich in M05-TASKS; G4a ist Voraussetzung für G5.

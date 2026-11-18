@@ -27,6 +27,12 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | T4.2 | 4.1 | P21 | Medienhero/Profilinhalt ins Swipe-Deck einbetten; horizontal vs vertikal vs Tap, zugängliche Buttons. | Gestenfälle, Scrollen zu Details, kein versehentliches Like | REVIEW | PR #17, Implementierung und Regressionen committed; Full-CI ausstehend; DEVICE_PENDING |
 | T4.3 | 4.1,4.2 | P22 | Undo vorheriger DB-Präferenz + Position, Reset ohne Persistenz-Reset, sessionlokales Später; Fehler/Reentranz/Merge. | Undo/Reset/Skip Tests mit Race/Fehler/ID-Neuzuordnung | REVIEW | PR #17, Implementierung und Regressionen committed; Full-CI ausstehend; DEVICE_PENDING |
 | T4.4 | 4.2,4.3 | P23 | Begrenzte Vorausladung für nächste Profile/Medien; Cancel bei Suche/Navigation, kein unkontrolliertes Archivieren. | Keine stale Updates, begrenzte Requests, Diagnosebeleg | REVIEW | PR #17, Implementierung und Regressionen committed; Full-CI ausstehend; DEVICE_PENDING |
+| T4a.1 | 4.4 | P42–P44 | Quellen-HTTP-Vertrag, statisches Review, Scope und Gate dokumentieren. | Kein ladies.de/CDN-HTTP außerhalb Rust; MapLibre/externe Intents ausgenommen | IN_PROGRESS | M05.4a-Branch auf PR #17; Integration erst nach G4 |
+| T4a.2 | 4a.1 | P42 | Rust-Anzeigeabruf über vorhandenen Medientransport, Limits, URL-Prüfung, Cancellation. | Keine Archivmutation, synthetische Tests | TODO | — |
+| T4a.3 | 4a.2 | P42/P43 | Coil-Transport auf Rust umstellen, Cache/Prefetch/Offline erhalten. | Keine direkte Coil-/OkHttp-Netzwerkroute | TODO | — |
+| T4a.4 | 4a.3 | P43 | Kotlin-HTTP-Recorder und redundante Abhängigkeit entfernen. | Rust-HAR inkl. Anzeigeabruf; Kermit bleibt | TODO | — |
+| T4a.5 | 4a.3 | P43 | Begrenzte Parallelität, Abbruch, Cache/Revision, doppelte Archiv-/Anzeigeabrufe prüfen. | Gezielte Tests, Gerätebelege separat | TODO | — |
+| T4a.6 | 4a.4, 4a.5 | P44 | Architekturcheck in vorhandener CI, Regression und Gesamtreview. | Full-CI, kein direkter Quellenpfad, DEVICE_PENDING separat | TODO | — |
 | T5.1 | 4.4 | P24 | Gemeinsame LazyVerticalGrid-Karte: zwei Spalten, Bild-Cover, Gradient, Name/Alter, Placeholder. | Synthetische Screenshot-/Scrollprüfung und stabile IDs | TODO | — |
 | T5.2 | 5.1 | P25 | Grid-Like unabhängig von Profilöffnung; gemeinsame Zustandsänderung/Filter-Aktualisierung. | Konsistenz Grid/Deck/Gespeichert, Fehler/Rollback | TODO | — |
 | T5.3 | 5.2,1.4 | P26 | Swipe/Grid/Karte wechseln, Position und aktive Suche behalten; Karte nur bestehender Vertrag. | Kein unbeabsichtigter Netzwerk-Run, Kartenlifecycle | TODO | — |
@@ -56,7 +62,8 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | G2 | T2.1–T2.7 | G1 | Aktive Suche, lokale Filter, Radius/Pagination/Delta | DONE | CI 44396660869 vollständig grün; Merge 8880f323; DEVICE_PENDING |
 | G3 | T3.1–T3.5 | G2 | Gemeinsames Profil/Medien, Archiv/Offline/Intents | DONE | Full-CI 44399925013 auf 1174eeec grün; DEVICE_PENDING; Mergefreigabe ausstehend |
 | G4 | T4.1–T4.4 | G3 | Queue, Undo/Skip/Reset, Gesten, Prefetch | REVIEW | PR #17; technische und Geräte-Abnahme offen |
-| G5 | T5.1–T5.3 | G4 | Grid, Ansichtswechsel, ein Ergebniszustand | TODO | — |
+| G4a | T4a.1–T4a.6 | G4 | Rust-Quellentransport, Coil, Diagnose, Architekturcheck | TODO | — |
+| G5 | T5.1–T5.3 | G4a | Grid, Ansichtswechsel, ein Ergebniszustand | TODO | — |
 | G6 | T6.1–T6.6 | G5 | Tabs, Notizen, Historie, Identitätsintegrität | TODO | — |
 | G7 | T7.1–T7.4 | G6 | Listen, Status, Sortierung und Watchlist | TODO | — |
 | G8 | T8.1–T8.4 | G7 | Gemeinsamer Editor/Grid, Delta, UX-Konsistenz | TODO | — |
