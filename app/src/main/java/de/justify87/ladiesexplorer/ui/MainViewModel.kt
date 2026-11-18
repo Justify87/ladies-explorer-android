@@ -411,7 +411,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             try {
-                val profile = core.loadProfile(listingId)
+                var showingArchive = false
+                var refreshError: String? = null
+                val profile = try {
+                    core.loadProfile(listingId)
+                } catch (failure: CancellationException) {
+                    throw failure
+                } catch (failure: Exception) {
+                    val archived = core.cachedProfile(listingId) ?: throw failure
+                    showingArchive = true
+                    refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
+                    archived
+                }
                 if (requestId != profileRequestId) return@launch
                 val items = core.profileMedia(profile.snapshotId)
                 val person = core.person(personId)
@@ -420,8 +431,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (requestId != profileRequestId) return@launch
                 _searchUiState.update {
                     it.copy(loading=false,profile=profile,selectedPerson=person,
-                        profileMedia=items,changeEvents=changes,identityCandidates=candidates,archiving=true)
+                        profileMedia=items,changeEvents=changes,identityCandidates=candidates,
+                        mediaWarning=refreshError,archiving=!showingArchive)
                 }
+                if (showingArchive) return@launch
                 val control = MediaArchiveControl()
                 archiveControl = control
                 try {
