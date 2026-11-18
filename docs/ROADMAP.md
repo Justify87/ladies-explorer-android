@@ -6,20 +6,22 @@ Stand des Ist-Abgleichs: 18.11.2026, [main 7d768e5b](https://github.com/Justify8
 
 Eine eigenständige, lokal genutzte Android-App auf einem Gerät, mit Kotlin/Compose und eigenem Rust/SQLite-Core über UniFFI. Suche, Extraktion und Persistenz im App-Prozess; externe Quellen nur für die jeweils benötigten Netzwerkfunktionen. Selektive Übernahme der technischen Artefact-Basis, kein Artefact-Fork und keine fachfremden Dokument-/OCR-/PDF-Funktionen. Relevante fachliche Daten und Regeln der alten Web-App erhalten, nicht den Flask/Python/Messaging-Stack. Kein integrierter WhatsApp-/Messenger-Client, keine Synchronisierung oder automatische KI-/OCR-Preisextraktion; WhatsApp nur extern öffnen. KISS für ein Hobbyprojekt.
 
-## Hauptplan M00–M07
+## Hauptplan M00–M07: Soll und tatsächliche PR-Zuordnung
 
-| Meilenstein | Soll | Ist / Rest |
+Die linke Spalte verwendet die ursprüngliche Planung vom 17.11.2026; die PR-Spalte verwendet die späteren tatsächlichen Implementierungsbezeichnungen. Diese Nummern sind insbesondere für M00–M02 nicht austauschbar.
+
+| Ursprüngliches Soll | Tatsächliche Umsetzung in main | Rest / Abnahme |
 | --- | --- | --- |
-| M00 | Bestandsaufnahme: Web-App, Daten und selektive Artefact-Referenz | Grundlage dokumentiert; [PROVENANCE](PROVENANCE.md), [ARCHITECTURE](ARCHITECTURE.md). |
-| M01 | Android-/Compose-Grundgerüst, Rust, Cargo-NDK, UniFFI, lokaler Speicher | In main; technische Grundlage und Schema vorhanden. |
-| M02 | SQLite-Domänenmodell und Legacy-Datenimport inkl. Medien/Historie | In main; [DATA-IMPORT](DATA-IMPORT.md). Reale vollständige Migration mit privatem Bestand nicht durch CI belegt. |
-| M03 | Rust-Suche, Filter, Pagination, Profilparser | In main, einschließlich späterer Fallback-/Radius- und Profilrouten-Korrekturen ([PR #8](https://github.com/Justify87/ladies-explorer-android/pull/8)); [SOURCE](SOURCE.md). Live-Kompatibilität und Vollständigkeit separat prüfen. |
-| M04 | Profile, Identitätskandidaten, dHash, Änderungshistorie, Archiv | In main; [ARCHITECTURE](ARCHITECTURE.md). Reale Medien-/Identitätsfälle noch gesondert abnehmen. |
-| M05 | Swipe-Deck, Suche/Grid, Profildetails, Favoriten, Notizen | Native Feeds, Suchliste und Profile in [PR #6](https://github.com/Justify87/ladies-explorer-android/pull/6) gemergt. Notizen sind im Datenmodell/Import vorhanden, eine vollständige native Notizbearbeitung und eine separate Grid-/Wechselansicht sind nicht als umgesetzt nachgewiesen; ggf. Sollumfang bestätigen. |
-| M06 | Karte, gespeicherte Suchen, Begegnungen, Einstellungen, externer WhatsApp-Aufruf | Gespeicherte Suchen schon in M05, Einstellungen/WhatsApp in main; MapLibre in [PR #10](https://github.com/Justify87/ladies-explorer-android/pull/10) gemergt ([MAP](MAP.md)). Begegnungen/Besuche und manuelle Preislisten sind im Schema/Import vorhanden, keine vollständige native Begegnungs-/Preislistenverwaltung nachgewiesen. Keine automatische Preisextraktion vorgesehen. |
-| M07 | Gesamtintegration, Performance, Stabilität, Tests, Import/Export und Release | Offen als Gesamtmeilenstein. CI- und Diagnose-Infrastruktur bereits vorhanden; Parität der vereinbarten Funktionen, reale Geräteabnahme, Import-/Export-Scope und Release-Reife noch prüfen. |
+| M00 – Bestandsaufnahme: Web-App, Daten, selektive Artefact-Referenz | Grundlage des späteren Bootstraps; [PROVENANCE](PROVENANCE.md), [ARCHITECTURE](ARCHITECTURE.md). Kein eigenständiger Bestandsaufnahme-PR nachgewiesen. | Bei offenen Anforderungen auf den ursprünglichen Sollumfang zurückgreifen. |
+| M01 – Android + Rust: Compose, Cargo-NDK, UniFFI | Bootstrap (später M00), [PR #1](https://github.com/Justify87/ladies-explorer-android/pull/1). | Technische Basis vorhanden. |
+| M02 – Datenbank: SQLite-Domänenmodell, Migration/Import | Später M01 [PR #2](https://github.com/Justify87/ladies-explorer-android/pull/2) für das Domänenmodell; M02 [PR #3](https://github.com/Justify87/ladies-explorer-android/pull/3) für den Legacy-Import. Schema v2 im weiteren Verlauf. | Reale Migration mit privatem Bestand nicht durch CI belegt; [DATA-IMPORT](DATA-IMPORT.md). |
+| M03 – Suche: HTTP, Filter, Pagination, Parser | M03 [PR #4](https://github.com/Justify87/ladies-explorer-android/pull/4), spätere Profilrouten-Korrektur [PR #8](https://github.com/Justify87/ladies-explorer-android/pull/8); [SOURCE](SOURCE.md). | Live-Kompatibilität und Vollständigkeit prüfen. |
+| M04 – Profile und Identitäten: dHash, Historie, Medien | M04 [PR #5](https://github.com/Justify87/ladies-explorer-android/pull/5); [ARCHITECTURE](ARCHITECTURE.md). | Reale Medien-/Identitätsfälle abnehmen. |
+| M05 – Frontend: Swipe-Deck, Suche, Grid, Details, Favoriten, Notizen | M05 [PR #6](https://github.com/Justify87/ladies-explorer-android/pull/6): native Feeds, Suchliste, Profile, Favoriten, bereits gespeicherte Suchen. | Native Notizbearbeitung und separate Grid-/Wechselansicht nicht als umgesetzt nachgewiesen. |
+| M06 – Weitere Funktionen: Karte, gespeicherte Suchen, Begegnungen, Einstellungen, externer WhatsApp-Aufruf | Gespeicherte Suchen bereits in #6; Einstellungen/WhatsApp in main; MapLibre M06 [PR #10](https://github.com/Justify87/ladies-explorer-android/pull/10), [MAP](MAP.md). | Begegnungen/Besuche und Bewertungen (u. a. Gesamt- und Sympathiebewertung) im Schema/Import vorhanden, keine vollständige native Bearbeitung nachgewiesen. Manuelle Preislisten ebenfalls im Schema/Import; deren UI-Sollumfang noch bestätigen. Keine automatische Preisextraktion. |
+| M07 – Gesamtintegration: Performance, Stabilität, Tests, Import/Export, Release-Workflow | CI- und Diagnose-Infrastruktur vorhanden; kein abgeschlossener M07-PR nachgewiesen. | Funktionsparität zum vereinbarten Soll, Geräteabnahme, Import-/Export-Umfang und Release-Reife prüfen. |
 
-Die Bezeichnungen der historischen M01/M02-Implementierung überlappen die technische Grundlage und das Datenmodell; die Tabelle bildet die ursprünglichen Ziele ab und erfindet keine weitere Migration. „In main“ bedeutet Code gemergt, nicht automatisch physisch getestet oder vollständig abgenommen.
+„In main“ bedeutet gemergter Code, nicht automatisch physisch getestet oder vollständig abgenommen. Die ursprünglichen Anforderungen sind aus dem Projektverlauf rekonstruiert, nicht aus einem separat vollständig verifizierten Originaldokument. Die PRs belegen die tatsächlich umgesetzte Reihenfolge; sie ersetzen den Sollumfang nicht.
 
 ## Nachträgliche Arbeitsstränge
 
@@ -29,7 +31,7 @@ Die Bezeichnungen der historischen M01/M02-Implementierung überlappen die techn
 
 ## Offene Entscheidungen und Abnahme
 
-Vor M07 die noch nicht abgedeckten Notiz- und Begegnungsfunktionen sowie Grid-/Export-/Release-Anforderungen gegen den vereinbarten Soll-Umfang abgleichen. Nicht vorhandene Funktionen nicht durch bloße Schematabellen als erledigt markieren. Keine neue Funktion allein aufgrund dieser Dokumentationskonsolidierung umsetzen; bestätigte Scope-Änderungen hier ausdrücklich vermerken.
+Vor M07 die noch nicht abgedeckten Notiz-, Begegnungs- und Bewertungsfunktionen sowie Grid-/Export-/Release-Anforderungen gegen den vereinbarten Soll-Umfang abgleichen. Nicht vorhandene Funktionen nicht durch bloße Schematabellen als erledigt markieren. Keine neue Funktion allein aufgrund dieser Dokumentationskonsolidierung umsetzen; bestätigte Scope-Änderungen hier ausdrücklich vermerken.
 
 Geräteabnahme: realer Import (mit lokalem Testbestand), vollständige Suche mit Radius und Pagination, gespeicherte Such-Deltas, Profil-/Medienabruf und Offline-Fallback, Swipe/Favoriten/Identitätsbestätigung, Karte inkl. Lifecycle/Geocoding, Diagnose inkl. Firefox-Import, App-Neustart und Performance. Bereichsspezifische Prüfschritte stehen in den Fachdateien. Automatisierte CI ist davon getrennt; keine unbelegte Geräte- oder Releasefreigabe.
 
