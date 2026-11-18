@@ -49,6 +49,10 @@ class CoreStore(context: Context) {
         recorded("status") { engine.status() }
     }
 
+    suspend fun person(personId: Long): PersonSummary? = withContext(Dispatchers.IO) {
+        engine.getPerson(personId)
+    }
+
     suspend fun people(
         limit: UInt = 50u,
         cursor: PersonCursor? = null,
