@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# New commits supersede outdated PR checks, but not main/manual builds.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -23,12 +28,18 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          # PR-scoped cache writes matter for repeated commits before merging to main.
+          cache-read-only: false
+
       - name: Rust 1.99 with Android arm64 target
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.99.0"
           targets: aarch64-linux-android
-          components: rustfmt
+          components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -62,7 +73,11 @@ jobs:
         working-directory: rust
         run: |
           cargo fmt --all -- --check
-          cargo test --workspace
+          cargo test --workspace --locked
+
+      - name: Rust Clippy
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets --locked
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
@@ -73,14 +88,11 @@ jobs:
           # API 37 is distributed as android-37.0; pre-install to avoid AGP first-run SDK discovery issues.
           test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
 
-      - name: Build arm64 APK (automatically builds Rust and UniFFI)
-        run: ./gradlew :app:assembleDebug -Pladies.abis=arm64-v8a --stacktrace
-
-      - name: Android JVM diagnostic queue tests
-        run: ./gradlew :app:testDebugUnitTest -Pladies.abis=arm64-v8a --stacktrace
+      - name: Build arm64 APK, run JVM tests and Android Lint
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ladies-explorer-android-arm64-debug
           path: app/build/outputs/apk/debug/*.apk

@@ -45,7 +45,7 @@ abstract class BuildRustForAndroid : DefaultTask() {
                 listOf(cargo.get(), "ndk") +
                     abis.get().flatMap { listOf("-t", it) } +
                     listOf("--platform", minApi.get().toString(), "-o", output.absolutePath,
-                        "build", "--release", "-p", "ladies-core", "--lib")
+                        "build", "--release", "--locked", "-p", "ladies-core", "--lib")
             )
         }
     }
@@ -67,7 +67,7 @@ abstract class GenerateUniffiKotlin : DefaultTask() {
         executors.exec {
             workingDir(workspace.get())
             commandLine(
-                cargo.get(), "run", "--quiet", "-p", "ladies-core-bindgen", "--",
+                cargo.get(), "run", "--quiet", "--locked", "-p", "ladies-core-bindgen", "--",
                 "generate", libraryFile.get().asFile.absolutePath,
                 "--language", "kotlin", "--out-dir", output.absolutePath, "--no-format"
             )
