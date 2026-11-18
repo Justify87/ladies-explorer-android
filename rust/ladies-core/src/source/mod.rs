@@ -3,15 +3,15 @@ mod network;
 mod parse;
 mod storage;
 
-use crate::{CoreError, LadiesCore, diagnostics::Diagnostics, operation::RequestControl};
+use crate::{CoreError, LadiesCore, diagnostics::Diagnostics, http_capture::HttpRecorder, operation::RequestControl};
 use std::time::Instant;
 use std::sync::Arc;
 
 pub(crate) struct SourceSession(network::SourceHttp);
 
 impl SourceSession {
-    pub(crate) fn new(diagnostics: Arc<Diagnostics>) -> Result<Self, CoreError> {
-        network::SourceHttp::new(diagnostics).map(Self)
+    pub(crate) fn new(diagnostics: Arc<Diagnostics>, recorder: Arc<HttpRecorder>) -> Result<Self, CoreError> {
+        network::SourceHttp::new(diagnostics, recorder).map(Self)
     }
 }
 
