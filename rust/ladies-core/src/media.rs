@@ -7,11 +7,11 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+use crate::media_url::validate_media_url;
 use image::imageops::FilterType;
 use reqwest::blocking::Client;
 use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
-use crate::media_url::validate_media_url;
 
 use crate::{CoreError, LadiesCore, identity};
 

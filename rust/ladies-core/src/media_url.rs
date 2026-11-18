@@ -33,4 +33,3 @@ pub(crate) fn validate_media_url(raw: &str, kind: Option<&str>) -> Result<Url, C
     }
     Ok(url)
 }
-
