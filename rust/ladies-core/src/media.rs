@@ -6,6 +6,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::{Duration, Instant};
+use std::sync::atomic::Ordering;
 
 use crate::media_url::validate_media_url;
 use image::imageops::FilterType;
@@ -402,6 +403,7 @@ fn archive_with(
         .ok_or_else(|| CoreError::Media("Media archive requires a file-backed database".into()))?;
     let refs = snapshot_refs(core, snapshot_id)?;
     let started = Instant::now();
+    let epoch = core.media_epoch.load(Ordering::Acquire);
     let mut report = MediaArchiveReport {
         snapshot_id,
         downloaded: 0,
