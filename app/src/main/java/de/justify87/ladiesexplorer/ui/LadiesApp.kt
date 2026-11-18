@@ -122,7 +122,7 @@ fun LadiesApp(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            if (!search.profileOpen) TopAppBar(
                 title = {
                     if (search.profileOpen) {
                         Text("Profil", maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -199,6 +199,9 @@ fun LadiesApp(
                     onPreference = viewModel::choosePreference,
                     onConfirmIdentity = viewModel::confirmIdentity,
                     onCancelArchive = viewModel::cancelMediaArchive,
+                    onBack = viewModel::closeProfile,
+                    actionsBusy = discovery.busy,
+                    actionError = discovery.error,
                     modifier = modifier,
                 )
             }
