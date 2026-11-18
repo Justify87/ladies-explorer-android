@@ -16,6 +16,36 @@ pub struct DiscoveryCard {
     pub has_ai_content: bool,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ProfileMediaItem {
+    pub kind: String,
+    pub url: String,
+    pub local_path: Option<String>,
+    pub position: u32,
+}
+
+pub(crate) fn media(core: &LadiesCore, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
+    let db = core.connection()?;
+    let mut query = db.prepare(
+        "SELECT sm.kind,sm.remote_url,a.local_path,sm.position
+         FROM snapshot_media sm
+         LEFT JOIN media_assets a ON a.media_asset_id=sm.media_asset_id
+         WHERE sm.snapshot_id=?1 ORDER BY sm.position,sm.snapshot_media_id"
+    )?;
+    let rows = query.query_map([snapshot_id], |r| {
+        Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,
+            r.get::<_,Option<String>>(2)?,r.get::<_,u32>(3)?))
+    })?;
+    rows.map(|row| {
+        let (kind,url,relative,position) = row?;
+        let local_path = relative.and_then(|relative| {
+            let path = core.media_root.as_ref()?.join(relative);
+            path.is_file().then(|| path.to_string_lossy().into_owned())
+        });
+        Ok(ProfileMediaItem { kind,url,local_path,position })
+    }).collect()
+}
+
 pub(crate) fn list(core: &LadiesCore, favorites_only: bool, limit: u32) -> Result<Vec<DiscoveryCard>, CoreError> {
     if !(1..=200).contains(&limit) {
         return Err(CoreError::InvalidInput("Discovery limit must be between 1 and 200".into()));
