@@ -2,6 +2,7 @@
 //! A person is distinct from its source profiles and individual listings.
 
 mod diagnostics;
+mod history;
 mod legacy_import;
 mod schema;
 mod source;
@@ -129,6 +130,7 @@ pub struct ImportReport {
     pub media_files: u32,
 }
 
+pub use history::ChangeRecord;
 pub use source::{MediaReference, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 
 #[derive(uniffi::Object)]
@@ -219,6 +221,10 @@ impl LadiesCore {
 
     pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
         source::load_profile(self, listing_id)
+    }
+
+    pub fn list_change_events(&self, person_id: i64, limit: u32) -> Result<Vec<ChangeRecord>, CoreError> {
+        history::list(self, person_id, limit)
     }
 
     pub fn status(&self) -> Result<CoreStatus, CoreError> {

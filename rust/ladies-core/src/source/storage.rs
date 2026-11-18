@@ -2,7 +2,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
 use url::Url;
 
-use crate::{CoreError, LadiesCore};
+use crate::{CoreError, LadiesCore, history};
 
 use super::{Card, Profile, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
 use super::{network::DownloadedSearch, parse};
@@ -445,6 +445,7 @@ pub(super) fn save_profile(
         }
         id
     };
+    history::record_transition(&tx, person_id, listing_id, active_snapshot_before, snapshot_id)?;
     tx.execute(
         "UPDATE listings
          SET current_snapshot_id=?1, current_url=?2, last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
