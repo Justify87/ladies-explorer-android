@@ -7,7 +7,7 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | T0.1 | — | — | Legacy-Screens, Router, State, CSS, Bootstrap-Nachbearbeitungen sowie native APIs/Tests je P-ID erneut inventarisieren; Zeilen-/Commit-Belege ergänzen. | Vollständige Matrix, Lücken/Abweichungen X-ID, kein unbelegter Sollumfang | DONE | P01–P41 statisch commit-fixiert in M05-PARITY |
 | T0.2 | 0.1 | — | Synthetische Referenzdaten und Szenarien anlegen; Legacy-Hauptscreens quellcodebasiert erfassen; native Ausgangs-UI bei verfügbarer Geräteumgebung manuell prüfen; fehlende Gerätebelege dokumentieren. Keine Browser-Testwerkzeuge. | Reproduzierbare Referenz/Viewport/Fixture, keine privaten Daten | DONE | Generator und Rust-Importtest bestanden in CI 44389833836; synthetische Referenz reproduzierbar. Legacy statisch, native visuelle Abnahme DEVICE_PENDING |
 | T0.3 | 0.1,0.2 | — | Verträge SOURCE, ARCHITECTURE, MAP, Import und Diagnose gegen Plan prüfen; offene Klassifikationen, Video, Kartenbezug, Notiz-Semantik entscheiden/nutzerseitig bestätigen falls Scope-Konflikt. | G0 Review mit expliziten offenen Gerätefällen | DONE | Statischer Vertragsreview unten; Gerätebelege ausdrücklich DEVICE_PENDING |
-| T1.1 | 0.3 | P01 | Theme-Farben/Shapes/Typografie, Dark Mode, Kontrast und wiederverwendbare Tokens; dynamische Defaults ersetzen. | Farb-/Layoutvergleich hell/dunkel, Font Scale/Touch | TODO | — |
+| T1.1 | 0.3 | P01 | Theme-Farben/Shapes/Typografie, Dark Mode, Kontrast und wiederverwendbare Tokens; dynamische Defaults ersetzen. | Farb-/Layoutvergleich hell/dunkel, Font Scale/Touch | REVIEW | Markenrollen, Dark-Palette, Shapes, Typografie und Kontrast-JVM-Test; CI/DEVICE_PENDING |
 | T1.2 | 1.1 | P02 | Kontextheader, Bottom-Navigation, Insets; vier Root-Ziele, Ansichtswechsel vorbereiten. | Alle vorhandenen Funktionen erreichbar, kein doppelter Header | TODO | — |
 | T1.3 | 1.2 | P03 | Stabile Navigation und Back-Stack; Scroll-/Tab-/Medienposition gezielt erhalten; keine stale Profile. | Back aus jedem Einstieg, Rotation und schneller Wechsel | TODO | — |
 | T1.4 | 1.3 | P04 | Bestehendes MapScreen in Discover-Shell einbetten, Lifecycle erhalten, Datenumfang kenntlich. | Karte öffnen/verlassen/Back; kein Geocoding-Refactor | TODO | — |
@@ -52,7 +52,7 @@ Einziger operativer Status-Tracker. Ausgangsstand: Planungs-PR, keine Implementi
 | Gate | Tasks | Vorgänger | Review-Schwerpunkt | Status | Beleg/PR |
 | --- | --- | --- | --- | --- | --- |
 | G0 | T0.1–T0.3 | — | Referenz, vollständige Zuordnung, Grenzen, reproduzierbare Fixtures | DONE | G0 technisch abgenommen: P01–P41, Fixture, Import und Full-CI [44390396359](https://github.com/Justify87/ladies-explorer-android/actions/runs/44390396359) auf fb27b6a1; DEVICE_PENDING (G9); Mergefreigabe ausstehend |
-| G1 | T1.1–T1.4 | G0 | Design, Back/Insets, keine verlorenen Root-Funktionen | TODO | — |
+| G1 | T1.1–T1.4 | G0 | Design, Back/Insets, keine verlorenen Root-Funktionen | IN_PROGRESS | M05.1 auf integriertem main e3cf8a3c |
 | G2 | T2.1–T2.7 | G1 | Aktive Suche, lokale Filter, Radius/Pagination/Delta | TODO | — |
 | G3 | T3.1–T3.5 | G2 | Gemeinsames Profil/Medien, Archiv/Offline/Intents | TODO | — |
 | G4 | T4.1–T4.4 | G3 | Queue, Undo/Skip/Reset, Gesten, Prefetch | TODO | — |
