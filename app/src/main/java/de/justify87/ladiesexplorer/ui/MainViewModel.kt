@@ -322,6 +322,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshDiscovery() {
+        if (_discoverState.value.busy) return
         val epoch = ++discoveryEpoch
         viewModelScope.launch {
             _discoverState.update { it.copy(loading = true) }
