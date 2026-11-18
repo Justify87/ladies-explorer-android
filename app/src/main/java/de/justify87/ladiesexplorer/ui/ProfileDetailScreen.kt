@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import coil3.compose.AsyncImage
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
+import de.justify87.ladiesexplorer.core.Preference
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -88,6 +89,7 @@ private fun jsonRows(raw: String): List<Pair<String,String>> {
 fun ProfileDetailScreen(
     state: SearchUiState,
     onFavorite: (Long) -> Unit,
+    onPreference: (Long, Preference) -> Unit,
     onConfirmIdentity: (Long,Long) -> Unit,
     onCancelArchive: () -> Unit,
     modifier: Modifier = Modifier,
@@ -152,6 +154,27 @@ fun ProfileDetailScreen(
                     }
                     Text(listOfNotNull(profile.city,profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "))
                     profile.hiddenLocation?.let { Text(it,style=MaterialTheme.typography.bodyMedium) }
+                }
+            }
+            state.selectedPersonId?.let { personId ->
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { onPreference(personId, Preference.DISLIKE) },
+                            enabled = state.selectedPerson?.preference != Preference.DISLIKE,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Nein") }
+                        OutlinedButton(
+                            onClick = { onPreference(personId, Preference.NONE) },
+                            enabled = state.selectedPerson?.preference != Preference.NONE,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Neutral") }
+                        Button(
+                            onClick = { onPreference(personId, Preference.LIKE) },
+                            enabled = state.selectedPerson?.preference != Preference.LIKE,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Gefällt") }
+                    }
                 }
             }
             if (state.profileMedia.isNotEmpty()) {
