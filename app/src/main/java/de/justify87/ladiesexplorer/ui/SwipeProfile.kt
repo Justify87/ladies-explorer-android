@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
+import coil3.size.Scale
+import androidx.compose.ui.unit.IntSize
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -71,14 +73,15 @@ internal suspend fun readSwipeProfile(
 }
 
 /** Only first two images; Coil shares the app's cache/HTTP diagnostics and suspending cancellation. */
-internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?) {
+internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
     val models = profile?.media.orEmpty().filter { it.kind == "IMAGE" }
         .mapNotNull { mediaModels(it.localPath, it.url).firstOrNull() }.take(2)
         .ifEmpty { mediaModels(card.localPath, card.thumbnailUrl).take(1) }
     val loader = SingletonImageLoader.get(context)
     for (model in models) {
         currentCoroutineContext().ensureActive()
-        loader.execute(ImageRequest.Builder(context).data(model).size(512).build())
+        if (size.width > 0 && size.height > 0)
+            loader.execute(ImageRequest.Builder(context).data(model).size(size.width, size.height).scale(Scale.FILL).build())
     }
 }
 

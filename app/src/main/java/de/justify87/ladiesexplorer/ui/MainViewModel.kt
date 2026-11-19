@@ -226,6 +226,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
             commitProfilePreference(token, preference, core::setSwipePreference, swipeSession::visit, presentation)
         }, afterWrite = { refreshDetail() },
+            // A successful swipe changes only the outgoing person's preference. The
+            // next distinct owners' coherent projections remain valid; failure and
+            // source/identity changes still revoke the whole window.
+            refreshProfileWindow = token !is SwipeActionToken || preference == Preference.NONE,
             recoverWriteFailure = { refreshDetail() },
             onFailure = { message ->
                 if (token is DetailIdentityToken) _searchUiState.update {

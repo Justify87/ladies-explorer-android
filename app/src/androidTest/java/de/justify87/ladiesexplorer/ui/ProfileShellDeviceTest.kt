@@ -167,7 +167,7 @@ class ProfileShellDeviceTest {
                     ProfileMediaHero(
                         media = listOf(ProfileMediaItem("IMAGE", "", null, 0u),
                             ProfileMediaItem("VIDEO", "https://example.invalid/video", null, 1u)),
-                        height = 420.dp, originalUrl = null, actionsEnabled = false,
+                        height = 420.dp, actionsEnabled = false,
                         isCurrent = { false }, selection = selection, identity = HeroIdentity("Fixture", place = "Ort"),
                         actionToken = null, compact = false, headerOwnsIdentity = false, onIdentityMeasured = {},
                     )

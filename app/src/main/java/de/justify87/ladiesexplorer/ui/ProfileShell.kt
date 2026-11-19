@@ -51,6 +51,7 @@ internal fun ProfileShell(
     noticeOwner: Any?,
     header: @Composable (ProfileShellPresentation, ProfileNoticeIndicator?, () -> Unit) -> Unit,
     rail: @Composable () -> Unit = {},
+    fixedNoticeSlot: Boolean = false,
     content: @Composable (ProfileShellPresentation, (Int) -> Unit) -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -58,7 +59,7 @@ internal fun ProfileShell(
         val height = maxHeight
         val fontScale = LocalDensity.current.fontScale
         val budget = profileShellBudget(width.value, height.value, rootHeight.value, fontScale,
-            notices.isNotEmpty(), hasRail)
+            if (fixedNoticeSlot) false else notices.isNotEmpty(), hasRail)
         val heroHeight = profileHeroHeight(width.value, height.value + rootHeight.value, budget.body).dp
         var identityHeight by remember(heroKey) { mutableIntStateOf(0) }
         // Reading lazy layout inside derivedStateOf avoids raw per-pixel recomposition.

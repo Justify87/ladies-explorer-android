@@ -3,6 +3,13 @@ package de.justify87.ladiesexplorer.ui
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
@@ -67,6 +74,7 @@ internal fun DiscoverScreen(
     }
     val visible = started && !searchLoading && !state.loading && !state.busy
     val enabled = visible
+    var heroSize by remember { mutableStateOf(IntSize.Zero) }
     val decks = remember(state.activeRunId, state.swipeProfileRevision, started) {
         SwipeProfileWindow(mutableStateMapOf(), state.swipeExternalRevision)
     }
@@ -125,7 +133,7 @@ internal fun DiscoverScreen(
             readError = failure.message ?: "Profil konnte nicht geladen werden"
         }
     }
-    val prefetchControl = remember(decks, window.map { it.listingId to it.personId }, visible, state.busy) {
+    val prefetchControl = remember(decks, window.map { it.listingId to it.personId }, visible, heroSize) {
         RequestControl()
     }
     DisposableEffect(prefetchControl) { onDispose { prefetchControl.cancel() } }
@@ -146,11 +154,11 @@ internal fun DiscoverScreen(
                             onSnapshotChanged(decks.closed)
                         })
                 }
-                if (profile != null) warmSwipeImages(context, next, profile)
+                if (profile != null) warmSwipeImages(context, next, profile, heroSize)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (_: Exception) {
-                try { warmSwipeImages(context, next, null) }
+                try { warmSwipeImages(context, next, null, heroSize) }
                 catch (cancel: CancellationException) { throw cancel }
                 catch (_: Exception) { /* optional cache warming must not fail the deck */ }
             }
@@ -158,11 +166,28 @@ internal fun DiscoverScreen(
     }
 
     val matchingRun = search.response?.searchRunId == state.activeRunId
+    // Presentation-only entry motion begins after the authoritative deck changes.
+    // No old profile subtree/callbacks are kept alive.
+    val entryMotion = remember { Animatable(0f) }
+    var previousCard by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var outgoingDirection by remember(state.activeRunId, state.swipePresentationGeneration) { mutableFloatStateOf(0f) }
+    val cardIdentity = card?.let { it.listingId to it.personId }
+    LaunchedEffect(cardIdentity, state.activeRunId, state.swipePresentationGeneration) {
+        if (cardIdentity != previousCard && previousCard != null && outgoingDirection != 0f && cardIdentity != null) {
+            entryMotion.snapTo(-outgoingDirection * .12f)
+            entryMotion.animateTo(0f, tween(180))
+        } else entryMotion.snapTo(0f)
+        previousCard = cardIdentity
+        outgoingDirection = 0f
+    }
     key(state.activeRunId, state.swipePresentationGeneration, card?.listingId, card?.personId) {
         val listState = rememberLazyListState()
         val capture = remember { SwipePresentationCapture() }
         var photoRequest by remember { mutableIntStateOf(0) }
         val profile = current
+        var selectedMedia by remember { mutableStateOf<ProfileMediaItem?>(null) }
+        var fullImage by remember(token) { mutableStateOf<ProfileMediaItem?>(null) }
+        fullImage?.takeIf { token != null }?.let { ProfileImageDialog(it) { fullImage = null } }
         val person = profile?.person
         val identity = profile?.let { heroIdentity(it.profile, it.identity, it.fromArchive,
             it.media.any { medium -> medium.kind == "VIDEO" } || it.identity.hasVideo,
@@ -199,13 +224,16 @@ internal fun DiscoverScreen(
             if (state.busy) add(ProfileNotice("Wird gespeichert", "Entscheidung oder Aktualisierung wird verarbeitet."))
         }
         val undo = { onUndo(deckToken) }
-        val skip = { cardToken?.let { onSkip(it, capture.read()) }; Unit }
+        val skip = { cardToken?.let { outgoingDirection = -1f; onSkip(it, capture.read()) }; Unit }
         // Hero gestures, rail and menu use exactly this rendered-token dispatch.
         val choose: (Preference) -> Unit = { preference ->
-            token?.takeIf(isProfileCurrent)?.let { onChoose(it, preference, capture.read()) }
+            token?.takeIf(isProfileCurrent)?.let {
+                if (preference != Preference.NONE) outgoingDirection = if (preference == Preference.LIKE) 1f else -1f
+                onChoose(it, preference, capture.read())
+            }
         }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
-            hasRail = card != null || state.canUndoSwipe, notices = notices, noticeOwner = menuContext,
+            hasRail = true, notices = notices, noticeOwner = menuContext, fixedNoticeSlot = true,
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(
                     presentation = presentation, identity = identity, context = menuContext,
@@ -214,6 +242,12 @@ internal fun DiscoverScreen(
                     onMode = onSelectMode, onAvailability = { onAvailability(deckToken, it) }, onRefresh = { onRefresh(deckToken) },
                     onReset = { onReset(deckToken) }, onReplay = { onReplayLikes(deckToken, !state.replayLikes) },
                     onFavorite = { token?.let(onFavorite) }, onChoose = choose, onUndo = undo, onSkip = skip,
+                    onOpenImage = selectedMedia?.takeIf { it.kind == "IMAGE" }?.let { item ->
+                        { if (token?.let(isProfileCurrent) == true) fullImage = item }
+                    },
+                    onOriginal = profile?.identity?.profileUrl?.let { url ->
+                        { if (token?.let(isProfileCurrent) == true) openExternal(context, url) }
+                    },
                 )
             },
             rail = { SwipeDecisionControls(menuContext, identity?.title, undo, skip, choose) },
@@ -233,10 +267,12 @@ internal fun DiscoverScreen(
             } else {
                 val fallback = listOfNotNull(card.thumbnailUrl?.let { ProfileMediaItem("IMAGE", it, card.localPath, 0u) }
                     ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
+                Box(Modifier.fillMaxSize().clipToBounds()) {
                 ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
                     token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
                     isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
-                    modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest,
+                    modifier = Modifier.fillMaxSize().graphicsLayer { translationX = size.width * entryMotion.value },
+                    paddedDetails = true, photoRequest = photoRequest, onGallerySelection = { selectedMedia = it },
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }) {
                     item(key = "hero") {
@@ -245,7 +281,7 @@ internal fun DiscoverScreen(
                             onSwipe = if (actions && token != null) ({ decision ->
                                 choose(decision)
                             }) else null,
-                            originalUrl = profile?.identity?.profileUrl, selection = mediaSelection,
+                            modifier = Modifier.onSizeChanged { heroSize = it }, selection = mediaSelection,
                             identity = identity, actionToken = token,
                             projectionAvailable = profile != null, actionsEnabled = actions,
                             isCurrent = { token?.let(isProfileCurrent) == true },
@@ -258,6 +294,7 @@ internal fun DiscoverScreen(
                         if (profile != null) ProfileMetadata(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
                     }
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
+                }
                 }
             }
         }
@@ -278,6 +315,7 @@ private fun SwipeShellHeader(
     onMode: (DiscoverMode) -> Unit, onAvailability: (AvailabilityMode) -> Unit,
     onRefresh: () -> Unit, onReset: () -> Unit, onReplay: () -> Unit, onFavorite: () -> Unit,
     onChoose: (Preference) -> Unit, onUndo: () -> Unit, onSkip: () -> Unit,
+    onOpenImage: (() -> Unit)?, onOriginal: (() -> Unit)?,
 ) {
     var opened by remember { mutableStateOf<SwipeMenuContext?>(null) }
     val latest by rememberUpdatedState(context)
@@ -299,7 +337,9 @@ private fun SwipeShellHeader(
             shown?.let { listOfNotNull(it.status, it.shortDecision, it.place).joinToString(" · ") } ?: summary,
             presentation.budget.shortHeader, Modifier.weight(1f),
             onClick = if (shown == null) null else ({ info = true }))
-        if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
+        Box(Modifier.width(48.dp), contentAlignment = Alignment.Center) {
+            if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
+        }
         if (!presentation.budget.narrowHeader) {
             if (presentation.photoShortcut) IconButton(onClick = onPhoto) {
                 Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
@@ -348,6 +388,8 @@ private fun SwipeShellHeader(
                     enabled = context.deckEnabled, onClick = { dispatch(onReplay) })
                 context.profile?.let { profile ->
                     HorizontalDivider()
+                    onOpenImage?.let { action -> DropdownMenuItem(text = { Text("Bild groß anzeigen") }, onClick = { dispatch(action) }) }
+                    onOriginal?.let { action -> DropdownMenuItem(text = { Text("Originalprofil öffnen") }, onClick = { dispatch(action) }) }
                     DropdownMenuItem(text = { Text(if (profile.favorite) "Favorit entfernen" else "Als Favorit speichern") },
                         onClick = { dispatch(onFavorite) })
                     if (profile.preference != Preference.NONE) DropdownMenuItem(text = { Text("Präferenz zurücksetzen") },

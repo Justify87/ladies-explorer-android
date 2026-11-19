@@ -75,6 +75,7 @@ internal fun ProfileFlow(
     swipeCapture: SwipePresentationCapture? = null,
     onSwipeRestoreConsumed: (SwipePresentation) -> Unit = {},
     panelReads: ProfilePanelReads? = null,
+    onGallerySelection: (ProfileMediaItem?) -> Unit = {},
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -88,6 +89,8 @@ internal fun ProfileFlow(
     val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
     val scroll = key(presentationOwner) { rememberProfileScrollMemory(ownerChanged) }
     val restore = remember(presentationOwner) { ProfileRestoreCoordinator() }
+    val selectedMedium = model?.media?.let { it.getOrNull(mediaSelection.resolve(it, true)) }
+    SideEffect { onGallerySelection(selectedMedium) }
     DisposableEffect(swipeCapture) { onDispose { swipeCapture?.read = { null } } }
     SideEffect {
         swipeCapture?.read = {
