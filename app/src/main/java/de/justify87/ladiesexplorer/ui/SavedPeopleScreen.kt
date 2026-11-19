@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,11 +40,13 @@ internal fun SavedPeopleScreen(
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
     onLoadMore: () -> Unit,
+    onLoadMoreRecent: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scrollMemory = rememberSaveableStateHolder()
     val enabled = !state.loading && !state.busy
     val page = state.savedPage
+    val recent = state.savedRecent
     Column(modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             savedKinds.forEach { (kind, label) ->
@@ -77,7 +80,8 @@ internal fun SavedPeopleScreen(
         val selection = "${state.savedKind.name}-${state.savedSort.name}"
         scrollMemory.SaveableStateProvider(selection) {
             val listState = rememberLazyListState()
-            val canPage = page?.nextCursor != null && enabled && !state.savedLoadingMore
+            var expanded by rememberSaveable { mutableStateOf(false) }
+            val canPage = page?.nextCursor != null && enabled && !state.savedLoadingMore && !state.savedRecentLoadingMore
             LaunchedEffect(listState, page?.nextCursor, canPage, state.error) {
                 if (canPage && state.error == null) {
                     snapshotFlow {
@@ -96,10 +100,32 @@ internal fun SavedPeopleScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (state.loading && page == null) item { CircularProgressIndicator() }
-                if (!state.loading && page != null && page.rows.isEmpty()) item {
+                if (!state.loading && page?.total == 0u) item {
                     Text("Noch nichts gespeichert.", modifier = Modifier.padding(16.dp))
                 }
-                items(page?.rows.orEmpty(), key = { it.personId }) { row ->
+                if (recent != null && recent.rows.isNotEmpty()) {
+                    item(key = "recent-header") {
+                        Text("Neu & geändert", style = MaterialTheme.typography.titleMedium)
+                    }
+                    items(if (expanded) recent.rows else recent.rows.take(3), key = { "recent-${it.personId}" }) { row ->
+                        SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference, preferChangeTime = true)
+                    }
+                    if (recent.sectionTotal > 3u) item(key = "recent-toggle") {
+                        TextButton(onClick = { expanded = !expanded }) {
+                            Text(if (expanded) "Weniger anzeigen" else "Alle anzeigen (${recent.sectionTotal})")
+                        }
+                    }
+                    if (expanded && recent.nextCursor != null) item(key = "recent-more") {
+                        TextButton(onClick = onLoadMoreRecent,
+                            enabled = enabled && !state.savedRecentLoadingMore && !state.savedLoadingMore) {
+                            Text(if (state.savedRecentLoadingMore) "Lädt …" else "Weitere Änderungen")
+                        }
+                    }
+                    if (page?.rows?.isNotEmpty() == true) item(key = "regular-header") {
+                        Text("Weitere Favoriten", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                items(page?.rows.orEmpty(), key = { "regular-${it.personId}" }) { row ->
                     SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference)
                 }
                 if (state.savedLoadingMore) item { CircularProgressIndicator() }
@@ -118,6 +144,7 @@ private fun SavedPersonCard(
     onProfile: (Long, Long) -> Unit,
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
+    preferChangeTime: Boolean = false,
 ) {
     val card = row.card
     var menu by remember { mutableStateOf(false) }
@@ -147,11 +174,18 @@ private fun SavedPersonCard(
                         else -> "Status unbekannt"
                     } + if (row.listingCount > 1u) " · +${row.listingCount - 1u}" else "",
                         style = MaterialTheme.typography.labelSmall)
+                    if (row.recent) Text(when (row.latestChangeType) {
+                        "NEW_LISTING_FOR_PERSON" -> "Neue Anzeige"
+                        "PROFILE_CREATED", "LISTING_FIRST_SNAPSHOT" ->
+                            if (row.listingCount == 1u) "Neu" else "Geändert"
+                        else -> "Geändert"
+                    }, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                     Text("Zuletzt: ${row.lastSeenAt.take(10)}", style = MaterialTheme.typography.labelSmall)
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(row.updatedAt.take(10), style = MaterialTheme.typography.labelSmall)
+                Text((if (preferChangeTime) row.latestChangeAt ?: row.lastSeenAt else row.lastSeenAt).take(10),
+                    style = MaterialTheme.typography.labelSmall)
                 Row {
                     IconButton(onClick = { onFavorite(row.personId) }, enabled = enabled) {
                         Icon(if (row.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,

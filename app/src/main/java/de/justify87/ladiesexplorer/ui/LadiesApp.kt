@@ -310,6 +310,7 @@ fun LadiesApp(
                         onFavorite = viewModel::toggleFavorite,
                         onPreference = viewModel::choosePreference,
                         onLoadMore = viewModel::loadMoreSavedPeople,
+                        onLoadMoreRecent = viewModel::loadMoreRecentPeople,
                         modifier = modifier,
                     )
                     RootDestination.Settings -> SettingsScreen(

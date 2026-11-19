@@ -143,7 +143,7 @@ pub struct ImportReport {
 
 pub use discovery::{
     DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPersonCursor,
-    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSort,
+    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection, SavedPersonSort,
 };
 pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
@@ -460,10 +460,12 @@ impl LadiesCore {
         &self,
         kind: SavedPersonKind,
         sort: SavedPersonSort,
+        section: SavedPersonSection,
         limit: u32,
         cursor: Option<SavedPersonCursor>,
+        as_of: Option<i64>,
     ) -> Result<SavedPersonPage, CoreError> {
-        discovery::saved_people(self, kind, sort, limit, cursor)
+        discovery::saved_people(self, kind, sort, section, limit, cursor, as_of)
     }
 
     pub fn map_overview(&self, favorites_only: bool) -> Result<MapOverview, CoreError> {

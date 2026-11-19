@@ -213,8 +213,10 @@ class CoreStore(context: Context) {
         kind: SavedPersonKind,
         sort: SavedPersonSort,
         cursor: SavedPersonCursor? = null,
+        section: SavedPersonSection = SavedPersonSection.ALL,
+        asOf: Long? = null,
     ): SavedPersonPage = withContext(Dispatchers.IO) {
-        engine.savedPeople(kind, sort, 50u, cursor)
+        engine.savedPeople(kind, sort, section, 50u, cursor, asOf)
     }
 
     suspend fun mapOverview(favoritesOnly: Boolean): MapOverview = withContext(Dispatchers.IO) {

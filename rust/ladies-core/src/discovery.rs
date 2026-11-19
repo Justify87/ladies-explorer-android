@@ -1,4 +1,4 @@
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, named_params, params};
 
 use crate::{CoreError, LadiesCore, Preference, source::known_age};
 
@@ -291,10 +291,29 @@ pub enum SavedPersonSort {
     Name,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SavedPersonSection {
+    All,
+    Recent,
+    Regular,
+}
+
+impl SavedPersonSection {
+    fn predicate(self) -> &'static str {
+        match self {
+            Self::All => "1=1",
+            Self::Recent => "recent=1",
+            Self::Regular => "recent=0",
+        }
+    }
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SavedPersonCursor {
     pub kind: SavedPersonKind,
     pub sort: SavedPersonSort,
+    pub section: SavedPersonSection,
+    pub as_of: i64,
     pub key: String,
     pub person_id: i64,
 }
@@ -313,12 +332,15 @@ pub struct SavedPersonRow {
     pub status_checked_at: Option<String>,
     pub latest_change_at: Option<String>,
     pub latest_change_type: Option<String>,
+    pub recent: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SavedPersonPage {
     pub rows: Vec<SavedPersonRow>,
     pub total: u32,
+    pub section_total: u32,
+    pub as_of: i64,
     pub next_cursor: Option<SavedPersonCursor>,
 }
 
@@ -326,18 +348,29 @@ pub(crate) fn saved_people(
     core: &LadiesCore,
     kind: SavedPersonKind,
     sort: SavedPersonSort,
+    section: SavedPersonSection,
     limit: u32,
     cursor: Option<SavedPersonCursor>,
+    as_of: Option<i64>,
 ) -> Result<SavedPersonPage, CoreError> {
     if !(1..=100).contains(&limit)
-        || cursor
-            .as_ref()
-            .is_some_and(|c| c.kind != kind || c.sort != sort)
+        || (section != SavedPersonSection::All
+            && (kind != SavedPersonKind::Favorite || sort != SavedPersonSort::Date))
+        || cursor.as_ref().is_some_and(|c| {
+            c.kind != kind
+                || c.sort != sort
+                || c.section != section
+                || as_of.is_some_and(|time| time != c.as_of)
+        })
     {
         return Err(CoreError::InvalidInput("Invalid saved people page".into()));
     }
     let db = core.connection()?;
     let predicate = kind.predicate();
+    let as_of = match cursor.as_ref().map(|c| c.as_of).or(as_of) {
+        Some(time) => time,
+        None => db.query_row("SELECT unixepoch('now')", [], |row| row.get(0))?,
+    };
     // Count people, not listings, including imported people without an advert.
     // The connection guard spans both reads so a core write cannot split them.
     let total = db.query_row(
@@ -347,40 +380,59 @@ pub(crate) fn saved_people(
     )?;
     let (key, comparison, direction) = match sort {
         SavedPersonSort::Date => (
-            "COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ',updated_at),'')",
+            "COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ',person_last_seen_at),'')",
             "<",
             "DESC",
         ),
         SavedPersonSort::Name => ("name", ">", "ASC"),
     };
+    let section_predicate = section.predicate();
+    // Both watchlist sections use the same frozen time boundary, including when
+    // the user expands or pages later. Only the latest recorded change counts.
+    let eligible = format!(
+        "{PERSON_CARDS}, eligible AS (
+           SELECT p.*, {key} AS sort_key, e.created_at AS change_at,
+                  e.event_type AS change_type,
+                  COALESCE(unixepoch(e.created_at) > :as_of - 129600
+                       AND unixepoch(e.created_at) <= :as_of,0) AS recent
+           FROM projected p LEFT JOIN change_events e ON e.change_event_id=(
+               SELECT c.change_event_id FROM change_events c
+               WHERE c.person_id=p.person_id
+               ORDER BY julianday(c.created_at) DESC,c.change_event_id DESC LIMIT 1
+           )
+           WHERE {predicate}
+         )"
+    );
+    let section_total = if section == SavedPersonSection::All {
+        total
+    } else {
+        db.query_row(
+            &format!("{eligible} SELECT COUNT(*) FROM eligible WHERE {section_predicate}"),
+            named_params! { ":as_of": as_of },
+            |row| row.get(0),
+        )?
+    };
     // Only enum-selected SQL fragments are interpolated; cursor values are bound.
     // NOCASE gives stable SQLite ordering (not full German locale collation).
     let mut query = db.prepare(&format!(
-        "{PERSON_CARDS}, eligible AS (
-            SELECT *, {key} AS sort_key FROM projected WHERE {predicate}
-         ), page_window AS (
+        "{eligible}, page_window AS (
             SELECT * FROM eligible
-            WHERE ?1 IS NULL OR sort_key COLLATE NOCASE {comparison} ?1
-               OR (sort_key COLLATE NOCASE = ?1 AND person_id {comparison} ?2)
+            WHERE {section_predicate}
+              AND (:cursor_key IS NULL OR sort_key COLLATE NOCASE {comparison} :cursor_key
+               OR (sort_key COLLATE NOCASE = :cursor_key AND person_id {comparison} :cursor_id))
             ORDER BY sort_key COLLATE NOCASE {direction},person_id {direction}
-            LIMIT ?3
+            LIMIT :limit
          )
-         SELECT w.*,
-                (SELECT COUNT(*) FROM listings l WHERE l.person_id=w.person_id),
-                e.created_at,e.event_type,w.sort_key
+         SELECT w.*,(SELECT COUNT(*) FROM listings l WHERE l.person_id=w.person_id)
          FROM page_window w
-         LEFT JOIN change_events e ON e.change_event_id=(
-             SELECT c.change_event_id FROM change_events c
-             WHERE c.person_id=w.person_id
-             ORDER BY c.created_at DESC,c.change_event_id DESC LIMIT 1
-         )
          ORDER BY w.sort_key COLLATE NOCASE {direction},w.person_id {direction}"
     ))?;
-    let mut rows = query.query(params![
-        cursor.as_ref().map(|c| c.key.as_str()),
-        cursor.as_ref().map(|c| c.person_id),
-        limit + 1
-    ])?;
+    let mut rows = query.query(named_params! {
+        ":as_of": as_of,
+        ":cursor_key": cursor.as_ref().map(|c| c.key.as_str()),
+        ":cursor_id": cursor.as_ref().map(|c| c.person_id),
+        ":limit": limit + 1,
+    })?;
     let mut entries = Vec::new();
     while let Some(row) = rows.next()? {
         let card = if row.get::<_, Option<i64>>(0)?.is_some() {
@@ -396,15 +448,16 @@ pub(crate) fn saved_people(
                 preference: Preference::from_db(&raw)?,
                 favorite: row.get(8)?,
                 card,
-                listing_count: row.get(19)?,
+                listing_count: row.get(22)?,
                 updated_at: row.get(14)?,
                 last_seen_at: row.get(15)?,
                 status: row.get(16)?,
                 status_checked_at: row.get(17)?,
-                latest_change_at: row.get(20)?,
-                latest_change_type: row.get(21)?,
+                latest_change_at: row.get(19)?,
+                latest_change_type: row.get(20)?,
+                recent: row.get(21)?,
             },
-            row.get::<_, String>(22)?,
+            row.get::<_, String>(18)?,
         ));
     }
     let has_more = entries.len() > limit as usize;
@@ -413,6 +466,8 @@ pub(crate) fn saved_people(
         entries.last().map(|(row, key)| SavedPersonCursor {
             kind,
             sort,
+            section,
+            as_of,
             key: key.clone(),
             person_id: row.person_id,
         })
@@ -422,6 +477,8 @@ pub(crate) fn saved_people(
     Ok(SavedPersonPage {
         rows: entries.into_iter().map(|(row, _)| row).collect(),
         total,
+        section_total,
+        as_of,
         next_cursor,
     })
 }
@@ -765,13 +822,15 @@ mod tests {
             )
             .unwrap();
             db.execute(
-                "UPDATE person_user_state SET updated_at='2026-01-01T00:00:00Z'",
+                "UPDATE persons SET last_seen_at='2026-01-01T00:00:00Z'",
                 [],
             )
             .unwrap();
         }
-        let fav = core
-            .saved_people(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, None)
+        let saved = |kind, sort, limit, cursor| {
+            core.saved_people(kind, sort, SavedPersonSection::All, limit, cursor, None)
+        };
+        let fav = saved(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, None)
             .unwrap();
         assert_eq!(fav.total, 2);
         assert_eq!(fav.rows[0].person_id, a);
@@ -779,7 +838,7 @@ mod tests {
         assert_eq!(fav.rows[0].card.as_ref().unwrap().listing_id, second);
         let cursor = fav.next_cursor.unwrap();
         assert!(
-            core.saved_people(
+            saved(
                 SavedPersonKind::Like,
                 SavedPersonSort::Name,
                 1,
@@ -787,47 +846,91 @@ mod tests {
             )
             .is_err()
         );
-        let next = core
-            .saved_people(
-                SavedPersonKind::Favorite,
-                SavedPersonSort::Name,
-                1,
-                Some(cursor),
-            )
+        let next = saved(
+            SavedPersonKind::Favorite,
+            SavedPersonSort::Name,
+            1,
+            Some(cursor),
+        )
             .unwrap();
         assert_eq!(next.total, 2);
         assert_eq!(next.rows[0].person_id, b);
         assert!(next.next_cursor.is_none());
 
-        let liked = core
-            .saved_people(SavedPersonKind::Like, SavedPersonSort::Date, 1, None)
+        let liked = saved(SavedPersonKind::Like, SavedPersonSort::Date, 1, None)
             .unwrap();
         assert_eq!(liked.total, 2);
         assert_eq!(liked.rows[0].person_id, c);
         assert!(liked.rows[0].card.is_none());
-        let more = core
-            .saved_people(
-                SavedPersonKind::Like,
-                SavedPersonSort::Date,
-                1,
-                liked.next_cursor,
-            )
+        let more = saved(
+            SavedPersonKind::Like,
+            SavedPersonSort::Date,
+            1,
+            liked.next_cursor,
+        )
             .unwrap();
         assert_eq!(more.rows[0].person_id, a);
         assert!(more.rows[0].favorite);
         core.set_swipe_preference(first, a, Some(Preference::Like), Preference::Dislike)
             .unwrap();
-        let dislikes = core
-            .saved_people(SavedPersonKind::Dislike, SavedPersonSort::Date, 100, None)
+        let dislikes = saved(SavedPersonKind::Dislike, SavedPersonSort::Date, 100, None)
             .unwrap();
         assert_eq!(dislikes.total, 2);
         assert!(dislikes.rows.iter().all(|row| row.favorite));
         assert_eq!(
-            core.saved_people(SavedPersonKind::Like, SavedPersonSort::Date, 10, None)
+            saved(SavedPersonKind::Like, SavedPersonSort::Date, 10, None)
                 .unwrap()
                 .total,
             1
         );
+    }
+
+    #[test]
+    fn watchlist_partitions_all_favorites_at_the_same_boundary() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let as_of = 1_800_000_000;
+        let mut ids = Vec::new();
+        for age in [0, 1, 2, 3, 129599, 129600, 129601] {
+            let person = core.create_person(None).unwrap();
+            core.set_favorite(person, true).unwrap();
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO change_events(person_id,event_type,created_at)
+                 VALUES (?1,'PROFILE_CREATED',datetime(?2,'unixepoch'))",
+                params![person, as_of - age],
+            )
+            .unwrap();
+            ids.push(person);
+        }
+        let read = |section, cursor| {
+            core.saved_people(
+                SavedPersonKind::Favorite,
+                SavedPersonSort::Date,
+                section,
+                3,
+                cursor,
+                Some(as_of),
+            )
+            .unwrap()
+        };
+        let recent = read(SavedPersonSection::Recent, None);
+        assert_eq!(recent.total, 7);
+        assert_eq!(recent.section_total, 5);
+        assert_eq!(recent.rows.len(), 3);
+        assert!(recent.rows.iter().all(|row| row.recent));
+        let rest = read(SavedPersonSection::Recent, recent.next_cursor);
+        let regular = read(SavedPersonSection::Regular, None);
+        assert_eq!(regular.section_total, 2);
+        let mut recent_ids = recent
+            .rows
+            .iter()
+            .chain(&rest.rows)
+            .map(|row| row.person_id)
+            .collect::<Vec<_>>();
+        recent_ids.sort_unstable();
+        assert_eq!(recent_ids, ids[..5]);
+        assert!(regular.rows.iter().all(|row| !row.recent));
+        assert!(regular.rows.iter().all(|row| ids[5..].contains(&row.person_id)));
     }
 
     #[test]
