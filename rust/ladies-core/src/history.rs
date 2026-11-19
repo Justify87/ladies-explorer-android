@@ -105,6 +105,60 @@ fn media(db: &Connection, snapshot: i64) -> Result<Value, CoreError> {
     Ok(Value::Array(rows.collect::<rusqlite::Result<Vec<_>>>()?))
 }
 
+// The first known advert is not a relisting. Use the same chronological
+// rule for native first snapshots and later explicit identity confirmation.
+fn later_listing(db: &Connection, listing_id: i64) -> Result<bool, CoreError> {
+    Ok(db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM listings l JOIN listings older ON older.person_id=l.person_id
+          WHERE l.listing_id=?1 AND older.listing_id!=l.listing_id
+            AND (julianday(older.first_seen_at)<julianday(l.first_seen_at)
+              OR (julianday(older.first_seen_at)=julianday(l.first_seen_at)
+                  AND older.listing_id<l.listing_id)))",
+        [listing_id],
+        |r| r.get(0),
+    )?)
+}
+
+pub(crate) fn reconcile_relistings(db: &Connection, person_id: i64) -> Result<(), CoreError> {
+    let mut stmt = db.prepare(
+        "SELECT l.listing_id FROM listings l WHERE l.person_id=?1 AND l.current_snapshot_id IS NOT NULL",
+    )?;
+    let listings = stmt
+        .query_map([person_id], |r| r.get::<_, i64>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for listing in listings {
+        if !later_listing(db, listing)? {
+            continue;
+        }
+        let exists: bool = db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM change_events WHERE listing_id=?1
+                           AND event_type='NEW_LISTING_FOR_PERSON')",
+            [listing],
+            |r| r.get(0),
+        )?;
+        if exists {
+            continue;
+        }
+        // Reclassify native events, preserving their timestamp and snapshot.
+        // Imported events retain their provenance.
+        let updated = db.execute(
+            "UPDATE change_events SET event_type='NEW_LISTING_FOR_PERSON',importance='HIGH'
+             WHERE person_id=?1 AND listing_id=?2 AND event_type='PROFILE_CREATED'",
+            params![person_id, listing],
+        )?;
+        if updated == 0 {
+            db.execute(
+                "INSERT INTO change_events(person_id,listing_id,to_snapshot_id,event_type,importance,created_at)
+                 SELECT ?1,?2,s.snapshot_id,'NEW_LISTING_FOR_PERSON','HIGH',s.captured_at
+                 FROM listing_snapshots s WHERE s.listing_id=?2
+                 ORDER BY julianday(s.captured_at),s.snapshot_id LIMIT 1",
+                params![person_id, listing],
+            )?;
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn record_transition(
     db: &Connection,
     person_id: i64,
@@ -126,12 +180,18 @@ pub(crate) fn record_transition(
         ));
     }
     if previous.is_none() {
+        let relisting = later_listing(db, listing_id)?;
+        let (event, importance) = if relisting {
+            ("NEW_LISTING_FOR_PERSON", "HIGH")
+        } else {
+            ("PROFILE_CREATED", "LOW")
+        };
         db.execute(
             "INSERT INTO change_events
-             (person_id, listing_id, from_snapshot_id, to_snapshot_id,
-              event_type, importance)
-             VALUES (?1,?2,NULL,?3,'PROFILE_CREATED','LOW')",
-            params![person_id, listing_id, current],
+             (person_id, listing_id, from_snapshot_id, to_snapshot_id,event_type,importance)
+             SELECT ?1,?2,NULL,?3,?4,?5
+             WHERE NOT EXISTS(SELECT 1 FROM change_events WHERE listing_id=?2 AND event_type=?4)",
+            params![person_id, listing_id, current, event, importance],
         )?;
         return Ok(());
     }

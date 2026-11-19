@@ -558,6 +558,7 @@ pub(crate) fn confirm(core: &LadiesCore, listing_id: i64, target_id: i64) -> Res
             params![target_id, source_id],
         )?;
     }
+    crate::history::reconcile_relistings(&tx, target_id)?;
     tx.execute(
         "UPDATE identity_evidence SET candidate_person_id=?1 WHERE candidate_person_id=?2",
         params![target_id, source_id],
@@ -777,6 +778,11 @@ mod tests {
             .unwrap();
             let snapshot = db.last_insert_rowid();
             db.execute(
+                "UPDATE listings SET first_seen_at='2026-01-01T00:00:00Z' WHERE listing_id=?1",
+                [target_listing],
+            )
+            .unwrap();
+            db.execute(
                 "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
                 params![snapshot, listing],
             )
@@ -800,6 +806,10 @@ mod tests {
         assert_eq!(saved.total, 1);
         assert_eq!(saved.rows[0].person_id, target);
         assert_eq!(saved.rows[0].listing_count, 2);
+        assert_eq!(
+            saved.rows[0].latest_change_type.as_deref(),
+            Some("NEW_LISTING_FOR_PERSON")
+        );
         assert_eq!(
             core.person_note(listing, target).unwrap().as_deref(),
             Some("Target note\n\nSource note")
