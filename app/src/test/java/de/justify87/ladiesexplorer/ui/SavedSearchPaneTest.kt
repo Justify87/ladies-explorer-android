@@ -301,4 +301,24 @@ class SavedSearchPaneTest {
         assertEquals(2, fake.acknowledgements)
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
+
+    @Test fun successfulAcknowledgementWithFailedListReadIsNotRepeatedByRefresh() = runBlocking {
+        val fake = Fake(info(unread = true))
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        c.openResults("one"); idle(c)
+        fake.onAck = { fake.readError = true }
+        c.acknowledge("one", 1L); idle(c)
+        assertEquals(1, fake.acknowledgements)
+        assertFalse(fake.list.single().unreadNewResults)
+        assertFalse(c.state.value.listAvailable)
+        assertNotNull(c.state.value.listError)
+        // Re-read after the native acknowledgement; never reissue that operation.
+        fake.readError = false
+        fake.onAck = {}
+        c.refresh(); idle(c)
+        assertEquals(1, fake.acknowledgements)
+        assertTrue(c.state.value.listAvailable)
+        assertFalse(c.state.value.searches.single().unreadNewResults)
+    }
 }

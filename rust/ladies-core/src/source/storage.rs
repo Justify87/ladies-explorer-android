@@ -1149,4 +1149,143 @@ mod tests {
             .unwrap();
         assert_eq!(flags, (1, 1));
     }
+
+    #[test]
+    fn late_profile_response_cannot_overwrite_newer_observation() {
+        let core = core();
+        let found = save_cards(&core, vec![card("101", "Fixture")]);
+        let listing = found.profiles[0].listing_id;
+        let old_target = listing_target(&core, listing, false).unwrap();
+        let new = save_observed_profile(&core, &old_target, profile("New"), true, None).unwrap();
+        let late = save_observed_profile(&core, &old_target, profile("Late"), true, None);
+        assert!(matches!(late, Err(CoreError::Source(_))));
+        let current = core.cached_source_profile(listing).unwrap().unwrap();
+        assert_eq!(current.snapshot_id, new.snapshot_id);
+        assert_eq!(current.name, "New");
+        let db = core.connection().unwrap();
+        let observations: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM listing_observations WHERE listing_id=?1 AND source='PROFILE'",
+                [listing],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(observations, 1);
+    }
+
+    #[test]
+    fn merge_reprojects_existing_run_saved_people_saved_window_and_map_without_source() {
+        let core = core();
+        let found = save_cards(&core, vec![card("101", "Source"), card("102", "Target")]);
+        let source = &found.profiles[0];
+        let target = &found.profiles[1];
+        let listing = source.listing_id;
+        let owner = source.person_id;
+        let new_owner = target.person_id;
+        let mut target_profile = profile("Target");
+        target_profile.advert_id = "102".into();
+        target_profile.source_profile_id = None;
+        target_profile.phone_display = Some("0170 1234567".into());
+        save_profile(
+            &core,
+            target.listing_id,
+            &target.profile_url,
+            target_profile,
+        )
+        .unwrap();
+        let mut source_profile = profile("Source");
+        source_profile.phone_display = Some("0170 1234567".into());
+        let snapshot = save_profile(&core, listing, &source.profile_url, source_profile).unwrap();
+        core.set_favorite(owner, true).unwrap();
+        core.set_preference(owner, crate::Preference::Like).unwrap();
+        assert!(
+            core.list_identity_candidates(listing)
+                .unwrap()
+                .iter()
+                .any(|c| c.person_id == new_owner)
+        );
+
+        // Seed only the saved-search baseline; use actual projection and ack APIs.
+        let saved_id = core
+            .save_native_search("Fixture".into(), SearchRequest::for_test())
+            .unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO saved_search_results
+                 (saved_search_id,result_key,snapshot_json,position,present,visible)
+                 VALUES (?1,'101','{}',1,1,1),(?1,'102','{}',2,1,1)",
+                [&saved_id],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE saved_searches SET unread_new_results=1 WHERE saved_search_id=?1",
+                [&saved_id],
+            )
+            .unwrap();
+        }
+        let before = core.saved_search_window(saved_id.clone(), 100).unwrap();
+        assert_eq!(before.cards[0].person_id, Some(owner));
+        assert!(before.searches[0].unread_new_results);
+        assert_eq!(core.map_overview(false).unwrap().total_profiles, 2);
+        let in_flight = listing_target(&core, listing, false).unwrap();
+
+        // Commit through the real identity transaction, not a simulated owner change.
+        core.confirm_identity_match(listing, new_owner).unwrap();
+        let rejected = save_observed_profile(&core, &in_flight, profile("Late"), true, None);
+        assert!(matches!(rejected, Err(CoreError::Source(_))));
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, new_owner);
+        assert_eq!(
+            core.cached_source_profile(listing)
+                .unwrap()
+                .unwrap()
+                .snapshot_id,
+            snapshot.snapshot_id
+        );
+        let grid = core
+            .active_search_cards(
+                found.search_run_id,
+                crate::saved_search::LocalVisibility::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            grid.iter().map(|c| c.listing_id).collect::<Vec<_>>(),
+            vec![listing, target.listing_id]
+        );
+        assert!(grid.iter().all(|c| c.person_id == new_owner
+            && c.favorite
+            && c.preference == crate::Preference::Like));
+        let saved = core
+            .saved_people(
+                crate::SavedPersonKind::Favorite,
+                crate::SavedPersonSort::Date,
+                crate::SavedPersonSection::All,
+                50,
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(saved.total, 1);
+        assert_eq!(saved.rows[0].person_id, new_owner);
+        assert_eq!(saved.rows[0].listing_count, 2);
+        let window = core.saved_search_window(saved_id.clone(), 100).unwrap();
+        assert_eq!(window.cards.len(), 2);
+        assert!(window.cards.iter().all(|c| c.person_id == Some(new_owner)));
+        assert!(window.searches[0].unread_new_results);
+        assert_ne!(before.searches[0].revision, window.searches[0].revision);
+        assert!(
+            !core
+                .acknowledge_saved_search_revision(saved_id.clone(), before.searches[0].revision)
+                .unwrap()
+        );
+        assert!(core.list_saved_searches().unwrap()[0].unread_new_results);
+        assert_eq!(core.map_overview(false).unwrap().total_profiles, 1);
+        assert_eq!(core.map_overview(true).unwrap().total_profiles, 1);
+        assert_eq!(core.person_detail(new_owner).unwrap().listings.len(), 2);
+        assert_eq!(core.profile_media(snapshot.snapshot_id).unwrap().len(), 1);
+        assert!(
+            core.acknowledge_saved_search_revision(saved_id, window.searches[0].revision)
+                .unwrap()
+        );
+    }
 }

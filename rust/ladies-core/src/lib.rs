@@ -1377,4 +1377,40 @@ mod swipe_preference_tests {
         assert_eq!(person.preference, Preference::Dislike);
         assert!(person.favorite);
     }
+
+    #[test]
+    fn explicit_none_and_standalone_preference_preserve_favorite_and_note() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "none-fixture".into(), None)
+            .unwrap();
+        core.set_favorite(person, true).unwrap();
+        core.save_person_note(listing, person, None, Some("Fixture note".into()))
+            .unwrap();
+        core.set_preference(person, Preference::Like).unwrap();
+        assert_eq!(
+            core.set_swipe_preference(listing, person, Some(Preference::Like), Preference::None)
+                .unwrap(),
+            Preference::Like
+        );
+        assert!(
+            core.set_swipe_preference(listing, person, Some(Preference::Like), Preference::Dislike)
+                .is_err()
+        );
+        core.set_preference(person, Preference::Dislike).unwrap();
+        core.set_preference(person, Preference::None).unwrap();
+        let state = core.get_person(person).unwrap().unwrap();
+        assert_eq!(state.preference, Preference::None);
+        assert!(state.favorite);
+        assert_eq!(
+            core.person_note(listing, person).unwrap().as_deref(),
+            Some("Fixture note")
+        );
+        core.set_favorite(person, false).unwrap();
+        assert_eq!(
+            core.get_person(person).unwrap().unwrap().preference,
+            Preference::None
+        );
+    }
 }

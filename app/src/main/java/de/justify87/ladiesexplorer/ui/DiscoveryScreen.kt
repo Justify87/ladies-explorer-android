@@ -45,7 +45,7 @@ internal fun DiscoverScreen(
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     val visible = lifecycle.isAtLeast(Lifecycle.State.STARTED) && !searchLoading && !state.loading && !state.busy
     val enabled = !state.busy && !state.loading && !searchLoading
-    val decks = remember(state.activeRunId) { mutableStateMapOf<Long, SwipeProfile>() }
+    val decks = remember(state.activeRunId) { SwipeProfileWindow(mutableStateMapOf()) }
     var retry by remember(card?.listingId) { mutableIntStateOf(0) }
     var readError by remember(card?.listingId) { mutableStateOf<String?>(null) }
     val current = card?.let { decks[it.listingId] }
@@ -63,8 +63,9 @@ internal fun DiscoverScreen(
         if (!visible || card == null || current != null && retry == 0) return@LaunchedEffect
         readError = null
         try {
-            decks[card.listingId] = core.readSwipeProfile(card.listingId, control,
-                refresh = true, onSourceRead = onSnapshotChanged)
+            decks.readCurrent(card.listingId) {
+                core.readSwipeProfile(card.listingId, control, refresh = true, onSourceRead = onSnapshotChanged)
+            }
             retry = 0
         } catch (cancel: CancellationException) {
             throw cancel
@@ -77,14 +78,15 @@ internal fun DiscoverScreen(
     }
     DisposableEffect(prefetchControl) { onDispose { prefetchControl.cancel() } }
     LaunchedEffect(prefetchControl) {
-        decks.keys.toList().filterNot { id -> window.any { it.listingId == id } }.forEach(decks::remove)
+        decks.retain(window.map { it.listingId })
         if (!visible || state.busy || current == null) return@LaunchedEffect
         for (next in upcoming) {
             try {
-                val profile = decks[next.listingId] ?: core.readSwipeProfile(next.listingId, prefetchControl,
-                    refresh = false, allowNetwork = state.activeRunId != null,
-                    onSourceRead = onSnapshotChanged)
-                decks[next.listingId] = profile
+                val profile = decks.prefetch(next.listingId) {
+                    core.readSwipeProfile(next.listingId, prefetchControl,
+                        refresh = false, allowNetwork = state.activeRunId != null,
+                        onSourceRead = onSnapshotChanged)
+                }
                 warmSwipeImages(context, next, profile)
             } catch (cancel: CancellationException) {
                 throw cancel

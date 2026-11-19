@@ -19,6 +19,18 @@ internal data class SwipeProfile(
     val warning: String? = null,
 )
 
+/** Bound native operations, injected only to characterize the real swipe read sequence.
+ * No state, cache or replacement transport lives here. */
+internal class SwipeProfileReads(
+    val cached: suspend (Long) -> ProfileResponse?,
+    val source: suspend (Long) -> ProfileResponse,
+    val identity: suspend (Long) -> ProfileIdentity,
+    val person: suspend (Long) -> PersonSummary?,
+    val media: suspend (Long) -> List<ProfileMediaItem>,
+    val history: suspend (Long) -> List<ChangeRecord>,
+    val candidates: suspend (Long) -> List<IdentityCandidate>,
+)
+
 /** Reuse the existing source/persistence contract, but never archive media for a swipe read. */
 internal suspend fun CoreStore.readSwipeProfile(
     listingId: Long,
@@ -26,14 +38,26 @@ internal suspend fun CoreStore.readSwipeProfile(
     refresh: Boolean,
     allowNetwork: Boolean = true,
     onSourceRead: () -> Unit = {},
+): SwipeProfile = readSwipeProfile(
+    listingId, refresh, allowNetwork, onSourceRead,
+    SwipeProfileReads(::cachedProfile, { loadSwipeProfile(it, control) }, ::profileIdentity,
+        ::person, ::profileMedia, ::changeEvents, ::identityCandidates),
+)
+
+internal suspend fun readSwipeProfile(
+    listingId: Long,
+    refresh: Boolean,
+    allowNetwork: Boolean,
+    onSourceRead: () -> Unit,
+    reads: SwipeProfileReads,
 ): SwipeProfile {
-    var cached = cachedProfile(listingId)
+    var cached = reads.cached(listingId)
     var fromArchive = cached != null && !refresh
     var warning: String? = null
     if (allowNetwork && (refresh || cached == null)) {
         // Completion matters even if delivery was cancelled after a native commit.
         try {
-            cached = loadSwipeProfile(listingId, control)
+            cached = reads.source(listingId)
             fromArchive = false
         } catch (cancel: CancellationException) {
             throw cancel
@@ -48,10 +72,10 @@ internal suspend fun CoreStore.readSwipeProfile(
     }
     val profile = checkNotNull(cached) { "Kein archiviertes Profil vorhanden" }
     currentCoroutineContext().ensureActive()
-    val identity = profileIdentity(listingId)
-    return SwipeProfile(profile, identity, person(identity.personId),
-        profileMedia(profile.snapshotId), changeEvents(identity.personId),
-        identityCandidates(listingId), fromArchive, warning)
+    val identity = reads.identity(listingId)
+    return SwipeProfile(profile, identity, reads.person(identity.personId),
+        reads.media(profile.snapshotId), reads.history(identity.personId),
+        reads.candidates(listingId), fromArchive, warning)
 }
 
 /** Only first two images; Coil shares the app's cache/HTTP diagnostics and suspending cancellation. */
@@ -63,5 +87,26 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
     for (model in models) {
         currentCoroutineContext().ensureActive()
         loader.execute(ImageRequest.Builder(context).data(model).size(512).build())
+    }
+}
+
+/** The existing composition-owned listing cache. Its original admission is intentionally
+ * characterized here; T10.2 replaces listing-only publication with the full context token. */
+internal class SwipeProfileWindow(private val entries: MutableMap<Long, SwipeProfile>) {
+    operator fun get(listingId: Long): SwipeProfile? = entries[listingId]
+    fun remove(listingId: Long) { entries.remove(listingId) }
+    fun clear() = entries.clear()
+    fun retain(listingIds: List<Long>) {
+        entries.keys.toList().filterNot { it in listingIds }.forEach(entries::remove)
+    }
+
+    suspend fun readCurrent(listingId: Long, read: suspend () -> SwipeProfile) {
+        entries[listingId] = read()
+    }
+
+    suspend fun prefetch(listingId: Long, read: suspend () -> SwipeProfile): SwipeProfile {
+        val profile = entries[listingId] ?: read()
+        entries[listingId] = profile
+        return profile
     }
 }

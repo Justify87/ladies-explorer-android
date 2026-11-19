@@ -815,6 +815,34 @@ mod tests {
             Some("Target note\n\nSource note")
         );
         assert!(core.person_note(listing, source).is_err());
+        // The exact same listing survives the merge. Old rendered owner tokens must fail
+        // at the existing native admission boundary, including CAS and note writes.
+        assert!(
+            core.set_swipe_preference(listing, source, None, crate::Preference::Like)
+                .is_err()
+        );
+        assert!(
+            core.set_swipe_preference(
+                listing,
+                source,
+                Some(crate::Preference::None),
+                crate::Preference::Dislike
+            )
+            .is_err()
+        );
+        assert!(
+            core.save_person_note(listing, source, Some("Source note".into()), None)
+                .is_err()
+        );
+        assert!(core.confirm_identity_match(listing, target).is_err());
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, target);
+        let state = core.get_person(target).unwrap().unwrap();
+        assert!(state.favorite);
+        assert_eq!(state.preference, crate::Preference::None);
+        assert_eq!(
+            core.person_note(listing, target).unwrap().as_deref(),
+            Some("Target note\n\nSource note")
+        );
         let db = core.connection().unwrap();
         let owner: (i64, i64) = db
             .query_row(
@@ -833,5 +861,113 @@ mod tests {
             )
             .unwrap();
         assert_eq!(event_previous, source);
+    }
+
+    #[test]
+    fn confirmation_rechecks_evidence_after_current_snapshot_changes() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let source = core.create_person(None).unwrap();
+        let target = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(
+                source,
+                None,
+                "LADIES".into(),
+                "evidence-change".into(),
+                None,
+            )
+            .unwrap();
+        let target_listing = core
+            .add_listing(
+                target,
+                None,
+                "LADIES".into(),
+                "evidence-target".into(),
+                None,
+            )
+            .unwrap();
+        {
+            let db = core.connection().unwrap();
+            record_phone(&db, target, target_listing, Some("0170 1234567")).unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,normalized_phone)
+                 VALUES (?1,'before','+491701234567')",
+                [listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), listing],
+            )
+            .unwrap();
+            refresh(&db, listing).unwrap();
+        }
+        let rendered = core.list_identity_candidates(listing).unwrap();
+        assert_eq!(rendered.len(), 1);
+        assert_eq!(rendered[0].person_id, target);
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint)
+                 VALUES (?1,'after')",
+                [listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), listing],
+            )
+            .unwrap();
+            // Intentionally do not refresh the cached match status: confirm must
+            // use current evidence, not a candidate that was previously rendered.
+        }
+        assert!(core.confirm_identity_match(listing, target).is_err());
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, source);
+        assert_eq!(core.status().unwrap().person_count, 2);
+        assert!(core.list_identity_candidates(listing).unwrap().is_empty());
+    }
+
+    #[test]
+    fn known_gap_stale_confirm_can_merge_a_different_current_source_owner() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let a = core.create_person(None).unwrap();
+        let b = core.create_person(None).unwrap();
+        let c = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(a, None, "LADIES".into(), "a".into(), None)
+            .unwrap();
+        let lb = core
+            .add_listing(b, None, "LADIES".into(), "b".into(), None)
+            .unwrap();
+        let lc = core
+            .add_listing(c, None, "LADIES".into(), "c".into(), None)
+            .unwrap();
+        {
+            let db = core.connection().unwrap();
+            record_phone(&db, b, lb, Some("0170 1234567")).unwrap();
+            record_phone(&db, c, lc, Some("0170 1234567")).unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,normalized_phone)
+                 VALUES (?1,'rendered','+491701234567')",
+                [listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), listing],
+            )
+            .unwrap();
+        }
+        let rendered = core.list_identity_candidates(listing).unwrap();
+        assert!(rendered.iter().any(|candidate| candidate.person_id == b));
+        assert!(rendered.iter().any(|candidate| candidate.person_id == c));
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, a);
+        core.confirm_identity_match(listing, b).unwrap();
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, b);
+        // A stale A->C confirmation currently cannot carry expected source A.
+        // Current evidence still supports C, so the old API merges B->C.
+        core.confirm_identity_match(listing, c).unwrap();
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, c);
+        assert_eq!(core.status().unwrap().person_count, 1);
     }
 }

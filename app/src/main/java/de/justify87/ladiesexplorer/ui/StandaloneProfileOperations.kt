@@ -1,0 +1,225 @@
+package de.justify87.ladiesexplorer.ui
+
+import de.justify87.ladiesexplorer.core.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/** Existing standalone IO calls, bound to CoreStore in MainViewModel. No transport or state. */
+internal class StandaloneProfileIo<C : Any>(
+    val loadProfile: suspend (Long) -> ProfileResponse,
+    val cachedProfile: suspend (Long) -> ProfileResponse?,
+    val profileMedia: suspend (Long) -> List<ProfileMediaItem>,
+    val profileIdentity: suspend (Long) -> ProfileIdentity,
+    val person: suspend (Long) -> PersonSummary?,
+    val changeEvents: suspend (Long) -> List<ChangeRecord>,
+    val identityCandidates: suspend (Long) -> List<IdentityCandidate>,
+    val archiveProfileMedia: suspend (Long, C) -> MediaArchiveReport,
+    val newArchiveControl: () -> C,
+    val cancelArchive: (C) -> Unit,
+    val confirmIdentityMatch: suspend (Long, Long) -> Unit,
+)
+
+/** The existing independent projection owners remain in MainViewModel/SavedSearchController. */
+internal class ProfileProjectionCallbacks(
+    val epoch: () -> Long,
+    val nextEpoch: () -> Long,
+    val pending: () -> Boolean,
+    val projectDiscovery: suspend (Long) -> Boolean,
+    val discovery: () -> Unit,
+    val savedSearch: () -> Unit,
+    val map: () -> Unit,
+    val home: () -> Unit,
+)
+
+/**
+ * Extracted standalone operation bodies, not the future unified profile controller.
+ * The ViewModel still owns the same StateFlows and coroutine lifetime. Generation and
+ * archive control are moved here, not duplicated. Known baseline gaps remain for T10.2.
+ */
+internal class StandaloneProfileOperations<C : Any>(
+    private val scope: CoroutineScope,
+    private val _searchUiState: MutableStateFlow<SearchUiState>,
+    private val _discoverState: MutableStateFlow<DiscoverUiState>,
+    private val _profileNotes: MutableStateFlow<Map<Long, NoteEditorState>>,
+    private val noteReadTickets: NoteReadTickets,
+    private val io: StandaloneProfileIo<C>,
+    private val projections: ProfileProjectionCallbacks,
+) {
+    private val profileGeneration = RequestGeneration()
+    private var archiveControl: C? = null
+
+    fun invalidateProfileRequest() {
+        profileGeneration.invalidate()
+        archiveControl?.let(io.cancelArchive)
+        archiveControl = null
+    }
+
+    fun cancelMediaArchive() {
+        archiveControl?.let(io.cancelArchive)
+        _searchUiState.update { it.copy(archiving = false) }
+    }
+
+    fun closeProfile() {
+        invalidateProfileRequest()
+        _searchUiState.update {
+            it.copy(profileOpen = false, profile = null, profileIdentity = null, profileFromArchive = false, selectedPersonId = null,
+                selectedPerson = null, profileMedia = emptyList(), loading = false,
+                archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
+                actionBusy = false, actionError = null, error = null)
+        }
+    }
+
+    fun loadProfile(listingId: Long, personId: Long, beforeOpen: () -> Unit) {
+        invalidateProfileRequest()
+        beforeOpen()
+        val requestId = profileGeneration.value
+        _searchUiState.update {
+            it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
+                loading=true,profile=null,profileIdentity=null,profileFromArchive=false,profileMedia=emptyList(),changeEvents=emptyList(),
+                identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
+                mediaArchive=null,mediaWarning=null,archiving=false)
+        }
+        scope.launch {
+            try {
+                var showingArchive = false
+                var refreshError: String? = null
+                val profile = try {
+                    try {
+                        io.loadProfile(listingId)
+                    } finally {
+                        // A source read can persist before a later failure or invalidation.
+                        projections.savedSearch()
+                        projections.discovery()
+                    }
+                } catch (failure: CancellationException) {
+                    throw failure
+                } catch (failure: Exception) {
+                    val archived = io.cachedProfile(listingId) ?: throw failure
+                    showingArchive = true
+                    refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
+                    archived
+                }
+                if (!profileGeneration.isCurrent(requestId)) return@launch
+                val items = io.profileMedia(profile.snapshotId)
+                val identity = io.profileIdentity(listingId)
+                val person = io.person(identity.personId)
+                val changes = io.changeEvents(identity.personId)
+                val candidates = io.identityCandidates(listingId)
+                if (!profileGeneration.isCurrent(requestId)) return@launch
+                _searchUiState.update {
+                    it.copy(loading=false,profile=profile,profileIdentity=identity,profileFromArchive=showingArchive,
+                        selectedPersonId=identity.personId,selectedPerson=person,
+                        profileMedia=items,changeEvents=changes,identityCandidates=candidates,
+                        mediaWarning=refreshError,archiving=!showingArchive)
+                }
+                projections.map()
+                if (showingArchive) return@launch
+                val control = io.newArchiveControl()
+                archiveControl = control
+                try {
+                    val report = io.archiveProfileMedia(profile.snapshotId,control)
+                    val updatedMedia = io.profileMedia(profile.snapshotId)
+                    if (profileGeneration.isCurrent(requestId)) {
+                        _searchUiState.update { it.copy(profileMedia=updatedMedia,mediaArchive=report) }
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (failure: Exception) {
+                    if (profileGeneration.isCurrent(requestId)) {
+                        _searchUiState.update {
+                            it.copy(mediaWarning=failure.message ?: "Medienarchivierung fehlgeschlagen")
+                        }
+                    }
+                } finally {
+                    if (archiveControl === control) archiveControl = null
+                    if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(archiving=false) }
+                    // Even a cancelled archive may already have committed individual media.
+                    projections.savedSearch()
+                    projections.discovery()
+                }
+            } catch (cancellation: CancellationException) {
+                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(loading=false,archiving=false) }
+                throw cancellation
+            } catch (failure: Exception) {
+                if (profileGeneration.isCurrent(requestId)) {
+                    _searchUiState.update {
+                        it.copy(loading=false,archiving=false,error=failure.message ?: "Profil konnte nicht geladen werden")
+                    }
+                }
+            }
+        }
+    }
+
+    fun confirmIdentity(listingId: Long, targetPersonId: Long) {
+        val active = _searchUiState.value
+        val sourceOwner = active.currentIdentityConfirmationOwner(listingId, _discoverState.value.busy) ?: return
+        val dirtyOwners = _profileNotes.value.dirtyOwners(sourceOwner, targetPersonId)
+        if (dirtyOwners.isNotEmpty()) {
+            _searchUiState.update { it.copy(actionError =
+                "Ungespeicherte Notiz für Person(en) ${dirtyOwners.joinToString()}. Vor Zusammenführung speichern oder verwerfen.") }
+            return
+        }
+        val requestId = profileGeneration.value
+        val epoch = projections.nextEpoch()
+        archiveControl?.let(io.cancelArchive)
+        // The mutation outlives the detail screen. Keep the shared write guard until
+        // it finishes even if Back clears the screen's own actionBusy flag.
+        _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
+            savedLoadingMore = false, savedRecentLoadingMore = false, mutationError = null) }
+        _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
+        scope.launch {
+            var committed = false
+            var profileUpdated = false
+            var projectionUpdated = false
+            try {
+                io.confirmIdentityMatch(listingId, targetPersonId)
+                committed = true
+                for (owner in listOf(sourceOwner, targetPersonId)) {
+                    noteReadTickets.invalidate(owner)
+                }
+                _profileNotes.update { it - sourceOwner - targetPersonId }
+                val identity = io.profileIdentity(listingId)
+                val history = io.changeEvents(identity.personId)
+                val candidates = io.identityCandidates(listingId)
+                val person = io.person(identity.personId)
+                if (profileGeneration.isCurrent(requestId)) {
+                    _searchUiState.update {
+                        if (it.profile?.listingId == listingId) {
+                            it.copy(selectedPersonId = identity.personId, profileIdentity = identity,
+                                selectedPerson = person, changeEvents = history, identityCandidates = candidates)
+                        } else it
+                    }
+                }
+                profileUpdated = true
+                projectionUpdated = projections.projectDiscovery(epoch)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                val message = if (committed) "Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
+                    else failure.message ?: "Zusammenführung fehlgeschlagen"
+                if (profileGeneration.isCurrent(requestId)) {
+                    _searchUiState.update {
+                        it.identityConfirmationFailure(message, committed, profileUpdated)
+                    }
+                } else {
+                    _discoverState.update { it.copy(mutationError = message) }
+                }
+            } finally {
+                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(actionBusy = false) }
+                if (epoch == projections.epoch()) {
+                    _discoverState.update { it.copy(busy = false) }
+                    if (committed && !projectionUpdated || projections.pending()) projections.discovery()
+                }
+                if (committed) {
+                    projections.savedSearch()
+                    if (projections.pending()) projections.discovery()
+                    projections.map()
+                    projections.home()
+                }
+            }
+        }
+    }
+}

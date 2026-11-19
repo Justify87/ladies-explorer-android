@@ -95,4 +95,19 @@ class ProfileTabsTest {
         assertEquals("Nein", evidenceLabel(EvidenceStatus.NO))
         assertEquals("Unbekannt", evidenceLabel(EvidenceStatus.UNKNOWN))
     }
+
+    @Test fun bothMergeOwnersWithDirtyDraftsRemainIndependentAfterConflictingRead() {
+        val notes = mapOf(
+            1L to NoteEditorState().loaded("a"),
+            2L to NoteEditorState().loaded("b"),
+        ).updateNote(1L) { it.copy(draft = it.draft!!.edit("draft a")) }
+            .updateNote(2L) { it.copy(draft = it.draft!!.edit("draft b")) }
+            .updateNote(1L) { it.loaded("external a") }
+        assertEquals(listOf(1L, 2L), notes.dirtyOwners(1L, 2L, 1L))
+        assertEquals(true, notes.getValue(1L).draft?.conflict)
+        assertEquals("draft a", notes.getValue(1L).draft?.text)
+        assertEquals("draft b", notes.getValue(2L).draft?.text)
+        val resolved = notes.updateNote(1L) { it.copy(draft = it.draft!!.useStored()) }
+        assertEquals(listOf(2L), resolved.dirtyOwners(1L, 2L))
+    }
 }

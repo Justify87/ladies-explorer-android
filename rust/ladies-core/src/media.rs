@@ -961,4 +961,84 @@ mod tests {
         );
         assert!(validate_media_url("https://bilder1.ladies-cdn.de/a.jpg", Some("VIDEO")).is_err());
     }
+
+    #[test]
+    fn archive_cancel_after_first_commit_defers_late_download_and_retry_reuses_asset() {
+        struct CancelSecond {
+            calls: std::cell::Cell<u32>,
+            bytes: Vec<u8>,
+        }
+        impl Fetcher for CancelSecond {
+            fn get(
+                &self,
+                _: &str,
+                _: u64,
+                _: Duration,
+                control: &RequestControl,
+            ) -> Result<Download, CoreError> {
+                let calls = self.calls.get() + 1;
+                self.calls.set(calls);
+                if calls == 2 {
+                    control.cancel();
+                }
+                Ok(Download {
+                    bytes: self.bytes.clone(),
+                    mime: Some("image/png".into()),
+                    etag: None,
+                    last_modified: None,
+                })
+            }
+        }
+
+        let (_temp, core, snapshot, _) = fixture();
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(16, 16)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        let fetcher = CancelSecond {
+            calls: std::cell::Cell::new(0),
+            bytes: png.into_inner(),
+        };
+        let control = RequestControl::default();
+        let report = archive_with(&core, snapshot, false, &fetcher, &control).unwrap();
+        assert_eq!(fetcher.calls.get(), 2);
+        assert_eq!(
+            (
+                report.downloaded,
+                report.reused,
+                report.failed,
+                report.deferred
+            ),
+            (1, 0, 0, 1)
+        );
+        {
+            let db = core.connection().unwrap();
+            let links: i64 = db
+                .query_row(
+                    "SELECT COUNT(*) FROM snapshot_media WHERE media_asset_id IS NOT NULL",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(links, 1);
+        }
+        let retry = archive_with(
+            &core,
+            snapshot,
+            false,
+            &FixtureFetcher(fetcher.bytes),
+            &RequestControl::default(),
+        )
+        .unwrap();
+        assert_eq!((retry.reused, retry.downloaded, retry.failed), (1, 1, 0));
+        let db = core.connection().unwrap();
+        let links: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM snapshot_media WHERE media_asset_id IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(links, 2);
+    }
 }
