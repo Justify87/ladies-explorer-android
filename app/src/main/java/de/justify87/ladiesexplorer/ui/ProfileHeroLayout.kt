@@ -80,6 +80,7 @@ internal data class SwipeMenuContext(
     val deck: SwipeDeckToken, val card: SwipeCardToken?, val profile: SwipeActionToken?,
     val deckEnabled: Boolean, val availabilityEnabled: Boolean, val matchingRun: Boolean,
     val availability: AvailabilityMode, val replay: Boolean, val canUndo: Boolean,
+    val medium: String? = null,
 )
 
 internal fun swipeMenuCurrent(opened: SwipeMenuContext?, current: SwipeMenuContext): Boolean =

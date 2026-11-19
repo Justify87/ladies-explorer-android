@@ -28,6 +28,28 @@ class SwipeProfileWindowTest {
         assertTrue(entries.isEmpty())
     }
 
+    @Test fun unfinishedPrefetchSurvivesPromotionOfTheSameOwnerSlot() = runBlocking {
+        val cache = SwipeProfileWindow(mutableMapOf())
+        val a = fixtureCard(1L)
+        val b = fixtureCard(2L)
+        val c = fixtureCard(3L)
+        val next = fixtureCard(4L)
+        cache.retain(listOf(a, b, c))
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        var reads = 0
+        val pending = launch {
+            cache.prefetch(b) { reads++; started.complete(Unit); finish.await(); fixtureSwipe(2L) }
+        }
+        started.await()
+        cache.retain(listOf(b, c, next))
+        finish.complete(Unit)
+        pending.join()
+        assertEquals(2L, cache[b]?.profile?.listingId)
+        cache.prefetch(b) { error("promoted projection must be reused") }
+        assertEquals(1, reads)
+    }
+
     @Test fun sameListingOwnerChangeInvalidatesOldSnapshotAndContact() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
         val oldCard = fixtureCard(4L, 1L)

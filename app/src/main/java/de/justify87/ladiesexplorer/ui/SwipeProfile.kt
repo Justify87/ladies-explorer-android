@@ -73,6 +73,25 @@ internal suspend fun readSwipeProfile(
     return ProfileReadModel(local, fromArchive, warning)
 }
 
+internal fun sameSwipeCard(a: DiscoveryCard?, b: DiscoveryCard?): Boolean =
+    a != null && b != null && a.listingId == b.listingId && a.personId == b.personId
+
+internal data class SwipeReadPolicy(val refresh: Boolean, val allowNetwork: Boolean)
+
+/** Current active-run freshness remains explicit. Promotion reuses its slot;
+ * local decks and speculation prefer the archived projection, never refresh
+ * cached snapshots unnecessarily. Strict recovery never accesses the source. */
+internal fun swipeReadPolicy(
+    current: Boolean, runId: Long?, listingId: Long,
+    localOnly: Boolean, preferLocal: Boolean,
+): SwipeReadPolicy {
+    require(listingId > 0)
+    return SwipeReadPolicy(
+        refresh = current && runId != null && !localOnly && !preferLocal,
+        allowNetwork = !localOnly && (current || runId != null),
+    )
+}
+
 /** Only first two images; Coil shares the app's cache/HTTP diagnostics and suspending cancellation. */
 internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
     if (size.width <= 0 || size.height <= 0) return

@@ -29,6 +29,15 @@ class SwipeProfileReadTest {
         )
     }
 
+    @Test fun slotRolePreservesActiveFreshnessAndLocalFirstRecovery() {
+        assertEquals(SwipeReadPolicy(true, true), swipeReadPolicy(true, 3, 4, false, false))
+        assertEquals(SwipeReadPolicy(false, true), swipeReadPolicy(false, 3, 4, false, false))
+        assertEquals(SwipeReadPolicy(false, true), swipeReadPolicy(true, null, 4, false, false))
+        assertEquals(SwipeReadPolicy(false, false), swipeReadPolicy(false, null, 4, false, false))
+        assertEquals(SwipeReadPolicy(false, false), swipeReadPolicy(true, 3, 4, true, false))
+        assertEquals(SwipeReadPolicy(false, true), swipeReadPolicy(true, 3, 4, false, true))
+    }
+
     @Test fun cachedPrefetchDoesNotAccessSourceAndReadsBySnapshotAndOwner() = runBlocking {
         val f = Fixture(fixtureProfile())
         val result = readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads)

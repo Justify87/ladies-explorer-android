@@ -45,6 +45,7 @@ internal fun ProfileDetailScreen(
     var selectedMedia by remember(state.profileSessionId) { mutableStateOf<ProfileMediaItem?>(null) }
     var fullImage by remember(renderedToken) { mutableStateOf<ProfileMediaItem?>(null) }
     var galleryMenu by remember(renderedToken, selectedMedia) { mutableStateOf(false) }
+    val latestSelected by rememberUpdatedState(selectedMedia)
     fullImage?.takeIf { !busy }?.let { ProfileImageDialog(it) { fullImage = null } }
     var info by remember(renderedToken, identity) { mutableStateOf(false) }
     if (info && identity != null) IdentityInfoDialog(identity) { info = false }
@@ -79,7 +80,7 @@ internal fun ProfileDetailScreen(
                             onClick = { galleryMenu = false; info = true })
                         selectedMedia?.takeIf { it.kind == "IMAGE" }?.let { item ->
                             DropdownMenuItem(text = { Text("Bild groß anzeigen") }, enabled = !busy,
-                                onClick = { galleryMenu = false; if (renderedToken?.let(isProfileCurrent) == true) fullImage = item })
+                                onClick = { galleryMenu = false; if (latestSelected == item && renderedToken?.let(isProfileCurrent) == true) fullImage = item })
                         }
                         state.profileIdentity?.profileUrl?.let { url ->
                             DropdownMenuItem(text = { Text("Originalprofil öffnen") }, enabled = !busy,

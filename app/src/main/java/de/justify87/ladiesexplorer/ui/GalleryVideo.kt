@@ -85,6 +85,7 @@ internal fun GalleryVideo(
             if (archived != null) {
                 file = archived
             } else {
+                check(item.url.isNotBlank()) { "No video source" }
                 val app = context.applicationContext as LadiesApplication
                 val download = app.coreStore.loadDisplayVideo(item.url)
                 file = withContext(Dispatchers.IO) {
