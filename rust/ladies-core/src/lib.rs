@@ -396,9 +396,10 @@ impl LadiesCore {
     pub fn confirm_identity_match(
         &self,
         listing_id: i64,
+        expected_source_person_id: i64,
         target_person_id: i64,
     ) -> Result<(), CoreError> {
-        identity::confirm(self, listing_id, target_person_id)
+        identity::confirm(self, listing_id, expected_source_person_id, target_person_id)
     }
 
     pub fn list_change_events(

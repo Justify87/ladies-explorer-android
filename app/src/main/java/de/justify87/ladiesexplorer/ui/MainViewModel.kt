@@ -817,8 +817,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         profileOperations.loadProfile(listingId, personId) { savedSearch.setVisible(false) }
     }
 
-    fun confirmIdentity(listingId: Long, targetPersonId: Long) =
-        profileOperations.confirmIdentity(listingId, targetPersonId)
+    internal fun confirmIdentity(token: DetailIdentityToken, targetPersonId: Long) =
+        profileOperations.confirmIdentity(token, targetPersonId)
 
     fun refresh() {
         if (homeOwner.occupied) {

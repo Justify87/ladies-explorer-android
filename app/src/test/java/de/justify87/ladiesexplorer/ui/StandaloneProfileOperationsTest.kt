@@ -36,11 +36,14 @@ class StandaloneProfileOperationsTest {
                 profileIdentity = { calls += "identity:$it"; identityError?.let { e -> throw e }; fixtureIdentity(owner) },
                 person = { calls += "person:$it"; fixturePerson(it) },
                 changeEvents = { calls += "history:$it"; emptyList() },
-                identityCandidates = { calls += "candidates:$it"; emptyList() },
+                identityCandidates = { calls += "candidates:$it"; listOf(IdentityCandidate(2L, "CANDIDATE", false, true, 0u, 0u, null)) },
                 archiveProfileMedia = { snapshot, control -> calls += "archive:$snapshot"; archive(snapshot, control) },
                 newArchiveControl = { Control().also(controls::add) },
                 cancelArchive = { it.cancelled++; calls += "cancel" },
-                confirmIdentityMatch = { listing, target -> calls += "confirm:$listing:$target"; commit(listing, target) },
+                confirmIdentityMatch = { listing, expectedOwner, target ->
+                    check(owner == expectedOwner)
+                    calls += "confirm:$listing:$target"; commit(listing, target)
+                },
             ),
             ProfileProjectionCallbacks(
                 epoch = { epoch }, nextEpoch = { ++epoch }, pending = { pending },
@@ -58,6 +61,9 @@ class StandaloneProfileOperationsTest {
             assertTrue(controls.isEmpty())
             calls.clear()
         }
+        fun confirmCurrent() {
+            search.value.detailIdentityToken()?.let { operations.confirmIdentity(it, 2L) }
+        }
         fun oldNotes() {
             notes.value = (1L..3L).associateWith { NoteEditorState().loaded("note $it") }
         }
@@ -70,13 +76,13 @@ class StandaloneProfileOperationsTest {
         for (owner in listOf(1L, 2L)) {
             f.oldNotes()
             f.notes.value = f.notes.value.updateNote(owner) { it.copy(draft = it.draft!!.edit("draft")) }
-            f.operations.confirmIdentity(4L, 2L)
+            f.confirmCurrent()
             assertTrue(f.search.value.actionError!!.contains(owner.toString()))
             assertFalse(f.discovery.value.busy)
             assertTrue(f.calls.isEmpty())
         }
         f.operations.closeProfile()
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         assertTrue(f.calls.isEmpty())
     }
 
@@ -90,10 +96,10 @@ class StandaloneProfileOperationsTest {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         f.commit = { _, target -> started.complete(Unit); finish.await(); f.owner = target }
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         started.await()
         assertTrue(f.discovery.value.busy)
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         assertTrue(f.tickets.isCurrent(1L, a))
         finish.complete(Unit)
         f.idle()
@@ -116,12 +122,12 @@ class StandaloneProfileOperationsTest {
         val finish = CompletableDeferred<Unit>()
         f.commit = { _, target -> started.complete(Unit); finish.await(); f.owner = target }
         f.feedOk = false
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         started.await()
         f.operations.closeProfile()
         assertFalse(f.search.value.profileOpen)
         assertTrue(f.discovery.value.busy)
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         finish.complete(Unit)
         f.idle()
         assertNull(f.search.value.profile)
@@ -138,7 +144,7 @@ class StandaloneProfileOperationsTest {
         val old = f.search.value
         val a = f.tickets.invalidate(1L)
         f.commit = { _, target -> f.owner = target; f.identityError = IllegalStateException("read failed") }
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         f.idle()
         assertEquals(2L, f.owner)
         assertNull(f.search.value.profileIdentity)
@@ -149,7 +155,7 @@ class StandaloneProfileOperationsTest {
         assertEquals(setOf(3L), f.notes.value.keys)
         assertTrue(f.search.value.actionError!!.startsWith("Zusammenführung gespeichert"))
         assertEquals(listOf("confirm:4:2", "identity:4", "discovery", "saved", "map", "home"), f.calls)
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         assertEquals(1, f.calls.count { it.startsWith("confirm:") })
         assertFalse(f.discovery.value.busy)
     }
@@ -160,7 +166,7 @@ class StandaloneProfileOperationsTest {
         f.oldNotes()
         val ticket = f.tickets.invalidate(1L)
         f.commit = { _, _ -> error("write failed") }
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         f.idle()
         assertEquals(listOf("confirm:4:2"), f.calls)
         assertEquals("write failed", f.search.value.actionError)
@@ -244,7 +250,7 @@ class StandaloneProfileOperationsTest {
         val reply = CompletableDeferred<CancellableContinuation<Unit>>()
         val ticket = f.tickets.invalidate(1L)
         f.commit = { _, target -> suspendCancellableCoroutine { c -> f.owner = target; reply.complete(c) } }
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         reply.await().resume(Unit)
         coroutineContext[Job]!!.children.single().cancelAndJoin()
         assertEquals(2L, f.owner)
@@ -260,7 +266,7 @@ class StandaloneProfileOperationsTest {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         f.commit = { _, target -> started.complete(Unit); finish.await(); f.owner = target }
-        f.operations.confirmIdentity(4L, 2L)
+        f.confirmCurrent()
         started.await()
         f.pending = true
         finish.complete(Unit)
@@ -270,24 +276,31 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.pending)
         assertFalse(f.discovery.value.busy)
     }
-    @Test fun knownGapDelayedConfirmCallbackUsesCurrentOwnerOfSameListingInNewSession() = runBlocking {
+    @Test fun delayedConfirmCallbackCannotUseCurrentOwnerOfSameListingInNewSession() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         val oldSession = f.search.value.profileSessionId
+        val oldToken = requireNotNull(f.search.value.detailIdentityToken())
         val oldTicket = f.tickets.invalidate(1L)
         f.operations.closeProfile()
         f.owner = 7L
         f.openOffline()
         assertNotEquals(oldSession, f.search.value.profileSessionId)
         val currentTicket = f.tickets.invalidate(7L)
-        f.operations.confirmIdentity(5L, 2L)
+        val current = requireNotNull(f.search.value.detailIdentityToken())
+        f.operations.confirmIdentity(current.copy(listingId = 5L), 2L)
+        f.operations.confirmIdentity(current.copy(snapshotId = current.snapshotId + 1L), 2L)
+        f.operations.confirmIdentity(current, 99L)
+        f.operations.confirmIdentity(oldToken, 2L)
+        f.idle()
         assertTrue(f.calls.isEmpty())
-        // This callback still carries only listing + target, like the former dialog.
-        f.operations.confirmIdentity(4L, 2L)
+        assertEquals(7L, f.search.value.profileIdentity?.personId)
+        assertTrue(f.tickets.isCurrent(1L, oldTicket))
+        assertTrue(f.tickets.isCurrent(7L, currentTicket))
+        f.confirmCurrent()
         f.idle()
         assertEquals(1, f.calls.count { it == "confirm:4:2" })
         assertEquals(2L, f.search.value.profileIdentity?.personId)
-        assertTrue(f.tickets.isCurrent(1L, oldTicket))
         assertFalse(f.tickets.isCurrent(7L, currentTicket))
     }
 

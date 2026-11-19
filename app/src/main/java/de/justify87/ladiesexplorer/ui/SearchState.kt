@@ -157,11 +157,29 @@ internal class DrainingOperation<T> {
 internal fun canAcquireImport(search: DrainingOperation<*>, home: DrainingOperation<*>, uiBusy: Boolean) =
     !search.occupied && !home.occupied && !uiBusy
 
-// Existing standalone admission: characterization only. T10.2 replaces the profileOpen
-// requirement and listing-only input with the rendered context/owner/evidence token.
-internal fun SearchUiState.currentIdentityConfirmationOwner(listingId: Long, discoveryBusy: Boolean): Long? {
-    if (discoveryBusy || actionBusy || !profileOpen || profile?.listingId != listingId) return null
-    return profileIdentity?.personId
+/** Captured from the rendered detail, never reconstructed at confirmation time. */
+internal data class DetailIdentityToken(
+    val sessionId: Long,
+    val listingId: Long,
+    val ownerId: Long,
+    val snapshotId: Long,
+)
+
+internal fun SearchUiState.detailIdentityToken(): DetailIdentityToken? {
+    if (!profileOpen || loading) return null
+    val current = profile ?: return null
+    val owner = profileIdentity?.personId ?: return null
+    return DetailIdentityToken(profileSessionId, current.listingId, owner, current.snapshotId)
+}
+
+internal fun SearchUiState.currentIdentityConfirmationOwner(
+    token: DetailIdentityToken,
+    targetPersonId: Long,
+    discoveryBusy: Boolean,
+): Long? {
+    if (discoveryBusy || actionBusy || detailIdentityToken() != token) return null
+    if (identityCandidates.none { it.personId == targetPersonId }) return null
+    return token.ownerId
 }
 
 // Existing post-commit read-failure publication. The remaining profile/media are a

@@ -425,10 +425,18 @@ pub(crate) fn list(
     candidates(&db, listing_id)
 }
 
-pub(crate) fn confirm(core: &LadiesCore, listing_id: i64, target_id: i64) -> Result<(), CoreError> {
+pub(crate) fn confirm(
+    core: &LadiesCore,
+    listing_id: i64,
+    expected_source_id: i64,
+    target_id: i64,
+) -> Result<(), CoreError> {
     let mut db = core.connection()?;
     let tx = db.transaction()?;
     let (source_id, _, state) = current_owner(&tx, listing_id)?;
+    if source_id != expected_source_id {
+        return Err(CoreError::IdentityConflict("Listing owner changed".into()));
+    }
     if source_id == target_id || state == "MANUAL_SPLIT" {
         return Err(CoreError::IdentityConflict("Identity merge refused".into()));
     }
@@ -653,7 +661,7 @@ mod tests {
         )
         .unwrap();
         drop(db);
-        assert!(core.confirm_identity_match(listing, target).is_err());
+        assert!(core.confirm_identity_match(listing, source, target).is_err());
         assert_eq!(core.status().unwrap().person_count, 2);
     }
 
@@ -733,7 +741,7 @@ mod tests {
             .unwrap();
         }
         assert!(matches!(
-            core.confirm_identity_match(listing, target),
+            core.confirm_identity_match(listing, source, target),
             Err(CoreError::IdentityConflict(_))
         ));
         assert_eq!(core.status().unwrap().person_count, 2);
@@ -790,7 +798,8 @@ mod tests {
             refresh(&db, listing).unwrap();
         }
         assert_eq!(core.list_identity_candidates(listing).unwrap().len(), 1);
-        core.confirm_identity_match(listing, target).unwrap();
+        core.confirm_identity_match(listing, source, target)
+            .unwrap();
         assert_eq!(core.status().unwrap().person_count, 1);
         assert!(core.get_person(target).unwrap().unwrap().favorite);
         let saved = core
@@ -834,7 +843,7 @@ mod tests {
             core.save_person_note(listing, source, Some("Source note".into()), None)
                 .is_err()
         );
-        assert!(core.confirm_identity_match(listing, target).is_err());
+        assert!(core.confirm_identity_match(listing, source, target).is_err());
         assert_eq!(core.profile_identity(listing).unwrap().person_id, target);
         let state = core.get_person(target).unwrap().unwrap();
         assert!(state.favorite);
@@ -921,14 +930,14 @@ mod tests {
             // Intentionally do not refresh the cached match status: confirm must
             // use current evidence, not a candidate that was previously rendered.
         }
-        assert!(core.confirm_identity_match(listing, target).is_err());
+        assert!(core.confirm_identity_match(listing, source, target).is_err());
         assert_eq!(core.profile_identity(listing).unwrap().person_id, source);
         assert_eq!(core.status().unwrap().person_count, 2);
         assert!(core.list_identity_candidates(listing).unwrap().is_empty());
     }
 
     #[test]
-    fn known_gap_stale_confirm_can_merge_a_different_current_source_owner() {
+    fn stale_confirm_cannot_merge_a_different_current_source_owner() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let a = core.create_person(None).unwrap();
         let b = core.create_person(None).unwrap();
@@ -962,11 +971,21 @@ mod tests {
         assert!(rendered.iter().any(|candidate| candidate.person_id == b));
         assert!(rendered.iter().any(|candidate| candidate.person_id == c));
         assert_eq!(core.profile_identity(listing).unwrap().person_id, a);
-        core.confirm_identity_match(listing, b).unwrap();
+        core.confirm_identity_match(listing, a, b).unwrap();
         assert_eq!(core.profile_identity(listing).unwrap().person_id, b);
-        // A stale A->C confirmation currently cannot carry expected source A.
-        // Current evidence still supports C, so the old API merges B->C.
-        core.confirm_identity_match(listing, c).unwrap();
+        // C remains a valid candidate for B, but an old A->C confirmation is invalid.
+        assert!(core
+            .list_identity_candidates(listing)
+            .unwrap()
+            .iter()
+            .any(|candidate| candidate.person_id == c));
+        assert!(matches!(
+            core.confirm_identity_match(listing, a, c),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, b);
+        assert_eq!(core.status().unwrap().person_count, 2);
+        core.confirm_identity_match(listing, b, c).unwrap();
         assert_eq!(core.profile_identity(listing).unwrap().person_id, c);
         assert_eq!(core.status().unwrap().person_count, 1);
     }

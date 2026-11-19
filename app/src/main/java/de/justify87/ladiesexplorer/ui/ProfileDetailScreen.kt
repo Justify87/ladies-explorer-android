@@ -18,7 +18,7 @@ internal fun ProfileDetailScreen(
     noteActions: NoteEditorActions,
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
-    onConfirmIdentity: (Long,Long) -> Unit,
+    onConfirmIdentity: (DetailIdentityToken, Long) -> Unit,
     onCancelArchive: () -> Unit,
     onBack: () -> Unit,
     actionsBusy: Boolean,
@@ -33,9 +33,10 @@ internal fun ProfileDetailScreen(
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
     val detailListState = rememberLazyListState()
-    var confirmTarget by remember(profile?.listingId) { mutableStateOf<Long?>(null) }
+    val renderedToken = state.detailIdentityToken()
+    var confirmTarget by remember(renderedToken, state.identityCandidates) { mutableStateOf<Pair<DetailIdentityToken, Long>?>(null) }
 
-    confirmTarget?.let { target ->
+    confirmTarget?.let { (token, target) ->
         AlertDialog(
             onDismissRequest = { confirmTarget = null },
             title = { Text("Personen zusammenführen?") },
@@ -44,9 +45,8 @@ internal fun ProfileDetailScreen(
             },
             confirmButton = {
                 Button(enabled = !actionsBusy && !state.actionBusy, onClick = {
-                    val listingId = profile?.listingId
                     confirmTarget = null
-                    if (listingId != null) onConfirmIdentity(listingId,target)
+                    onConfirmIdentity(token, target)
                 }) { Text("Zusammenführen") }
             },
             dismissButton = {
@@ -109,7 +109,7 @@ internal fun ProfileDetailScreen(
                 profileContent(profile, state.profileIdentity, state.selectedPerson, state.profileMedia,
                     panels, tab, selectTab, state.identityCandidates, state.changeEvents,
                     actionsBusy || state.actionBusy, owner?.let(notes::get) ?: NoteEditorState(), noteActions,
-                    onConfirm = { confirmTarget = it })
+                    onConfirm = { target -> renderedToken?.let { confirmTarget = it to target } })
             }
         }
     }

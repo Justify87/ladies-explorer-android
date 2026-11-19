@@ -1231,7 +1231,8 @@ mod tests {
         let in_flight = listing_target(&core, listing, false).unwrap();
 
         // Commit through the real identity transaction, not a simulated owner change.
-        core.confirm_identity_match(listing, new_owner).unwrap();
+        core.confirm_identity_match(listing, owner, new_owner)
+            .unwrap();
         let rejected = save_observed_profile(&core, &in_flight, profile("Late"), true, None);
         assert!(matches!(rejected, Err(CoreError::Source(_))));
         assert_eq!(core.profile_identity(listing).unwrap().person_id, new_owner);

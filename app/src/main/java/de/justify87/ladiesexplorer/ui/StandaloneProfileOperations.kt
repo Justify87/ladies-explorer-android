@@ -19,7 +19,7 @@ internal class StandaloneProfileIo<C : Any>(
     val archiveProfileMedia: suspend (Long, C) -> MediaArchiveReport,
     val newArchiveControl: () -> C,
     val cancelArchive: (C) -> Unit,
-    val confirmIdentityMatch: suspend (Long, Long) -> Unit,
+    val confirmIdentityMatch: suspend (Long, Long, Long) -> Unit,
 )
 
 /** The existing independent projection owners remain in MainViewModel/SavedSearchController. */
@@ -153,9 +153,10 @@ internal class StandaloneProfileOperations<C : Any>(
         }
     }
 
-    fun confirmIdentity(listingId: Long, targetPersonId: Long) {
+    fun confirmIdentity(token: DetailIdentityToken, targetPersonId: Long) {
         val active = _searchUiState.value
-        val sourceOwner = active.currentIdentityConfirmationOwner(listingId, _discoverState.value.busy) ?: return
+        val sourceOwner = active.currentIdentityConfirmationOwner(token, targetPersonId, _discoverState.value.busy) ?: return
+        val listingId = token.listingId
         val dirtyOwners = _profileNotes.value.dirtyOwners(sourceOwner, targetPersonId)
         if (dirtyOwners.isNotEmpty()) {
             _searchUiState.update { it.copy(actionError =
@@ -175,7 +176,7 @@ internal class StandaloneProfileOperations<C : Any>(
             var profileUpdated = false
             var projectionUpdated = false
             try {
-                io.confirmIdentityMatch(listingId, targetPersonId)
+                io.confirmIdentityMatch(listingId, sourceOwner, targetPersonId)
                 committed = true
                 for (owner in listOf(sourceOwner, targetPersonId)) {
                     noteReadTickets.invalidate(owner)

@@ -258,10 +258,10 @@ class CoreStore(context: Context) {
     suspend fun identityCandidates(listingId: Long): List<IdentityCandidate> =
         withContext(Dispatchers.IO) { engine.listIdentityCandidates(listingId) }
 
-    suspend fun confirmIdentityMatch(listingId: Long, targetPersonId: Long) =
+    suspend fun confirmIdentityMatch(listingId: Long, expectedSourcePersonId: Long, targetPersonId: Long) =
         withContext(Dispatchers.IO) {
             recorded("confirmIdentityMatch listing=$listingId") {
-                engine.confirmIdentityMatch(listingId, targetPersonId)
+                engine.confirmIdentityMatch(listingId, expectedSourcePersonId, targetPersonId)
             }
         }
 
