@@ -188,6 +188,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!swipeVisible || renderedSwipe != token || _searchUiState.value.profileOpen) null
         else currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, token)
 
+    internal fun reconcileSwipeProjection(token: SwipeActionToken) {
+        val state = _discoverState.value
+        val card = state.cards.firstOrNull() ?: return
+        if (!swipeVisible || state.busy || state.loading || _searchUiState.value.profileOpen ||
+            state.activeRunId != token.runId || state.swipeSessionId != token.session ||
+            card.listingId != token.listingId || card.personId != token.ownerId ||
+            card.preference == token.preference && card.favorite == token.favorite) return
+        invalidateSwipeProfilesLocally(token.listingId)
+        refreshDiscovery()
+    }
+
     internal fun isProfileActionCurrent(token: ProfileIdentityToken): Boolean = when (token) {
         is SwipeActionToken -> admittedSwipe(token) != null
         is DetailIdentityToken -> !_discoverState.value.busy && !_searchUiState.value.actionBusy &&
@@ -199,7 +210,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update { it.copy(actionError = null) }
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
             core.setSwipePreference(token.listingId, token.ownerId, token.preference, preference)
-        }, afterWrite = { refreshSelectedPerson(token.ownerId) }, onFailure = { message ->
+        }, afterWrite = { profileOperations.refreshLocalProfile(token.sessionId, token.listingId) },
+            recoverWriteFailure = { profileOperations.refreshLocalProfile(token.sessionId, token.listingId) },
+            onFailure = { message ->
             _searchUiState.update { if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it }
         })
     }
@@ -211,7 +224,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             core.setListingFavorite(token.listingId, token.ownerId, token.favorite, !token.favorite)
         }, afterWrite = {
             refreshMap()
-            refreshSelectedPerson(token.ownerId)
+            if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
+        }, recoverWriteFailure = {
+            refreshMap()
+            if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
         }, onFailure = { message ->
             if (token is DetailIdentityToken) _searchUiState.update {
                 if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it
@@ -718,6 +734,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onWriteFailure: () -> Unit = {},
         onFailure: (String) -> Unit = {},
         refreshProfileWindow: Boolean = true,
+        recoverWriteFailure: suspend () -> Unit = {},
     ) {
         invalidateSwipeActions()
         val epoch = ++discoveryEpoch
@@ -740,6 +757,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         afterWrite()
                     },
                     onWriteFailure = onWriteFailure,
+                    recoverWriteFailure = {
+                        invalidateSwipeProfilesLocally()
+                        savedSearch.refreshResultProjection()
+                        recoverWriteFailure()
+                    },
                 )
                 when (outcome) {
                     is DiscoveryMutationOutcome.WriteFailed -> {
@@ -770,7 +792,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         mutateDiscovery("Entscheidung fehlgeschlagen", write = {
             val previous = core.setSwipePreference(card.listingId, card.personId, token.preference, preference)
             swipeSession.visit(SwipeStep(card.listingId, card.personId, previous, preference))
-        }, refreshProfileWindow = preference == Preference.NONE)
+        })
     }
 
     internal fun undoSwipe(token: SwipeDeckToken) {
@@ -860,7 +882,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             core.setPreference(personId, preference)
         }, afterWrite = {
             refreshSelectedPerson(personId)
-        }, onFailure = { message ->
+        }, recoverWriteFailure = { refreshSelectedPerson(personId) }, onFailure = { message ->
             _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
         })
     }
@@ -874,7 +896,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }, afterWrite = {
             refreshMap()
             refreshSelectedPerson(personId)
-        }, onFailure = { message ->
+        }, recoverWriteFailure = { refreshMap(); refreshSelectedPerson(personId) }, onFailure = { message ->
             _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
         })
     }

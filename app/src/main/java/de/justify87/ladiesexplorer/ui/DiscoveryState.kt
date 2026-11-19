@@ -59,11 +59,14 @@ internal suspend fun writeAndProject(
     project: suspend () -> Unit,
     afterWrite: suspend () -> Unit = {},
     onWriteFailure: () -> Unit = {},
+    recoverWriteFailure: suspend () -> Unit = {},
 ): DiscoveryMutationOutcome {
     val writeFailure = failureOf(write)
     if (writeFailure != null) {
         onWriteFailure()
-        return DiscoveryMutationOutcome.WriteFailed(writeFailure, failureOf(project))
+        val recoveryFailure = failureOf(recoverWriteFailure)
+        val feedFailure = failureOf(project)
+        return DiscoveryMutationOutcome.WriteFailed(writeFailure, feedFailure ?: recoveryFailure)
     }
     val detailFailure = failureOf(afterWrite)
     val feedFailure = failureOf(project)

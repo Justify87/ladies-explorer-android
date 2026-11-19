@@ -71,6 +71,7 @@ internal class StandaloneProfileOperations<C : Any>(
     private var presentationVisible = true
     private var requestedListingId: Long? = null
     private var requestedPersonId: Long = 0L
+    private var localProfileKnown = false
 
     private fun currentDetail(session: Long, listingId: Long): Boolean =
         presentationVisible && profileGeneration.isCurrent(session) &&
@@ -95,6 +96,7 @@ internal class StandaloneProfileOperations<C : Any>(
             }
             coroutineContext.ensureActive()
             if (!admitted()) return null
+            localProfileKnown = true
             _searchUiState.update { it.publish(local, ticket) }
             return local
         } catch (cancel: CancellationException) {
@@ -103,7 +105,7 @@ internal class StandaloneProfileOperations<C : Any>(
             if (!admitted()) return null
             _searchUiState.update {
                 it.invalidateMergedProfile(listingId).copy(
-                    profileSourceRetryAllowed = allowMissing && failure is MissingLocalProfile,
+                    profileSourceRetryAllowed = allowMissing && !localProfileKnown && failure is MissingLocalProfile,
                 )
             }
             throw failure
@@ -155,6 +157,7 @@ internal class StandaloneProfileOperations<C : Any>(
         invalidateProfileRequest()
         requestedListingId = listingId
         requestedPersonId = personId
+        localProfileKnown = false
         beforeOpen()
         val requestId = profileGeneration.value
         _searchUiState.update {
@@ -176,7 +179,10 @@ internal class StandaloneProfileOperations<C : Any>(
                     check(sourceCall == null)
                     sourceCall = call
                     try {
-                        withContext(NonCancellable) { io.loadProfile(listingId, call.control) }
+                        withContext(NonCancellable) {
+                            io.loadProfile(listingId, call.control)
+                            if (requestedListingId == listingId) localProfileKnown = true
+                        }
                         coroutineContext.ensureActive()
                     } finally {
                         if (sourceCall === call) sourceCall = null
@@ -198,6 +204,7 @@ internal class StandaloneProfileOperations<C : Any>(
                         missingInitialProfile = true
                         throw failure
                     }
+                    localProfileKnown = true
                     showingArchive = true
                     refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
                 }
@@ -332,7 +339,7 @@ internal class StandaloneProfileOperations<C : Any>(
                         withProjection(local, revision)
                     }
                 } catch (missing: MissingLocalProfile) {
-                    if (explicitSourceRetry && currentDetail(requestId, listingId)) {
+                    if (explicitSourceRetry && !localProfileKnown && currentDetail(requestId, listingId)) {
                         loadProfile(listingId, requestedPersonId) {}
                         return@launch
                     }
@@ -344,7 +351,9 @@ internal class StandaloneProfileOperations<C : Any>(
             } catch (failure: Exception) {
                 if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update { it.copy(actionError = if (failure is MissingLocalProfile)
-                        "Kein lokales Profil vorhanden. Online-Abruf kann ausdrücklich wiederholt werden."
+                        if (_searchUiState.value.profileSourceRetryAllowed)
+                            "Kein lokales Profil vorhanden. Online-Abruf kann ausdrücklich wiederholt werden."
+                        else "Gespeichertes Profil momentan nicht verfügbar."
                         else "Ansicht konnte nicht aktualisiert werden.") }
                 }
             } finally {

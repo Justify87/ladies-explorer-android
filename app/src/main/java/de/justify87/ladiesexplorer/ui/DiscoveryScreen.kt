@@ -38,6 +38,7 @@ internal fun DiscoverScreen(
     onChoose: (SwipeActionToken, Preference) -> Unit,
     onSwipeVisibility: (Boolean) -> Unit,
     onRenderedSwipe: (SwipeActionToken?) -> Unit,
+    onProjectionMismatch: (SwipeActionToken) -> Unit,
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     onSnapshotChanged: (Boolean) -> Unit,
     onFavorite: (ProfileIdentityToken) -> Unit,
@@ -66,7 +67,23 @@ internal fun DiscoverScreen(
     var readError by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf<String?>(null) }
     var retryLocally by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf(false) }
     val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }?.let { decks[it] }
-    val token = state.swipeToken(current).takeIf { visible }
+    val projectedToken = state.swipeToken(current)
+    val token = projectedToken?.takeIf { visible && currentSwipeActionCard(state, searchLoading, it) != null }
+    // Native person state is authoritative for rendering; stale queue membership
+    // must be reconciled before enabling callbacks. Do not spin on a persistent mismatch.
+    var lastMismatch by remember(state.activeRunId, card?.listingId, card?.personId) {
+        mutableStateOf<Pair<Pair<Preference, Boolean>, Pair<Preference, Boolean>>?>(null)
+    }
+    LaunchedEffect(projectedToken, card?.preference, card?.favorite, visible) {
+        if (!visible || projectedToken == null || card == null) return@LaunchedEffect
+        val queueState = card.preference to card.favorite
+        val profileState = projectedToken.preference to projectedToken.favorite
+        if (queueState == profileState) lastMismatch = null
+        else if (lastMismatch != (queueState to profileState)) {
+            lastMismatch = queueState to profileState
+            onProjectionMismatch(projectedToken)
+        }
+    }
     SideEffect { onRenderedSwipe(token) }
     var confirmation by remember(token) { mutableStateOf<Long?>(null) }
     confirmation?.let { target ->
@@ -184,9 +201,7 @@ internal fun DiscoverScreen(
             val density = LocalDensity.current.density
             var drag by remember { mutableFloatStateOf(0f) }
             val listState = rememberLazyListState()
-            val person = profile?.person?.takeIf { matchesOwner }?.copy(
-                preference = card.preference, favorite = card.favorite,
-            )
+            val person = profile?.person?.takeIf { matchesOwner }
             val fallback = listOfNotNull(card.thumbnailUrl?.let {
                 ProfileMediaItem("IMAGE", it, card.localPath, 0u)
             } ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })

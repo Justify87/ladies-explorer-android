@@ -111,7 +111,7 @@ internal fun DiscoverUiState.swipeToken(profile: ProfileReadModel?): SwipeAction
     if (local.profile.listingId != card.listingId || local.identity.personId != card.personId ||
         local.person.personId != card.personId) return null
     return SwipeActionToken(activeRunId, swipeSessionId, card.listingId, card.personId,
-        local.profile.snapshotId, local.revision, card.preference, card.favorite, local.candidates)
+        local.profile.snapshotId, local.revision, local.person.preference, local.person.favorite, local.candidates)
 }
 
 internal fun currentSwipeActionCard(

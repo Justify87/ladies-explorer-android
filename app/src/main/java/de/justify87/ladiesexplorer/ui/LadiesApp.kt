@@ -316,6 +316,7 @@ fun LadiesApp(
                                 onChoose = viewModel::decideSwipe,
                                 onSwipeVisibility = viewModel::setSwipeVisible,
                                 onRenderedSwipe = viewModel::publishRenderedSwipe,
+                                onProjectionMismatch = viewModel::reconcileSwipeProjection,
                                 onConfirmIdentity = viewModel::confirmIdentity,
                                 onSnapshotChanged = viewModel::markSwipeSnapshotChanged,
                                 onFavorite = viewModel::toggleProfileFavorite,
