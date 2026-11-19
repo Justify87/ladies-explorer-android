@@ -57,3 +57,14 @@ internal fun swipePreference(distanceDp: Float): Preference? = when {
 
 internal fun prefetchCards(cards: List<DiscoveryCard>): List<DiscoveryCard> =
     cards.drop(1).take(2)
+
+// Characterization seam: the existing admission accepts a listing, not a rendered owner/run token.
+// T10.2 replaces this incomplete contract rather than layering a second admission path around it.
+internal fun currentSwipeActionCard(
+    state: DiscoverUiState,
+    searchLoading: Boolean,
+    listingId: Long,
+): DiscoveryCard? {
+    if (state.busy || state.loading || searchLoading) return null
+    return state.cards.firstOrNull()?.takeIf { it.listingId == listingId }
+}

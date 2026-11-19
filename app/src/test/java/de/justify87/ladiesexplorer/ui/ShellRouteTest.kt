@@ -47,4 +47,22 @@ class ShellRouteTest {
         assertEquals(ShellRoute(), ShellRoute.decode(listOf("old", "missing")))
         assertEquals(ShellRoute(), ShellRoute.decode(emptyList()))
     }
+
+    @Test fun allProfileEntrypointRoutesCloseProfileBeforeChangingContext() {
+        val base = ShellRoute()
+        val origins = listOf(
+            base.select(DiscoverMode.Grid),
+            base.select(DiscoverMode.Map),
+            base.select(RootDestination.Saved),
+            base.select(RootDestination.Search),
+            base,
+        )
+        origins.forEach { origin ->
+            assertEquals(BackAction.CloseProfile, origin.backAction(true, false))
+            assertEquals(origin, ShellRoute.decode(origin.encode()))
+        }
+        val search = origins[3]
+        assertEquals(BackAction.CloseProfile, search.backAction(true, true))
+        assertEquals(BackAction.CloseSavedResults, search.backAction(false, true))
+    }
 }

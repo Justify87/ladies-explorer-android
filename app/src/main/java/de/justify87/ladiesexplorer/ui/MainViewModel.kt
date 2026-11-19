@@ -642,9 +642,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun skipCard(listingId: Long) {
-        val state = _discoverState.value
-        if (state.busy || state.loading || _searchUiState.value.loading) return
-        val card = state.cards.firstOrNull()?.takeIf { it.listingId == listingId } ?: return
+        val card = currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, listingId) ?: return
         swipeSession.visit(SwipeStep(card.listingId, card.personId))
         _discoverState.update {
             it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true)
@@ -702,9 +700,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun decideSwipe(listingId: Long, preference: Preference) {
-        val state = _discoverState.value
-        if (state.busy || state.loading || _searchUiState.value.loading) return
-        val card = state.cards.firstOrNull()?.takeIf { it.listingId == listingId } ?: return
+        val card = currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, listingId) ?: return
         mutateDiscovery("Entscheidung fehlgeschlagen", write = {
             val previous = core.setSwipePreference(listingId, card.personId, null, preference)
             swipeSession.visit(SwipeStep(listingId, card.personId, previous, preference))

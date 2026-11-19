@@ -862,4 +862,56 @@ mod tests {
             .unwrap();
         assert_eq!(event_previous, source);
     }
+
+    #[test]
+    fn confirmation_rechecks_evidence_after_current_snapshot_changes() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let source = core.create_person(None).unwrap();
+        let target = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(source, None, "LADIES".into(), "evidence-change".into(), None)
+            .unwrap();
+        let target_listing = core
+            .add_listing(target, None, "LADIES".into(), "evidence-target".into(), None)
+            .unwrap();
+        {
+            let db = core.connection().unwrap();
+            record_phone(&db, target, target_listing, Some("0170 1234567")).unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,normalized_phone)
+                 VALUES (?1,'before','+491701234567')",
+                [listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), listing],
+            )
+            .unwrap();
+            refresh(&db, listing).unwrap();
+        }
+        let rendered = core.list_identity_candidates(listing).unwrap();
+        assert_eq!(rendered.len(), 1);
+        assert_eq!(rendered[0].person_id, target);
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint)
+                 VALUES (?1,'after')",
+                [listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), listing],
+            )
+            .unwrap();
+            // Intentionally do not refresh the cached match status: confirm must
+            // use current evidence, not a candidate that was previously rendered.
+        }
+        assert!(core.confirm_identity_match(listing, target).is_err());
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, source);
+        assert_eq!(core.status().unwrap().person_count, 2);
+        assert!(core.list_identity_candidates(listing).unwrap().is_empty());
+    }
 }
