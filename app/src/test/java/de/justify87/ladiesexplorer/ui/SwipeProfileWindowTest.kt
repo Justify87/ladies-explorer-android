@@ -1,5 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
+import de.justify87.ladiesexplorer.core.IdentityCandidate
+import de.justify87.ladiesexplorer.core.ProfileMediaItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
@@ -76,9 +78,17 @@ class SwipeProfileWindowTest {
         }
         assertTrue(cache.invalidation(current) > oldInvalidation)
         assertNotNull(cache[next])
-        val refreshed = requireNotNull(cache.readCurrent(current) { fixtureSwipe(1L, 1L, 11L) })
+        val refreshed = requireNotNull(cache.readCurrent(current) {
+            val native = fixtureSwipe(1L, 1L, 11L)
+            native.copy(local = native.local.copy(
+                media = listOf(ProfileMediaItem("IMAGE", "https://example.invalid/changed.jpg", "/fixture/local.jpg", 0u)),
+                candidates = listOf(IdentityCandidate(9L, "CANDIDATE", false, true, 0u, 0u, null)),
+            ))
+        })
         assertEquals(initial.profile.snapshotId, refreshed.profile.snapshotId)
         assertNotEquals(initial.revision, refreshed.revision)
+        assertEquals("/fixture/local.jpg", refreshed.media.single().localPath)
+        assertEquals(9L, refreshed.candidates.single().personId)
         assertFalse(refreshed.fromArchive)
         assertFalse(cache.requiresLocal(current))
     }

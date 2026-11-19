@@ -258,7 +258,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         store = SavedSearchStore(core),
         canOperate = { !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
         ordinaryDraft = { SearchDraft.from(_searchUiState.value) },
-        onSourceFinished = ::refreshAfterSourceSearch,
+        onSourceFinished = { refreshAfterSourceSearch() },
     )
 
 
@@ -403,8 +403,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // Both ordinary and saved searches can persist before a later projection failure
     // or generation invalidation. Refresh local projections after the native call
     // finishes, independently of whether its response became the active UI run.
-    private fun refreshAfterSourceSearch() {
-        if (swipeVisible) invalidateSwipeProfilesLocally()
+    private fun refreshAfterSourceSearch(invalidateProfileWindow: Boolean = true) {
+        if (invalidateProfileWindow && swipeVisible) invalidateSwipeProfilesLocally()
         refreshDiscovery()
         refreshMap()
         refresh()
@@ -441,6 +441,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateProfileRequest()
         _searchUiState.update { it.beginRun() }
         viewModelScope.launch {
+            var acceptedRun = false
             try {
                 val result = core.search(requestOverride ?: request(input), localOverride ?: input.local, control)
                 if (!searchOwner.accepts(ticket)) return@launch
@@ -454,6 +455,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         savedLoadingMore = false, savedRecentLoadingMore = false, error = null)
                 }
                 _searchUiState.update { it.acceptRun(result, cards) }
+                acceptedRun = true
             } catch (cancellation: CancellationException) {
                 if (searchOwner.accepts(ticket)) _searchUiState.update { it.endRun() }
                 throw cancellation
@@ -469,7 +471,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (searchOwner.finish(ticket)) {
                     _searchUiState.update { it.copy(loading = false, searchCancelling = false) }
                     savedSearch.refresh()
-                    refreshAfterSourceSearch()
+                    // A new run already replaced the old window. Keep its normal source
+                    // policy; only a completion without a replacement needs local recovery.
+                    refreshAfterSourceSearch(invalidateProfileWindow = !acceptedRun)
                     schedulePreview()
                 }
             }

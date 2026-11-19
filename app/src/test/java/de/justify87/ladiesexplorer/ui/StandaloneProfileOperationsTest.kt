@@ -18,6 +18,7 @@ class StandaloneProfileOperationsTest {
         var owner = 1L
         var epoch = 0L
         var pending = false
+        var profileChanges = 0
         var feedOk = true
         var renderedSwipe: SwipeActionToken? = null
         var source: suspend (Long) -> ProfileResponse = { error("offline") }
@@ -60,6 +61,7 @@ class StandaloneProfileOperationsTest {
                 discovery = { calls += "discovery"; pending = false },
                 savedSearch = { calls += "saved" }, map = { calls += "map" }, home = { calls += "home" },
                 admitSwipe = { it == renderedSwipe && currentSwipeActionCard(discovery.value, false, it) != null },
+                profileChanged = { profileChanges++ },
             ),
         )
         suspend fun idle() { scope.coroutineContext[Job]!!.children.toList().joinAll() }
@@ -215,6 +217,7 @@ class StandaloneProfileOperationsTest {
         assertEquals(7L, f.search.value.profileIdentity?.personId)
         assertEquals(12L, f.search.value.profile?.snapshotId)
         assertEquals(2, f.calls.count { it == "map" })
+        assertEquals(2, f.profileChanges)
         assertEquals(2, f.calls.count { it.startsWith("source:") })
         assertTrue(f.controls.isEmpty())
     }
@@ -254,6 +257,7 @@ class StandaloneProfileOperationsTest {
         val child = coroutineContext[Job]!!.children.single()
         child.cancelAndJoin()
         assertEquals(listOf("source:4", "saved", "discovery", "map"), f.calls)
+        assertEquals(1, f.profileChanges)
         assertNull(f.search.value.profile)
         assertFalse(f.search.value.loading)
         assertTrue(f.controls.isEmpty())
@@ -278,6 +282,7 @@ class StandaloneProfileOperationsTest {
         finish.complete(Unit)
         f.idle()
         assertEquals(listOf("saved", "discovery"), f.calls)
+        assertEquals(2, f.profileChanges)
         assertNull(f.search.value.mediaArchive)
         assertFalse(f.search.value.profileOpen)
     }
