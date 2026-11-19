@@ -116,6 +116,7 @@ data class SearchUiState(
     val profileSessionId: Long = 0L,
     val profileRead: ProfileReadModel? = null,
     val profileRetryFromArchive: Boolean = false,
+    val profileSourceRetryAllowed: Boolean = false,
     val actionBusy: Boolean = false,
     val actionError: String? = null,
     val retryProfileListingId: Long? = null,

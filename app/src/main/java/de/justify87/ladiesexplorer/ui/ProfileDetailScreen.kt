@@ -61,7 +61,7 @@ internal fun ProfileDetailScreen(
             state.actionError?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
             if (state.retryProfileListingId != null) item {
                 TextButton(onClick = onRetryProfile, enabled = !state.actionBusy && !actionsBusy) {
-                    Text("Profil erneut laden")
+                    Text(if (state.profileSourceRetryAllowed) "Profil online abrufen" else "Profil erneut laden")
                 }
             }
             if (profile != null) {

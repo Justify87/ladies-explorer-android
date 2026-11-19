@@ -66,7 +66,7 @@ internal class RequestGeneration {
 
 internal fun SearchUiState.beginRun(): SearchUiState = copy(
     loading = true, searchCancelling = false, error = null, profileRead = null, profileOpen = false,
-    profileRetryFromArchive = false, retryProfileListingId = null,
+    profileRetryFromArchive = false, profileSourceRetryAllowed = false, retryProfileListingId = null,
 )
 
 internal fun SearchUiState.endRun(errorMessage: String? = null): SearchUiState =
@@ -198,8 +198,8 @@ internal fun SearchUiState.currentIdentityConfirmationOwner(
     return token.ownerId
 }
 
-/** A committed merge invalidates every rendered profile capability before local recovery. */
+/** A stale or failed local projection invalidates every rendered capability before recovery. */
 internal fun SearchUiState.invalidateMergedProfile(listingId: Long): SearchUiState = copy(
     profileRead = null, profileRetryFromArchive = profileFromArchive,
-    mediaArchive = null, mediaWarning = null, retryProfileListingId = listingId,
+    mediaArchive = null, mediaWarning = null, retryProfileListingId = listingId, profileSourceRetryAllowed = false,
 )
