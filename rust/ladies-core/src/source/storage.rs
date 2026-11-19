@@ -687,6 +687,56 @@ mod tests {
         .unwrap()
     }
 
+    #[test]
+    fn saved_status_records_observations_and_rejects_stale_updates() {
+        let core = core();
+        let found = save_cards(&core, vec![card("101", "Fixture"), card("102", "Other")]);
+        let listing = found.profiles[0].listing_id;
+        let person = found.profiles[0].person_id;
+        core.set_favorite(person, true).unwrap();
+        core.set_preference(person, crate::Preference::Like).unwrap();
+        assert_eq!(saved_status_targets(&core).unwrap(), vec![listing]);
+        let target = status_target(&core, listing).unwrap();
+        let control = RequestControl::default();
+        save_status(&core, &target, "UNAVAILABLE", 404, &control).unwrap();
+        assert!(save_status(&core, &target, "ACTIVE", 200, &control).is_err());
+        let new_target = status_target(&core, listing).unwrap();
+        let cancelled = RequestControl::default();
+        cancelled.cancel();
+        assert!(save_status(&core, &new_target, "ACTIVE", 200, &cancelled).is_err());
+        {
+            let db = core.connection().unwrap();
+            let status: (String, Option<String>, Option<String>) = db
+                .query_row(
+                    "SELECT current_status,status_checked_at,ended_at FROM listings
+                     WHERE listing_id=?1",
+                    [listing],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .unwrap();
+            assert_eq!(status.0, "UNAVAILABLE");
+            assert!(status.1.is_some() && status.2.is_some());
+            let observations: i64 = db
+                .query_row(
+                    "SELECT COUNT(*) FROM listing_observations WHERE listing_id=?1 AND source='STATUS'",
+                    [listing],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(observations, 1);
+        }
+        save_status(&core, &new_target, "ACTIVE", 200, &control).unwrap();
+        let db = core.connection().unwrap();
+        let count: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM change_events WHERE listing_id=?1 AND event_type='STATUS_CHANGED'",
+                [listing],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
     fn profile(name: &str) -> Profile {
         Profile {
             advert_id: "101".into(),

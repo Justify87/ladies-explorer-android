@@ -108,8 +108,8 @@ internal fun SavedPeopleScreen(
         scrollMemory.SaveableStateProvider(selection) {
             val listState = rememberLazyListState()
             var expanded by rememberSaveable { mutableStateOf(false) }
-            val canPage = page?.nextCursor != null && enabled && !state.savedLoadingMore && !state.savedRecentLoadingMore
-            LaunchedEffect(listState, page?.nextCursor, canPage, state.error) {
+            val canPage = page.nextCursor != null && enabled && !state.savedLoadingMore && !state.savedRecentLoadingMore
+            LaunchedEffect(listState, page.nextCursor, canPage, state.error) {
                 if (canPage && state.error == null) {
                     snapshotFlow {
                         val layout = listState.layoutInfo
@@ -126,7 +126,7 @@ internal fun SavedPeopleScreen(
                 contentPadding = PaddingValues(top = 6.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (!state.loading && page?.total == 0u) item {
+                if (!state.loading && page.total == 0u) item {
                     Text("Noch nichts gespeichert.", modifier = Modifier.padding(16.dp))
                 }
                 if (recent != null && recent.rows.isNotEmpty()) {
@@ -147,15 +147,15 @@ internal fun SavedPeopleScreen(
                             Text(if (state.savedRecentLoadingMore) "Lädt …" else "Weitere Änderungen")
                         }
                     }
-                    if (page?.rows?.isNotEmpty() == true) item(key = "regular-header") {
+                    if (page.rows.isNotEmpty()) item(key = "regular-header") {
                         Text("Weitere Favoriten", style = MaterialTheme.typography.titleMedium)
                     }
                 }
-                items(page?.rows.orEmpty(), key = { "regular-${it.personId}" }) { row ->
+                items(page.rows, key = { "regular-${it.personId}" }) { row ->
                     SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference, onCheckSingle)
                 }
                 if (state.savedLoadingMore) item { CircularProgressIndicator() }
-                else if (page?.nextCursor != null) item {
+                else if (page.nextCursor != null) item {
                     TextButton(onClick = onLoadMore, enabled = canPage) { Text("Weitere Profile") }
                 }
             }

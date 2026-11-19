@@ -59,3 +59,7 @@ Rust zeichnet Such-, Profil-, Anzeige-Bild-, Medienarchiv- und Geocoder-Requests
 - [Kermit](https://kermit.touchlab.co/docs/)
 - [Coil benutzerdefinierter Netzwerkclient](https://coil-kt.github.io/coil/network/)
 - [HAR 1.2](https://github.com/ahmadnassri/har-spec/blob/master/versions/1.2.md)
+
+## M05.7 Statusprüfung
+
+Einzel-/Batchstatus nutzt denselben Rust-HTTP-Recorder wie Profilabrufe; bestätigte Checks erzeugen PROFILE-Ereignis mit Listing-ID, Status und HTTP-Code, Kotlin erfasst den CoreStore-Aufruf. Transport-/Prüfseitenfehler bleiben als einzelne Fehlversuche im UI-Fortschritt sichtbar und überschreiben keinen bestätigten Status. Auf Gerät gezielt prüfen, dass weder Suchrequests noch Medienarchivierung ausgelöst werden; DEVICE_PENDING.

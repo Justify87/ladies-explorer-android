@@ -787,6 +787,19 @@ mod tests {
         core.confirm_identity_match(listing, target).unwrap();
         assert_eq!(core.status().unwrap().person_count, 1);
         assert!(core.get_person(target).unwrap().unwrap().favorite);
+        let saved = core
+            .saved_people(
+                crate::SavedPersonKind::Favorite,
+                crate::SavedPersonSort::Date,
+                crate::SavedPersonSection::All,
+                50,
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(saved.total, 1);
+        assert_eq!(saved.rows[0].person_id, target);
+        assert_eq!(saved.rows[0].listing_count, 2);
         assert_eq!(
             core.person_note(listing, target).unwrap().as_deref(),
             Some("Target note\n\nSource note")
