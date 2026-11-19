@@ -206,6 +206,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
                 actionBusy = false, actionError = null, error = null)
         }
+        if (savedSearch.state.value.result != null) savedSearch.refresh()
     }
 
     private fun cancelPreview() {

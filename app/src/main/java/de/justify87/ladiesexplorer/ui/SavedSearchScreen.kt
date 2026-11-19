@@ -154,7 +154,7 @@ internal fun SavedSearchResultsScreen(
         state.error?.let { error ->
             item(key = "error", span = { GridItemSpan(maxLineSpan) }) {
                 Column { Text(error, color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = if (result.hasMore) onMore else onRetry, enabled = enabled && !state.busy) { Text("Erneut versuchen") } }
+                    TextButton(onClick = onRetry, enabled = enabled && !state.busy) { Text("Erneut versuchen") } }
             }
         }
         if (result.cards.isEmpty()) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {

@@ -79,13 +79,14 @@ internal class SavedSearchController(
     private val mutable = MutableStateFlow(SavedSearchUiState())
     val state: StateFlow<SavedSearchUiState> = mutable
     private var refreshPending = false
+    private var readTicket = 0L
     private var session = 0L
     private var control: RequestControl? = null
     private val limits = mutableMapOf<String, UInt>()
 
-    private fun operation(kind: SavedOperation, work: suspend () -> Unit) {
+    private fun operation(kind: SavedOperation, clearError: Boolean = true, work: suspend () -> Unit) {
         check(!state.value.busy)
-        mutable.update { it.copy(operation = kind, error = null) }
+        mutable.update { it.copy(operation = kind, error = if (clearError) null else it.error) }
         scope.launch {
             try {
                 work()
@@ -97,7 +98,7 @@ internal class SavedSearchController(
                 mutable.update { it.copy(operation = null) }
                 if (refreshPending) {
                     refreshPending = false
-                    refresh()
+                    refresh(clearError = false)
                 }
             }
         }
@@ -116,9 +117,14 @@ internal class SavedSearchController(
         }
     }
 
-    fun refresh() {
+    fun refresh() = refresh(clearError = true)
+
+    private fun refresh(clearError: Boolean) {
         if (state.value.busy) { refreshPending = true; return }
-        operation(SavedOperation.Refresh) { reload() }
+        val result = state.value.result
+        if (result != null) {
+            readWindow(result.id, limits[result.id] ?: 100u, acknowledge = false, clearError = clearError)
+        } else operation(SavedOperation.Refresh, clearError) { reload() }
     }
 
     fun open() {
@@ -133,7 +139,7 @@ internal class SavedSearchController(
             s.operation == SavedOperation.Check || s.operation == SavedOperation.Cancelling -> cancelCheck()
             s.operation == SavedOperation.Write -> Unit
             s.dialog != null -> dismissDialog()
-            s.result != null -> mutable.update { it.copy(result = null, error = null) }
+            s.result != null -> { readTicket++; mutable.update { it.copy(result = null, error = null) } }
             s.editor != null -> mutable.update { it.copy(editor = null, error = null) }
             else -> { session++; mutable.update { it.copy(overview = false, error = null) } }
         }
@@ -145,7 +151,14 @@ internal class SavedSearchController(
         if (s.busy || !canOperate() || s.pane != SearchPane.SavedList) return
         val ticket = ++session
         operation(SavedOperation.Editor) {
-            val draft = store.load(id)
+            val draft = try {
+                store.load(id)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (failure: Exception) {
+                if (ticket == session) mutable.update { it.copy(error = failure.message ?: "Vorlage konnte nicht geladen werden") }
+                return@operation
+            }
             if (ticket == session && state.value.pane == SearchPane.SavedList) {
                 mutable.update { it.copy(editor = SavedEditor(id, ticket, info.name, draft)) }
             }
@@ -237,18 +250,28 @@ internal class SavedSearchController(
     fun retryResults() {
         val result = state.value.result ?: return
         if (state.value.busy || !canOperate()) return
-        readWindow(result.id, limits[result.id] ?: 100u, acknowledge = !result.ready)
+        readWindow(result.id, limits[result.id] ?: 100u, acknowledge = true)
     }
 
-    private fun readWindow(id: String, limit: UInt, acknowledge: Boolean) {
-        operation(SavedOperation.Results) {
-            val window = store.window(id, limit)
-            if (state.value.result?.id != id) return@operation
+    private fun readWindow(id: String, limit: UInt, acknowledge: Boolean, clearError: Boolean = true) {
+        val ticket = ++readTicket
+        operation(SavedOperation.Results, clearError) {
+            val window = try {
+                store.window(id, limit)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (failure: Exception) {
+                if (ticket == readTicket && state.value.result?.id == id) mutable.update {
+                    it.copy(error = failure.message ?: "Ergebnisse konnten nicht geladen werden")
+                }
+                return@operation
+            }
+            if (ticket != readTicket || state.value.result?.id != id) return@operation
             limits[id] = limit
             mutable.update { it.copy(result = SavedResultWindow(id, window.cards, window.hasMore, true),
                 searches = window.searches, listAvailable = true) }
             val info = window.searches.firstOrNull { it.searchId == id && it.unreadNewResults }
-            if (acknowledge && info != null && state.value.result?.id == id) {
+            if (acknowledge && info != null && ticket == readTicket && state.value.result?.id == id) {
                 val accepted = store.acknowledge(id, info.revision)
                 reload(committed = accepted)
                 // A newer baseline must remain unread; do not retry it automatically.
@@ -290,6 +313,7 @@ internal class SavedSearchController(
     fun resetAfterImport() {
         limits.clear()
         session++
+        readTicket++
         mutable.update { SavedSearchUiState(operation = it.operation) }
     }
 }
