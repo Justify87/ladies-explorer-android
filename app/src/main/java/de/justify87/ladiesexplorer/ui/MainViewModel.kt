@@ -133,8 +133,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val searchUiState: StateFlow<SearchUiState> = _searchUiState
     private val _profileNotes = MutableStateFlow<Map<Long, NoteEditorState>>(emptyMap())
     internal val profileNotes: StateFlow<Map<Long, NoteEditorState>> = _profileNotes
-    private val noteReadTickets = mutableMapOf<Long, Long>()
-    private var nextNoteTicket = 0L
+    private val noteReadTickets = NoteReadTickets()
     internal val noteActions = NoteEditorActions(::loadProfileNote, ::editProfileNote, ::saveProfileNote, ::useStoredNote, ::keepNoteDraft)
 
     private val _mapState = MutableStateFlow(MapUiState())
@@ -143,7 +142,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var mapControl: RequestControl? = null
     private var savedStatusControl: RequestControl? = null
 
-    private var archiveControl: RequestControl? = null
     private val searchOwner = DrainingOperation<RequestControl>()
     private val homeOwner = DrainingOperation<HomeOperation>()
     private var homeRefreshPending = false
@@ -151,14 +149,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var previewJob: Job? = null
     private val previewGeneration = RequestGeneration()
     private var previewRequest: SearchRequest? = null
-    private val profileGeneration = RequestGeneration()
     private var discoveryEpoch = 0L
     private var localWindow = 0
     private val savedWindows = SavedWindowMemory()
     private var discoveryRefreshPending = false
-    private var swipeSnapshotDirty = false
-    private var discoveryListVisible = false
-    private var mapProjectionVisible = false
     private val filterGeneration = RequestGeneration()
     private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
 
@@ -169,6 +163,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ordinaryDraft = { SearchDraft.from(_searchUiState.value) },
         onSourceFinished = ::refreshAfterSourceSearch,
     )
+
+
+    private val swipeInvalidation by lazy {
+        SwipeProjectionInvalidation(savedSearch::refreshResultProjection, ::refreshDiscovery, ::refreshMap)
+    }
+
+    private val profileOperations by lazy {
+        StandaloneProfileOperations(
+            viewModelScope, _searchUiState, _discoverState, _profileNotes, noteReadTickets,
+            StandaloneProfileIo(
+                core::loadProfile, core::cachedProfile, core::profileMedia, core::profileIdentity,
+                core::person, core::changeEvents, core::identityCandidates, core::archiveProfileMedia,
+                { RequestControl() }, { it.cancel() }, core::confirmIdentityMatch,
+            ),
+            ProfileProjectionCallbacks(
+                epoch = { discoveryEpoch }, nextEpoch = { ++discoveryEpoch },
+                pending = { discoveryRefreshPending }, projectDiscovery = ::projectDiscovery,
+                discovery = ::refreshDiscovery, savedSearch = savedSearch::refreshResultProjection,
+                map = ::refreshMap, home = ::refresh,
+            ),
+        )
+    }
 
     init {
         refresh()
@@ -186,11 +202,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update { it.copy(searchCancelling = true) }
     }
 
-    private fun invalidateProfileRequest() {
-        profileGeneration.invalidate()
-        archiveControl?.cancel()
-        archiveControl = null
-    }
+    private fun invalidateProfileRequest() = profileOperations.invalidateProfileRequest()
 
     override fun onCleared() {
         savedStatusControl?.cancel()
@@ -202,20 +214,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 
-    fun cancelMediaArchive() {
-        archiveControl?.cancel()
-        _searchUiState.update { it.copy(archiving = false) }
-    }
+    fun cancelMediaArchive() = profileOperations.cancelMediaArchive()
 
-    fun closeProfile() {
-        invalidateProfileRequest()
-        _searchUiState.update {
-            it.copy(profileOpen = false, profile = null, profileIdentity = null, profileFromArchive = false, selectedPersonId = null,
-                selectedPerson = null, profileMedia = emptyList(), loading = false,
-                archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
-                actionBusy = false, actionError = null, error = null)
-        }
-    }
+    fun closeProfile() = profileOperations.closeProfile()
 
     private fun cancelPreview() {
         previewGeneration.invalidate()
@@ -519,20 +520,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         },
     )
 
-    fun markSwipeSnapshotChanged() {
-        swipeSnapshotDirty = true
-        savedSearch.refreshResultProjection()
-        if (discoveryListVisible) refreshDiscovery()
-        if (mapProjectionVisible) refreshMap()
-    }
+    fun markSwipeSnapshotChanged() = swipeInvalidation.sourceCompleted()
 
-    fun setDiscoveryProjectionVisibility(listVisible: Boolean, mapVisible: Boolean) {
-        val mapEntered = mapVisible && !mapProjectionVisible
-        discoveryListVisible = listVisible
-        mapProjectionVisible = mapVisible
-        if (listVisible && swipeSnapshotDirty) refreshDiscovery()
-        if (mapEntered) refreshMap()
-    }
+    fun setDiscoveryProjectionVisibility(listVisible: Boolean, mapVisible: Boolean) =
+        swipeInvalidation.setVisibility(listVisible, mapVisible)
 
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
 
@@ -542,7 +533,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         discoveryRefreshPending = false
-        swipeSnapshotDirty = false
+        swipeInvalidation.discoveryStarted()
         val epoch = ++discoveryEpoch
         _discoverState.update {
             it.copy(loading = true, loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false)
@@ -830,17 +821,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun loadProfileNote(listingId: Long, personId: Long) {
-        val ticket = ++nextNoteTicket
-        noteReadTickets[personId] = ticket
+        val ticket = noteReadTickets.invalidate(personId)
         updateNote(personId) { it.copy(loading = true) }
         try {
             val saved = core.personNote(listingId, personId)
-            if (noteReadTickets[personId] == ticket) updateNote(personId) { it.loaded(saved) }
+            if (noteReadTickets.isCurrent(personId, ticket)) updateNote(personId) { it.loaded(saved) }
         } catch (cancel: CancellationException) {
-            if (noteReadTickets[personId] == ticket) updateNote(personId) { it.copy(loading = false) }
+            if (noteReadTickets.isCurrent(personId, ticket)) updateNote(personId) { it.copy(loading = false) }
             throw cancel
         } catch (failure: Exception) {
-            if (noteReadTickets[personId] == ticket) updateNote(personId) {
+            if (noteReadTickets.isCurrent(personId, ticket)) updateNote(personId) {
                 it.copy(loading = false, error = failure.message ?: "Notiz nicht verfügbar", readError = true)
             }
         }
@@ -868,7 +858,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val note = draft.text.takeUnless { it.isBlank() }
         // Invalidate any older editor read. The same mutation guard and ViewModel
         // lifetime cover navigation, preference writes and identity merges.
-        noteReadTickets[personId] = ++nextNoteTicket
+        noteReadTickets.invalidate(personId)
         updateNote(personId) { it.copy(error = null) }
         mutateDiscovery("Notiz konnte nicht gespeichert werden", write = {
             try {
@@ -890,155 +880,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
         cancelPreview()
         invalidateActiveSearch()
-        invalidateProfileRequest()
-        savedSearch.setVisible(false)
-        val requestId = profileGeneration.value
-        _searchUiState.update {
-            it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
-                loading=true,profile=null,profileIdentity=null,profileFromArchive=false,profileMedia=emptyList(),changeEvents=emptyList(),
-                identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
-                mediaArchive=null,mediaWarning=null,archiving=false)
-        }
-        viewModelScope.launch {
-            try {
-                var showingArchive = false
-                var refreshError: String? = null
-                val profile = try {
-                    try {
-                        core.loadProfile(listingId)
-                    } finally {
-                        // A source read can persist before a later failure or invalidation.
-                        savedSearch.refreshResultProjection()
-                        refreshDiscovery()
-                    }
-                } catch (failure: CancellationException) {
-                    throw failure
-                } catch (failure: Exception) {
-                    val archived = core.cachedProfile(listingId) ?: throw failure
-                    showingArchive = true
-                    refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
-                    archived
-                }
-                if (!profileGeneration.isCurrent(requestId)) return@launch
-                val items = core.profileMedia(profile.snapshotId)
-                val identity = core.profileIdentity(listingId)
-                val person = core.person(identity.personId)
-                val changes = core.changeEvents(identity.personId)
-                val candidates = core.identityCandidates(listingId)
-                if (!profileGeneration.isCurrent(requestId)) return@launch
-                _searchUiState.update {
-                    it.copy(loading=false,profile=profile,profileIdentity=identity,profileFromArchive=showingArchive,
-                        selectedPersonId=identity.personId,selectedPerson=person,
-                        profileMedia=items,changeEvents=changes,identityCandidates=candidates,
-                        mediaWarning=refreshError,archiving=!showingArchive)
-                }
-                refreshMap()
-                if (showingArchive) return@launch
-                val control = RequestControl()
-                archiveControl = control
-                try {
-                    val report = core.archiveProfileMedia(profile.snapshotId,control)
-                    val updatedMedia = core.profileMedia(profile.snapshotId)
-                    if (profileGeneration.isCurrent(requestId)) {
-                        _searchUiState.update { it.copy(profileMedia=updatedMedia,mediaArchive=report) }
-                    }
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (failure: Exception) {
-                    if (profileGeneration.isCurrent(requestId)) {
-                        _searchUiState.update {
-                            it.copy(mediaWarning=failure.message ?: "Medienarchivierung fehlgeschlagen")
-                        }
-                    }
-                } finally {
-                    if (archiveControl === control) archiveControl = null
-                    if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(archiving=false) }
-                    // Even a cancelled archive may already have committed individual media.
-                    savedSearch.refreshResultProjection()
-                    refreshDiscovery()
-                }
-            } catch (cancellation: CancellationException) {
-                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(loading=false,archiving=false) }
-                throw cancellation
-            } catch (failure: Exception) {
-                if (profileGeneration.isCurrent(requestId)) {
-                    _searchUiState.update {
-                        it.copy(loading=false,archiving=false,error=failure.message ?: "Profil konnte nicht geladen werden")
-                    }
-                }
-            }
-        }
+        profileOperations.loadProfile(listingId, personId) { savedSearch.setVisible(false) }
     }
 
-    fun confirmIdentity(listingId: Long, targetPersonId: Long) {
-        val active = _searchUiState.value
-        val sourceOwner = active.currentIdentityConfirmationOwner(listingId, _discoverState.value.busy) ?: return
-        val dirtyOwners = _profileNotes.value.dirtyOwners(sourceOwner, targetPersonId)
-        if (dirtyOwners.isNotEmpty()) {
-            _searchUiState.update { it.copy(actionError =
-                "Ungespeicherte Notiz für Person(en) ${dirtyOwners.joinToString()}. Vor Zusammenführung speichern oder verwerfen.") }
-            return
-        }
-        val requestId = profileGeneration.value
-        val epoch = ++discoveryEpoch
-        archiveControl?.cancel()
-        // The mutation outlives the detail screen. Keep the shared write guard until
-        // it finishes even if Back clears the screen's own actionBusy flag.
-        _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
-            savedLoadingMore = false, savedRecentLoadingMore = false, mutationError = null) }
-        _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
-        viewModelScope.launch {
-            var committed = false
-            var profileUpdated = false
-            var projectionUpdated = false
-            try {
-                core.confirmIdentityMatch(listingId, targetPersonId)
-                committed = true
-                for (owner in listOf(sourceOwner, targetPersonId)) {
-                    noteReadTickets[owner] = ++nextNoteTicket
-                }
-                _profileNotes.update { it - sourceOwner - targetPersonId }
-                val identity = core.profileIdentity(listingId)
-                val history = core.changeEvents(identity.personId)
-                val candidates = core.identityCandidates(listingId)
-                val person = core.person(identity.personId)
-                if (profileGeneration.isCurrent(requestId)) {
-                    _searchUiState.update {
-                        if (it.profile?.listingId == listingId) {
-                            it.copy(selectedPersonId = identity.personId, profileIdentity = identity,
-                                selectedPerson = person, changeEvents = history, identityCandidates = candidates)
-                        } else it
-                    }
-                }
-                profileUpdated = true
-                projectionUpdated = projectDiscovery(epoch)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (failure: Exception) {
-                val message = if (committed) "Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
-                    else failure.message ?: "Zusammenführung fehlgeschlagen"
-                if (profileGeneration.isCurrent(requestId)) {
-                    _searchUiState.update {
-                        it.identityConfirmationFailure(message, committed, profileUpdated)
-                    }
-                } else {
-                    _discoverState.update { it.copy(mutationError = message) }
-                }
-            } finally {
-                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(actionBusy = false) }
-                if (epoch == discoveryEpoch) {
-                    _discoverState.update { it.copy(busy = false) }
-                    if (committed && !projectionUpdated || discoveryRefreshPending) refreshDiscovery()
-                }
-                if (committed) {
-                    savedSearch.refreshResultProjection()
-                    if (discoveryRefreshPending) refreshDiscovery()
-                    refreshMap()
-                    refresh()
-                }
-            }
-        }
-    }
+    fun confirmIdentity(listingId: Long, targetPersonId: Long) =
+        profileOperations.confirmIdentity(listingId, targetPersonId)
 
     fun refresh() {
         if (homeOwner.occupied) {

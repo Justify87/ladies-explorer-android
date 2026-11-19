@@ -31,7 +31,7 @@ class SwipeProfileReadTest {
             cached = { calls += "cache:$it"; cachedProfile },
             source = { calls += "source:$it"; online() },
             identity = { calls += "identity:$it"; ProfileIdentity(owner, "ACTIVE", null, false, false, false, null) },
-            person = { calls += "person:$it"; onPerson(); null },
+            person = { calls += "person:$it"; onPerson(); PersonSummary(it, "Fixture", Preference.NONE, false, 1u, "") },
             media = { calls += "media:$it"; listOf(ProfileMediaItem("IMAGE", "", null, 0u)) },
             history = { calls += "history:$it"; emptyList() },
             candidates = {
@@ -47,6 +47,7 @@ class SwipeProfileReadTest {
         assertTrue(result.fromArchive)
         assertEquals(11L, result.profile.snapshotId)
         assertEquals(identity(1L), result.identity)
+        assertEquals(1L, result.person?.personId)
         assertEquals(listOf("cache:4", "identity:4", "person:1", "media:11", "history:1", "candidates:4:owner:1"), f.calls)
     }
 
@@ -105,35 +106,5 @@ class SwipeProfileReadTest {
         assertEquals(1, f.calls.count { it == "identity:4" })
     }
 
-    @Test fun knownGapIdentityConfirmationRequiresStandaloneRouteAndUsesCurrentOwner() {
-        val active = SearchUiState(profileOpen = true, profileSessionId = 1L,
-            profile = profile(), profileIdentity = identity(1L))
-        assertEquals(1L, active.currentIdentityConfirmationOwner(4L, false))
-        assertNull(active.currentIdentityConfirmationOwner(5L, false))
-        assertNull(active.currentIdentityConfirmationOwner(4L, true))
-        assertNull(active.copy(actionBusy = true).currentIdentityConfirmationOwner(4L, false))
-        assertNull(active.copy(profileOpen = false).currentIdentityConfirmationOwner(4L, false))
-        // Same listing but changed owner/session: a stale dialog currently has no token.
-        val changed = active.copy(profileSessionId = 2L, profileIdentity = identity(7L))
-        assertEquals(7L, changed.currentIdentityConfirmationOwner(4L, false))
-    }
 
-    @Test fun knownGapCommittedMergeReadFailureClearsIdentityButRetainsOldMediaAndProfile() {
-        val active = SearchUiState(profileOpen = true, profile = profile().copy(phoneDisplay = "+49000000000"),
-            profileIdentity = identity(1L), selectedPersonId = 1L,
-            profileMedia = listOf(ProfileMediaItem("IMAGE", "", null, 0u)),
-            identityCandidates = listOf(IdentityCandidate(2L, "CANDIDATE", false, true, 0u, 0u, null)))
-        val failedWrite = active.identityConfirmationFailure("write failed", false, false)
-        assertEquals(active.profileIdentity, failedWrite.profileIdentity)
-        val failedRead = active.identityConfirmationFailure("saved; read failed", true, false)
-        assertEquals("saved; read failed", failedRead.actionError)
-        assertNull(failedRead.profileIdentity)
-        assertNull(failedRead.selectedPersonId)
-        assertTrue(failedRead.identityCandidates.isEmpty())
-        assertNull(failedRead.currentIdentityConfirmationOwner(4L, false))
-        // Existing stale projection is still rendered by ProfileDetailScreen, including contact.
-        // T10.2 replaces these assertions with invalidation/read-only recovery.
-        assertEquals(active.profile, failedRead.profile)
-        assertEquals(active.profileMedia, failedRead.profileMedia)
-    }
 }

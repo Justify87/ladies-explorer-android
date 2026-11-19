@@ -89,3 +89,24 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
         loader.execute(ImageRequest.Builder(context).data(model).size(512).build())
     }
 }
+
+/** The existing composition-owned listing cache. Its original admission is intentionally
+ * characterized here; T10.2 replaces listing-only publication with the full context token. */
+internal class SwipeProfileWindow(private val entries: MutableMap<Long, SwipeProfile>) {
+    operator fun get(listingId: Long): SwipeProfile? = entries[listingId]
+    fun remove(listingId: Long) { entries.remove(listingId) }
+    fun clear() = entries.clear()
+    fun retain(listingIds: List<Long>) {
+        entries.keys.toList().filterNot { it in listingIds }.forEach(entries::remove)
+    }
+
+    suspend fun readCurrent(listingId: Long, read: suspend () -> SwipeProfile) {
+        entries[listingId] = read()
+    }
+
+    suspend fun prefetch(listingId: Long, read: suspend () -> SwipeProfile): SwipeProfile {
+        val profile = entries[listingId] ?: read()
+        entries[listingId] = profile
+        return profile
+    }
+}

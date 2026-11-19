@@ -52,3 +52,13 @@ internal data class NoteEditorActions(
     val useStored: (Long) -> Unit,
     val keepDraft: (Long) -> Unit,
 )
+
+/** Existing per-owner note-read tickets, shared by the editor and merge completion. */
+internal class NoteReadTickets {
+    private var next = 0L
+    private val tickets = mutableMapOf<Long, Long>()
+
+    fun invalidate(owner: Long): Long = (++next).also { tickets[owner] = it }
+    fun isCurrent(owner: Long, ticket: Long): Boolean = tickets[owner] == ticket
+    fun clear() = tickets.clear()
+}
