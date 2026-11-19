@@ -209,8 +209,9 @@ pub(crate) fn load_profile(
         .source_session
         .0
         .get_profile(&target.url, &target.advert_id, control)?;
-    let html = match observation {
-        network::ProfileObservation::Active(html) => html,
+    let (html, verified) = match observation {
+        network::ProfileObservation::Active(html) => (html, true),
+        network::ProfileObservation::Unverified(html) => (html, false),
         network::ProfileObservation::Unavailable(code) => {
             storage::save_status(core, &target, "UNAVAILABLE", code, false, control)?;
             return Err(CoreError::Source(format!("Profile HTTP status {code}")));
@@ -256,7 +257,7 @@ pub(crate) fn load_profile(
         control.check()?;
     }
     let storage_started = Instant::now();
-    let result = storage::save_observed_profile(core, &target, profile, control);
+    let result = storage::save_observed_profile(core, &target, profile, verified, control);
     core.diagnostics
         .phase("STORAGE", "profile_sqlite_write", storage_started);
     match &result {
@@ -292,6 +293,11 @@ pub(crate) fn check_saved_status(
     let (status, http_status) = match observation {
         network::ProfileObservation::Active(_) => ("ACTIVE", 200),
         network::ProfileObservation::Unavailable(code) => ("UNAVAILABLE", code),
+        network::ProfileObservation::Unverified(_) => {
+            return Err(CoreError::Source(
+                "Profile status: advert ID not verified".into(),
+            ));
+        }
     };
     storage::save_status(core, &target, status, http_status, true, Some(control))?;
     core.diagnostics.event(

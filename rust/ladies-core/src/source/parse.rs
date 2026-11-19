@@ -539,6 +539,10 @@ pub(super) fn confirms_profile(html: &str, advert_id: &str) -> bool {
         && recognized_profile(&Html::parse_document(html))
 }
 
+pub(super) fn profile_without_explicit_id(html: &str) -> bool {
+    profile_advert_id(html).is_none() && recognized_profile(&Html::parse_document(html))
+}
+
 pub(super) fn parse_profile(html: &str, fallback: &Card) -> Result<Profile, CoreError> {
     let doc = Html::parse_document(html);
     if !recognized_profile(&doc) {

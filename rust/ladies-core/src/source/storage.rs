@@ -478,13 +478,14 @@ pub(super) fn save_profile(
 ) -> Result<ProfileResponse, CoreError> {
     let target = listing_target(core, listing_id, false)?;
     assert_eq!(target.url, url);
-    save_observed_profile(core, &target, profile, None)
+    save_observed_profile(core, &target, profile, true, None)
 }
 
 pub(super) fn save_observed_profile(
     core: &LadiesCore,
     target: &ListingTarget,
     profile: Profile,
+    verified: bool,
     control: Option<&RequestControl>,
 ) -> Result<ProfileResponse, CoreError> {
     if let Some(control) = control {
@@ -628,7 +629,9 @@ pub(super) fn save_observed_profile(
         ],
     )?;
     identity::record_phone(&tx, person_id, listing_id, profile.phone_display.as_deref())?;
-    record_status(&tx, listing_id, person_id, "ACTIVE")?;
+    if verified {
+        record_status(&tx, listing_id, person_id, "ACTIVE")?;
+    }
     history::record_transition(
         &tx,
         person_id,
@@ -653,9 +656,10 @@ pub(super) fn save_observed_profile(
     tx.execute(
         "INSERT INTO listing_observations
          (listing_id, source, status, http_status, snapshot_id, details_json)
-         VALUES (?1,'PROFILE','ACTIVE',200,?2,?3)",
+         VALUES (?1,'PROFILE',?2,200,?3,?4)",
         params![
             listing_id,
+            if verified { "ACTIVE" } else { "UNKNOWN" },
             snapshot_id,
             json!({
                 "snapshot_changed": active_snapshot_before != Some(snapshot_id),

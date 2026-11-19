@@ -101,17 +101,25 @@ impl SourceHttp {
         let url = parse::valid_profile_url(url)
             .ok_or_else(|| CoreError::InvalidInput("Invalid Ladies profile URL".into()))?;
         let response = self.get_cancellable(&url, control)?;
-        let (status, code) = classify_profile_status(&response, advert_id)?;
-        Ok(if status == "ACTIVE" {
-            ProfileObservation::Active(response.body)
-        } else {
-            ProfileObservation::Unavailable(code)
-        })
+        match classify_profile_status(&response, advert_id) {
+            Ok(("ACTIVE", _)) => Ok(ProfileObservation::Active(response.body)),
+            Ok((_, code)) => Ok(ProfileObservation::Unavailable(code)),
+            Err(_)
+                if response.status == 200
+                    && response.same_path
+                    && parse::profile_without_explicit_id(&response.body) =>
+            {
+                Ok(ProfileObservation::Unverified(response.body))
+            }
+            Err(error) => Err(error),
+        }
     }
 }
 
 pub(super) enum ProfileObservation {
     Active(String),
+    // Keep existing metadata parsing without asserting an unproven status.
+    Unverified(String),
     Unavailable(u16),
 }
 
