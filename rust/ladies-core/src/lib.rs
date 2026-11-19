@@ -143,7 +143,7 @@ pub struct ImportReport {
 
 pub use discovery::{
     DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPersonCursor,
-    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection, SavedPersonSort,
+    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection, SavedPersonSort, SavedPeopleWindow,
 };
 pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
@@ -200,6 +200,7 @@ impl LadiesCore {
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
+        discovery::register_saved_name_collation(&db)?;
         diagnostics.event("CORE", "SQLite schema ready");
         let source_session =
             source::SourceSession::new(Arc::clone(&diagnostics), Arc::clone(&recorder))?;
@@ -466,6 +467,16 @@ impl LadiesCore {
         control: Arc<RequestControl>,
     ) -> Result<String, CoreError> {
         source::check_saved_status(self, listing_id, &control)
+    }
+
+    pub fn saved_people_window(
+        &self,
+        kind: SavedPersonKind,
+        sort: SavedPersonSort,
+        regular_limit: u32,
+        recent_limit: u32,
+    ) -> Result<SavedPeopleWindow, CoreError> {
+        discovery::saved_window(self, kind, sort, regular_limit, recent_limit)
     }
 
     pub fn saved_people(

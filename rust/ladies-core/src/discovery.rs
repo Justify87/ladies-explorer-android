@@ -2,6 +2,22 @@ use rusqlite::{OptionalExtension, named_params, params};
 
 use crate::{CoreError, LadiesCore, Preference, source::known_age};
 
+// Unicode base-name order: NFD, case/mark folding, German sharp-s expansion.
+// The same collation is used for ties and cursor comparisons.
+fn saved_name_key(name: &str) -> String {
+    static MARKS: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"\p{M}").expect("Unicode marks"));
+    let lower = name.to_lowercase().replace('ß', "ss");
+    let normalizer = icu_normalizer::DecomposingNormalizer::new_nfd();
+    let normalized = normalizer.normalize(&lower);
+    MARKS.replace_all(&normalized, "").into_owned()
+}
+
+pub(crate) fn register_saved_name_collation(db: &rusqlite::Connection) -> Result<(), CoreError> {
+    db.create_collation("SAVED_NAME", |a, b| saved_name_key(a).cmp(&saved_name_key(b)))?;
+    Ok(())
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct DiscoveryCard {
     pub listing_id: i64,
@@ -155,19 +171,23 @@ const PERSON_CARDS: &str = "
         FROM listings
     ), projected AS (
         SELECT l.listing_id,p.person_id,
-               COALESCE(NULLIF(s.name,''),NULLIF(r.name,''),NULLIF(p.display_name,''),'Inserat') AS name,
-               COALESCE(NULLIF(s.city,''),NULLIF(r.city,''),'') AS city,
-               COALESCE(
-                   (SELECT m.remote_url FROM snapshot_media m
-                    WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
-                    ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id
-                    LIMIT 1),r.thumbnail_url
-               ) AS thumbnail_url,
-               (SELECT a.local_path FROM snapshot_media m
-                JOIN media_assets a ON a.media_asset_id=m.media_asset_id
-                WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
-                ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id
-                LIMIT 1) AS local_path,
+               COALESCE(NULLIF(s.name,''),NULLIF(r.name,''),NULLIF(p.display_name,''),
+                   (SELECT sr.name FROM search_results sr JOIN listings owner
+                    ON owner.listing_id=sr.listing_id WHERE owner.person_id=p.person_id AND sr.name<>''
+                    ORDER BY julianday(sr.observed_at) DESC,sr.search_result_id DESC LIMIT 1),
+                   'Person #' || p.person_id) AS name,
+               COALESCE(NULLIF(s.city,''),NULLIF(r.city,''),
+                   (SELECT ps.city FROM listing_snapshots ps JOIN listings owner
+                    ON owner.listing_id=ps.listing_id WHERE owner.person_id=p.person_id AND ps.city<>''
+                    ORDER BY julianday(ps.captured_at) DESC,ps.snapshot_id DESC LIMIT 1),
+                   (SELECT sr.city FROM search_results sr JOIN listings owner
+                    ON owner.listing_id=sr.listing_id WHERE owner.person_id=p.person_id AND sr.city<>''
+                    ORDER BY julianday(sr.observed_at) DESC,sr.search_result_id DESC LIMIT 1),'') AS city,
+               COALESCE(NULLIF(image.remote_url,''),NULLIF(r.thumbnail_url,''),
+                   (SELECT sr.thumbnail_url FROM search_results sr JOIN listings owner
+                    ON owner.listing_id=sr.listing_id WHERE owner.person_id=p.person_id AND sr.thumbnail_url<>''
+                    ORDER BY julianday(sr.observed_at) DESC,sr.search_result_id DESC LIMIT 1)) AS thumbnail_url,
+               asset.local_path AS local_path,
                s.description,u.preference,u.favorite,
                COALESCE(r.has_video,0) AS has_video,COALESCE(r.has_ai_content,0) AS has_ai_content,
                l.last_seen_at AS last_seen_at,COALESCE(r.is_premium,0) AS is_premium,s.traits_json,
@@ -181,8 +201,20 @@ const PERSON_CARDS: &str = "
           ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
         LEFT JOIN search_results r ON r.search_result_id=(
             SELECT sr.search_result_id FROM search_results sr
-            WHERE sr.listing_id=l.listing_id ORDER BY sr.search_run_id DESC,sr.search_result_id DESC LIMIT 1
+            WHERE sr.listing_id=l.listing_id ORDER BY julianday(sr.observed_at) DESC,sr.search_result_id DESC LIMIT 1
         )
+        LEFT JOIN snapshot_media image ON image.snapshot_media_id=COALESCE(
+            (SELECT m.snapshot_media_id FROM snapshot_media m
+             WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
+             ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id LIMIT 1),
+            (SELECT m.snapshot_media_id FROM snapshot_media m
+             JOIN listing_snapshots ps ON ps.snapshot_id=m.snapshot_id
+             JOIN listings owner ON owner.listing_id=ps.listing_id
+             WHERE owner.person_id=p.person_id AND m.kind='IMAGE'
+             ORDER BY julianday(ps.captured_at) DESC,ps.snapshot_id DESC,
+               CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id LIMIT 1)
+        )
+        LEFT JOIN media_assets asset ON asset.media_asset_id=image.media_asset_id
     )";
 
 fn person_card(core: &LadiesCore, row: &rusqlite::Row<'_>) -> Result<DiscoveryCard, CoreError> {
@@ -314,6 +346,7 @@ pub struct SavedPersonCursor {
     pub sort: SavedPersonSort,
     pub section: SavedPersonSection,
     pub as_of: i64,
+    pub revision: i64,
     pub key: String,
     pub person_id: i64,
 }
@@ -344,6 +377,53 @@ pub struct SavedPersonPage {
     pub next_cursor: Option<SavedPersonCursor>,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavedPeopleWindow {
+    pub regular: SavedPersonPage,
+    pub recent: Option<SavedPersonPage>,
+}
+
+struct SavedQuery {
+    kind: SavedPersonKind,
+    sort: SavedPersonSort,
+    section: SavedPersonSection,
+    limit: u32,
+    cursor: Option<SavedPersonCursor>,
+    as_of: Option<i64>,
+}
+
+fn saved_now(db: &rusqlite::Connection) -> Result<i64, CoreError> {
+    Ok(db.query_row(
+        "SELECT CAST(round(unixepoch('now','subsec')*1000) AS INTEGER)", [], |row| row.get(0),
+    )?)
+}
+
+// A single lock protects both sections and counts, including when expanding.
+pub(crate) fn saved_window(
+    core: &LadiesCore,
+    kind: SavedPersonKind,
+    sort: SavedPersonSort,
+    regular_limit: u32,
+    recent_limit: u32,
+) -> Result<SavedPeopleWindow, CoreError> {
+    let db = core.connection()?;
+    let as_of = Some(saved_now(&db)?);
+    let watchlist = kind == SavedPersonKind::Favorite && sort == SavedPersonSort::Date;
+    let read = |section, limit| {
+        saved_people_in(
+            core,
+            &db,
+            SavedQuery { kind, sort, section, limit, cursor: None, as_of },
+        )
+    };
+    let regular = read(
+        if watchlist { SavedPersonSection::Regular } else { SavedPersonSection::All },
+        regular_limit,
+    )?;
+    let recent = if watchlist { Some(read(SavedPersonSection::Recent, recent_limit)?) } else { None };
+    Ok(SavedPeopleWindow { regular, recent })
+}
+
 pub(crate) fn saved_people(
     core: &LadiesCore,
     kind: SavedPersonKind,
@@ -353,23 +433,37 @@ pub(crate) fn saved_people(
     cursor: Option<SavedPersonCursor>,
     as_of: Option<i64>,
 ) -> Result<SavedPersonPage, CoreError> {
-    if !(1..=100).contains(&limit)
+    if !(1..=100).contains(&limit) {
+        return Err(CoreError::InvalidInput("Invalid saved people page size".into()));
+    }
+    let db = core.connection()?;
+    saved_people_in(core, &db, SavedQuery { kind, sort, section, limit, cursor, as_of })
+}
+
+fn saved_people_in(
+    core: &LadiesCore,
+    db: &rusqlite::Connection,
+    query: SavedQuery,
+) -> Result<SavedPersonPage, CoreError> {
+    let SavedQuery { kind, sort, section, limit, cursor, as_of } = query;
+    let revision: i64 = db.query_row("SELECT total_changes()", [], |row| row.get(0))?;
+    if limit == 0
         || (section != SavedPersonSection::All
             && (kind != SavedPersonKind::Favorite || sort != SavedPersonSort::Date))
         || cursor.as_ref().is_some_and(|c| {
             c.kind != kind
                 || c.sort != sort
                 || c.section != section
+                || c.revision != revision
                 || as_of.is_some_and(|time| time != c.as_of)
         })
     {
-        return Err(CoreError::InvalidInput("Invalid saved people page".into()));
+        return Err(CoreError::InvalidInput("Invalid or outdated saved people page".into()));
     }
-    let db = core.connection()?;
     let predicate = kind.predicate();
     let as_of = match cursor.as_ref().map(|c| c.as_of).or(as_of) {
         Some(time) => time,
-        None => db.query_row("SELECT unixepoch('now')", [], |row| row.get(0))?,
+        None => saved_now(db)?,
     };
     // Count people, not listings, including imported people without an advert.
     // The connection guard spans both reads so a core write cannot split them.
@@ -378,13 +472,14 @@ pub(crate) fn saved_people(
         [],
         |row| row.get(0),
     )?;
-    let (key, comparison, direction) = match sort {
+    let (key, comparison, direction, collation) = match sort {
         SavedPersonSort::Date => (
             "COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ',person_last_seen_at),'')",
             "<",
             "DESC",
+            "BINARY",
         ),
-        SavedPersonSort::Name => ("name", ">", "ASC"),
+        SavedPersonSort::Name => ("name", ">", "ASC", "SAVED_NAME"),
     };
     let section_predicate = section.predicate();
     // Both watchlist sections use the same frozen time boundary, including when
@@ -393,11 +488,11 @@ pub(crate) fn saved_people(
         "{PERSON_CARDS}, eligible AS (
            SELECT p.*, {key} AS sort_key, e.created_at AS change_at,
                   e.event_type AS change_type,
-                  COALESCE(unixepoch(e.created_at) > :as_of - 129600
-                       AND unixepoch(e.created_at) <= :as_of,0) AS recent
+                  COALESCE(CAST(round(unixepoch(e.created_at,'subsec')*1000) AS INTEGER) > :as_of - 129600000,0) AS recent
            FROM projected p LEFT JOIN change_events e ON e.change_event_id=(
                SELECT c.change_event_id FROM change_events c
-               WHERE c.person_id=p.person_id AND unixepoch(c.created_at) <= :as_of
+               WHERE c.person_id=p.person_id
+                 AND CAST(round(unixepoch(c.created_at,'subsec')*1000) AS INTEGER) <= :as_of
                ORDER BY julianday(c.created_at) DESC,c.change_event_id DESC LIMIT 1
            )
            WHERE {predicate}
@@ -413,25 +508,24 @@ pub(crate) fn saved_people(
         )?
     };
     // Only enum-selected SQL fragments are interpolated; cursor values are bound.
-    // NOCASE gives stable SQLite ordering (not full German locale collation).
     let mut query = db.prepare(&format!(
         "{eligible}, page_window AS (
             SELECT * FROM eligible
             WHERE {section_predicate}
-              AND (:cursor_key IS NULL OR sort_key COLLATE NOCASE {comparison} :cursor_key
-               OR (sort_key COLLATE NOCASE = :cursor_key AND person_id {comparison} :cursor_id))
-            ORDER BY sort_key COLLATE NOCASE {direction},person_id {direction}
+              AND (:cursor_key IS NULL OR sort_key COLLATE {collation} {comparison} :cursor_key
+               OR (sort_key COLLATE {collation} = :cursor_key AND person_id {comparison} :cursor_id))
+            ORDER BY sort_key COLLATE {collation} {direction},person_id {direction}
             LIMIT :limit
          )
          SELECT w.*,(SELECT COUNT(*) FROM listings l WHERE l.person_id=w.person_id)
          FROM page_window w
-         ORDER BY w.sort_key COLLATE NOCASE {direction},w.person_id {direction}"
+         ORDER BY w.sort_key COLLATE {collation} {direction},w.person_id {direction}"
     ))?;
     let mut rows = query.query(named_params! {
         ":as_of": as_of,
         ":cursor_key": cursor.as_ref().map(|c| c.key.as_str()),
         ":cursor_id": cursor.as_ref().map(|c| c.person_id),
-        ":limit": limit + 1,
+        ":limit": i64::from(limit) + 1,
     })?;
     let mut entries = Vec::new();
     while let Some(row) = rows.next()? {
@@ -468,6 +562,7 @@ pub(crate) fn saved_people(
             sort,
             section,
             as_of,
+            revision,
             key: key.clone(),
             person_id: row.person_id,
         })
@@ -882,7 +977,7 @@ mod tests {
     #[test]
     fn watchlist_partitions_all_favorites_at_the_same_boundary() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
-        let as_of = 1_800_000_000;
+        let as_of = 1_800_000_000_000i64;
         let mut ids = Vec::new();
         for age in [0, 1, 2, 3, 129599, 129600, 129601] {
             let person = core.create_person(None).unwrap();
@@ -891,7 +986,7 @@ mod tests {
             db.execute(
                 "INSERT INTO change_events(person_id,event_type,created_at)
                  VALUES (?1,'PROFILE_CREATED',datetime(?2,'unixepoch'))",
-                params![person, as_of - age],
+                params![person, as_of / 1000 - age],
             )
             .unwrap();
             ids.push(person);
