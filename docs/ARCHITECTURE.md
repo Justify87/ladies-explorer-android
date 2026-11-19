@@ -111,3 +111,8 @@ SavedSearchController invalidiert die noch offene Result-Projektion als dirty; b
 Der Home-UI-Zustand projiziert den aktuellen Operationstyp statt eines zusätzlichen Import-Busy-Flags; native Root-/Back-Navigation bleibt während des Imports gesperrt, damit die Import-Reconciliation nicht mit neu begonnenen UI-Aktionen konkurriert. Status-Reads sperren Root-Navigation nicht.
 
 Der Gelesen-Callback trägt die tatsächlich gerenderte Revision; UI-Callback- und Native-CAS-Prüfung verhindern auch bei verspätetem Klick die Bestätigung eines neueren Fensters. Feed-Read-Fehler gehören ausschließlich ihrer Projektion; eine erfolgreiche Wiederprojektion hinterlässt keinen generischen Mutation-Fehler. Unabhängige Detail-/Writefehler bleiben sichtbar.
+
+
+### Geplante Weiterentwicklung M05.10 (kein Ist-Vertrag)
+
+Stand PR #23: bestehende Swipe-/Standalone-Komponenten und getrennte Kontext-Owner bleiben bis Umsetzung maßgeblich. Bestätigtes neues UI-Soll in [M05-PLAN](M05-PLAN.md#m0510--unified-profile-experience-verbindliches-soll-19112026); technische Baseline und Gates in [M05-TASKS](M05-TASKS.md). Geplant: gemeinsamer vertikaler Profilfluss, kontextabhängiger Action Owner, kompaktere Shell und größerer Hero; kein Swipe→Standalone-Umweg für Details/Confirm. Keine Änderung am bestehenden Rust-/SQLite-, Prefetch-, Native-Drain-, Notiz-/Owner-, unabhängigen Projektions- oder Saved-Search-Ack-CAS-Vertrag durch Planung. Dieser Hinweis ist keine Behauptung implementierter Komponenten; tatsächliche Architektur erst mit jeweiligem Code-PR aktualisieren.
