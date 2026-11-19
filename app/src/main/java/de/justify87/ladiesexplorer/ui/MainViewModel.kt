@@ -70,6 +70,8 @@ data class DiscoverUiState(
     val activeVisibleCount: Int = 0,
     val replayLikes: Boolean = true,
     val canUndoSwipe: Boolean = false,
+    val swipeRestore: SwipePresentation? = null,
+    val swipePresentationGeneration: Long = 0L,
     val loadingMore: Boolean = false,
     val savedLoadingMore: Boolean = false,
     val savedRecentLoadingMore: Boolean = false,
@@ -205,14 +207,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _searchUiState.value.detailIdentityToken() == token
     }
 
-    internal fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference) {
+    internal fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference) =
+        chooseProfilePreference(token, preference, null)
+
+    internal fun chooseSwipePreference(token: SwipeActionToken, preference: Preference, presentation: SwipePresentation?) =
+        chooseProfilePreference(token, preference, presentation?.takeIf {
+            it.listingId == token.listingId && it.ownerId == token.ownerId && it.snapshotId == token.snapshotId
+        })
+
+    private fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference, presentation: SwipePresentation?) {
         if (!isProfileActionCurrent(token)) return
         _searchUiState.update { it.copy(actionError = null) }
         suspend fun refreshDetail() {
             if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
         }
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
-            commitProfilePreference(token, preference, core::setSwipePreference, swipeSession::visit)
+            commitProfilePreference(token, preference, core::setSwipePreference) { step ->
+                swipeSession.visit(step.copy(presentation = presentation))
+            }
         }, afterWrite = { refreshDetail() },
             recoverWriteFailure = { refreshDetail() },
             onFailure = { message ->
@@ -477,7 +489,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 swipeSession.reset()
                 discoveryEpoch++
                 _discoverState.update {
-                    it.copy(cards = swipeSession.queue(cards, active = true), canUndoSwipe = false, nextCursor = null, activeRunId = result.searchRunId,
+                    it.copy(cards = swipeSession.queue(cards, active = true), canUndoSwipe = false, swipeRestore = null,
+                        swipePresentationGeneration = it.swipePresentationGeneration + 1, nextCursor = null, activeRunId = result.searchRunId,
                         activeVisibleCount = cards.size, loading = false, loadingMore = false,
                         savedLoadingMore = false, savedRecentLoadingMore = false, error = null)
                 }
@@ -711,7 +724,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!admittedDeck(token)) return
         swipeSession.reset()
         invalidateSwipeActions(invalidateProfiles = true)
-        _discoverState.update { it.copy(canUndoSwipe = false) }
+        _discoverState.update { it.copy(canUndoSwipe = false, swipeRestore = null,
+            swipePresentationGeneration = it.swipePresentationGeneration + 1) }
         refreshDiscovery()
     }
 
@@ -724,12 +738,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshDiscovery()
     }
 
-    internal fun skipCard(token: SwipeCardToken) {
+    internal fun skipCard(token: SwipeCardToken, presentation: SwipePresentation?) {
         val card = admittedTraversal(token) ?: return
         invalidateSwipeActions()
-        swipeSession.visit(SwipeStep(card.listingId, card.personId))
+        swipeSession.visit(SwipeStep(card.listingId, card.personId, presentation = presentation?.takeIf {
+            it.listingId == card.listingId && it.ownerId == card.personId
+        }))
         _discoverState.update {
-            it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true)
+            it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true, swipeRestore = null)
         }
         if (_discoverState.value.cards.size < 10) loadMoreDiscovery()
     }

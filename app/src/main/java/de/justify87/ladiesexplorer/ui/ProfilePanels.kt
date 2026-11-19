@@ -45,9 +45,9 @@ internal class ProfileSections(initial: List<String> = emptyList()) {
 }
 
 @Composable
-internal fun rememberProfileSections(): ProfileSections = rememberSaveable(
+internal fun rememberProfileSections(initial: List<String> = emptyList()): ProfileSections = rememberSaveable(
     saver = listSaver<ProfileSections, String>(save = { it.entries }, restore = { ProfileSections(it) })
-) { ProfileSections() }
+) { ProfileSections(initial) }
 
 /** Shared scroll, section state, read demand and dialogs. The leading slot
  * supplies only context-specific hero/status/navigation; no second profile route. */
@@ -66,17 +66,35 @@ internal fun ProfileFlow(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     paddedDetails: Boolean = false,
     photoRequest: Int = 0,
+    swipeRestore: SwipePresentation? = null,
+    swipeCapture: SwipePresentationCapture? = null,
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
     var lastOwner by rememberSaveable { mutableStateOf<Long?>(null) }
     val ownerChanged = owner != null && lastOwner != null && owner != lastOwner
     val presentationOwner = owner ?: lastOwner
-    val sections = key(presentationOwner) { rememberProfileSections() }
-    val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
-    val scroll = key(presentationOwner) { rememberProfileScrollMemory(ownerChanged) }
     val projection = model?.let {
         ProfileProjectionKey(it.profile.listingId, it.identity.personId, it.profile.snapshotId, it.revision, filters)
+    }
+    val restored = swipeRestore?.takeIf { it.matches(projection) }
+    val sections = key(presentationOwner) { rememberProfileSections(restored?.sections.orEmpty()) }
+    val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection(restored?.mediaId) }
+    val scroll = key(presentationOwner) {
+        rememberProfileScrollMemory(ownerChanged, restored?.anchorKey?.let { ProfileScrollAnchor(it, restored.anchorOffset) })
+    }
+    DisposableEffect(swipeCapture) { onDispose { swipeCapture?.read = { null } } }
+    SideEffect {
+        swipeCapture?.read = {
+            projection?.let { current ->
+                val item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == state.firstVisibleItemIndex }
+                val anchor = if (scroll.recovering) scroll.anchor else (item?.key as? String)?.let {
+                    ProfileScrollAnchor(it, state.firstVisibleItemScrollOffset)
+                } ?: scroll.anchor
+                SwipePresentation(current.listingId, current.ownerId, current.snapshotId, current.filters,
+                    mediaSelection.id, anchor?.key, anchor?.offset ?: 0, sections.entries.toList())
+            }
+        }
     }
     SideEffect {
         scroll.projectionChanged(projection)

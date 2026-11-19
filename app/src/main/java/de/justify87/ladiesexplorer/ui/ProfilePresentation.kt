@@ -11,6 +11,21 @@ import kotlinx.coroutines.launch
 
 /** No profile payloads or callback closures are retained through a projection gap. */
 internal data class ProfileScrollAnchor(val key: String, val offset: Int)
+
+/** Session-only presentation reference; no payload, native handle, or persisted preference. */
+data class SwipePresentation(
+    val listingId: Long, val ownerId: Long, val snapshotId: Long, val filters: String,
+    val mediaId: String?, val anchorKey: String?, val anchorOffset: Int, val sections: List<String>,
+) {
+    internal fun matches(projection: ProfileProjectionKey?) = projection != null &&
+        listingId == projection.listingId && ownerId == projection.ownerId &&
+        snapshotId == projection.snapshotId && filters == projection.filters
+}
+
+/** The flow owns actual presentation state; the deck captures it synchronously at admission. */
+internal class SwipePresentationCapture {
+    var read: () -> SwipePresentation? = { null }
+}
 internal data class ProfileProjectionKey(
     val listingId: Long, val ownerId: Long, val snapshotId: Long, val revision: Long, val filters: String,
 )
@@ -65,7 +80,7 @@ internal fun restoredRowOffset(offset: Int, measuredSize: Int) =
     offset.coerceIn(0, (measuredSize - 1).coerceAtLeast(0))
 
 @Composable
-internal fun rememberProfileScrollMemory(reset: Boolean): ProfileScrollMemory = rememberSaveable(
+internal fun rememberProfileScrollMemory(reset: Boolean, initial: ProfileScrollAnchor? = null): ProfileScrollMemory = rememberSaveable(
     saver = listSaver<ProfileScrollMemory, String>(
         save = { listOf(it.anchor?.key.orEmpty(), (it.anchor?.offset ?: 0).toString(), it.recovering.toString()) },
         restore = {
@@ -74,7 +89,7 @@ internal fun rememberProfileScrollMemory(reset: Boolean): ProfileScrollMemory = 
             }, it[2].toBoolean())
         },
     ),
-) { ProfileScrollMemory(initialRecovery = reset) }
+) { ProfileScrollMemory(initialAnchor = initial, initialRecovery = reset || initial != null) }
 
 /** The actual lazy row manifest is also the anchor resolver; there is no parallel index table. */
 internal class ProfileFlowRows(val mediaSelection: ProfileMediaSelection) {
@@ -105,12 +120,12 @@ internal class ProfileMediaSelection(initialIndex: Int = 0, initialId: String? =
 }
 
 @Composable
-internal fun rememberProfileMediaSelection(): ProfileMediaSelection = rememberSaveable(
+internal fun rememberProfileMediaSelection(initialId: String? = null): ProfileMediaSelection = rememberSaveable(
     saver = listSaver<ProfileMediaSelection, String>(
         save = { listOf(it.index.toString(), it.id.orEmpty()) },
         restore = { ProfileMediaSelection(it[0].toInt(), it[1].ifEmpty { null }) },
     ),
-) { ProfileMediaSelection() }
+) { ProfileMediaSelection(initialId = initialId) }
 
 /** Owns only demand for one immutable local projection, never the draft or its write.
  * Both automatic demand and explicit retry live outside lazy items. */

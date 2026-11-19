@@ -136,6 +136,7 @@ internal class DiscoveryProjectionPublisher(
                 cards = next, pendingMergeListingId = null, mergeNotice = mergeNotice,
                 replayLikes = swipeSession.replayLikes,
                 canUndoSwipe = swipeSession.last != null,
+                swipeRestore = swipeSession.restoredPresentation(next.firstOrNull()),
                 activeRunId = projection.runId,
                 activeVisibleCount = projection.visible.size,
                 nextCursor = projection.page.nextCursor,

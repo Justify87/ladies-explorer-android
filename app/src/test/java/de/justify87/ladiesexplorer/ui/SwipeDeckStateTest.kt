@@ -142,6 +142,35 @@ class SwipeDeckStateTest {
         session.reset()
         assertTrue(session.excludedPeople.isEmpty())
     }
+    @Test fun undoPresentationIsBoundedAndNeverFollowsChangedIdentity() {
+        val session = SwipeSession()
+        fun position(id: Long) = SwipePresentation(id, id, 9, "{}", "IMAGE:fixture", "profile-facts", 12, listOf("Services"))
+        for (id in 1L..17L) session.visit(SwipeStep(id, id, presentation = position(id)))
+        val last = requireNotNull(session.last)
+        session.undo(last)
+        assertEquals(position(17), session.restoredPresentation(card(17)))
+        assertNull(session.restoredPresentation(null))
+        assertEquals(position(17), session.restoredPresentation(card(17)))
+        assertNull(session.restoredPresentation(card(17, 99)))
+        assertNull(session.restoredPresentation(card(17)))
+        repeat(15) { session.undo(requireNotNull(session.last)) }
+        assertNull(session.last?.presentation)
+        session.reset()
+        assertNull(session.restoredPresentation(card(17)))
+    }
+
+    @Test fun presentationRequiresSameSnapshotOwnerListingAndFiltersButNotTransientRevision() {
+        val saved = SwipePresentation(4, 1, 9, "{}", "IMAGE:fixture", "hero", 8, emptyList())
+        val projection = ProfileProjectionKey(4, 1, 9, 10, "{}")
+        assertTrue(saved.matches(projection))
+        assertTrue(saved.matches(projection.copy(revision = 11)))
+        assertFalse(saved.matches(projection.copy(snapshotId = 10)))
+        assertFalse(saved.matches(projection.copy(ownerId = 2)))
+        assertFalse(saved.matches(projection.copy(listingId = 5)))
+        assertFalse(saved.matches(projection.copy(filters = "different")))
+        assertFalse(saved.matches(null))
+    }
+
     @Test fun traversalWithoutFullProfileStillRejectsReplacedRunSessionAndOwner() {
         val state = DiscoverUiState(cards = listOf(card(4, 1)), activeRunId = 3L,
             swipeSessionId = 8L, loading = false)

@@ -36,8 +36,8 @@ internal fun DiscoverScreen(
     onReset: (SwipeDeckToken) -> Unit,
     onUndo: (SwipeDeckToken) -> Unit,
     onReplayLikes: (SwipeDeckToken, Boolean) -> Unit,
-    onSkip: (SwipeCardToken) -> Unit,
-    onChoose: (SwipeActionToken, Preference) -> Unit,
+    onSkip: (SwipeCardToken, SwipePresentation?) -> Unit,
+    onChoose: (SwipeActionToken, Preference, SwipePresentation?) -> Unit,
     onSwipeVisibility: (Boolean) -> Unit,
     onRenderedSwipe: (SwipeActionToken?) -> Unit,
     onProjectionMismatch: (SwipeActionToken) -> Unit,
@@ -154,8 +154,9 @@ internal fun DiscoverScreen(
     }
 
     val matchingRun = search.response?.searchRunId == state.activeRunId
-    key(state.activeRunId, card?.listingId, card?.personId) {
+    key(state.activeRunId, state.swipePresentationGeneration, card?.listingId, card?.personId) {
         val listState = rememberLazyListState()
+        val capture = remember { SwipePresentationCapture() }
         var photoRequest by remember { mutableIntStateOf(0) }
         val profile = current
         val person = profile?.person
@@ -194,8 +195,11 @@ internal fun DiscoverScreen(
             if (state.busy) add(ProfileNotice("Wird gespeichert", "Entscheidung oder Aktualisierung wird verarbeitet."))
         }
         val undo = { onUndo(deckToken) }
-        val skip = { cardToken?.let(onSkip); Unit }
-        val choose: (Preference) -> Unit = { preference -> token?.let { onChoose(it, preference) } }
+        val skip = { cardToken?.let { onSkip(it, capture.read()) }; Unit }
+        // Hero gestures, rail and menu use exactly this rendered-token dispatch.
+        val choose: (Preference) -> Unit = { preference ->
+            token?.takeIf(isProfileCurrent)?.let { onChoose(it, preference, capture.read()) }
+        }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
             hasRail = card != null, notices = notices, noticeOwner = menuContext,
             header = { presentation, compactNotice, onNotice ->
@@ -229,12 +233,13 @@ internal fun DiscoverScreen(
                 ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
                     token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
                     isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
-                    modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest) {
+                    modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest,
+                    swipeRestore = state.swipeRestore, swipeCapture = capture) {
                     item(key = "hero") {
                         ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
                             onSwipe = if (actions && token != null) ({ decision ->
-                                if (isProfileCurrent(token)) onChoose(token, decision)
+                                choose(decision)
                             }) else null,
                             originalUrl = profile?.identity?.profileUrl, selection = mediaSelection,
                             identity = identity, actionToken = token,
@@ -349,8 +354,7 @@ private fun SwipeShellHeader(
     }
 }
 
-/** Existing dispatch semantics, compact icon controls in constrained widths / type.
- * T10.6 owns final decision/Undo presentation history. */
+/** One fixed A/B rail; constrained windows retain the same actions in the deck menu. */
 @Composable
 private fun SwipeDecisionControls(context: SwipeMenuContext, onUndo: () -> Unit,
     onSkip: () -> Unit, onChoose: (Preference) -> Unit) {

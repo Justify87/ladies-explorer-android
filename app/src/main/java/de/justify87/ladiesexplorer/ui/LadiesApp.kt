@@ -348,7 +348,7 @@ fun LadiesApp(
                                 onUndo = viewModel::undoSwipe,
                                 onReplayLikes = viewModel::setReplayLikes,
                                 onSkip = viewModel::skipCard,
-                                onChoose = viewModel::chooseProfilePreference,
+                                onChoose = viewModel::chooseSwipePreference,
                                 onSwipeVisibility = viewModel::setSwipeVisible,
                                 onRenderedSwipe = viewModel::publishRenderedSwipe,
                                 onProjectionMismatch = viewModel::reconcileSwipeProjection,
