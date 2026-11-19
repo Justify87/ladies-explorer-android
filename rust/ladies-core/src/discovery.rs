@@ -49,9 +49,16 @@ pub(crate) fn cached_profile(
     core: &LadiesCore,
     listing_id: i64,
 ) -> Result<Option<crate::source::ProfileResponse>, CoreError> {
+    let db = core.connection()?;
+    cached_profile_from(&db, listing_id)
+}
+
+pub(crate) fn cached_profile_from(
+    db: &rusqlite::Connection,
+    listing_id: i64,
+) -> Result<Option<crate::source::ProfileResponse>, CoreError> {
     use crate::source::{MediaReference, ProfileResponse};
 
-    let db = core.connection()?;
     let mut profile: Option<ProfileResponse> = db
         .query_row(
             "SELECT s.snapshot_id,l.external_listing_id,s.name,s.city,s.description,
@@ -119,6 +126,14 @@ pub(crate) fn media(
     snapshot_id: i64,
 ) -> Result<Vec<ProfileMediaItem>, CoreError> {
     let db = core.connection()?;
+    media_from(core, &db, snapshot_id)
+}
+
+pub(crate) fn media_from(
+    core: &LadiesCore,
+    db: &rusqlite::Connection,
+    snapshot_id: i64,
+) -> Result<Vec<ProfileMediaItem>, CoreError> {
     let mut query = db.prepare(
         "SELECT sm.kind,sm.remote_url,a.local_path,sm.position
          FROM snapshot_media sm

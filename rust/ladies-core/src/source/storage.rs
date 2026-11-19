@@ -1229,6 +1229,17 @@ mod tests {
         assert!(before.searches[0].unread_new_results);
         assert_eq!(core.map_overview(false).unwrap().total_profiles, 2);
         let in_flight = listing_target(&core, listing, false).unwrap();
+        let profile_before = core.profile_projection(listing).unwrap().unwrap();
+        assert_eq!(profile_before.identity.person_id, owner);
+        assert_eq!(profile_before.person.person_id, owner);
+        assert_eq!(profile_before.profile.snapshot_id, snapshot.snapshot_id);
+        assert_eq!(profile_before.media.len(), 1);
+        assert!(
+            profile_before
+                .candidates
+                .iter()
+                .any(|candidate| candidate.person_id == new_owner)
+        );
 
         // Commit through the real identity transaction, not a simulated owner change.
         core.confirm_identity_match(listing, owner, new_owner)
@@ -1236,6 +1247,14 @@ mod tests {
         let rejected = save_observed_profile(&core, &in_flight, profile("Late"), true, None);
         assert!(matches!(rejected, Err(CoreError::Source(_))));
         assert_eq!(core.profile_identity(listing).unwrap().person_id, new_owner);
+        let projected = core.profile_projection(listing).unwrap().unwrap();
+        assert_eq!(projected.identity.person_id, new_owner);
+        assert_eq!(projected.person.person_id, new_owner);
+        assert_eq!(projected.profile.snapshot_id, snapshot.snapshot_id);
+        assert_eq!(projected.media.len(), 1);
+        assert!(projected.person.favorite);
+        assert_eq!(projected.person.preference, crate::Preference::Like);
+        assert!(projected.candidates.is_empty());
         assert_eq!(
             core.cached_source_profile(listing)
                 .unwrap()

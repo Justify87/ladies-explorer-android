@@ -380,6 +380,13 @@ pub(crate) fn profile_identity(
     listing_id: i64,
 ) -> Result<ProfileIdentity, CoreError> {
     let db = core.connection()?;
+    profile_identity_from(&db, listing_id)
+}
+
+pub(crate) fn profile_identity_from(
+    db: &rusqlite::Connection,
+    listing_id: i64,
+) -> Result<ProfileIdentity, CoreError> {
     let (person_id, status, url, person_new, listing_new, has_video, traits_json): (
         i64,
         String,

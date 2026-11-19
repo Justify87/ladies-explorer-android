@@ -250,12 +250,20 @@ pub(crate) fn list(
     person_id: i64,
     limit: u32,
 ) -> Result<Vec<ChangeRecord>, CoreError> {
+    let db = core.connection()?;
+    list_from(&db, person_id, limit)
+}
+
+pub(crate) fn list_from(
+    db: &Connection,
+    person_id: i64,
+    limit: u32,
+) -> Result<Vec<ChangeRecord>, CoreError> {
     if !(1..=200).contains(&limit) {
         return Err(CoreError::InvalidInput(
             "History limit must be between 1 and 200".into(),
         ));
     }
-    let db = core.connection()?;
     let exists: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM persons WHERE person_id=?1)",
         [person_id],

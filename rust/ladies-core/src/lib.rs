@@ -166,6 +166,17 @@ pub use source::{
     SearchResponse,
 };
 
+/// One coherent local read for both swipe and standalone profiles.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct NativeProfileProjection {
+    pub profile: ProfileResponse,
+    pub identity: ProfileIdentity,
+    pub person: PersonSummary,
+    pub media: Vec<ProfileMediaItem>,
+    pub history: Vec<ChangeRecord>,
+    pub candidates: Vec<IdentityCandidate>,
+}
+
 #[derive(uniffi::Object)]
 pub struct LadiesCore {
     db: Mutex<Connection>,
@@ -513,6 +524,32 @@ impl LadiesCore {
         })
     }
 
+    /// Keep the same SQLite connection guard for every part of the projection.
+    /// No source fetch, archive, write or global saved-search revision is involved.
+    pub fn profile_projection(
+        &self,
+        listing_id: i64,
+    ) -> Result<Option<NativeProfileProjection>, CoreError> {
+        let db = self.connection()?;
+        let Some(profile) = discovery::cached_profile_from(&db, listing_id)? else {
+            return Ok(None);
+        };
+        let identity = source::profile_identity_from(&db, listing_id)?;
+        let person = person_from(&db, identity.person_id)?
+            .ok_or(CoreError::PersonNotFound(identity.person_id))?;
+        let media = discovery::media_from(self, &db, profile.snapshot_id)?;
+        let history = history::list_from(&db, identity.person_id, 100)?;
+        let candidates = identity::candidates(&db, listing_id)?;
+        Ok(Some(NativeProfileProjection {
+            profile,
+            identity,
+            person,
+            media,
+            history,
+            candidates,
+        }))
+    }
+
     pub fn profile_identity(&self, listing_id: i64) -> Result<ProfileIdentity, CoreError> {
         source::profile_identity(self, listing_id)
     }
@@ -789,10 +826,7 @@ impl LadiesCore {
 
     pub fn get_person(&self, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
         let db = self.connection()?;
-        let raw = db
-            .query_row(PERSON_QUERY_BY_ID, params![person_id], parse_person_row)
-            .optional()?;
-        raw.map(PersonSummary::try_from).transpose()
+        person_from(&db, person_id)
     }
 
     pub fn list_people(
@@ -928,6 +962,13 @@ WHERE (?1 IS NULL OR p.last_seen_at < ?1 OR (p.last_seen_at = ?1 AND p.person_id
 ORDER BY p.last_seen_at DESC, p.person_id DESC
 LIMIT ?3
 "#;
+
+fn person_from(db: &Connection, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
+    let raw = db
+        .query_row(PERSON_QUERY_BY_ID, params![person_id], parse_person_row)
+        .optional()?;
+    raw.map(PersonSummary::try_from).transpose()
+}
 
 fn parse_person_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawPerson> {
     Ok((

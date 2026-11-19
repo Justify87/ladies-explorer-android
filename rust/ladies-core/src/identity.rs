@@ -254,7 +254,10 @@ fn rank(c: &IdentityCandidate) -> (u8, u8, u8, u32, u32, u32) {
     )
 }
 
-fn candidates(db: &Connection, listing_id: i64) -> Result<Vec<IdentityCandidate>, CoreError> {
+pub(crate) fn candidates(
+    db: &Connection,
+    listing_id: i64,
+) -> Result<Vec<IdentityCandidate>, CoreError> {
     let (owner, snapshot_id, _) = current_owner(db, listing_id)?;
     let Some(snapshot_id) = snapshot_id else {
         return Ok(Vec::new());
