@@ -237,10 +237,15 @@ internal class StandaloneProfileOperations<C : Any>(
                     if (profileGeneration.isCurrent(requestId)) {
                         try {
                             readDetail(requestId, listingId) { updated, revision ->
-                                withProjection(updated, revision).copy(
-                                    mediaArchive = report?.takeIf { updated.profile.snapshotId == profile.snapshotId },
-                                    mediaWarning = archiveWarning,
-                                )
+                                withProjection(updated, revision)
+                            }
+                            if (currentDetail(requestId, listingId)) {
+                                _searchUiState.update {
+                                    it.copy(
+                                        mediaArchive = report?.takeIf { _ -> it.profile?.snapshotId == profile.snapshotId },
+                                        mediaWarning = archiveWarning,
+                                    )
+                                }
                             }
                         } catch (cancellation: CancellationException) {
                             throw cancellation
@@ -321,7 +326,8 @@ internal class StandaloneProfileOperations<C : Any>(
         readDetail(session, listingId) { local, revision -> withProjection(local, revision) }
     }
 
-    /** Retry only the local projection; never replay the committed mutation or source request. */
+    /** Recover locally first. Only an explicit retry after confirmed local absence
+     * may start a first source read; a known persisted profile never replays it. */
     fun retryProfileProjection() {
         val active = _searchUiState.value
         val listingId = active.retryProfileListingId ?: return

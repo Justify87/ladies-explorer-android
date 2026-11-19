@@ -67,7 +67,13 @@ class StandaloneProfileOperationsTest {
                 profileChanged = { profileChanges++ },
             ),
         )
-        suspend fun idle() { scope.coroutineContext[Job]!!.children.toList().joinAll() }
+        suspend fun idle() {
+            while (true) {
+                val children = scope.coroutineContext[Job]!!.children.toList()
+                if (children.isEmpty()) return
+                children.joinAll()
+            }
+        }
         suspend fun openOffline() {
             operations.loadProfile(4L, owner) { calls += "open" }
             idle()

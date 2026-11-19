@@ -240,6 +240,10 @@ internal fun DiscoverScreen(
                         else ProfileHeader(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
                         
                         profile?.warning?.let { Text(it) }
+                        if (visible && projectedToken != null && token == null) {
+                            Text("Profil- und Deckzustand unterscheiden sich. Bitte Ansicht aktualisieren.",
+                                color = MaterialTheme.colorScheme.error)
+                        }
                         readError?.let {
                             Text(it, color = MaterialTheme.colorScheme.error)
                             TextButton(onClick = { decks.remove(card.listingId); retry++ }, enabled = enabled) { Text("Profil erneut laden") }
