@@ -40,6 +40,10 @@ internal fun statusLabel(status: String?): String = when (status) {
     else -> "Status unbekannt"
 }
 
+/** The shared rail toggles a preference; its swipe adapter currently treats NONE as a visit. */
+internal fun toggledProfilePreference(current: Preference, action: Preference): Preference =
+    if (current == action) Preference.NONE else action
+
 internal fun phoneForWhatsApp(phone: String): String? {
     val digits = phone.filter { it in '0'..'9' }
     val normalized = when {
@@ -271,13 +275,13 @@ internal fun ProfileActionRail(
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (person != null) {
             FilterChip(selected = person.preference == Preference.LIKE, enabled = !busy,
-                onClick = { onPreference(person.personId, if (person.preference == Preference.LIKE) Preference.NONE else Preference.LIKE) },
+                onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.LIKE)) },
                 label = { Text("Like") }, leadingIcon = { Icon(Icons.Default.Favorite, null) })
             FilterChip(selected = person.favorite, enabled = !busy,
                 onClick = { onFavorite(person.personId) }, label = { Text("Favorit") },
                 leadingIcon = { Icon(Icons.Default.Star, null) })
             FilterChip(selected = person.preference == Preference.DISLIKE, enabled = !busy,
-                onClick = { onPreference(person.personId, if (person.preference == Preference.DISLIKE) Preference.NONE else Preference.DISLIKE) },
+                onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.DISLIKE)) },
                 label = { Text("Nein") })
         }
         val normalized = phone?.let(::phoneForWhatsApp)

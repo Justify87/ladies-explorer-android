@@ -10,9 +10,11 @@ import kotlinx.coroutines.launch
 
 /** Composition owns cancellable, local read projections only. No writes. */
 internal class ProfilePanels(
-    private val core: CoreStore,
     private val scope: CoroutineScope,
     private val personId: Long?,
+    private val readFacts: suspend (Long, String) -> ProfileFacts,
+    private val readDetail: suspend (Long) -> PersonDetail,
+    private val readComparison: suspend (Long, Long, Long) -> List<SnapshotDifference>,
 ) {
     var facts by mutableStateOf<ProfileFacts?>(null)
         private set
@@ -43,7 +45,7 @@ internal class ProfilePanels(
             return
         }
         try {
-            facts = core.profileFacts(snapshot, filters)
+            facts = readFacts(snapshot, filters)
         } catch (cancel: CancellationException) { throw cancel }
         catch (failure: Exception) { factsError = failure.message ?: "Profilfelder nicht verfügbar" }
     }
@@ -57,7 +59,7 @@ internal class ProfilePanels(
             return
         }
         try {
-            detail = core.personDetail(owner)
+            detail = readDetail(owner)
         } catch (cancel: CancellationException) { throw cancel }
         catch (failure: Exception) { detailError = failure.message ?: "Personendaten nicht verfügbar" }
     }
@@ -70,7 +72,7 @@ internal class ProfilePanels(
         comparisonError = null
         scope.launch {
             try {
-                val result = core.compareSnapshots(owner, from, to)
+                val result = readComparison(owner, from, to)
                 if (generation == comparisonGeneration) comparison = result
             } catch (cancel: CancellationException) { throw cancel }
             catch (failure: Exception) {
@@ -100,7 +102,7 @@ internal fun rememberProfilePanels(
     val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
     val scope = rememberCoroutineScope()
     val panels = remember(core, scope, profile?.listingId, profile?.snapshotId, personId) {
-        ProfilePanels(core, scope, personId)
+        ProfilePanels(scope, personId, core::profileFacts, core::personDetail, core::compareSnapshots)
     }
     val factsVisible = tab == ProfileTab.Info || tab == ProfileTab.Services
     val detailVisible = tab == ProfileTab.Analysis || tab == ProfileTab.History

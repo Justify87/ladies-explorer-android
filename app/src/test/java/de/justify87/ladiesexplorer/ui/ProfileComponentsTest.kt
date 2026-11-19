@@ -35,4 +35,14 @@ class ProfileComponentsTest {
         assertNull(phoneForWhatsApp("123"))
         assertNull(phoneForWhatsApp(""))
     }
+
+    @Test fun profileRailTogglesSelectedPreferenceToNoneRatherThanAnotherDecision() {
+        val like = de.justify87.ladiesexplorer.core.Preference.LIKE
+        val dislike = de.justify87.ladiesexplorer.core.Preference.DISLIKE
+        val none = de.justify87.ladiesexplorer.core.Preference.NONE
+        assertEquals(none, toggledProfilePreference(like, like))
+        assertEquals(none, toggledProfilePreference(dislike, dislike))
+        assertEquals(like, toggledProfilePreference(dislike, like))
+        assertEquals(dislike, toggledProfilePreference(none, dislike))
+    }
 }
