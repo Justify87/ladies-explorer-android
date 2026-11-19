@@ -89,7 +89,7 @@ class SwipeDeckStateTest {
     @Test fun knownGapListingOnlyAdmissionUsesNewOwnerForOldRenderedListing() {
         val rendered = card(4, 1)
         val changed = rendered.copy(personId = 7L)
-        val state = DiscoverUiState(cards = listOf(changed, card(5)), activeRunId = 2L)
+        val state = DiscoverUiState(cards = listOf(changed, card(5)), activeRunId = 2L, loading = false)
         // Characterizes the bug, NOT the desired target. Replace with rejection of the
         // rendered owner/run token when T10.2 changes the real admission contract.
         assertEquals(changed, currentSwipeActionCard(state, false, rendered.listingId))

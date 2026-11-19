@@ -869,10 +869,22 @@ mod tests {
         let source = core.create_person(None).unwrap();
         let target = core.create_person(None).unwrap();
         let listing = core
-            .add_listing(source, None, "LADIES".into(), "evidence-change".into(), None)
+            .add_listing(
+                source,
+                None,
+                "LADIES".into(),
+                "evidence-change".into(),
+                None,
+            )
             .unwrap();
         let target_listing = core
-            .add_listing(target, None, "LADIES".into(), "evidence-target".into(), None)
+            .add_listing(
+                target,
+                None,
+                "LADIES".into(),
+                "evidence-target".into(),
+                None,
+            )
             .unwrap();
         {
             let db = core.connection().unwrap();

@@ -303,4 +303,30 @@ class SearchRunStateTest {
         assertTrue(failure === cancellation)
         assertEquals(listOf("write"), calls)
     }
+
+    @Test fun profileGenerationInvalidatesOldDeliveryWithoutConsumingNativeOwnership() = runBlocking {
+        val profile = RequestGeneration()
+        val search = RequestGeneration()
+        val initial = profile.value
+        val searchTicket = search.value
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        var nativeCompletions = 0
+        var publications = 0
+        val job = launch {
+            started.complete(Unit)
+            finish.await()
+            nativeCompletions++
+            if (profile.isCurrent(initial)) publications++
+        }
+        started.await()
+        profile.invalidate() // Back
+        profile.invalidate() // reopen the same listing in a new session
+        assertTrue(search.isCurrent(searchTicket))
+        finish.complete(Unit)
+        job.join()
+        assertEquals(1, nativeCompletions)
+        assertEquals(0, publications)
+        assertTrue(profile.isCurrent(profile.value))
+    }
 }

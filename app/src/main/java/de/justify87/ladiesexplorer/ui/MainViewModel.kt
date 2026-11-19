@@ -151,7 +151,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var previewJob: Job? = null
     private val previewGeneration = RequestGeneration()
     private var previewRequest: SearchRequest? = null
-    private var profileRequestId = 0L
+    private val profileGeneration = RequestGeneration()
     private var discoveryEpoch = 0L
     private var localWindow = 0
     private val savedWindows = SavedWindowMemory()
@@ -187,7 +187,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun invalidateProfileRequest() {
-        profileRequestId++
+        profileGeneration.invalidate()
         archiveControl?.cancel()
         archiveControl = null
     }
@@ -892,7 +892,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateActiveSearch()
         invalidateProfileRequest()
         savedSearch.setVisible(false)
-        val requestId = profileRequestId
+        val requestId = profileGeneration.value
         _searchUiState.update {
             it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
                 loading=true,profile=null,profileIdentity=null,profileFromArchive=false,profileMedia=emptyList(),changeEvents=emptyList(),
@@ -919,13 +919,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
                     archived
                 }
-                if (requestId != profileRequestId) return@launch
+                if (!profileGeneration.isCurrent(requestId)) return@launch
                 val items = core.profileMedia(profile.snapshotId)
                 val identity = core.profileIdentity(listingId)
                 val person = core.person(identity.personId)
                 val changes = core.changeEvents(identity.personId)
                 val candidates = core.identityCandidates(listingId)
-                if (requestId != profileRequestId) return@launch
+                if (!profileGeneration.isCurrent(requestId)) return@launch
                 _searchUiState.update {
                     it.copy(loading=false,profile=profile,profileIdentity=identity,profileFromArchive=showingArchive,
                         selectedPersonId=identity.personId,selectedPerson=person,
@@ -939,29 +939,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val report = core.archiveProfileMedia(profile.snapshotId,control)
                     val updatedMedia = core.profileMedia(profile.snapshotId)
-                    if (requestId == profileRequestId) {
+                    if (profileGeneration.isCurrent(requestId)) {
                         _searchUiState.update { it.copy(profileMedia=updatedMedia,mediaArchive=report) }
                     }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (failure: Exception) {
-                    if (requestId == profileRequestId) {
+                    if (profileGeneration.isCurrent(requestId)) {
                         _searchUiState.update {
                             it.copy(mediaWarning=failure.message ?: "Medienarchivierung fehlgeschlagen")
                         }
                     }
                 } finally {
                     if (archiveControl === control) archiveControl = null
-                    if (requestId == profileRequestId) _searchUiState.update { it.copy(archiving=false) }
+                    if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(archiving=false) }
                     // Even a cancelled archive may already have committed individual media.
                     savedSearch.refreshResultProjection()
                     refreshDiscovery()
                 }
             } catch (cancellation: CancellationException) {
-                if (requestId == profileRequestId) _searchUiState.update { it.copy(loading=false,archiving=false) }
+                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(loading=false,archiving=false) }
                 throw cancellation
             } catch (failure: Exception) {
-                if (requestId == profileRequestId) {
+                if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update {
                         it.copy(loading=false,archiving=false,error=failure.message ?: "Profil konnte nicht geladen werden")
                     }
@@ -980,7 +980,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 "Ungespeicherte Notiz für Person(en) ${dirtyOwners.joinToString()}. Vor Zusammenführung speichern oder verwerfen.") }
             return
         }
-        val requestId = profileRequestId
+        val requestId = profileGeneration.value
         val epoch = ++discoveryEpoch
         archiveControl?.cancel()
         // The mutation outlives the detail screen. Keep the shared write guard until
@@ -1003,7 +1003,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val history = core.changeEvents(identity.personId)
                 val candidates = core.identityCandidates(listingId)
                 val person = core.person(identity.personId)
-                if (requestId == profileRequestId) {
+                if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update {
                         if (it.profile?.listingId == listingId) {
                             it.copy(selectedPersonId = identity.personId, profileIdentity = identity,
@@ -1018,7 +1018,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (failure: Exception) {
                 val message = if (committed) "Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
                     else failure.message ?: "Zusammenführung fehlgeschlagen"
-                if (requestId == profileRequestId) {
+                if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update {
                         if (committed && !profileUpdated) it.copy(actionError = message, selectedPersonId = null,
                             selectedPerson = null, profileIdentity = null, identityCandidates = emptyList(),
@@ -1029,7 +1029,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _discoverState.update { it.copy(mutationError = message) }
                 }
             } finally {
-                if (requestId == profileRequestId) _searchUiState.update { it.copy(actionBusy = false) }
+                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(actionBusy = false) }
                 if (epoch == discoveryEpoch) {
                     _discoverState.update { it.copy(busy = false) }
                     if (committed && !projectionUpdated || discoveryRefreshPending) refreshDiscovery()
