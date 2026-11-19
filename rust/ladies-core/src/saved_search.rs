@@ -252,7 +252,9 @@ fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreErro
     let local = local_visibility(definition)?;
     let number = |camel: &str, snake: &str, default: u32| -> Result<u32, CoreError> {
         let parse = |value: &serde_json::Value| {
-            value.as_u64().and_then(|n| u32::try_from(n).ok())
+            value
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
                 .or_else(|| value.as_str()?.parse().ok())
                 .ok_or_else(|| CoreError::InvalidInput(format!("Invalid legacy field: {camel}")))
         };
@@ -260,7 +262,9 @@ fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreErro
             (Some(a), Some(b)) => {
                 let a = parse(a)?;
                 if a != parse(b)? {
-                    return Err(CoreError::InvalidInput(format!("Conflicting legacy field: {camel}")));
+                    return Err(CoreError::InvalidInput(format!(
+                        "Conflicting legacy field: {camel}"
+                    )));
                 }
                 Ok(a)
             }
@@ -270,7 +274,10 @@ fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreErro
     };
     let string = |key: &str| -> Result<String, CoreError> {
         match legacy.get(key) {
-            Some(v) => v.as_str().map(str::to_owned).ok_or_else(|| CoreError::InvalidInput(format!("Invalid legacy field: {key}"))),
+            Some(v) => v
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| CoreError::InvalidInput(format!("Invalid legacy field: {key}"))),
             None => Ok(String::new()),
         }
     };
@@ -1347,31 +1354,67 @@ mod tests {
         std::fs::create_dir(&root).unwrap();
         std::fs::write(root.join("current.jpg"), b"fixture").unwrap();
         std::fs::write(root.join("archived.jpg"), b"fixture").unwrap();
-        let core = LadiesCore::new(tmp.path().join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
+        let core = LadiesCore::new(
+            tmp.path()
+                .join("ladies.sqlite")
+                .to_string_lossy()
+                .into_owned(),
+        )
+        .unwrap();
         let person = core.create_person(Some("Fixture".into())).unwrap();
-        let listing = core.add_listing(person, None, "LADIES".into(), "card".into(), None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "card".into(), None)
+            .unwrap();
         let id = save(&core, "Saved".into(), SearchRequest::for_test()).unwrap();
         let db = core.connection().unwrap();
         for (fingerprint, url, file) in [
-            ("old", "https://bilder1.ladies-cdn.de/old.jpg", "archived.jpg"),
-            ("new", "https://bilder1.ladies-cdn.de/new.jpg", "current.jpg"),
+            (
+                "old",
+                "https://bilder1.ladies-cdn.de/old.jpg",
+                "archived.jpg",
+            ),
+            (
+                "new",
+                "https://bilder1.ladies-cdn.de/new.jpg",
+                "current.jpg",
+            ),
         ] {
             db.execute("INSERT INTO listing_snapshots(listing_id,fingerprint,name,city) VALUES (?1,?2,'Fixture','Leipzig')", params![listing, fingerprint]).unwrap();
             let snapshot = db.last_insert_rowid();
-            db.execute("INSERT INTO media_assets(sha256,kind,local_path) VALUES (?1,'IMAGE',?2)", params![fingerprint, file]).unwrap();
+            db.execute(
+                "INSERT INTO media_assets(sha256,kind,local_path) VALUES (?1,'IMAGE',?2)",
+                params![fingerprint, file],
+            )
+            .unwrap();
             let asset = db.last_insert_rowid();
             db.execute("INSERT INTO snapshot_media(snapshot_id,media_asset_id,position,kind,role,remote_url) VALUES (?1,?2,1,'IMAGE','PRIMARY',?3)", params![snapshot, asset, url]).unwrap();
-            db.execute("UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2", params![snapshot, listing]).unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![snapshot, listing],
+            )
+            .unwrap();
         }
         db.execute("INSERT INTO saved_search_results(saved_search_id,result_key,snapshot_json,present,visible) VALUES (?1,'card',?2,1,1)",
             params![id, r#"{"name":"Old","thumbnail_url":"https://bilder1.ladies-cdn.de/old.jpg"}"#]).unwrap();
         drop(db);
         let current = window(&core, id.clone(), 100).unwrap().cards.remove(0);
-        assert_eq!(current.thumbnail_url.as_deref(), Some("https://bilder1.ladies-cdn.de/new.jpg"));
+        assert_eq!(
+            current.thumbnail_url.as_deref(),
+            Some("https://bilder1.ladies-cdn.de/new.jpg")
+        );
         assert!(current.local_path.unwrap().ends_with("current.jpg"));
-        core.connection().unwrap().execute("DELETE FROM snapshot_media WHERE remote_url LIKE '%/new.jpg'", []).unwrap();
+        core.connection()
+            .unwrap()
+            .execute(
+                "DELETE FROM snapshot_media WHERE remote_url LIKE '%/new.jpg'",
+                [],
+            )
+            .unwrap();
         let archived = window(&core, id, 100).unwrap().cards.remove(0);
-        assert_eq!(archived.thumbnail_url.as_deref(), Some("https://bilder1.ladies-cdn.de/old.jpg"));
+        assert_eq!(
+            archived.thumbnail_url.as_deref(),
+            Some("https://bilder1.ladies-cdn.de/old.jpg")
+        );
         assert!(archived.local_path.unwrap().ends_with("archived.jpg"));
     }
 
