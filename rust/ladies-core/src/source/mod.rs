@@ -320,6 +320,10 @@ pub(crate) fn known_age(traits_json: Option<&str>) -> Option<String> {
     Some(digits.to_owned())
 }
 
+pub(crate) fn validated_profile_url(value: &str) -> Option<String> {
+    parse::valid_profile_url(value)
+}
+
 pub(crate) fn profile_identity(
     core: &LadiesCore,
     listing_id: i64,

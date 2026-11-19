@@ -12,6 +12,8 @@ pub struct ChangeRecord {
     pub old_json: Option<String>,
     pub new_json: Option<String>,
     pub created_at: String,
+    pub from_snapshot_id: Option<i64>,
+    pub to_snapshot_id: Option<i64>,
 }
 
 const TRACKED: &[(&str, &str)] = &[
@@ -170,9 +172,10 @@ pub(crate) fn list(
         return Err(CoreError::PersonNotFound(person_id));
     }
     let mut query = db.prepare(
-        "SELECT change_event_id, listing_id, event_type, field_key, old_json, new_json, created_at
+        "SELECT change_event_id, listing_id, event_type, field_key, old_json, new_json, created_at,
+                from_snapshot_id, to_snapshot_id
          FROM change_events WHERE person_id=?1
-         ORDER BY change_event_id DESC LIMIT ?2",
+         ORDER BY created_at DESC, change_event_id DESC LIMIT ?2",
     )?;
     let rows = query.query_map(params![person_id, limit], |row| {
         Ok(ChangeRecord {
@@ -183,7 +186,48 @@ pub(crate) fn list(
             old_json: row.get(4)?,
             new_json: row.get(5)?,
             created_at: row.get(6)?,
+            from_snapshot_id: row.get(7)?,
+            to_snapshot_id: row.get(8)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub(crate) fn compare(
+    core: &LadiesCore,
+    person_id: i64,
+    from_id: i64,
+    to_id: i64,
+) -> Result<Vec<crate::SnapshotDifference>, CoreError> {
+    let db = core.connection()?;
+    // Both snapshots must belong to the same listing and its current owner.
+    let allowed: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM listing_snapshots a
+         JOIN listing_snapshots b ON b.listing_id=a.listing_id
+         JOIN listings l ON l.listing_id=a.listing_id
+         WHERE a.snapshot_id=?1 AND b.snapshot_id=?2 AND l.person_id=?3)",
+        params![from_id, to_id, person_id],
+        |r| r.get(0),
+    )?;
+    if !allowed {
+        return Err(CoreError::IdentityConflict("Snapshots missing or not owned by this person/listing".into()));
+    }
+    let mut differences = Vec::new();
+    for (key, column) in TRACKED {
+        let before = as_json(field(&db, from_id, column)?, key.ends_with("_json"))?;
+        let after = as_json(field(&db, to_id, column)?, key.ends_with("_json"))?;
+        if before != after {
+            differences.push(crate::SnapshotDifference { field: (*key).into(), before, after });
+        }
+    }
+    let before = media(&db, from_id)?;
+    let after = media(&db, to_id)?;
+    if before != after {
+        differences.push(crate::SnapshotDifference {
+            field: "media".into(),
+            before: Some(before.to_string()),
+            after: Some(after.to_string()),
+        });
+    }
+    Ok(differences)
 }
