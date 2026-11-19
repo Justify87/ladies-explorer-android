@@ -196,3 +196,7 @@ Historische Referenzmatrix oben bleibt Inventar des M05-Ausgangsstands. Full-CI 
 ### PR #22 – Reviewkorrektur
 
 P37/P38: SavedSearchController/SavedEditor/SearchDraft; getrennte Entwürfe, exklusive Operationen, revisionsgeprüfte Bestätigung, strikte Formatvalidierung. P39: kohärente Rust-Fenster mit aktuellem Medienpaar, stabile Result-Keys, gemerkte Fensterkapazität; kein Anhängen über Revisionen. P40: explizite Dialoge, Fehler/Commit-Trennung, Abbruch bis Drain, Offline-/Back-/Scroll-Szenarien als Controller-/Rust-Regressionen; manuelle Sicht-/TalkBack-/Font-Scale-/Rotationstests DEVICE_PENDING. Quellprüfung Rust-only, kein Browserwerkzeug.
+
+### G9 – integrierter G8-Stand und Folgeprüfung
+
+PR #22 integriert (`f9991d8f`), [Full-CI #383](https://github.com/Justify87/ladies-explorer-android/actions/runs/44506676909) auf `1cafbaf8` grün. P37–P40: technische G8-Integration belegt, Geräteabnahme ausstehend. G9-F01/F02: P39/P40 erhalten die kohärente Ergebnisreprojektion auch nach spätem nativen Profil-/Archiv-/Swipe-/Merge-Schreiben und invalidieren fehlgeschlagene Fenster; keine neue Source-HTTP-Route oder automatische Gelesen-Markierung. Neue Regressionstests und G9-Abnahmeprotokoll siehe [M05-TASKS](M05-TASKS.md). P41 und physische Abnahme bleiben offen.
