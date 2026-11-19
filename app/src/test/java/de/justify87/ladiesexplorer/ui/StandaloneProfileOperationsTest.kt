@@ -30,13 +30,17 @@ class StandaloneProfileOperationsTest {
         val operations = StandaloneProfileOperations(
             scope, search, discovery, notes, tickets,
             StandaloneProfileIo(
-                loadProfile = { calls += "source:$it"; source(it) },
+                loadProfile = { calls += "source:$it"; source(it).also { cached = it } },
                 cachedProfile = { calls += "cache:$it"; cached },
-                profileMedia = { calls += "media:$it"; fixtureSwipe(snapshot = it).media },
-                profileIdentity = { calls += "identity:$it"; identityError?.let { e -> throw e }; fixtureIdentity(owner) },
-                person = { calls += "person:$it"; fixturePerson(it) },
-                changeEvents = { calls += "history:$it"; emptyList() },
-                identityCandidates = { calls += "candidates:$it"; listOf(IdentityCandidate(2L, "CANDIDATE", false, true, 0u, 0u, null)) },
+                profileProjection = {
+                    calls += "profile:$it"
+                    identityError?.let { e -> throw e }
+                    cached?.let { profile ->
+                        NativeProfileProjection(profile, fixtureIdentity(owner), fixturePerson(owner),
+                            fixtureSwipe(snapshot = profile.snapshotId).media, emptyList(),
+                            listOf(IdentityCandidate(2L, "CANDIDATE", false, true, 0u, 0u, null)))
+                    }
+                },
                 archiveProfileMedia = { snapshot, control -> calls += "archive:$snapshot"; archive(snapshot, control) },
                 newArchiveControl = { Control().also(controls::add) },
                 cancelArchive = { it.cancelled++; calls += "cancel" },
@@ -103,7 +107,7 @@ class StandaloneProfileOperationsTest {
         assertTrue(f.tickets.isCurrent(1L, a))
         finish.complete(Unit)
         f.idle()
-        assertEquals(listOf("confirm:4:2", "identity:4", "history:2", "candidates:4", "person:2",
+        assertEquals(listOf("confirm:4:2", "profile:4",
             "project:1", "saved", "map", "home"), f.calls)
         assertEquals(2L, f.search.value.profileIdentity?.personId)
         assertEquals(2L, f.search.value.selectedPerson?.personId)
@@ -133,7 +137,7 @@ class StandaloneProfileOperationsTest {
         assertNull(f.search.value.profile)
         assertFalse(f.search.value.profileOpen)
         assertFalse(f.discovery.value.busy)
-        assertEquals(listOf("confirm:4:2", "identity:4", "history:2", "candidates:4", "person:2", "project:1",
+        assertEquals(listOf("confirm:4:2", "profile:4", "project:1",
             "discovery", "saved", "map", "home"), f.calls)
     }
 
@@ -154,7 +158,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.tickets.isCurrent(1L, a))
         assertEquals(setOf(3L), f.notes.value.keys)
         assertTrue(f.search.value.actionError!!.startsWith("Zusammenführung gespeichert"))
-        assertEquals(listOf("confirm:4:2", "identity:4", "discovery", "saved", "map", "home"), f.calls)
+        assertEquals(listOf("confirm:4:2", "profile:4", "discovery", "saved", "map", "home"), f.calls)
         f.confirmCurrent()
         assertEquals(1, f.calls.count { it.startsWith("confirm:") })
         assertFalse(f.discovery.value.busy)
@@ -176,7 +180,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.discovery.value.busy)
     }
 
-    @Test fun knownGapSameListingReopenedBeforeOldSourceCompletionDoesNotRefreshMapForLateCommit() = runBlocking {
+    @Test fun sameListingReopenedBeforeOldSourceCompletionStillRefreshesMapForLateCommit() = runBlocking {
         val f = Fixture(this)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
@@ -198,7 +202,7 @@ class StandaloneProfileOperationsTest {
         f.calls.clear()
         finish.complete(Unit)
         f.idle()
-        assertEquals(listOf("saved", "discovery"), f.calls)
+        assertEquals(listOf("saved", "discovery", "map"), f.calls)
         assertEquals(12L, f.search.value.profile?.snapshotId)
         assertTrue(f.controls.isEmpty())
     }
@@ -214,7 +218,7 @@ class StandaloneProfileOperationsTest {
         reply.resume(f.cached!!)
         val child = coroutineContext[Job]!!.children.single()
         child.cancelAndJoin()
-        assertEquals(listOf("source:4", "saved", "discovery"), f.calls)
+        assertEquals(listOf("source:4", "saved", "discovery", "map"), f.calls)
         assertNull(f.search.value.profile)
         assertFalse(f.search.value.loading)
         assertTrue(f.controls.isEmpty())
@@ -238,7 +242,7 @@ class StandaloneProfileOperationsTest {
         f.calls.clear()
         finish.complete(Unit)
         f.idle()
-        assertEquals(listOf("media:11", "saved", "discovery"), f.calls)
+        assertEquals(listOf("saved", "discovery"), f.calls)
         assertNull(f.search.value.mediaArchive)
         assertFalse(f.search.value.profileOpen)
     }
@@ -271,7 +275,7 @@ class StandaloneProfileOperationsTest {
         f.pending = true
         finish.complete(Unit)
         f.idle()
-        assertEquals(listOf("confirm:4:2", "identity:4", "history:2", "candidates:4", "person:2",
+        assertEquals(listOf("confirm:4:2", "profile:4",
             "project:1", "discovery", "saved", "map", "home"), f.calls)
         assertFalse(f.pending)
         assertFalse(f.discovery.value.busy)

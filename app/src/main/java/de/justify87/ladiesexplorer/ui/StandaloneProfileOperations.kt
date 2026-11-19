@@ -11,11 +11,7 @@ import kotlinx.coroutines.launch
 internal class StandaloneProfileIo<C : Any>(
     val loadProfile: suspend (Long) -> ProfileResponse,
     val cachedProfile: suspend (Long) -> ProfileResponse?,
-    val profileMedia: suspend (Long) -> List<ProfileMediaItem>,
-    val profileIdentity: suspend (Long) -> ProfileIdentity,
-    val person: suspend (Long) -> PersonSummary?,
-    val changeEvents: suspend (Long) -> List<ChangeRecord>,
-    val identityCandidates: suspend (Long) -> List<IdentityCandidate>,
+    val profileProjection: suspend (Long) -> NativeProfileProjection?,
     val archiveProfileMedia: suspend (Long, C) -> MediaArchiveReport,
     val newArchiveControl: () -> C,
     val cancelArchive: (C) -> Unit,
@@ -50,6 +46,15 @@ internal class StandaloneProfileOperations<C : Any>(
 ) {
     private val profileGeneration = RequestGeneration()
     private var archiveControl: C? = null
+
+    private suspend fun project(listingId: Long): NativeProfileProjection =
+        checkNotNull(io.profileProjection(listingId)) { "Profil nicht mehr verfügbar" }
+
+    private fun SearchUiState.withProjection(local: NativeProfileProjection) = copy(
+        profile = local.profile, profileIdentity = local.identity,
+        selectedPersonId = local.identity.personId, selectedPerson = local.person,
+        profileMedia = local.media, changeEvents = local.history, identityCandidates = local.candidates,
+    )
 
     fun invalidateProfileRequest() {
         profileGeneration.invalidate()
@@ -86,44 +91,44 @@ internal class StandaloneProfileOperations<C : Any>(
             try {
                 var showingArchive = false
                 var refreshError: String? = null
-                val profile = try {
+                try {
                     try {
                         io.loadProfile(listingId)
                     } finally {
                         // A source read can persist before a later failure or invalidation.
                         projections.savedSearch()
                         projections.discovery()
+                        projections.map()
                     }
                 } catch (failure: CancellationException) {
                     throw failure
                 } catch (failure: Exception) {
-                    val archived = io.cachedProfile(listingId) ?: throw failure
+                    io.cachedProfile(listingId) ?: throw failure
                     showingArchive = true
                     refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
-                    archived
                 }
                 if (!profileGeneration.isCurrent(requestId)) return@launch
-                val items = io.profileMedia(profile.snapshotId)
-                val identity = io.profileIdentity(listingId)
-                val person = io.person(identity.personId)
-                val changes = io.changeEvents(identity.personId)
-                val candidates = io.identityCandidates(listingId)
+                val local = project(listingId)
                 if (!profileGeneration.isCurrent(requestId)) return@launch
                 _searchUiState.update {
-                    it.copy(loading=false,profile=profile,profileIdentity=identity,profileFromArchive=showingArchive,
-                        selectedPersonId=identity.personId,selectedPerson=person,
-                        profileMedia=items,changeEvents=changes,identityCandidates=candidates,
+                    it.withProjection(local).copy(loading=false,profileFromArchive=showingArchive,
                         mediaWarning=refreshError,archiving=!showingArchive)
                 }
-                projections.map()
                 if (showingArchive) return@launch
+                val profile = local.profile
                 val control = io.newArchiveControl()
                 archiveControl = control
                 try {
                     val report = io.archiveProfileMedia(profile.snapshotId,control)
-                    val updatedMedia = io.profileMedia(profile.snapshotId)
                     if (profileGeneration.isCurrent(requestId)) {
-                        _searchUiState.update { it.copy(profileMedia=updatedMedia,mediaArchive=report) }
+                        val updated = project(listingId)
+                        if (profileGeneration.isCurrent(requestId)) {
+                            _searchUiState.update {
+                                it.withProjection(updated).copy(
+                                    mediaArchive = report.takeIf { updated.profile.snapshotId == profile.snapshotId },
+                                )
+                            }
+                        }
                     }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
@@ -182,16 +187,10 @@ internal class StandaloneProfileOperations<C : Any>(
                     noteReadTickets.invalidate(owner)
                 }
                 _profileNotes.update { it - sourceOwner - targetPersonId }
-                val identity = io.profileIdentity(listingId)
-                val history = io.changeEvents(identity.personId)
-                val candidates = io.identityCandidates(listingId)
-                val person = io.person(identity.personId)
+                val local = project(listingId)
                 if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update {
-                        if (it.profile?.listingId == listingId) {
-                            it.copy(selectedPersonId = identity.personId, profileIdentity = identity,
-                                selectedPerson = person, changeEvents = history, identityCandidates = candidates)
-                        } else it
+                        if (it.profile?.listingId == listingId) it.withProjection(local) else it
                     }
                 }
                 profileUpdated = true

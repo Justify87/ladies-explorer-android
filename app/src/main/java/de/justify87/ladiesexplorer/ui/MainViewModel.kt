@@ -179,8 +179,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         StandaloneProfileOperations(
             viewModelScope, _searchUiState, _discoverState, _profileNotes, noteReadTickets,
             StandaloneProfileIo(
-                core::loadProfile, core::cachedProfile, core::profileMedia, core::profileIdentity,
-                core::person, core::changeEvents, core::identityCandidates, core::archiveProfileMedia,
+                core::loadProfile, core::cachedProfile, core::profileProjection, core::archiveProfileMedia,
                 { RequestControl() }, { it.cancel() }, core::confirmIdentityMatch,
             ),
             ProfileProjectionCallbacks(
