@@ -25,7 +25,7 @@ Die linke Spalte verwendet die ursprüngliche Planung vom 17.11.2026; die PR-Spa
 
 ## Aktiver Arbeitsstrang: M05-Erweiterung
 
-Der Nutzer hat am 18.11.2026 die vollständige M05-Frontend-Adaption auf Grundlage der ursprünglichen Web-App priorisiert. [M05-PLAN](M05-PLAN.md) definiert Soll/Scope und Gates, [M05-PARITY](M05-PARITY.md) den belegten Ausgangsabgleich, [M05-TASKS](M05-TASKS.md) den einzigen operativen Status. [AGENTS](../AGENTS.md) regelt agentenbasierte Umsetzung. Reihenfolge M05.0–M05.9; nächsten ausführbaren Task aus dem Aufgabenregister ableiten, keine neue M06-/M07-Implementierung. Die schon integrierten M06-Bestandteile Karte und gespeicherte Suchen nur in die M05-UI einbinden; bestehende Fachverträge erhalten. Planungsstand ist keine Implementierung oder Geräteabnahme.
+Der Nutzer hat am 18.11.2026 die vollständige M05-Frontend-Adaption auf Grundlage der ursprünglichen Web-App priorisiert. [M05-PLAN](M05-PLAN.md) definiert Soll/Scope und Gates, [M05-PARITY](M05-PARITY.md) den belegten Ausgangsabgleich, [M05-TASKS](M05-TASKS.md) den einzigen operativen Status. [AGENTS](../AGENTS.md) regelt agentenbasierte Umsetzung. Reihenfolge M05.0–M05.9, danach M05.10 Unified Profile Experience (Nutzerentscheidung 19.11.2026); nächsten ausführbaren Task und Gates aus dem Aufgabenregister ableiten, keine neue M06-/M07-Implementierung. Die schon integrierten M06-Bestandteile Karte und gespeicherte Suchen nur in die M05-UI einbinden; bestehende Fachverträge erhalten. Planungsstand ist keine Implementierung oder Geräteabnahme.
 
 ## Nachträgliche Arbeitsstränge
 
@@ -46,3 +46,8 @@ Der vereinbarte Plan definiert Soll/Scope; Code und Tests im jeweiligen main def
 ### Verbindlicher M05-Zwischenschritt M05.4a
 
 Zwischen M05.4 und M05.5: vollständiger Quellen-HTTP-Transport über den Rust-Core (inklusive Bild-/Medien-CDNs), Coil ohne eigenen HTTP-Client, Architekturcheck und konsolidierte Diagnose. MapLibre-Netzwerk und explizite externe Intents bleiben unverändert. Operativer Status ausschließlich in M05-TASKS; G4a ist Voraussetzung für G5.
+
+
+### M05 – Übergabe an Unified Profile Experience (19.11.2026)
+
+PR #23 ist integriert (`f054781d`), technische Baseline G9-T belegt (finale CI #393, APK, kein Dateidiff zum Merge). G9 bleibt bis wirklicher Geräteabnahme und offenen Abweichungsentscheidungen blockiert (T9.2/T9.3). M05.10 ist bestätigtes UX-Soll: größerer Fotobereich (Ziel 70 % nutzbarer Portrait-Höhe), Tap-Galerie, Horizontal-Swipe, vertikal durchgehendes Profil ohne Doppelroute, kompakte Bedienelemente. Detailvertrag [M05-PLAN](M05-PLAN.md), P45–P51 in [M05-PARITY](M05-PARITY.md), Tasks und Gates nur in [M05-TASKS](M05-TASKS.md). Planung ist keine Implementierung. G10.0 erfordert G9 oder ausdrücklich dokumentierte Freigabe ausschließlich externer Abnahmeblocker; technische Altfehler separat schließen. G9/G10 vor endgültiger M05-Freigabe, keine neue M06/M07-Arbeit. Legacy bleibt fachliche Referenz, neues natives UX-Soll hat bei der Präsentation Vorrang.
