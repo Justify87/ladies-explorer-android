@@ -23,6 +23,7 @@ const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 struct Response {
     status: u16,
     body: String,
+    same_path: bool,
 }
 
 trait Transport {
@@ -105,6 +106,33 @@ impl SourceHttp {
             )));
         }
         Ok(response.body)
+    }
+
+    pub(super) fn check_profile_status(
+        &self,
+        url: &str,
+        advert_id: &str,
+        control: &RequestControl,
+    ) -> Result<(&'static str, u16), CoreError> {
+        let url = parse::valid_profile_url(url)
+            .ok_or_else(|| CoreError::InvalidInput("Invalid Ladies profile URL".into()))?;
+        classify_profile_status(self.get_cancellable(&url, Some(control))?, advert_id)
+    }
+}
+
+fn classify_profile_status(
+    response: Response,
+    advert_id: &str,
+) -> Result<(&'static str, u16), CoreError> {
+    match response.status {
+        404 | 410 if response.same_path => Ok(("UNAVAILABLE", response.status)),
+        200 if response.same_path && parse::confirms_profile(&response.body, advert_id) => {
+            Ok(("ACTIVE", 200))
+        }
+        _ => Err(CoreError::Source(format!(
+            "Profile status could not be verified (HTTP {})",
+            response.status
+        ))),
     }
 }
 
@@ -356,7 +384,11 @@ impl Transport for SourceHttp {
         if status >= 400 {
             self.diagnostics.html("http_error", &body);
         }
-        Ok(Response { status, body })
+        Ok(Response {
+            status,
+            body,
+            same_path: requested_path == redirected_path,
+        })
     }
 
     fn wait_between_pages(&self) {
@@ -909,8 +941,33 @@ mod tests {
             Ok(Response {
                 status: *status,
                 body: body.clone(),
+                same_path: true,
             })
         }
+    }
+
+    #[test]
+    fn status_requires_exact_profile_or_direct_not_found() {
+        let classify = |status, body: &str, same_path| {
+            classify_profile_status(
+                Response {
+                    status,
+                    body: body.to_owned(),
+                    same_path,
+                },
+                "42",
+            )
+        };
+        let profile = r#"<h2 class="page-heading kuenstlername">Fixture</h2><script>advertId: replaceWithDefault("42", "")</script>"#;
+        assert_eq!(classify(200, profile, true).unwrap(), ("ACTIVE", 200));
+        assert_eq!(classify(404, "", true).unwrap(), ("UNAVAILABLE", 404));
+        assert_eq!(classify(410, "", true).unwrap(), ("UNAVAILABLE", 410));
+        assert!(classify(404, "", false).is_err());
+        assert!(classify(403, "", true).is_err());
+        assert!(classify(500, "", true).is_err());
+        assert!(classify(200, profile, false).is_err());
+        assert!(classify(200, "<title>Pruefung</title>", true).is_err());
+        assert!(classify(200, &profile.replace("42", "43"), true).is_err());
     }
 
     fn location() -> &'static str {

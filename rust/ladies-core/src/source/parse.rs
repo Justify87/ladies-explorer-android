@@ -518,29 +518,39 @@ fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
     ordered
 }
 
+fn recognized_profile(doc: &Html) -> bool {
+    doc.select(&selector(
+        "h2.page-heading.kuenstlername, .share-advert-name strong, .einzelansicht-text, .auftrag-main-thumb[data-index]",
+    ))
+    .next()
+    .is_some()
+}
+
+fn profile_advert_id(html: &str) -> Option<String> {
+    Regex::new(r#"(?i)advertId:\s*replaceWithDefault\("(\d+)""#)
+        .expect("advert regex")
+        .captures(html)
+        .and_then(|m| m.get(1))
+        .map(|m| m.as_str().to_owned())
+}
+
+pub(super) fn confirms_profile(html: &str, advert_id: &str) -> bool {
+    profile_advert_id(html).as_deref() == Some(advert_id)
+        && recognized_profile(&Html::parse_document(html))
+}
+
 pub(super) fn parse_profile(html: &str, fallback: &Card) -> Result<Profile, CoreError> {
     let doc = Html::parse_document(html);
-    if doc
-        .select(&selector(
-            "h2.page-heading.kuenstlername, .share-advert-name strong,              .einzelansicht-text, .auftrag-main-thumb[data-index]",
-        ))
-        .next()
-        .is_none()
-    {
+    if !recognized_profile(&doc) {
         return Err(CoreError::Source(
             "Response is not a recognized Ladies profile page".into(),
         ));
     }
-    if let Some(found_id) = Regex::new(r#"(?i)advertId:\s*replaceWithDefault\("(\d+)""#)
-        .expect("advert regex")
-        .captures(html)
-        .and_then(|m| m.get(1))
-    {
-        if found_id.as_str() != fallback.advert_id {
+    if let Some(found_id) = profile_advert_id(html) {
+        if found_id != fallback.advert_id {
             return Err(CoreError::Source(format!(
                 "Profile advert ID mismatch: expected {} but got {}",
-                fallback.advert_id,
-                found_id.as_str()
+                fallback.advert_id, found_id
             )));
         }
     }

@@ -264,6 +264,30 @@ pub(crate) fn load_profile(
     result
 }
 
+pub(crate) fn saved_status_targets(core: &LadiesCore) -> Result<Vec<i64>, CoreError> {
+    storage::saved_status_targets(core)
+}
+
+pub(crate) fn check_saved_status(
+    core: &LadiesCore,
+    listing_id: i64,
+    control: &RequestControl,
+) -> Result<String, CoreError> {
+    control.check()?;
+    let target = storage::status_target(core, listing_id)?;
+    let (status, http_status) = core.source_session.0.check_profile_status(
+        &target.url,
+        &target.advert_id,
+        control,
+    )?;
+    storage::save_status(core, &target, status, http_status, control)?;
+    core.diagnostics.event(
+        "PROFILE",
+        format!("Status checked listing={listing_id} status={status} HTTP={http_status}"),
+    );
+    Ok(status.into())
+}
+
 #[cfg(test)]
 impl SearchRequest {
     pub(crate) fn for_test() -> Self {

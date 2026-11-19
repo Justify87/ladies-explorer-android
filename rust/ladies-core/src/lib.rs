@@ -456,6 +456,18 @@ impl LadiesCore {
         discovery::page(self, favorites_only, limit, cursor, &excluded_person_ids)
     }
 
+    pub fn saved_status_targets(&self) -> Result<Vec<i64>, CoreError> {
+        source::saved_status_targets(self)
+    }
+
+    pub fn check_saved_status(
+        &self,
+        listing_id: i64,
+        control: Arc<RequestControl>,
+    ) -> Result<String, CoreError> {
+        source::check_saved_status(self, listing_id, &control)
+    }
+
     pub fn saved_people(
         &self,
         kind: SavedPersonKind,

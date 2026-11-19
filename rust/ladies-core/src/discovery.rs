@@ -397,7 +397,7 @@ pub(crate) fn saved_people(
                        AND unixepoch(e.created_at) <= :as_of,0) AS recent
            FROM projected p LEFT JOIN change_events e ON e.change_event_id=(
                SELECT c.change_event_id FROM change_events c
-               WHERE c.person_id=p.person_id
+               WHERE c.person_id=p.person_id AND unixepoch(c.created_at) <= :as_of
                ORDER BY julianday(c.created_at) DESC,c.change_event_id DESC LIMIT 1
            )
            WHERE {predicate}
@@ -821,17 +821,13 @@ mod tests {
                 [],
             )
             .unwrap();
-            db.execute(
-                "UPDATE persons SET last_seen_at='2026-01-01T00:00:00Z'",
-                [],
-            )
-            .unwrap();
+            db.execute("UPDATE persons SET last_seen_at='2026-01-01T00:00:00Z'", [])
+                .unwrap();
         }
         let saved = |kind, sort, limit, cursor| {
             core.saved_people(kind, sort, SavedPersonSection::All, limit, cursor, None)
         };
-        let fav = saved(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, None)
-            .unwrap();
+        let fav = saved(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, None).unwrap();
         assert_eq!(fav.total, 2);
         assert_eq!(fav.rows[0].person_id, a);
         assert_eq!(fav.rows[0].listing_count, 2);
@@ -852,13 +848,12 @@ mod tests {
             1,
             Some(cursor),
         )
-            .unwrap();
+        .unwrap();
         assert_eq!(next.total, 2);
         assert_eq!(next.rows[0].person_id, b);
         assert!(next.next_cursor.is_none());
 
-        let liked = saved(SavedPersonKind::Like, SavedPersonSort::Date, 1, None)
-            .unwrap();
+        let liked = saved(SavedPersonKind::Like, SavedPersonSort::Date, 1, None).unwrap();
         assert_eq!(liked.total, 2);
         assert_eq!(liked.rows[0].person_id, c);
         assert!(liked.rows[0].card.is_none());
@@ -868,13 +863,12 @@ mod tests {
             1,
             liked.next_cursor,
         )
-            .unwrap();
+        .unwrap();
         assert_eq!(more.rows[0].person_id, a);
         assert!(more.rows[0].favorite);
         core.set_swipe_preference(first, a, Some(Preference::Like), Preference::Dislike)
             .unwrap();
-        let dislikes = saved(SavedPersonKind::Dislike, SavedPersonSort::Date, 100, None)
-            .unwrap();
+        let dislikes = saved(SavedPersonKind::Dislike, SavedPersonSort::Date, 100, None).unwrap();
         assert_eq!(dislikes.total, 2);
         assert!(dislikes.rows.iter().all(|row| row.favorite));
         assert_eq!(
@@ -930,7 +924,12 @@ mod tests {
         recent_ids.sort_unstable();
         assert_eq!(recent_ids, ids[..5]);
         assert!(regular.rows.iter().all(|row| !row.recent));
-        assert!(regular.rows.iter().all(|row| ids[5..].contains(&row.person_id)));
+        assert!(
+            regular
+                .rows
+                .iter()
+                .all(|row| ids[5..].contains(&row.person_id))
+        );
     }
 
     #[test]

@@ -214,6 +214,117 @@ pub(super) fn listing_target(
     ))
 }
 
+// Status checks deliberately do not run profile ingestion or fetch media.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct StatusTarget {
+    pub listing_id: i64,
+    pub url: String,
+    pub advert_id: String,
+    person_id: i64,
+    observation_id: i64,
+}
+
+pub(super) fn saved_status_targets(core: &LadiesCore) -> Result<Vec<i64>, CoreError> {
+    let db = core.connection()?;
+    let mut stmt = db.prepare(
+        "SELECT l.listing_id FROM listings l
+         JOIN person_user_state u ON u.person_id=l.person_id
+         WHERE l.source='LADIES' AND (u.favorite=1 OR u.preference!='NONE')
+         ORDER BY l.last_seen_at DESC,l.listing_id DESC",
+    )?;
+    let rows = stmt.query_map([], |row| row.get(0))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+fn status_target_in(db: &Connection, listing_id: i64) -> Result<StatusTarget, CoreError> {
+    let row = db
+        .query_row(
+            "SELECT l.current_url,l.external_listing_id,l.person_id,
+                    COALESCE((SELECT MAX(o.observation_id) FROM listing_observations o
+                              WHERE o.listing_id=l.listing_id),0)
+             FROM listings l JOIN person_user_state u ON u.person_id=l.person_id
+             WHERE l.listing_id=?1 AND l.source='LADIES'
+               AND (u.favorite=1 OR u.preference!='NONE')",
+            [listing_id],
+            |r| {
+                Ok((
+                    r.get::<_, Option<String>>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, i64>(3)?,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or(CoreError::ListingNotFound(listing_id))?;
+    let url = row
+        .0
+        .and_then(|url| parse::valid_profile_url(&url))
+        .ok_or_else(|| CoreError::Source("Stored listing has no recognized source profile URL".into()))?;
+    Ok(StatusTarget {
+        listing_id,
+        url,
+        advert_id: row.1,
+        person_id: row.2,
+        observation_id: row.3,
+    })
+}
+
+pub(super) fn status_target(core: &LadiesCore, listing_id: i64) -> Result<StatusTarget, CoreError> {
+    let db = core.connection()?;
+    status_target_in(&db, listing_id)
+}
+
+pub(super) fn save_status(
+    core: &LadiesCore,
+    target: &StatusTarget,
+    status: &str,
+    http_status: u16,
+    control: &RequestControl,
+) -> Result<(), CoreError> {
+    control.check()?;
+    let mut db = core.connection()?;
+    let tx = db.transaction()?;
+    if status_target_in(&tx, target.listing_id)? != *target {
+        return Err(CoreError::Source("Listing changed during status check".into()));
+    }
+    let previous: String = tx.query_row(
+        "SELECT current_status FROM listings WHERE listing_id=?1",
+        [target.listing_id],
+        |r| r.get(0),
+    )?;
+    tx.execute(
+        "UPDATE listings SET current_status=?1,
+             status_checked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             last_seen_at=CASE WHEN ?1='ACTIVE' THEN strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                               ELSE last_seen_at END,
+             ended_at=CASE WHEN ?1='ACTIVE' THEN NULL
+                           ELSE COALESCE(ended_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) END
+         WHERE listing_id=?2",
+        params![status, target.listing_id],
+    )?;
+    tx.execute(
+        "INSERT INTO listing_observations(listing_id,source,status,http_status)
+         VALUES (?1,'STATUS',?2,?3)",
+        params![target.listing_id, status, http_status],
+    )?;
+    if previous != status {
+        tx.execute(
+            "INSERT INTO change_events(person_id,listing_id,event_type,field_key,old_json,new_json)
+             VALUES (?1,?2,'STATUS_CHANGED','status',?3,?4)",
+            params![
+                target.person_id,
+                target.listing_id,
+                json!(previous).to_string(),
+                json!(status).to_string(),
+            ],
+        )?;
+    }
+    control.check()?;
+    tx.commit()?;
+    Ok(())
+}
+
 fn record_profile_identity_conflict(
     db: &Connection,
     person_id: i64,
