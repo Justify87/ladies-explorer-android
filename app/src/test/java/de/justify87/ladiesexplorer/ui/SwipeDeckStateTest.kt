@@ -48,10 +48,10 @@ class SwipeDeckStateTest {
         val rows = (1L..8L).map { card(it) }
         assertEquals(listOf(2L, 3L), prefetchCards(rows).map { it.listingId })
         assertTrue(prefetchCards(emptyList()).isEmpty())
-        assertNull(swipePreference(95f))
-        assertNull(swipePreference(-95f))
-        assertEquals(Preference.LIKE, swipePreference(96f))
-        assertEquals(Preference.DISLIKE, swipePreference(-96f))
+        assertNull(photoSwipePreference(95f, 384f, 72f))
+        assertNull(photoSwipePreference(-95f, 384f, 72f))
+        assertEquals(Preference.LIKE, photoSwipePreference(96f, 384f, 72f))
+        assertEquals(Preference.DISLIKE, photoSwipePreference(-96f, 384f, 72f))
     }
 
     @Test fun explicitNoneDoesNotVisitButSkipHasNoPreviousPreference() {

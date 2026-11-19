@@ -67,12 +67,6 @@ internal class SwipeSession {
     }
 }
 
-internal fun swipePreference(distanceDp: Float): Preference? = when {
-    distanceDp >= 96f -> Preference.LIKE
-    distanceDp <= -96f -> Preference.DISLIKE
-    else -> null
-}
-
 internal fun prefetchCards(cards: List<DiscoveryCard>): List<DiscoveryCard> =
     cards.drop(1).take(2)
 
