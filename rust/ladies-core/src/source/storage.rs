@@ -1252,11 +1252,9 @@ mod tests {
             grid.iter().map(|c| c.listing_id).collect::<Vec<_>>(),
             vec![listing, target.listing_id]
         );
-        assert!(
-            grid.iter().all(|c| c.person_id == new_owner
-                && c.favorite
-                && c.preference == crate::Preference::Like)
-        );
+        assert!(grid.iter().all(|c| c.person_id == new_owner
+            && c.favorite
+            && c.preference == crate::Preference::Like));
         let saved = core
             .saved_people(
                 crate::SavedPersonKind::Favorite,
@@ -1274,6 +1272,13 @@ mod tests {
         assert_eq!(window.cards.len(), 2);
         assert!(window.cards.iter().all(|c| c.person_id == Some(new_owner)));
         assert!(window.searches[0].unread_new_results);
+        assert_ne!(before.searches[0].revision, window.searches[0].revision);
+        assert!(
+            !core
+                .acknowledge_saved_search_revision(saved_id.clone(), before.searches[0].revision)
+                .unwrap()
+        );
+        assert!(core.list_saved_searches().unwrap()[0].unread_new_results);
         assert_eq!(core.map_overview(false).unwrap().total_profiles, 1);
         assert_eq!(core.map_overview(true).unwrap().total_profiles, 1);
         assert_eq!(core.person_detail(new_owner).unwrap().listings.len(), 2);

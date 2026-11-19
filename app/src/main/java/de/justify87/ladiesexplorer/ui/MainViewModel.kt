@@ -972,8 +972,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun confirmIdentity(listingId: Long, targetPersonId: Long) {
         val active = _searchUiState.value
-        if (_discoverState.value.busy || active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
-        val sourceOwner = active.profileIdentity?.personId ?: return
+        val sourceOwner = active.currentIdentityConfirmationOwner(listingId, _discoverState.value.busy) ?: return
         val dirtyOwners = _profileNotes.value.dirtyOwners(sourceOwner, targetPersonId)
         if (dirtyOwners.isNotEmpty()) {
             _searchUiState.update { it.copy(actionError =
@@ -1020,10 +1019,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     else failure.message ?: "Zusammenführung fehlgeschlagen"
                 if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update {
-                        if (committed && !profileUpdated) it.copy(actionError = message, selectedPersonId = null,
-                            selectedPerson = null, profileIdentity = null, identityCandidates = emptyList(),
-                            changeEvents = emptyList())
-                        else it.copy(actionError = message)
+                        it.identityConfirmationFailure(message, committed, profileUpdated)
                     }
                 } else {
                     _discoverState.update { it.copy(mutationError = message) }

@@ -156,3 +156,21 @@ internal class DrainingOperation<T> {
 /** Native ownership is authoritative even before/after a UI state emission. */
 internal fun canAcquireImport(search: DrainingOperation<*>, home: DrainingOperation<*>, uiBusy: Boolean) =
     !search.occupied && !home.occupied && !uiBusy
+
+// Existing standalone admission: characterization only. T10.2 replaces the profileOpen
+// requirement and listing-only input with the rendered context/owner/evidence token.
+internal fun SearchUiState.currentIdentityConfirmationOwner(listingId: Long, discoveryBusy: Boolean): Long? {
+    if (discoveryBusy || actionBusy || !profileOpen || profile?.listingId != listingId) return null
+    return profileIdentity?.personId
+}
+
+// Existing post-commit read-failure publication. The remaining profile/media are a
+// known gap: T10.2 must invalidate all stale capabilities and recover locally.
+internal fun SearchUiState.identityConfirmationFailure(
+    message: String,
+    committed: Boolean,
+    profileUpdated: Boolean,
+): SearchUiState = if (committed && !profileUpdated) copy(
+    actionError = message, selectedPersonId = null, selectedPerson = null, profileIdentity = null,
+    identityCandidates = emptyList(), changeEvents = emptyList(),
+) else copy(actionError = message)
