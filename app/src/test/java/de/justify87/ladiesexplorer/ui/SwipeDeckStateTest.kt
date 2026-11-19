@@ -9,7 +9,7 @@ class SwipeDeckStateTest {
     private fun card(listing: Long, person: Long = listing, preference: Preference = Preference.NONE) =
         DiscoveryCard(listingId = listing, personId = person, name = "Fixture", city = "Leipzig",
             thumbnailUrl = null, localPath = null, description = null, preference = preference,
-            favorite = false, hasVideo = false, hasAiContent = false, isPremium = false)
+            favorite = false, hasVideo = false, hasAiContent = false, isPremium = false, age = null)
 
     @Test fun activeQueuePreservesRunOrderAndDeduplicatesCanonicalPeople() {
         val rows = listOf(card(4, 1), card(5, 1), card(2, preference = Preference.LIKE),

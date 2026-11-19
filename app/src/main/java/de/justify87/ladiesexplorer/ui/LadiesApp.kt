@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.TopAppBar
@@ -79,9 +80,16 @@ fun LadiesApp(
         if (run != null && run != lastPresentedRun) {
             lastPresentedRun = run
             if (!search.profileOpen && (route.root == RootDestination.Search || route.root == RootDestination.Discover)) {
-                route = route.select(DiscoverMode.Swipe)
+                route = route.select(if (route.discovery == DiscoverMode.Grid) DiscoverMode.Grid else DiscoverMode.Swipe)
             }
         }
+    }
+    // A swipe read can persist new snapshots. Refresh only when another projection
+    // becomes visible and the swipe actually changed data; no new source search.
+    val listVisible = !search.profileOpen && (route.root == RootDestination.Saved ||
+        route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid)
+    LaunchedEffect(listVisible) {
+        if (listVisible) viewModel.refreshDiscoveryIfDirty()
     }
     val mapVisible = route.mapVisible && !search.profileOpen
     LaunchedEffect(mapVisible) {
@@ -206,14 +214,14 @@ fun LadiesApp(
             stateHolder.SaveableStateProvider(route.stateKey) {
                 when (route.root) {
                     RootDestination.Discover -> Column(modifier = modifier) {
-                        if (route.discovery == DiscoverMode.Swipe) {
+                        if (route.discovery != DiscoverMode.Map) {
                             Column(Modifier.padding(horizontal = 16.dp)) {
                                 AvailabilitySelector(search.headerAvailability(), !search.loading && !home.loading && !discovery.busy) {
                                     viewModel.runAvailability(it)
                                 }
                             }
                         }
-                        if (route.discovery == DiscoverMode.Swipe) {
+                        if (route.discovery != DiscoverMode.Map) {
                             SearchRunStatus(search, viewModel::cancelActiveSearch)
                         }
                         DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
@@ -227,10 +235,23 @@ fun LadiesApp(
                                 onReplayLikes = viewModel::setReplayLikes,
                                 onSkip = viewModel::skipCard,
                                 onChoose = viewModel::decideSwipe,
+                                onSnapshotChanged = viewModel::markSwipeSnapshotChanged,
                                 onFavorite = viewModel::toggleFavorite,
                                 onProfile = viewModel::loadProfile,
                                 modifier = Modifier.weight(1f),
                             )
+                        } else if (route.discovery == DiscoverMode.Grid) {
+                            key(search.response?.searchRunId) {
+                                DiscoveryGridScreen(
+                                    discovery = discovery,
+                                    search = search,
+                                    onRefresh = viewModel::refreshDiscovery,
+                                    onLoadMore = viewModel::loadMoreDiscovery,
+                                    onLike = viewModel::toggleGridLike,
+                                    onProfile = viewModel::loadProfile,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
                         } else {
                             MapScreen(
                                 state = map,
@@ -334,7 +355,11 @@ private fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode) 
                 selected = mode == active,
                 onClick = { onSelect(mode) },
                 label = { Text(mode.title) },
-                leadingIcon = { Icon(if (mode == DiscoverMode.Map) Icons.Default.Map else Icons.Default.FavoriteBorder,
+                leadingIcon = { Icon(when (mode) {
+                    DiscoverMode.Map -> Icons.Default.Map
+                    DiscoverMode.Grid -> Icons.Default.GridView
+                    DiscoverMode.Swipe -> Icons.Default.FavoriteBorder
+                },
                     contentDescription = null) },
             )
         }

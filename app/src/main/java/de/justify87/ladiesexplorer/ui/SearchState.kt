@@ -76,10 +76,10 @@ internal fun SearchUiState.endRun(errorMessage: String? = null): SearchUiState =
 internal fun SearchUiState.acceptRun(
     run: SearchResponse,
     cards: List<DiscoveryCard>,
-): SearchUiState = copy(loading = false, error = null, response = run, activeCards = cards)
+): SearchUiState = copy(loading = false, error = null, response = run, activeCards = cards, gridHiddenLikes = emptySet())
 
 internal fun SearchUiState.applyDraftChange(next: SearchUiState): SearchUiState =
-    next.copy(response = response, activeCards = activeCards, error = null,
+    next.copy(response = response, activeCards = activeCards, gridHiddenLikes = gridHiddenLikes, error = null,
         showingSavedSearchId = null, savedResultCards = emptyList(),
         savedResultCursor = null, savedResultsLoadingMore = false)
 

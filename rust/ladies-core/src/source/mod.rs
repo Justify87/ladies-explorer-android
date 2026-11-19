@@ -289,6 +289,35 @@ pub struct ProfileIdentity {
     pub person_new: bool,
     pub listing_new: bool,
     pub has_video: bool,
+    pub age: Option<String>,
+}
+
+/// Only explicit, unambiguous source traits from an existing snapshot.
+pub(crate) fn known_age(traits_json: Option<&str>) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(traits_json?).ok()?;
+    let mut ages = value
+        .as_object()?
+        .iter()
+        .filter(|(key, _)| key.eq_ignore_ascii_case("Alter"));
+    let (_, age) = ages.next()?;
+    if ages.next().is_some() {
+        return None;
+    }
+    let text = match age {
+        serde_json::Value::String(text) => text.as_str(),
+        serde_json::Value::Array(values) if values.len() == 1 => values[0].as_str()?,
+        _ => return None,
+    };
+    let text = text.trim();
+    let digits = text.get(..2)?;
+    if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let unit = text.get(2..)?.trim();
+    if !unit.is_empty() && !matches!(unit.to_ascii_lowercase().as_str(), "jahr" | "jahre") {
+        return None;
+    }
+    Some(digits.to_owned())
 }
 
 pub(crate) fn profile_identity(
@@ -296,13 +325,14 @@ pub(crate) fn profile_identity(
     listing_id: i64,
 ) -> Result<ProfileIdentity, CoreError> {
     let db = core.connection()?;
-    let (person_id, status, url, person_new, listing_new, has_video): (
+    let (person_id, status, url, person_new, listing_new, has_video, traits_json): (
         i64,
         String,
         Option<String>,
         bool,
         bool,
         bool,
+        Option<String>,
     ) = db.query_row(
         "SELECT l.person_id,l.current_status,l.current_url,
                 COALESCE(unixepoch('now')-unixepoch(p.first_seen_at) BETWEEN 0 AND 129599,0),
@@ -313,7 +343,8 @@ pub(crate) fn profile_identity(
                     AND m.kind='VIDEO')
                 ELSE COALESCE((SELECT r.has_video FROM search_results r
                     WHERE r.listing_id=l.listing_id
-                    ORDER BY r.observed_at DESC,r.search_result_id DESC LIMIT 1),0) END
+                    ORDER BY r.observed_at DESC,r.search_result_id DESC LIMIT 1),0) END,
+                s.traits_json
          FROM listings l JOIN persons p ON p.person_id=l.person_id
          LEFT JOIN listing_snapshots s ON s.snapshot_id=l.current_snapshot_id
          WHERE l.listing_id=?1",
@@ -326,6 +357,7 @@ pub(crate) fn profile_identity(
                 r.get(3)?,
                 r.get(4)?,
                 r.get(5)?,
+                r.get(6)?,
             ))
         },
     )?;
@@ -339,6 +371,7 @@ pub(crate) fn profile_identity(
         person_new,
         listing_new,
         has_video,
+        age: known_age(traits_json.as_deref()),
     })
 }
 
@@ -358,6 +391,7 @@ mod profile_identity_tests {
         assert_eq!(value.status, "UNKNOWN");
         assert!(value.person_new && value.listing_new);
         assert!(!value.has_video);
+        assert!(value.age.is_none());
         assert!(value.profile_url.is_none());
         {
             let db = core.connection().unwrap();

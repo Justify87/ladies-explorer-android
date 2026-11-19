@@ -148,12 +148,20 @@ Technische Abnahme G3 bestanden: [Full-CI #321](https://github.com/Justify87/lad
 | P22 | SwipeStep/SwipeSession; MainViewModel: decideSwipe/undoSwipe/resetSwipe; Rust set_swipe_preference | Atomare Owner-/Präferenzprüfung; Undo auf ehemaligem Listing soweit sichtbar; keine DB-Löschung, Favorit unabhängig. |
 | P23 | SwipeProfile.kt, CoreStore, source/mod.rs/network.rs; DiscoveryScreen lifecycle effects | 2 kommende Profile, 2 Bilder pro Profil; vorhandene Snapshots/Coil, keine Archivdownloads; kooperativer Abbruch mit bestehendem begrenztem HTTP-Timeout. |
 
-G4 REVIEW, Full-CI und manuelle Geräte-/Live-Quellprüfung offen (DEVICE_PENDING).
+G4 technisch DONE: PR #17 gemergt, Full-CI #329 bestanden; manuelle Geräte-/Live-Quellprüfung DEVICE_PENDING.
 
 ## Ergänzung M05.4a
 
 | ID | Anforderung | Ist-Evidenz / Status | Task |
 |---|---|---|---|
-| P42 | Alle app-internen HTTP-Abrufe von ladies.de und Medien-CDNs ausschließlich Rust | RustImageNetworkClient/CoreStore/load_display_image; keine direkte Coil-OkHttp-Anbindung; Review/CI offen | T4a.1–T4a.3 |
-| P43 | Coil-Cache, Offline, Prefetch und HAR ohne direkten Android-Transport | Standard-Coil-Netzwerkcache mit Rust-Adapter; Rust-HAR; Review/CI/Gerät offen | T4a.3–T4a.5 |
-| P44 | CI schützt die Quellen-HTTP-Grenze; MapLibre und externe Intents ausgenommen | tools/check-source-http.py in Android-CI; Review/CI offen | T4a.6 |
+| P42 | Alle app-internen HTTP-Abrufe von ladies.de und Medien-CDNs ausschließlich Rust | RustImageNetworkClient/CoreStore/load_display_image; keine direkte Coil-OkHttp-Anbindung; Full-CI #333 grün, DEVICE_PENDING | T4a.1–T4a.3 |
+| P43 | Coil-Cache, Offline, Prefetch und HAR ohne direkten Android-Transport | Standard-Coil-Netzwerkcache mit Rust-Adapter; Rust-HAR; Full-CI #333 grün, DEVICE_PENDING | T4a.3–T4a.5 |
+| P44 | CI schützt die Quellen-HTTP-Grenze; MapLibre und externe Intents ausgenommen | tools/check-source-http.py in Android-CI; Full-CI #333 grün | T4a.6 |
+
+## M05.5 – native Grid-Evidenz (Review)
+
+| ID | Code / Tests | Rest |
+|---|---|---|
+| P24 | DiscoveryGridScreen.kt / ProfileGridCard, discovery.rs (bekanntes Snapshot-Alter; keine Schätzung) | Geräte-Layout/Scroll und CI offen |
+| P25 | DiscoveryState.kt / MainViewModel.toggleGridLike / Rust setSwipePreference, SearchRunStateTest | Sofortiges Grid-Hide bis erfolgreichem neuen Run; Schreibfehler stellt Karte wieder her; Rust-Filter/Swipe-Verlauf unverändert; neue Full-CI/DEVICE_PENDING |
+| P26 | ShellRoute, LadiesApp, DiscoveryState.kt, ShellRouteTest, SearchRunStateTest | Geladene DB-Fenster bleiben bei Reprojektion erhalten, kein neuer Suchlauf; Geräteposition/Moduswechsel offen, Kartenvertrag unverändert |

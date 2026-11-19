@@ -8,6 +8,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
+import de.justify87.ladiesexplorer.core.DiscoveryCursor
+import de.justify87.ladiesexplorer.core.DiscoveryPage
 
 class SearchRunStateTest {
     private fun response(id: Long, partial: Boolean = false) = SearchResponse(
@@ -29,7 +32,7 @@ class SearchRunStateTest {
         listingId = id, personId = id, name = "Fixture", city = "Leipzig",
         thumbnailUrl = null, localPath = null, description = null,
         preference = Preference.NONE, favorite = false, hasVideo = false,
-        hasAiContent = false, isPremium = false,
+        hasAiContent = false, isPremium = false, age = null,
     )
 
     @Test fun draftChangesAndCancellationKeepExecutedResult() {
@@ -62,6 +65,119 @@ class SearchRunStateTest {
         assertTrue(state.response!!.partial)
         assertFalse(state.response!!.radiusVerified)
         assertFalse(state.loading)
+    }
+
+    @Test fun activeGridIsNotTheConsumedSwipeQueue() {
+        val rows = listOf(card(1), card(2), card(3).copy(preference = Preference.LIKE))
+        val search = SearchUiState().acceptRun(response(1), rows)
+        val swipe = SwipeSession().apply {
+            visit(SwipeStep(1, 1))
+            replayLikes = false
+        }
+        val discovery = DiscoverUiState(cards = swipe.queue(rows, true), activeRunId = 1)
+        assertEquals(listOf(2L), discovery.cards.map { it.listingId })
+        assertEquals(rows, gridCards(discovery, search))
+        // Neither a draft edit nor a cancelled replacement changes the grid's source.
+        assertEquals(rows, gridCards(discovery, search.beginRun().endRun()))
+        assertEquals(discovery.cards, gridCards(discovery, SearchUiState()))
+    }
+
+    @Test fun gridLikeHidesOnlyGridUntilSuccessfulNewRunAndRestoresOnFailure() {
+        val rows = listOf(card(1), card(2).copy(favorite = true))
+        val initial = SearchUiState().acceptRun(response(1), rows)
+        val swipe = SwipeSession().apply { visit(SwipeStep(1, 1)) }
+        val last = swipe.last
+        val deck = DiscoverUiState(cards = swipe.queue(rows, true))
+        val pending = initial.hideGridLike(2)
+        assertEquals(listOf(1L), gridCards(deck, pending).map { it.listingId })
+        assertEquals(rows, pending.activeCards)
+        assertEquals(last, swipe.last)
+        assertEquals(rows, gridCards(deck, pending.restoreGridLike(2)))
+        assertEquals(pending.gridHiddenLikes, pending.beginRun().endRun().gridHiddenLikes)
+        assertEquals(pending.gridHiddenLikes, pending.applyDraftChange(SearchUiState()).gridHiddenLikes)
+        assertTrue(pending.acceptRun(response(2), rows).gridHiddenLikes.isEmpty())
+        assertEquals(Preference.LIKE, gridLikeTarget(Preference.NONE))
+        assertEquals(Preference.LIKE, gridLikeTarget(Preference.DISLIKE))
+        assertEquals(Preference.NONE, gridLikeTarget(Preference.LIKE))
+    }
+
+    @Test fun reprojectKeepsLoadedWindowAndUpdatedCursor() = runBlocking {
+        val next = DiscoveryCursor(false, "2026-01-01", 2)
+        val end = DiscoveryCursor(false, "2026-01-01", 4)
+        val seen = mutableListOf<DiscoveryCursor?>()
+        val result = readDiscoveryWindow(4) { cursor ->
+            seen += cursor
+            if (cursor == null) DiscoveryPage(listOf(card(1), card(2)), next)
+            else DiscoveryPage(listOf(card(3), card(4).copy(favorite = true)), end)
+        }
+        assertEquals(listOf(null, next), seen)
+        assertEquals(listOf(1L, 2L, 3L, 4L), result.cards.map { it.listingId })
+        assertEquals(end, result.nextCursor)
+        assertTrue(result.cards.last().favorite)
+    }
+
+    @Test fun successfulGridWriteKeepsFavoriteAndSwipeHistoryInSharedProjection() = runBlocking {
+        val old = card(2).copy(favorite = true)
+        var stored = old
+        val swipe = SwipeSession().apply { visit(SwipeStep(1, 1)) }
+        val step = swipe.last
+        var search = SearchUiState().acceptRun(response(1), listOf(card(1), old)).hideGridLike(2)
+        var discovery = DiscoverUiState(cards = swipe.queue(search.activeCards, true))
+        val result = writeAndProject(
+            write = { stored = stored.copy(preference = gridLikeTarget(stored.preference)) },
+            project = {
+                search = search.copy(activeCards = listOf(card(1), stored))
+                discovery = discovery.copy(cards = swipe.queue(search.activeCards, true))
+            },
+            onWriteFailure = { search = search.restoreGridLike(2) },
+        )
+        assertEquals(DiscoveryMutationOutcome.Success, result)
+        assertEquals(Preference.LIKE, discovery.cards.single().preference)
+        assertTrue(discovery.cards.single().favorite)
+        assertEquals(step, swipe.last)
+        assertEquals(listOf(1L), gridCards(discovery, search).map { it.listingId })
+    }
+
+    @Test fun reprojectStopsAtEndEvenWhenRequestedWindowIsLarger() = runBlocking {
+        var calls = 0
+        val result = readDiscoveryWindow(500) {
+            calls++
+            DiscoveryPage(listOf(card(1)), null)
+        }
+        assertEquals(1, calls)
+        assertEquals(null, result.nextCursor)
+        assertEquals(1, result.cards.size)
+    }
+
+    @Test fun mutationFailureRestoresGridAndReprojectsWithoutRepeatingWrite() = runBlocking {
+        val events = mutableListOf<String>()
+        val result = writeAndProject(
+            write = { events += "write"; error("conflict") },
+            project = { events += "projection" },
+            onWriteFailure = { events += "restore" },
+        )
+        assertTrue(result is DiscoveryMutationOutcome.WriteFailed)
+        assertEquals(listOf("write", "restore", "projection"), events)
+    }
+
+    @Test fun committedMutationWithFailedProjectionNeverRollsBackGridOrRetriesWrite() = runBlocking {
+        val events = mutableListOf<String>()
+        val result = writeAndProject(
+            write = { events += "write" },
+            project = { events += "projection"; error("read failed") },
+            onWriteFailure = { events += "restore" },
+        )
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true), result)
+        assertEquals(listOf("write", "projection"), events)
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(false), writeAndProject(
+            write = {}, afterWrite = { error("detail read failed") }, project = {},
+        ))
+    }
+
+    @Test fun paginationDoesNotFireBeforeLayoutOrUntilNearEnd() {
+        assertFalse(nearDiscoveryEnd(-1, 0))
+        assertFalse(nearDiscoveryEnd(1, 50))
+        assertTrue(nearDiscoveryEnd(47, 50))
     }
 
     @Test fun generationsForPreviewAndFullSearchAreIndependent() {

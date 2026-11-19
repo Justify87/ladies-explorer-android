@@ -25,11 +25,15 @@ internal suspend fun CoreStore.readSwipeProfile(
     control: RequestControl,
     refresh: Boolean,
     allowNetwork: Boolean = true,
+    onSourceRead: () -> Unit = {},
 ): SwipeProfile {
     var cached = cachedProfile(listingId)
     var fromArchive = cached != null && !refresh
     var warning: String? = null
     if (allowNetwork && (refresh || cached == null)) {
+        // Mark before I/O: cancellation or a failed post-commit read must not lose
+        // the fact that this operation may have changed the persisted snapshot.
+        onSourceRead()
         try {
             cached = loadSwipeProfile(listingId, control)
             fromArchive = false

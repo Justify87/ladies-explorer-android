@@ -1,6 +1,6 @@
 use rusqlite::{OptionalExtension, params};
 
-use crate::{CoreError, LadiesCore, Preference};
+use crate::{CoreError, LadiesCore, Preference, source::known_age};
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct DiscoveryCard {
@@ -16,6 +16,7 @@ pub struct DiscoveryCard {
     pub has_video: bool,
     pub has_ai_content: bool,
     pub is_premium: bool,
+    pub age: Option<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -186,7 +187,7 @@ pub(crate) fn page(
                  LIMIT 1) AS local_path,
                 s.description,u.preference,u.favorite,
                 COALESCE(r.has_video,0),COALESCE(r.has_ai_content,0),
-                l.last_seen_at,COALESCE(r.is_premium,0)
+                l.last_seen_at,COALESCE(r.is_premium,0),s.traits_json
          FROM ranked k
          JOIN listings l ON l.listing_id=k.listing_id
          JOIN persons p ON p.person_id=l.person_id
@@ -232,6 +233,7 @@ pub(crate) fn page(
                 r.get::<_, i64>(10)?,
                 r.get::<_, String>(11)?,
                 r.get::<_, bool>(12)?,
+                r.get::<_, Option<String>>(13)?,
             ))
         },
     )?;
@@ -251,6 +253,7 @@ pub(crate) fn page(
                 ai,
                 last_seen_at,
                 is_premium,
+                traits_json,
             ) = row?;
             let local_path = relative.and_then(|relative| {
                 let path = core.media_root.as_ref()?.join(relative);
@@ -270,6 +273,7 @@ pub(crate) fn page(
                     has_video: video != 0,
                     has_ai_content: ai != 0,
                     is_premium,
+                    age: known_age(traits_json.as_deref()),
                 },
                 last_seen_at,
             ))
@@ -308,7 +312,7 @@ pub(crate) fn active_search_cards(
                  WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
                  ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position
                  LIMIT 1),
-                s.description,u.preference,u.favorite,r.has_video,r.has_ai_content,r.is_premium
+                s.description,u.preference,u.favorite,r.has_video,r.has_ai_content,r.is_premium,s.traits_json
          FROM search_results r
          JOIN listings l ON l.listing_id=r.listing_id
          JOIN person_user_state u ON u.person_id=l.person_id
@@ -329,6 +333,7 @@ pub(crate) fn active_search_cards(
             r.get::<_, bool>(9)?,
             r.get::<_, bool>(10)?,
             r.get::<_, bool>(11)?,
+            r.get::<_, Option<String>>(12)?,
         ))
     })?;
     let mut cards = Vec::new();
@@ -346,6 +351,7 @@ pub(crate) fn active_search_cards(
             has_video,
             has_ai_content,
             is_premium,
+            traits_json,
         ) = row?;
         if !local.allows(
             has_video,
@@ -372,6 +378,7 @@ pub(crate) fn active_search_cards(
             has_video,
             has_ai_content,
             is_premium,
+            age: known_age(traits_json.as_deref()),
         });
     }
     Ok(cards)
@@ -380,6 +387,23 @@ pub(crate) fn active_search_cards(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grid_age_uses_only_an_unambiguous_persisted_trait() {
+        assert_eq!(
+            known_age(Some(r#"{"Alter":["32 Jahre"]}"#)).as_deref(),
+            Some("32")
+        );
+        assert_eq!(known_age(Some(r#"{"alter":"28"}"#)).as_deref(), Some("28"));
+        assert_eq!(
+            known_age(Some(r#"{"Alter":"28Jahre"}"#)).as_deref(),
+            Some("28")
+        );
+        assert!(known_age(Some(r#"{"Alter":["28","30"]}"#)).is_none());
+        assert!(known_age(Some(r#"{"Alter":["ca. 30"]}"#)).is_none());
+        assert!(known_age(Some(r#"{"Alter":"28","alter":"30"}"#)).is_none());
+        assert!(known_age(None).is_none());
+    }
 
     #[test]
     fn active_run_keeps_membership_and_order_and_projects_current_preferences() {
@@ -416,6 +440,39 @@ mod tests {
             vec![lb, la]
         );
         assert!(rows[0].is_premium);
+        assert!(rows[0].age.is_none());
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,traits_json)
+                 VALUES (?1,'grid-age',?2)",
+                params![lb, r#"{"Alter":["32 Jahre"]}"#],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), lb],
+            )
+            .unwrap();
+        }
+        let updated = active_search_cards(&core, 1, &all).unwrap();
+        assert_eq!(updated[0].age.as_deref(), Some("32"));
+        assert_eq!(core.profile_identity(lb).unwrap().age, updated[0].age);
+        // A direct grid mutation is conditional and does not change run membership.
+        core.set_swipe_preference(la, a, Some(Preference::None), Preference::Like)
+            .unwrap();
+        let liked = active_search_cards(&core, 1, &all).unwrap();
+        assert_eq!(liked[1].listing_id, la);
+        assert_eq!(liked[1].preference, Preference::Like);
+        let hide_likes = crate::saved_search::LocalVisibility {
+            hide_likes: true,
+            ..all.clone()
+        };
+        let visible = active_search_cards(&core, 1, &hide_likes).unwrap();
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].listing_id, lb);
+        core.set_swipe_preference(la, a, Some(Preference::Like), Preference::None)
+            .unwrap();
         core.set_preference(b, Preference::Dislike).unwrap();
         core.set_favorite(b, true).unwrap();
         let rows = active_search_cards(&core, 1, &all).unwrap();
