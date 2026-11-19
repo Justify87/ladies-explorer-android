@@ -1,6 +1,6 @@
 use rusqlite::{OptionalExtension, params};
 
-use crate::{CoreError, LadiesCore, Preference};
+use crate::{CoreError, LadiesCore, Preference, source::known_age};
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct DiscoveryCard {
@@ -142,36 +142,6 @@ pub struct DiscoveryCursor {
 pub struct DiscoveryPage {
     pub cards: Vec<DiscoveryCard>,
     pub next_cursor: Option<DiscoveryCursor>,
-}
-
-/// Only explicit, unambiguous source traits from an existing snapshot.
-pub(crate) fn known_age(traits_json: Option<&str>) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(traits_json?).ok()?;
-    let mut ages = value
-        .as_object()?
-        .iter()
-        .filter(|(key, _)| key.eq_ignore_ascii_case("Alter"));
-    let (_, age) = ages.next()?;
-    if ages.next().is_some() {
-        return None;
-    }
-    let text = match age {
-        serde_json::Value::String(text) => text.as_str(),
-        serde_json::Value::Array(values) if values.len() == 1 => values[0].as_str()?,
-        _ => return None,
-    };
-    let mut parts = text.split_whitespace();
-    let digits = parts.next()?;
-    if digits.len() != 2 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    if let Some(unit) = parts.next() {
-        if !matches!(unit.to_ascii_lowercase().as_str(), "jahr" | "jahre") || parts.next().is_some()
-        {
-            return None;
-        }
-    }
-    Some(digits.to_owned())
 }
 
 pub(crate) fn page(
@@ -425,6 +395,10 @@ mod tests {
             Some("32")
         );
         assert_eq!(known_age(Some(r#"{"alter":"28"}"#)).as_deref(), Some("28"));
+        assert_eq!(
+            known_age(Some(r#"{"Alter":"28Jahre"}"#)).as_deref(),
+            Some("28")
+        );
         assert!(known_age(Some(r#"{"Alter":["28","30"]}"#)).is_none());
         assert!(known_age(Some(r#"{"Alter":["ca. 30"]}"#)).is_none());
         assert!(known_age(Some(r#"{"Alter":"28","alter":"30"}"#)).is_none());
@@ -467,6 +441,23 @@ mod tests {
         );
         assert!(rows[0].is_premium);
         assert!(rows[0].age.is_none());
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,traits_json)
+                 VALUES (?1,'grid-age',?2)",
+                params![lb, r#"{"Alter":["32 Jahre"]}"#],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), lb],
+            )
+            .unwrap();
+        }
+        let updated = active_search_cards(&core, 1, &all).unwrap();
+        assert_eq!(updated[0].age.as_deref(), Some("32"));
+        assert_eq!(core.profile_identity(lb).unwrap().age, updated[0].age);
         // A direct grid mutation is conditional and does not change run membership.
         core.set_swipe_preference(la, a, Some(Preference::None), Preference::Like)
             .unwrap();

@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 
 @Composable
 fun DiscoverScreen(
@@ -33,6 +34,7 @@ fun DiscoverScreen(
     onReplayLikes: (Boolean) -> Unit,
     onSkip: (Long) -> Unit,
     onChoose: (Long, Preference) -> Unit,
+    onSnapshotChanged: () -> Unit,
     onFavorite: (Long) -> Unit,
     onProfile: (Long, Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -55,7 +57,9 @@ fun DiscoverScreen(
         if (!visible || card == null || current != null && retry == 0) return@LaunchedEffect
         readError = null
         try {
-            decks[card.listingId] = core.readSwipeProfile(card.listingId, control, refresh = true)
+            val loaded = core.readSwipeProfile(card.listingId, control, refresh = true)
+            decks[card.listingId] = loaded
+            if (!loaded.fromArchive) onSnapshotChanged()
             retry = 0
         } catch (cancel: CancellationException) {
             throw cancel
@@ -73,7 +77,9 @@ fun DiscoverScreen(
         for (next in upcoming) {
             try {
                 val profile = decks[next.listingId] ?: core.readSwipeProfile(next.listingId, prefetchControl,
-                    refresh = false, allowNetwork = state.activeRunId != null)
+                    refresh = false, allowNetwork = state.activeRunId != null).also {
+                    if (!it.fromArchive) onSnapshotChanged()
+                }
                 decks[next.listingId] = profile
                 warmSwipeImages(context, next, profile)
             } catch (cancel: CancellationException) {
@@ -203,12 +209,14 @@ fun FavoritesScreen(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    LaunchedEffect(state.favorites.size, state.favoritesNextCursor) {
-        if (state.favoritesNextCursor != null) {
-            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-                .collect { last ->
-                    if (last >= state.favorites.size - 3) onLoadMore()
-                }
+    val canPage = state.favoritesNextCursor != null && !state.loading && !state.busy && !state.favoritesLoadingMore
+    LaunchedEffect(listState, state.favoritesNextCursor, canPage, state.error) {
+        if (canPage && state.error == null) {
+            snapshotFlow {
+                val layout = listState.layoutInfo
+                nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
+            }.first { it }
+            onLoadMore()
         }
     }
     LazyColumn(
@@ -253,6 +261,9 @@ fun FavoritesScreen(
             }
         }
         if (state.favoritesLoadingMore) item { CircularProgressIndicator() }
+        else if (state.favoritesNextCursor != null) item {
+            TextButton(onClick = onLoadMore, enabled = canPage) { Text("Weitere Favoriten") }
+        }
         state.error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
     }
 }

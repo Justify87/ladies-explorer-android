@@ -142,9 +142,9 @@ class SearchRunStateTest {
     }
 
     @Test fun paginationDoesNotFireBeforeLayoutOrUntilNearEnd() {
-        assertFalse(nearGridEnd(-1, 0))
-        assertFalse(nearGridEnd(1, 50))
-        assertTrue(nearGridEnd(47, 50))
+        assertFalse(nearDiscoveryEnd(-1, 0))
+        assertFalse(nearDiscoveryEnd(1, 50))
+        assertTrue(nearDiscoveryEnd(47, 50))
     }
 
     @Test fun generationsForPreviewAndFullSearchAreIndependent() {

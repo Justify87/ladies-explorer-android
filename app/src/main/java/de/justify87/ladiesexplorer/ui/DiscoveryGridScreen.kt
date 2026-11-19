@@ -47,7 +47,7 @@ internal fun DiscoveryGridScreen(
         if (canPage && discovery.error == null) {
             snapshotFlow {
                 val layout = listState.layoutInfo
-                nearGridEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
+                nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
             }.first { it }
             onLoadMore()
         }

@@ -132,6 +132,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var localWindow = 0
     private var favoritesWindow = 0
     private var discoveryRefreshPending = false
+    private var swipeSnapshotDirty = false
     private val searchGeneration = RequestGeneration()
     private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
 
@@ -637,12 +638,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refreshDiscovery() {
+    fun markSwipeSnapshotChanged() {
+        swipeSnapshotDirty = true
+    }
+
+    fun refreshDiscoveryIfDirty() {
+        if (swipeSnapshotDirty) refreshDiscovery()
+    }
+
+    fun refreshDiscovery() = refreshDiscoveryAfter(null)
+
+    private fun refreshDiscoveryAfter(message: String?) {
         if (_discoverState.value.busy) {
             discoveryRefreshPending = true
             return
         }
         discoveryRefreshPending = false
+        swipeSnapshotDirty = false
         val epoch = ++discoveryEpoch
         _discoverState.update {
             it.copy(loading = true, loadingMore = false, favoritesLoadingMore = false)
@@ -652,13 +664,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val cards = discoveryPage()
                 val favorites = favoritesPage()
                 publishDiscovery(epoch, cards, favorites)
+                if (epoch == discoveryEpoch && message != null) _discoverState.update { it.copy(error = message) }
             } catch (cancellation: CancellationException) {
                 if (epoch == discoveryEpoch) _discoverState.update { it.copy(loading = false) }
                 throw cancellation
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        it.copy(loading = false, error = failure.message ?: "Entdecken fehlgeschlagen")
+                        it.copy(loading = false, error = message ?: failure.message ?: "Entdecken fehlgeschlagen")
                     }
                 }
             }
@@ -765,6 +778,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             loadingMore = false, favoritesLoadingMore = false) }
         viewModelScope.launch {
             var message: String? = null
+            var retryProjection = false
             try {
                 val outcome = writeAndProject(
                     write = write,
@@ -780,20 +794,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 when (outcome) {
                     is DiscoveryMutationOutcome.WriteFailed -> {
                         message = outcome.failure.message ?: failureLabel
-                        if (outcome.projectionFailure != null) clearDiscoveryProjection()
+                        retryProjection = outcome.projectionFailure != null
                     }
                     is DiscoveryMutationOutcome.ProjectionFailed -> {
                         message = "Änderung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
-                        if (outcome.feedFailed) clearDiscoveryProjection()
+                        retryProjection = outcome.feedFailed
                     }
                     DiscoveryMutationOutcome.Success -> Unit
                 }
             } finally {
                 if (epoch == discoveryEpoch) {
+                    if (retryProjection) clearDiscoveryProjection()
                     _discoverState.update { it.copy(busy = false, error = message ?: it.error,
                         canUndoSwipe = swipeSession.last != null) }
                     message?.let(onFailure)
-                    if (discoveryRefreshPending) refreshDiscovery()
+                    if (retryProjection || discoveryRefreshPending) refreshDiscoveryAfter(message)
                 }
             }
         }
@@ -805,7 +820,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(cards = emptyList(), favorites = emptyList(), nextCursor = null,
                 favoritesNextCursor = null, activeVisibleCount = 0, canUndoSwipe = swipeSession.last != null)
         }
-        // The requested window survives a failed projection; explicit refresh can recover it.
+        // The requested window survives a failed projection; recovery re-reads it, never the write.
     }
 
     fun decideSwipe(listingId: Long, preference: Preference) {
@@ -896,7 +911,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 var showingArchive = false
                 var refreshError: String? = null
                 val profile = try {
-                    core.loadProfile(listingId)
+                    core.loadProfile(listingId).also {
+                        // A request invalidated by Back may still have persisted its snapshot.
+                        refreshDiscovery()
+                    }
                 } catch (failure: CancellationException) {
                     throw failure
                 } catch (failure: Exception) {
@@ -919,8 +937,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         mediaWarning=refreshError,archiving=!showingArchive)
                 }
                 refreshMap()
-                // Snapshot/identity may have changed even without any preference mutation.
-                refreshDiscovery()
                 if (showingArchive) return@launch
                 val control = RequestControl()
                 archiveControl = control

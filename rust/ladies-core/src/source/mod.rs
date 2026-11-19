@@ -292,6 +292,34 @@ pub struct ProfileIdentity {
     pub age: Option<String>,
 }
 
+/// Only explicit, unambiguous source traits from an existing snapshot.
+pub(crate) fn known_age(traits_json: Option<&str>) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(traits_json?).ok()?;
+    let mut ages = value
+        .as_object()?
+        .iter()
+        .filter(|(key, _)| key.eq_ignore_ascii_case("Alter"));
+    let (_, age) = ages.next()?;
+    if ages.next().is_some() {
+        return None;
+    }
+    let text = match age {
+        serde_json::Value::String(text) => text.as_str(),
+        serde_json::Value::Array(values) if values.len() == 1 => values[0].as_str()?,
+        _ => return None,
+    };
+    let text = text.trim();
+    let digits = text.get(..2)?;
+    if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let unit = text.get(2..)?.trim();
+    if !unit.is_empty() && !matches!(unit.to_ascii_lowercase().as_str(), "jahr" | "jahre") {
+        return None;
+    }
+    Some(digits.to_owned())
+}
+
 pub(crate) fn profile_identity(
     core: &LadiesCore,
     listing_id: i64,
@@ -343,7 +371,7 @@ pub(crate) fn profile_identity(
         person_new,
         listing_new,
         has_video,
-        age: crate::discovery::known_age(traits_json.as_deref()),
+        age: known_age(traits_json.as_deref()),
     })
 }
 

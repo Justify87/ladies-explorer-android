@@ -20,7 +20,7 @@ internal fun SearchUiState.hideGridLike(listingId: Long): SearchUiState =
 internal fun SearchUiState.restoreGridLike(listingId: Long): SearchUiState =
     copy(gridHiddenLikes = gridHiddenLikes - listingId)
 
-internal fun nearGridEnd(lastVisible: Int, totalItems: Int): Boolean =
+internal fun nearDiscoveryEnd(lastVisible: Int, totalItems: Int): Boolean =
     lastVisible >= 0 && totalItems > 0 && lastVisible >= (totalItems - 3).coerceAtLeast(0)
 
 /** Rebuild the loaded window from Rust's current ordered cursor, not a stale first page.

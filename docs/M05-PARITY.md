@@ -163,5 +163,5 @@ G4 technisch DONE: PR #17 gemergt, Full-CI #329 bestanden; manuelle Geräte-/Liv
 | ID | Code / Tests | Rest |
 |---|---|---|
 | P24 | DiscoveryGridScreen.kt / ProfileGridCard, discovery.rs (bekanntes Snapshot-Alter; keine Schätzung) | Geräte-Layout/Scroll und CI offen |
-| P25 | MainViewModel.toggleGridLike / Rust setSwipePreference, SearchRunStateTest | Legacy blendet Hinzufügen von Likes unabhängig von Hide-Likes aus; native Ansicht folgt bewusst der ausgeführten Rust-Filterprojektion; Bestätigung offen |
-| P26 | ShellRoute, LadiesApp, ShellRouteTest, SearchRunStateTest | Geräteposition und Moduswechsel offen; Kartenvertrag unverändert |
+| P25 | DiscoveryState.kt / MainViewModel.toggleGridLike / Rust setSwipePreference, SearchRunStateTest | Sofortiges Grid-Hide bis erfolgreichem neuen Run; Schreibfehler stellt Karte wieder her; Rust-Filter/Swipe-Verlauf unverändert; neue Full-CI/DEVICE_PENDING |
+| P26 | ShellRoute, LadiesApp, DiscoveryState.kt, ShellRouteTest, SearchRunStateTest | Geladene DB-Fenster bleiben bei Reprojektion erhalten, kein neuer Suchlauf; Geräteposition/Moduswechsel offen, Kartenvertrag unverändert |
