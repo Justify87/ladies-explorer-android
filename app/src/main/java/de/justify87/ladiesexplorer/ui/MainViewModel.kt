@@ -60,6 +60,8 @@ data class DiscoverUiState(
     val mutationError: String? = null,
     val nextCursor: DiscoveryCursor? = null,
     val activeRunId: Long? = null,
+    val swipeSessionId: Long = 0L,
+    val swipeProfileRevision: Long = 0L,
     val activeVisibleCount: Int = 0,
     val replayLikes: Boolean = true,
     val canUndoSwipe: Boolean = false,
@@ -151,6 +153,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val previewGeneration = RequestGeneration()
     private var previewRequest: SearchRequest? = null
     private var discoveryEpoch = 0L
+    private var swipeVisible = false
+    private var renderedSwipe: SwipeActionToken? = null
+
+    internal fun setSwipeVisible(visible: Boolean) {
+        if (swipeVisible == visible) return
+        swipeVisible = visible
+        renderedSwipe = null
+        _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1) }
+    }
+
+    internal fun publishRenderedSwipe(token: SwipeActionToken?) {
+        renderedSwipe = token?.takeIf {
+            swipeVisible && currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, it) != null &&
+                !_searchUiState.value.profileOpen
+        }
+    }
+
+    private fun admittedSwipe(token: SwipeActionToken): DiscoveryCard? =
+        if (!swipeVisible || renderedSwipe != token || _searchUiState.value.profileOpen) null
+        else currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, token)
+
+    private fun invalidateSwipeActions(invalidateProfiles: Boolean = false) {
+        renderedSwipe = null
+        _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1,
+            swipeProfileRevision = it.swipeProfileRevision + if (invalidateProfiles) 1 else 0) }
+    }
     private var localWindow = 0
     private val savedWindows = SavedWindowMemory()
     private val filterGeneration = RequestGeneration()
@@ -326,6 +354,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startSearch(requestOverride: SearchRequest? = null, localOverride: LocalVisibility? = null) {
         if (searchOwner.occupied || _searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
         val input = _searchUiState.value
+        invalidateSwipeActions(invalidateProfiles = true)
         cancelPreview()
         val control = RequestControl()
         val ticket = checkNotNull(searchOwner.start(control))
@@ -466,6 +495,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
 
+    internal fun refreshSwipe() {
+        if (_discoverState.value.busy || _searchUiState.value.loading) return
+        invalidateSwipeActions(invalidateProfiles = true)
+        refreshDiscovery()
+    }
+
     private fun refreshDiscoveryAfter(message: String?) {
         if (!swipeInvalidation.beginDiscovery(_discoverState.value.busy)) return
         val epoch = ++discoveryEpoch
@@ -554,20 +589,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun resetSwipe() {
         if (_discoverState.value.busy || _searchUiState.value.loading) return
         swipeSession.reset()
+        invalidateSwipeActions(invalidateProfiles = true)
         _discoverState.update { it.copy(canUndoSwipe = false) }
         refreshDiscovery()
     }
 
     fun setReplayLikes(replay: Boolean) {
         if (_discoverState.value.busy || _searchUiState.value.loading || swipeSession.replayLikes == replay) return
+        invalidateSwipeActions()
         swipeSession.replayLikes = replay
         core.setReplayLikes(replay)
         _discoverState.update { it.copy(replayLikes = replay) }
         refreshDiscovery()
     }
 
-    fun skipCard(listingId: Long) {
-        val card = currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, listingId) ?: return
+    internal fun skipCard(token: SwipeActionToken) {
+        val card = admittedSwipe(token) ?: return
+        invalidateSwipeActions()
         swipeSession.visit(SwipeStep(card.listingId, card.personId))
         _discoverState.update {
             it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true)
@@ -584,6 +622,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onWriteFailure: () -> Unit = {},
         onFailure: (String) -> Unit = {},
     ) {
+        invalidateSwipeActions()
         val epoch = ++discoveryEpoch
         _discoverState.update { it.copy(busy = true, loading = false, mutationError = null,
             loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false) }
@@ -624,12 +663,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun decideSwipe(listingId: Long, preference: Preference) {
-        val card = currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, listingId) ?: return
+    internal fun decideSwipe(token: SwipeActionToken, preference: Preference) {
+        val card = admittedSwipe(token) ?: return
         mutateDiscovery("Entscheidung fehlgeschlagen", write = {
-            val previous = core.setSwipePreference(listingId, card.personId, null, preference)
-            swipeSession.visit(SwipeStep(listingId, card.personId, previous, preference))
-        })
+            val previous = core.setSwipePreference(card.listingId, card.personId, token.preference, preference)
+            if (preference != Preference.NONE) {
+                swipeSession.visit(SwipeStep(card.listingId, card.personId, previous, preference))
+            }
+        }, afterWrite = { savedSearch.refreshResultProjection() })
     }
 
     fun undoSwipe() {
@@ -812,6 +853,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadProfile(listingId: Long, personId: Long) {
         if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
+        invalidateSwipeActions()
         cancelPreview()
         invalidateActiveSearch()
         profileOperations.loadProfile(listingId, personId) { savedSearch.setVisible(false) }

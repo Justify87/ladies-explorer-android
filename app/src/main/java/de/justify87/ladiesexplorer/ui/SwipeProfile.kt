@@ -83,23 +83,55 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
     }
 }
 
-/** The existing composition-owned listing cache. Its original admission is intentionally
- * characterized here; T10.2 replaces listing-only publication with the full context token. */
+/** Bounded composition-owned cache. Every in-flight read owns a per-entry ticket.
+ * Prune/reset/owner replacement makes a late delivery ineligible even without cancellation. */
 internal class SwipeProfileWindow(private val entries: MutableMap<Long, SwipeProfile>) {
-    operator fun get(listingId: Long): SwipeProfile? = entries[listingId]
-    fun remove(listingId: Long) { entries.remove(listingId) }
-    fun clear() = entries.clear()
-    fun retain(listingIds: List<Long>) {
-        entries.keys.toList().filterNot { it in listingIds }.forEach(entries::remove)
+    private data class Slot(val owner: Long, val ticket: Long)
+    private val slots = mutableMapOf<Long, Slot>()
+    private var nextTicket = 0L
+
+    operator fun get(card: DiscoveryCard): SwipeProfile? = entries[card.listingId]?.takeIf {
+        it.profile.listingId == card.listingId && it.identity.personId == card.personId &&
+            it.person?.personId == card.personId
     }
 
-    suspend fun readCurrent(listingId: Long, read: suspend () -> SwipeProfile) {
-        entries[listingId] = read()
+    fun remove(listingId: Long) {
+        entries.remove(listingId)
+        slots[listingId]?.let { slots[listingId] = it.copy(ticket = ++nextTicket) }
     }
 
-    suspend fun prefetch(listingId: Long, read: suspend () -> SwipeProfile): SwipeProfile {
-        val profile = entries[listingId] ?: read()
-        entries[listingId] = profile
+    fun clear() {
+        entries.clear()
+        slots.clear()
+    }
+
+    fun retain(cards: List<DiscoveryCard>) {
+        val desired = cards.associate { it.listingId to it.personId }
+        slots.keys.toList().filter { desired[it] != slots[it]?.owner }.forEach {
+            slots.remove(it)
+            entries.remove(it)
+        }
+        for (card in cards) {
+            if (card.listingId !in slots) slots[card.listingId] = Slot(card.personId, ++nextTicket)
+        }
+    }
+
+    private suspend fun obtain(card: DiscoveryCard, read: suspend () -> SwipeProfile): SwipeProfile? {
+        val slot = slots[card.listingId]?.takeIf { it.owner == card.personId } ?: return null
+        val ticket = slot.copy(ticket = ++nextTicket)
+        slots[card.listingId] = ticket
+        val profile = read()
+        currentCoroutineContext().ensureActive()
+        if (slots[card.listingId] != ticket) return null
+        check(profile.profile.listingId == card.listingId && profile.identity.personId == card.personId &&
+            profile.person?.personId == card.personId) { "Personenzuordnung geändert; Deck bitte aktualisieren." }
+        entries[card.listingId] = profile
         return profile
     }
+
+    suspend fun readCurrent(card: DiscoveryCard, read: suspend () -> SwipeProfile): SwipeProfile? =
+        obtain(card, read)
+
+    suspend fun prefetch(card: DiscoveryCard, read: suspend () -> SwipeProfile): SwipeProfile? =
+        get(card) ?: obtain(card, read)
 }

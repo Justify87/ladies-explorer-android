@@ -58,13 +58,34 @@ internal fun swipePreference(distanceDp: Float): Preference? = when {
 internal fun prefetchCards(cards: List<DiscoveryCard>): List<DiscoveryCard> =
     cards.drop(1).take(2)
 
-// Characterization seam: the existing admission accepts a listing, not a rendered owner/run token.
-// T10.2 replaces this incomplete contract rather than layering a second admission path around it.
+/** A rendered action is bound to its deck context and coherent local profile. */
+internal data class SwipeActionToken(
+    val runId: Long?,
+    val session: Long,
+    val listingId: Long,
+    val ownerId: Long,
+    val snapshotId: Long,
+    val preference: Preference,
+    val candidateIds: Set<Long>,
+)
+
+internal fun DiscoverUiState.swipeToken(profile: SwipeProfile?): SwipeActionToken? {
+    val card = cards.firstOrNull() ?: return null
+    val local = profile ?: return null
+    if (local.profile.listingId != card.listingId || local.identity.personId != card.personId ||
+        local.person?.personId != card.personId) return null
+    return SwipeActionToken(activeRunId, swipeSessionId, card.listingId, card.personId,
+        local.profile.snapshotId, card.preference, local.candidates.map { it.personId }.toSet())
+}
+
 internal fun currentSwipeActionCard(
     state: DiscoverUiState,
     searchLoading: Boolean,
-    listingId: Long,
+    token: SwipeActionToken,
 ): DiscoveryCard? {
-    if (state.busy || state.loading || searchLoading) return null
-    return state.cards.firstOrNull()?.takeIf { it.listingId == listingId }
+    if (state.busy || state.loading || searchLoading || token.runId != state.activeRunId ||
+        token.session != state.swipeSessionId) return null
+    return state.cards.firstOrNull()?.takeIf {
+        it.listingId == token.listingId && it.personId == token.ownerId && it.preference == token.preference
+    }
 }

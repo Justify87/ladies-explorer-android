@@ -86,16 +86,19 @@ class SwipeDeckStateTest {
         assertEquals(2L, session.queue(rows, true).first().listingId)
     }
 
-    @Test fun knownGapListingOnlyAdmissionUsesNewOwnerForOldRenderedListing() {
+    @Test fun renderedAdmissionRejectsChangedOwnerRunSessionPreferenceAndBusyState() {
         val rendered = card(4, 1)
-        val changed = rendered.copy(personId = 7L)
-        val state = DiscoverUiState(cards = listOf(changed, card(5)), activeRunId = 2L, loading = false)
-        // Characterizes the bug, NOT the desired target. Replace with rejection of the
-        // rendered owner/run token when T10.2 changes the real admission contract.
-        assertEquals(changed, currentSwipeActionCard(state, false, rendered.listingId))
-        assertNull(currentSwipeActionCard(state, false, 5L))
-        assertNull(currentSwipeActionCard(state.copy(busy = true), false, 4L))
-        assertNull(currentSwipeActionCard(state.copy(loading = true), false, 4L))
-        assertNull(currentSwipeActionCard(state, true, 4L))
+        val state = DiscoverUiState(cards = listOf(rendered, card(5)), activeRunId = 2L,
+            swipeSessionId = 8L, loading = false)
+        val token = requireNotNull(state.swipeToken(fixtureSwipe(4L, 1L)))
+        assertEquals(rendered, currentSwipeActionCard(state, false, token))
+        assertNull(currentSwipeActionCard(state.copy(cards = listOf(rendered.copy(personId = 7L))), false, token))
+        assertNull(currentSwipeActionCard(state.copy(activeRunId = 3L), false, token))
+        assertNull(currentSwipeActionCard(state.copy(swipeSessionId = 9L), false, token))
+        assertNull(currentSwipeActionCard(state.copy(cards = listOf(rendered.copy(preference = Preference.LIKE))), false, token))
+        assertNull(currentSwipeActionCard(state.copy(busy = true), false, token))
+        assertNull(currentSwipeActionCard(state.copy(loading = true), false, token))
+        assertNull(currentSwipeActionCard(state, true, token))
+        assertNull(state.swipeToken(fixtureSwipe(4L, 7L)))
     }
 }

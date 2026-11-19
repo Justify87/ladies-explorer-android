@@ -32,8 +32,10 @@ internal fun DiscoverScreen(
     onReset: () -> Unit,
     onUndo: () -> Unit,
     onReplayLikes: (Boolean) -> Unit,
-    onSkip: (Long) -> Unit,
-    onChoose: (Long, Preference) -> Unit,
+    onSkip: (SwipeActionToken) -> Unit,
+    onChoose: (SwipeActionToken, Preference) -> Unit,
+    onSwipeVisibility: (Boolean) -> Unit,
+    onRenderedSwipe: (SwipeActionToken?) -> Unit,
     onSnapshotChanged: () -> Unit,
     onFavorite: (Long) -> Unit,
     onProfile: (Long, Long) -> Unit,
@@ -43,12 +45,20 @@ internal fun DiscoverScreen(
     val context = LocalContext.current
     val core = (context.applicationContext as LadiesApplication).coreStore
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
-    val visible = lifecycle.isAtLeast(Lifecycle.State.STARTED) && !searchLoading && !state.loading && !state.busy
-    val enabled = !state.busy && !state.loading && !searchLoading
-    val decks = remember(state.activeRunId) { SwipeProfileWindow(mutableStateMapOf()) }
-    var retry by remember(card?.listingId) { mutableIntStateOf(0) }
-    var readError by remember(card?.listingId) { mutableStateOf<String?>(null) }
-    val current = card?.let { decks[it.listingId] }
+    val started = lifecycle.isAtLeast(Lifecycle.State.STARTED)
+    DisposableEffect(started) {
+        onSwipeVisibility(started)
+        onDispose { onSwipeVisibility(false) }
+    }
+    val visible = started && !searchLoading && !state.loading && !state.busy
+    val enabled = visible
+    val decks = remember(state.activeRunId, state.swipeProfileRevision, started) { SwipeProfileWindow(mutableStateMapOf()) }
+    DisposableEffect(decks) { onDispose { decks.clear() } }
+    var retry by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableIntStateOf(0) }
+    var readError by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf<String?>(null) }
+    val current = card?.let { decks[it] }
+    val token = state.swipeToken(current).takeIf { visible }
+    SideEffect { onRenderedSwipe(token) }
     val owner = current?.identity?.personId ?: card?.personId
     val tab = tabs.selected(owner)
     val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson, current?.media.orEmpty(), tab)
@@ -57,13 +67,15 @@ internal fun DiscoverScreen(
     ComparisonDialog(panels)
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
-    val control = remember(state.activeRunId, card?.listingId, retry, visible) { RequestControl() }
+    SideEffect { decks.retain(window) }
+    val control = remember(decks, card?.listingId, card?.personId, retry, visible) { RequestControl() }
     DisposableEffect(control) { onDispose { control.cancel() } }
     LaunchedEffect(control) {
         if (!visible || card == null || current != null && retry == 0) return@LaunchedEffect
         readError = null
         try {
-            decks.readCurrent(card.listingId) {
+            decks.retain(window)
+            decks.readCurrent(card) {
                 core.readSwipeProfile(card.listingId, control, refresh = true, onSourceRead = onSnapshotChanged)
             }
             retry = 0
@@ -73,21 +85,21 @@ internal fun DiscoverScreen(
             readError = failure.message ?: "Profil konnte nicht geladen werden"
         }
     }
-    val prefetchControl = remember(state.activeRunId, window.map { it.listingId }, visible, current != null, state.busy) {
+    val prefetchControl = remember(decks, window.map { it.listingId to it.personId }, visible, current != null, state.busy) {
         RequestControl()
     }
     DisposableEffect(prefetchControl) { onDispose { prefetchControl.cancel() } }
     LaunchedEffect(prefetchControl) {
-        decks.retain(window.map { it.listingId })
+        decks.retain(window)
         if (!visible || state.busy || current == null) return@LaunchedEffect
         for (next in upcoming) {
             try {
-                val profile = decks.prefetch(next.listingId) {
+                val profile = decks.prefetch(next) {
                     core.readSwipeProfile(next.listingId, prefetchControl,
                         refresh = false, allowNetwork = state.activeRunId != null,
                         onSourceRead = onSnapshotChanged)
                 }
-                warmSwipeImages(context, next, profile)
+                if (profile != null) warmSwipeImages(context, next, profile)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (_: Exception) {
@@ -132,8 +144,8 @@ internal fun DiscoverScreen(
             }
         } else key(card.listingId) {
             val profile = current
-            val matchesOwner = profile == null || profile.identity.personId == card.personId
-            val actions = enabled && matchesOwner
+            val matchesOwner = profile != null && profile.identity.personId == card.personId
+            val actions = enabled && token != null
             val density = LocalDensity.current.density
             var drag by remember { mutableFloatStateOf(0f) }
             val listState = rememberLazyListState()
@@ -154,7 +166,7 @@ internal fun DiscoverScreen(
                             media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             modifier = Modifier.fillMaxWidth().height(heroHeight)
                                 .graphicsLayer { translationX = drag; rotationZ = drag / (45 * density) }
-                                .pointerInput(card.listingId, actions, density) {
+                                .pointerInput(token, actions, density) {
                                     if (actions) detectHorizontalDragGestures(
                                         onHorizontalDrag = { change, delta ->
                                             change.consume()
@@ -163,7 +175,7 @@ internal fun DiscoverScreen(
                                         onDragEnd = {
                                             val decision = swipePreference(drag / density)
                                             drag = 0f
-                                            decision?.let { onChoose(card.listingId, it) }
+                                            if (token != null && decision != null) onChoose(token, decision)
                                         },
                                         onDragCancel = { drag = 0f },
                                     )
@@ -174,7 +186,7 @@ internal fun DiscoverScreen(
                     item(key = "header") {
                         if (profile == null) ProfileIdentityHeader(card.name, card.city, hasVideo = card.hasVideo)
                         else ProfileHeader(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
-                        if (!matchesOwner) Text("Personenzuordnung geändert. Bitte aktualisieren.")
+                        
                         profile?.warning?.let { Text(it) }
                         readError?.let {
                             Text(it, color = MaterialTheme.colorScheme.error)
@@ -184,7 +196,7 @@ internal fun DiscoverScreen(
                     }
                     item(key = "actions") {
                         ProfileActionRail(person, profile?.profile?.phoneDisplay, !actions,
-                            onFavorite = onFavorite, onPreference = { _, preference -> onChoose(card.listingId, preference) })
+                            onFavorite = onFavorite, onPreference = { _, preference -> token?.let { onChoose(it, preference) } })
                         if (person == null) TextButton(onClick = { onFavorite(card.personId) }, enabled = actions) {
                             Text(if (card.favorite) "Favorit entfernen" else "Favorit")
                         }
@@ -197,11 +209,11 @@ internal fun DiscoverScreen(
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(onClick = { onChoose(card.listingId, Preference.DISLIKE) },
+                OutlinedButton(onClick = { token?.let { onChoose(it, Preference.DISLIKE) } },
                     enabled = actions, modifier = Modifier.weight(1f)) { Text("Nein") }
-                OutlinedButton(onClick = { onSkip(card.listingId) },
-                    enabled = enabled, modifier = Modifier.weight(1f)) { Text("Später") }
-                Button(onClick = { onChoose(card.listingId, Preference.LIKE) },
+                OutlinedButton(onClick = { token?.let(onSkip) },
+                    enabled = actions, modifier = Modifier.weight(1f)) { Text("Später") }
+                Button(onClick = { token?.let { onChoose(it, Preference.LIKE) } },
                     enabled = actions, modifier = Modifier.weight(1f)) { Text("Gefällt") }
             }
         }
