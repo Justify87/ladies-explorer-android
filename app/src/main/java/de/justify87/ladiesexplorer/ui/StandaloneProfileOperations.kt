@@ -3,6 +3,7 @@ package de.justify87.ladiesexplorer.ui
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ensureActive
@@ -49,7 +50,17 @@ internal class StandaloneProfileOperations<C : Any>(
     private val projections: ProfileProjectionCallbacks,
 ) {
     private val profileGeneration = RequestGeneration()
-    private var archiveControl: C? = null
+    private class ArchiveCall<C>(val control: C) {
+        val drained = CompletableDeferred<Unit>()
+        var cancelled = false
+        fun cancel(signal: (C) -> Unit) {
+            if (!cancelled) {
+                cancelled = true
+                signal(control)
+            }
+        }
+    }
+    private var archiveCall: ArchiveCall<C>? = null
 
     private suspend fun project(listingId: Long): NativeProfileProjection =
         checkNotNull(io.profileProjection(listingId)) { "Profil nicht mehr verfügbar" }
@@ -63,13 +74,12 @@ internal class StandaloneProfileOperations<C : Any>(
 
     fun invalidateProfileRequest() {
         profileGeneration.invalidate()
-        archiveControl?.let(io.cancelArchive)
-        archiveControl = null
+        archiveCall?.cancel(io.cancelArchive)
     }
 
     fun cancelMediaArchive() {
-        archiveControl?.let(io.cancelArchive)
-        _searchUiState.update { it.copy(archiving = false) }
+        // Cancellation is a signal, not completion; the native call still owns the slot.
+        archiveCall?.cancel(io.cancelArchive)
     }
 
     fun closeProfile() {
@@ -94,6 +104,8 @@ internal class StandaloneProfileOperations<C : Any>(
         }
         scope.launch {
             try {
+                archiveCall?.drained?.await()
+                if (!profileGeneration.isCurrent(requestId)) return@launch
                 var showingArchive = false
                 var refreshError: String? = null
                 try {
@@ -121,10 +133,14 @@ internal class StandaloneProfileOperations<C : Any>(
                 }
                 if (showingArchive) return@launch
                 val profile = local.profile
-                val control = io.newArchiveControl()
-                archiveControl = control
+                val call = ArchiveCall(io.newArchiveControl())
+                check(archiveCall == null)
+                archiveCall = call
                 try {
-                    val report = io.archiveProfileMedia(profile.snapshotId,control)
+                    val report = withContext(NonCancellable) {
+                        io.archiveProfileMedia(profile.snapshotId, call.control)
+                    }
+                    coroutineContext.ensureActive()
                     if (profileGeneration.isCurrent(requestId)) {
                         val updated = project(listingId)
                         if (profileGeneration.isCurrent(requestId)) {
@@ -144,11 +160,15 @@ internal class StandaloneProfileOperations<C : Any>(
                         }
                     }
                 } finally {
-                    if (archiveControl === control) archiveControl = null
+                    if (archiveCall === call) archiveCall = null
                     if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(archiving=false) }
                     // Even a cancelled archive may already have committed individual media.
-                    projections.savedSearch()
-                    projections.discovery()
+                    try {
+                        projections.savedSearch()
+                        projections.discovery()
+                    } finally {
+                        call.drained.complete(Unit)
+                    }
                 }
             } catch (cancellation: CancellationException) {
                 if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(loading=false,archiving=false) }
@@ -201,7 +221,8 @@ internal class StandaloneProfileOperations<C : Any>(
         }
         val requestId = profileGeneration.value
         val epoch = projections.nextEpoch()
-        archiveControl?.let(io.cancelArchive)
+        val pendingArchive = archiveCall
+        pendingArchive?.cancel(io.cancelArchive)
         // The mutation outlives the detail screen. Keep the shared write guard until
         // it finishes even if Back clears the screen's own actionBusy flag.
         _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
@@ -211,6 +232,7 @@ internal class StandaloneProfileOperations<C : Any>(
             var committed = false
             var projectionUpdated = false
             try {
+                pendingArchive?.drained?.await()
                 coroutineContext.ensureActive()
                 // Once sent, the native write and its commit bookkeeping must drain together.
                 withContext(NonCancellable) {

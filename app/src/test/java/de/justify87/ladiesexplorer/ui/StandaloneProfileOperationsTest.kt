@@ -230,7 +230,7 @@ class StandaloneProfileOperationsTest {
         assertTrue(f.controls.isEmpty())
     }
 
-    @Test fun knownGapArchiveUiReleasesBeforeNativeDrainButLateCompletionStillInvalidatesFeeds() = runBlocking {
+    @Test fun archiveUiRetainsOwnershipUntilNativeDrainAndSignalsCancelOnlyOnce() = runBlocking {
         val f = Fixture(this)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
@@ -241,16 +241,38 @@ class StandaloneProfileOperationsTest {
         assertTrue(f.search.value.archiving)
         f.operations.cancelMediaArchive()
         assertEquals(1, f.controls.single().cancelled)
-        assertFalse(f.search.value.archiving)
+        assertTrue(f.search.value.archiving)
         assertTrue(coroutineContext[Job]!!.children.single().isActive)
         f.operations.closeProfile()
-        assertEquals(2, f.controls.single().cancelled)
+        assertEquals(1, f.controls.single().cancelled)
         f.calls.clear()
         finish.complete(Unit)
         f.idle()
         assertEquals(listOf("saved", "discovery"), f.calls)
         assertNull(f.search.value.mediaArchive)
         assertFalse(f.search.value.profileOpen)
+    }
+
+    @Test fun mergeWaitsForCancelledArchiveToActuallyDrainBeforeWrite() = runBlocking {
+        val f = Fixture(this)
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        f.source = { fixtureProfile() }
+        f.archive = { snapshot, _ -> started.complete(Unit); finish.await(); MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u) }
+        f.operations.loadProfile(4L, 1L) {}
+        started.await()
+        f.calls.clear()
+        f.confirmCurrent()
+        yield()
+        assertTrue(f.discovery.value.busy)
+        assertEquals(listOf("cancel"), f.calls)
+        assertEquals(1L, f.owner)
+        finish.complete(Unit)
+        f.idle()
+        assertEquals(2L, f.owner)
+        assertEquals(1, f.calls.count { it.startsWith("confirm:") })
+        assertFalse(f.search.value.archiving)
+        assertFalse(f.discovery.value.busy)
     }
 
     @Test fun nativeMergeCommitWithCancelledDeliveryStillInvalidatesNotesAndProjections() = runBlocking {
