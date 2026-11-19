@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 internal data class SavedEditor(val id: String, val session: Long, val name: String, val draft: SearchDraft)
 internal enum class SavedOperation { Refresh, Editor, Results, Write, Check, Cancelling }
 internal enum class SavedDialogKind { Create, Rename, Delete }
-internal data class SavedDialog(val kind: SavedDialogKind, val id: String?, val name: String)
+internal data class SavedDialog(val kind: SavedDialogKind, val id: String?, val name: String, val draft: SearchDraft? = null)
 internal enum class SearchPane { Filters, SavedList, SavedEditor, SavedResults }
 internal data class SavedResultWindow(
     val id: String,
@@ -85,6 +85,7 @@ internal class SavedSearchController(
     val state: StateFlow<SavedSearchUiState> = mutable
     private var refreshPending = false
     private var readTicket = 0L
+    private var visible = true
     private var session = 0L
     private var control: SavedCheck? = null
     private val limits = mutableMapOf<String, UInt>()
@@ -118,7 +119,7 @@ internal class SavedSearchController(
         } catch (failure: Exception) {
             mutable.update { it.copy(searches = emptyList(), listAvailable = false,
                 error = if (committed) "Änderung gespeichert; Übersicht konnte nicht geladen werden. Bitte aktualisieren."
-                else failure.message ?: "Übersicht konnte nicht geladen werden") }
+                else it.error ?: failure.message ?: "Übersicht konnte nicht geladen werden") }
         }
     }
 
@@ -130,6 +131,10 @@ internal class SavedSearchController(
         if (result != null) {
             readWindow(result.id, limits[result.id] ?: 100u, acknowledge = false, clearError = clearError)
         } else operation(SavedOperation.Refresh, clearError) { reload() }
+    }
+
+    fun setVisible(value: Boolean) {
+        visible = value
     }
 
     fun open() {
@@ -193,9 +198,10 @@ internal class SavedSearchController(
     fun showDialog(kind: SavedDialogKind, id: String? = null) {
         val s = state.value
         if (s.busy || !canOperate() || s.pane != SearchPane.SavedList) return
-        val name = if (kind == SavedDialogKind.Create) ordinaryDraft().let { "${it.city} · ${it.radiusKm} km" }
+        val draft = if (kind == SavedDialogKind.Create) ordinaryDraft() else null
+        val name = if (draft != null) "${draft.city} · ${draft.radiusKm} km"
             else s.searches.firstOrNull { it.searchId == id }?.name ?: return
-        mutable.update { it.copy(dialog = SavedDialog(kind, id, name), error = null) }
+        mutable.update { it.copy(dialog = SavedDialog(kind, id, name, draft), error = null) }
     }
 
     fun dialogName(name: String) {
@@ -211,10 +217,9 @@ internal class SavedSearchController(
     fun confirmDialog() {
         val dialog = state.value.dialog ?: return
         if (state.value.busy || !canOperate()) return
-        val draft = ordinaryDraft()
         operation(SavedOperation.Write) {
             when (dialog.kind) {
-                SavedDialogKind.Create -> store.create(dialog.name, draft)
+                SavedDialogKind.Create -> store.create(dialog.name, requireNotNull(dialog.draft))
                 SavedDialogKind.Rename -> store.rename(requireNotNull(dialog.id), dialog.name)
                 SavedDialogKind.Delete -> {
                     val id = requireNotNull(dialog.id)
@@ -276,7 +281,7 @@ internal class SavedSearchController(
             mutable.update { it.copy(result = SavedResultWindow(id, window.cards, window.hasMore, true),
                 searches = window.searches, listAvailable = true) }
             val info = window.searches.firstOrNull { it.searchId == id && it.unreadNewResults }
-            if (acknowledge && info != null && ticket == readTicket && state.value.result?.id == id) {
+            if (acknowledge && visible && info != null && ticket == readTicket && state.value.result?.id == id) {
                 val accepted = store.acknowledge(id, info.revision)
                 reload(committed = accepted)
                 // A newer baseline must remain unread; do not retry it automatically.

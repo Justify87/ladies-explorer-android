@@ -89,6 +89,7 @@ data class SearchUiState(
     val local: LocalVisibility = defaultLocalVisibility(),
     val frequentFilters: List<FrequentFilter> = emptyList(),
     val preview: SearchPreview? = null,
+    val previewTarget: SearchRequest? = null,
     val previewLoading: Boolean = false,
     val previewError: String? = null,
     val activeCards: List<DiscoveryCard> = emptyList(),
@@ -138,7 +139,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var previewControl: RequestControl? = null
     private var previewJob: Job? = null
     private val previewGeneration = RequestGeneration()
-    private var previewVisible = false
+    private var previewRequest: SearchRequest? = null
     private var profileRequestId = 0L
     private var discoveryEpoch = 0L
     private var localWindow = 0
@@ -156,7 +157,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         store = SavedSearchStore(core),
         canOperate = { !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
         ordinaryDraft = { SearchDraft.from(_searchUiState.value) },
-        onSourceFinished = { refreshDiscovery(); refreshMap(); refresh() },
+        onSourceFinished = { refreshDiscovery(); refreshMap(); refresh(); refreshFilterCatalog() },
     )
 
     init {
@@ -218,17 +219,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update { it.copy(previewLoading = false) }
     }
 
-    fun setPreviewVisible(visible: Boolean) {
-        if (previewVisible == visible) return
-        previewVisible = visible
-        if (visible) schedulePreview() else cancelPreview()
+    fun setPreviewTarget(target: SearchRequest?) {
+        if (previewRequest == target) return
+        previewRequest = target
+        schedulePreview()
     }
 
     private fun schedulePreview() {
         cancelPreview()
-        _searchUiState.update { it.copy(preview = null, previewError = null) }
-        val input = _searchUiState.value
-        if (!previewVisible || input.loading || input.city.isBlank()) return
+        val input = previewRequest
+        _searchUiState.update { it.copy(preview = null, previewError = null, previewTarget = input) }
+        if (input == null || _searchUiState.value.loading || input.city.isBlank()) return
         val epoch = previewGeneration.value
         val control = RequestControl()
         previewControl = control
@@ -236,7 +237,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         previewJob = viewModelScope.launch {
             try {
                 delay(350)
-                val result = core.preview(request(input), control)
+                val result = core.preview(input, control)
                 if (previewGeneration.isCurrent(epoch)) _searchUiState.update {
                     it.copy(preview = result, previewLoading = false)
                 }
@@ -259,7 +260,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val next = change(draft)
         if (draft == next) return
         _searchUiState.update { it.applyDraftChange(next.applyTo(it)) }
-        if (draft.request().copy(maxPages = 1u) != next.request().copy(maxPages = 1u)) schedulePreview()
     }
 
     fun resetSearchDraft() = editSearchDraft { SearchDraft() }
@@ -276,6 +276,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshSearchDefinitions() {
         savedSearch.refresh()
+        refreshFilterCatalog()
+    }
+
+    private fun refreshFilterCatalog() {
         filterGeneration.invalidate()
         val ticket = filterGeneration.value
         viewModelScope.launch {

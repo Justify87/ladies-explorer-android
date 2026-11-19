@@ -33,7 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.DiscoveryCard
-import de.justify87.ladiesexplorer.core.LocalVisibility
+import de.justify87.ladiesexplorer.core.SearchRequest
 
 @Composable
 internal fun SearchScreen(
@@ -42,7 +42,7 @@ internal fun SearchScreen(
     canStartSearch: Boolean,
     onDraftChange: ((SearchDraft) -> SearchDraft) -> Unit,
     onReset: () -> Unit,
-    onPreviewVisible: (Boolean) -> Unit,
+    onPreviewTarget: (SearchRequest?) -> Unit,
     onSearch: () -> Unit,
     onCancelSearch: () -> Unit,
     onSave: () -> Unit,
@@ -55,7 +55,7 @@ internal fun SearchScreen(
     val editing = editor != null
     val draft = editor?.draft ?: SearchDraft.from(search)
     val state = draft.applyTo(search)
-    val enabled = !search.loading && !saved.busy
+    val enabled = !search.loading && !saved.busy && (!editing || canStartSearch)
     var resultsVisible by rememberSaveable { mutableStateOf(false) }
     var filterQuery by rememberSaveable { mutableStateOf("") }
     var categoryExpanded by rememberSaveable { mutableStateOf(false) }
@@ -74,10 +74,13 @@ internal fun SearchScreen(
         }
     }
     val editorVisible = editing || !(resultsVisible && state.response != null)
-    DisposableEffect(editorVisible, editing) {
-        onPreviewVisible(editorVisible && !editing)
-        onDispose { onPreviewVisible(false) }
+    val target = if (editorVisible && !search.loading && !saved.blockingNavigation)
+        draft.request().copy(maxPages = 1u) else null
+    DisposableEffect(target) {
+        onPreviewTarget(target)
+        onDispose { onPreviewTarget(null) }
     }
+    val previewMatches = target != null && state.previewTarget == target
     Column(modifier = modifier.imePadding()) {
     LazyColumn(
         state = listState,
@@ -164,8 +167,8 @@ internal fun SearchScreen(
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(when {
-                        editing -> "Vorlage wird erst über Prüfen ausgeführt."
                         state.loading -> "Suche läuft …"
+                        !previewMatches -> "Quellzahl noch nicht geprüft"
                         state.previewLoading -> "Quellzahl wird geprüft …"
                         state.previewError != null -> "Vorschau nicht verfügbar: ${state.previewError}"
                         state.preview?.serverCount != null -> "${state.preview.serverCount} Treffer laut Quelle"

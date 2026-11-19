@@ -123,6 +123,7 @@ fun LadiesApp(
     fun selectRoot(destination: RootDestination) {
         if (route.root == destination || saved.blockingNavigation) return
         route = route.select(destination)
+        viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen)
         when (destination) {
             RootDestination.Search -> viewModel.refreshSearchDefinitions()
             RootDestination.Settings -> viewModel.refresh()
@@ -140,6 +141,9 @@ fun LadiesApp(
     }
 
     val pane = saved.pane
+    LaunchedEffect(route.root, search.profileOpen) {
+        viewModel.savedSearch.setVisible(route.root == RootDestination.Search && !search.profileOpen)
+    }
     val savedResultsOpen = route.root == RootDestination.Search && pane == SearchPane.SavedResults
     val savedEditorOpen = route.root == RootDestination.Search && pane == SearchPane.SavedEditor
     val savedOverviewOpen = route.root == RootDestination.Search && pane == SearchPane.SavedList
@@ -186,7 +190,7 @@ fun LadiesApp(
                 },
                 navigationIcon = {
                     if (savedResultsOpen || savedEditorOpen || savedOverviewOpen) {
-                        IconButton(onClick = { back() }) {
+                        IconButton(onClick = { back() }, enabled = saved.operation != SavedOperation.Write) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Zurück")
                         }
                     }
@@ -338,7 +342,7 @@ fun LadiesApp(
                         canStartSearch = !home.loading && !discovery.busy,
                         onDraftChange = if (pane == SearchPane.SavedEditor) viewModel.savedSearch::editDraft else viewModel::editSearchDraft,
                         onReset = viewModel::resetSearchDraft,
-                        onPreviewVisible = viewModel::setPreviewVisible,
+                        onPreviewTarget = viewModel::setPreviewTarget,
                         onSearch = { viewModel.startSearch() },
                         onCancelSearch = viewModel::cancelActiveSearch,
                         onSave = viewModel.savedSearch::saveEditor,

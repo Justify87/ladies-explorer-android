@@ -192,3 +192,7 @@ Historische Referenzmatrix oben bleibt Inventar des M05-Ausgangsstands. Full-CI 
 | P38 | SearchScreen/SearchDraft und MainViewModel: gemeinsamer Editor, getrennte Session, Unsupported-Regeln unverändert | REVIEW |
 | P39 | SavedSearchResultsScreen: ProfileGridCard, Result-Keyset, archivierte Metadaten, Retry | REVIEW |
 | P40 | eigener Pane-/Back-/SaveableState-Vertrag, Loading/Empty/Error, keine Browserwerkzeuge | DEVICE_PENDING / REVIEW |
+
+### PR #22 – Reviewkorrektur
+
+P37/P38: SavedSearchController/SavedEditor/SearchDraft; getrennte Entwürfe, exklusive Operationen, revisionsgeprüfte Bestätigung, strikte Formatvalidierung. P39: kohärente Rust-Fenster mit aktuellem Medienpaar, stabile Result-Keys, gemerkte Fensterkapazität; kein Anhängen über Revisionen. P40: explizite Dialoge, Fehler/Commit-Trennung, Abbruch bis Drain, Offline-/Back-/Scroll-Szenarien als Controller-/Rust-Regressionen; manuelle Sicht-/TalkBack-/Font-Scale-/Rotationstests DEVICE_PENDING. Quellprüfung Rust-only, kein Browserwerkzeug.
