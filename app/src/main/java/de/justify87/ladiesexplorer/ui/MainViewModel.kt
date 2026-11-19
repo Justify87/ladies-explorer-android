@@ -152,7 +152,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var discoveryEpoch = 0L
     private var localWindow = 0
     private val savedWindows = SavedWindowMemory()
-    private var discoveryRefreshPending = false
     private val filterGeneration = RequestGeneration()
     private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
 
@@ -186,7 +185,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ),
             ProfileProjectionCallbacks(
                 epoch = { discoveryEpoch }, nextEpoch = { ++discoveryEpoch },
-                pending = { discoveryRefreshPending }, projectDiscovery = ::projectDiscovery,
+                pending = { swipeInvalidation.pending }, projectDiscovery = ::projectDiscovery,
                 discovery = ::refreshDiscovery, savedSearch = savedSearch::refreshResultProjection,
                 map = ::refreshMap, home = ::refresh,
             ),
@@ -468,12 +467,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
 
     private fun refreshDiscoveryAfter(message: String?) {
-        if (_discoverState.value.busy) {
-            discoveryRefreshPending = true
-            return
-        }
-        discoveryRefreshPending = false
-        swipeInvalidation.discoveryStarted()
+        if (!swipeInvalidation.beginDiscovery(_discoverState.value.busy)) return
         val epoch = ++discoveryEpoch
         _discoverState.update {
             it.copy(loading = true, loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false)
@@ -624,7 +618,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _discoverState.update { it.copy(busy = false, mutationError = message,
                         canUndoSwipe = swipeSession.last != null) }
                     message?.let(onFailure)
-                    if (retryProjection || discoveryRefreshPending) refreshDiscoveryAfter(message)
+                    if (retryProjection || swipeInvalidation.pending) refreshDiscoveryAfter(message)
                 }
             }
         }

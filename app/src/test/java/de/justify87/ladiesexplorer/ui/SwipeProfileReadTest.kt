@@ -94,7 +94,6 @@ class SwipeProfileReadTest {
     }
 
 
-
     @Test fun offlineWithoutCacheFailsWithoutSourceOrCompletion() = runBlocking {
         val f = Fixture(null)
         val error = runCatching { readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads) }.exceptionOrNull()

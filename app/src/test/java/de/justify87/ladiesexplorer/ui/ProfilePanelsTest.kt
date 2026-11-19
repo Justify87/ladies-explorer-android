@@ -3,7 +3,8 @@ package de.justify87.ladiesexplorer.ui
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.yield
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -44,7 +45,6 @@ class ProfilePanelsTest {
     @Test fun lateComparisonAfterCloseCannotReplaceNewComparisonOrReopenDialog() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        val oldReturned = CompletableDeferred<Unit>()
         val newer = listOf(SnapshotDifference("name", "A", "B"))
         val panel = ProfilePanels(this, 7L, { _, _ -> facts() }, { detail() },
             readComparison = { owner, from, to ->
@@ -52,7 +52,6 @@ class ProfilePanelsTest {
                 if (from == 1L) {
                     started.complete(Unit)
                     finish.await()
-                    oldReturned.complete(Unit)
                     listOf(SnapshotDifference("name", "old", "stale"))
                 } else {
                     assertEquals(3L, to)
@@ -62,21 +61,59 @@ class ProfilePanelsTest {
         )
         panel.compare(1L, 2L)
         started.await()
+        val oldJob = coroutineContext[Job]!!.children.single()
         assertTrue(panel.comparing)
         panel.closeComparison()
         assertFalse(panel.comparing)
         assertNull(panel.comparison)
         panel.compare(2L, 3L)
-        yield()
+        coroutineContext[Job]!!.children.single { it != oldJob }.join()
         assertFalse(panel.comparing)
         assertEquals(newer, panel.comparison)
         finish.complete(Unit)
-        oldReturned.await()
-        yield()
+        oldJob.join()
         assertEquals(newer, panel.comparison)
         assertNull(panel.comparisonError)
         panel.closeComparison()
         assertNull(panel.comparison)
         assertFalse(panel.comparing)
+    }
+
+    @Test fun knownGapDeliveredOldFactsCanOverwriteNewFilterRevisionWithinSamePanel() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val old = ProfileFacts(listOf(ProfileField("fixture", listOf("old"))), emptyList(), emptyList(), emptyList(), emptyList())
+        val new = ProfileFacts(listOf(ProfileField("fixture", listOf("new"))), emptyList(), emptyList(), emptyList(), emptyList())
+        val panel = ProfilePanels(this, 7L, { _, filters ->
+            if (filters == "old") { started.complete(Unit); finish.await(); old } else new
+        }, { detail() }, { _, _, _ -> emptyList() })
+        val read = launch { panel.loadFacts(11L, "old") }
+        started.await()
+        panel.reload()
+        panel.loadFacts(11L, "new")
+        assertEquals(new, panel.facts)
+        finish.complete(Unit)
+        read.join()
+        // Compose normally cancels its previous effect. The local read body itself has
+        // no revision admission if an older result is nevertheless delivered.
+        assertEquals(old, panel.facts)
+    }
+
+    @Test fun failedAnalysisReloadClearsPreviousDetailsWithoutErasingFacts() = runBlocking {
+        var fail = false
+        val stored = detail()
+        val content = facts()
+        val panel = ProfilePanels(this, 7L, { _, _ -> content },
+            { if (fail) error("analysis failed") else stored }, { _, _, _ -> emptyList() })
+        panel.loadFacts(11L, "{}")
+        panel.loadDetail()
+        assertEquals(stored, panel.detail)
+        fail = true
+        panel.reload()
+        panel.loadDetail()
+        assertNull(panel.detail)
+        assertEquals("analysis failed", panel.detailError)
+        assertEquals(content, panel.facts)
+        assertNull(panel.factsError)
     }
 }

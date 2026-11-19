@@ -178,13 +178,14 @@ class StandaloneProfileOperationsTest {
         f.operations.loadProfile(4L, 1L) {}
         started.await()
         val oldSession = f.search.value.profileSessionId
+        val oldJob = coroutineContext[Job]!!.children.single()
         f.operations.closeProfile()
         f.owner = 7L
         f.cached = fixtureProfile(12L)
         f.source = { error("offline") }
         f.operations.loadProfile(4L, 7L) {}
         // Wait for the new local projection, not the old blocked source.
-        while (f.search.value.loading) yield()
+        coroutineContext[Job]!!.children.single { it != oldJob }.join()
         assertNotEquals(oldSession, f.search.value.profileSessionId)
         assertEquals(7L, f.search.value.profileIdentity?.personId)
         assertEquals(12L, f.search.value.profile?.snapshotId)
@@ -250,6 +251,23 @@ class StandaloneProfileOperationsTest {
         assertEquals(listOf("confirm:4:2"), f.calls)
         assertTrue(f.tickets.isCurrent(1L, ticket))
         assertEquals(1L, f.search.value.profileIdentity?.personId)
+        assertFalse(f.discovery.value.busy)
+    }
+
+    @Test fun mergeWithPendingReadReconcilesAfterDrainWithoutWritingAgain() = runBlocking {
+        val f = Fixture(this)
+        f.openOffline()
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        f.commit = { _, target -> started.complete(Unit); finish.await(); f.owner = target }
+        f.operations.confirmIdentity(4L, 2L)
+        started.await()
+        f.pending = true
+        finish.complete(Unit)
+        f.idle()
+        assertEquals(listOf("confirm:4:2", "identity:4", "history:2", "candidates:4", "person:2",
+            "project:1", "discovery", "saved", "map", "home"), f.calls)
+        assertFalse(f.pending)
         assertFalse(f.discovery.value.busy)
     }
 }

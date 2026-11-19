@@ -6,6 +6,8 @@ internal class SwipeProjectionInvalidation(
     private val discovery: () -> Unit,
     private val map: () -> Unit,
 ) {
+    var pending = false
+        private set
     private var dirty = false
     private var listVisible = false
     private var mapVisible = false
@@ -25,5 +27,11 @@ internal class SwipeProjectionInvalidation(
         if (mapEntered) map()
     }
 
-    fun discoveryStarted() { dirty = false }
+    /** Busy refresh is queued; a real read consumes the pending and dirty flags. */
+    fun beginDiscovery(busy: Boolean): Boolean {
+        pending = busy
+        if (busy) return false
+        dirty = false
+        return true
+    }
 }

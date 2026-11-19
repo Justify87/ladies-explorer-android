@@ -15,7 +15,6 @@ internal fun fixtureIdentity(owner: Long) = ProfileIdentity(
     listingNew = false, hasVideo = false, age = null,
 )
 
-
 internal fun fixturePerson(owner: Long) = PersonSummary(owner, "Fixture", Preference.NONE, false, 1u, "")
 internal fun fixtureCard(listing: Long, owner: Long = listing) = DiscoveryCard(
     listingId = listing, personId = owner, name = "Fixture", city = "Fixture city",

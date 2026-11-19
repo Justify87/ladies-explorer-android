@@ -12,7 +12,7 @@ class ProfileProjectionCharacterizationTest {
     @Test fun hiddenSwipeCompletionsCoalesceDiscoveryButAlwaysInvalidateSavedSearch() {
         val calls = mutableListOf<String>()
         lateinit var policy: SwipeProjectionInvalidation
-        policy = SwipeProjectionInvalidation({ calls += "saved" }, { calls += "discovery"; policy.discoveryStarted() }, { calls += "map" })
+        policy = SwipeProjectionInvalidation({ calls += "saved" }, { calls += "discovery"; check(policy.beginDiscovery(false)) }, { calls += "map" })
         repeat(3) { policy.sourceCompleted() }
         assertEquals(listOf("saved", "saved", "saved"), calls)
         policy.setVisibility(true, false)
@@ -86,5 +86,26 @@ class ProfileProjectionCharacterizationTest {
         finish.complete(Unit)
         job.join()
         assertEquals(new, state.value.overview)
+    }
+
+    @Test fun busyRefreshRetainsPendingAndDirtyUntilTheActualReadStarts() {
+        val calls = mutableListOf<String>()
+        var busy = true
+        lateinit var policy: SwipeProjectionInvalidation
+        policy = SwipeProjectionInvalidation(
+            { calls += "saved" },
+            { if (policy.beginDiscovery(busy)) calls += "read" },
+            { calls += "map" },
+        )
+        policy.setVisibility(true, false)
+        repeat(3) { policy.sourceCompleted() }
+        assertTrue(policy.pending)
+        assertEquals(listOf("saved", "saved", "saved"), calls)
+        busy = false
+        policy.setVisibility(true, false)
+        assertFalse(policy.pending)
+        assertEquals(listOf("saved", "saved", "saved", "read"), calls)
+        policy.setVisibility(true, false)
+        assertEquals(1, calls.count { it == "read" })
     }
 }

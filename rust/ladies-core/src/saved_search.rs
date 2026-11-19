@@ -949,6 +949,49 @@ mod tests {
     }
 
     #[test]
+    fn person_writes_advance_ack_revision_without_changing_saved_membership() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let id = save(&core, "Window".into(), SearchRequest::for_test()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "card".into(), None)
+            .unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO saved_search_results(saved_search_id,result_key,snapshot_json,position,present,visible)
+                 VALUES (?1,'card','{}',1,1,1)",
+                [&id],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE saved_searches SET unread_new_results=1 WHERE saved_search_id=?1",
+                [&id],
+            )
+            .unwrap();
+        }
+        let first = window(&core, id.clone(), 10).unwrap();
+        assert_eq!(first.cards[0].listing_id, Some(listing));
+        core.set_preference(person, crate::Preference::Like).unwrap();
+        let second = window(&core, id.clone(), 10).unwrap();
+        assert_ne!(first.searches[0].revision, second.searches[0].revision);
+        assert!(!acknowledge_revision(&core, id.clone(), first.searches[0].revision).unwrap());
+        core.set_favorite(person, true).unwrap();
+        let third = window(&core, id.clone(), 10).unwrap();
+        assert_ne!(second.searches[0].revision, third.searches[0].revision);
+        assert!(!acknowledge_revision(&core, id.clone(), second.searches[0].revision).unwrap());
+        core.save_person_note(listing, person, None, Some("fixture".into()))
+            .unwrap();
+        let fourth = window(&core, id.clone(), 10).unwrap();
+        assert_ne!(third.searches[0].revision, fourth.searches[0].revision);
+        assert!(!acknowledge_revision(&core, id.clone(), third.searches[0].revision).unwrap());
+        assert_eq!(fourth.cards.len(), 1);
+        assert_eq!(fourth.cards[0].listing_id, Some(listing));
+        assert_eq!(fourth.cards[0].person_id, Some(person));
+        assert!(fourth.searches[0].unread_new_results);
+    }
+
+    #[test]
     fn changed_baseline_rejects_cursor_and_stale_acknowledgement() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "Window".into(), SearchRequest::for_test()).unwrap();
