@@ -165,3 +165,10 @@ G4 technisch DONE: PR #17 gemergt, Full-CI #329 bestanden; manuelle Geräte-/Liv
 | P24 | DiscoveryGridScreen.kt / ProfileGridCard, discovery.rs (bekanntes Snapshot-Alter; keine Schätzung) | Geräte-Layout/Scroll und CI offen |
 | P25 | DiscoveryState.kt / MainViewModel.toggleGridLike / Rust setSwipePreference, SearchRunStateTest | Sofortiges Grid-Hide bis erfolgreichem neuen Run; Schreibfehler stellt Karte wieder her; Rust-Filter/Swipe-Verlauf unverändert; neue Full-CI/DEVICE_PENDING |
 | P26 | ShellRoute, LadiesApp, DiscoveryState.kt, ShellRouteTest, SearchRunStateTest | Geladene DB-Fenster bleiben bei Reprojektion erhalten, kein neuer Suchlauf; Geräteposition/Moduswechsel offen, Kartenvertrag unverändert |
+
+G5 technisch DONE: PR #19 gemergt, Full-CI #341 auf e8c83e42 erfolgreich; Geräteprüfung DEVICE_PENDING.
+## M05.6 – Implementierung in Arbeit
+
+P27–P32: ProfilePanels.kt (gemeinsame native Tabs), profile_detail.rs (typisierte Fakten, Filterbelege, Notizen und Analyse), history.rs (Vergleich mit Eigentümerprüfung), CoreStore. Native Gerätebelege/Full-CI offen; Preis-, Begegnungs- und KI-Analysefunktionen nicht im M05-Scope.
+
+Review PR #20: P27–P32 korrigiert (Notiz-Verantwortung im ViewModel, kataloggebundene gruppenbezogene Belege, kompakte responsive Abschnitte, verständlicher Verlauf, gezielte DB-/State-Tests). Technische Abnahme neuer Head und DEVICE_PENDING offen.

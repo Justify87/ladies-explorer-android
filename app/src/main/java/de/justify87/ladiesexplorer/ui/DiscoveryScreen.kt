@@ -25,9 +25,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 @Composable
-fun DiscoverScreen(
+internal fun DiscoverScreen(
     state: DiscoverUiState,
+    tabs: ProfileTabMemory,
+    notes: Map<Long, NoteEditorState>,
+    noteActions: NoteEditorActions,
     searchLoading: Boolean = false,
+    executedFiltersJson: String = "{}",
     onRefresh: () -> Unit,
     onReset: () -> Unit,
     onUndo: () -> Unit,
@@ -49,6 +53,12 @@ fun DiscoverScreen(
     var retry by remember(card?.listingId) { mutableIntStateOf(0) }
     var readError by remember(card?.listingId) { mutableStateOf<String?>(null) }
     val current = card?.let { decks[it.listingId] }
+    val owner = current?.identity?.personId ?: card?.personId
+    val tab = tabs.selected(owner)
+    val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson, current?.media.orEmpty(), tab)
+    rememberProfileNote(current?.profile?.listingId, current?.identity?.personId, noteActions, state.busy, tab == ProfileTab.Notes)
+    val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
+    ComparisonDialog(panels)
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
     val control = remember(state.activeRunId, card?.listingId, retry, visible) { RequestControl() }
@@ -181,7 +191,9 @@ fun DiscoverScreen(
                         }
                         TextButton(onClick = { onProfile(card.listingId, card.personId) }, enabled = enabled) { Text("Profil öffnen") }
                     }
-                    if (profile != null) profileContent(profile.profile, profile.candidates, profile.history, !actions)
+                    if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
+                        panels, tab, selectTab, profile.candidates, profile.history, !actions,
+                        owner?.let(notes::get) ?: NoteEditorState(), noteActions, onConfirm = null, onOpenDetail = { onProfile(card.listingId, card.personId) })
                     else card.description?.let { item { Text(it) } }
                 }
             }

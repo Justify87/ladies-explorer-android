@@ -218,6 +218,21 @@ class CoreStore(context: Context) {
             recorded("resolveMapLocations") { engine.resolveMapLocations(favoritesOnly, 15u, control) }
         }
 
+    suspend fun profileFacts(snapshotId: Long, filtersJson: String): ProfileFacts =
+        withContext(Dispatchers.IO) { engine.profileFacts(snapshotId, filtersJson) }
+
+    suspend fun personDetail(personId: Long): PersonDetail =
+        withContext(Dispatchers.IO) { engine.personDetail(personId) }
+
+    suspend fun personNote(listingId: Long, personId: Long): String? =
+        withContext(Dispatchers.IO) { engine.personNote(listingId, personId) }
+
+    suspend fun savePersonNote(listingId: Long, personId: Long, expected: String?, note: String?) =
+        withContext(Dispatchers.IO) { engine.savePersonNote(listingId, personId, expected, note) }
+
+    suspend fun compareSnapshots(personId: Long, fromId: Long, toId: Long): List<SnapshotDifference> =
+        withContext(Dispatchers.IO) { engine.compareSnapshots(personId, fromId, toId) }
+
     suspend fun profileIdentity(listingId: Long): ProfileIdentity =
         withContext(Dispatchers.IO) { engine.profileIdentity(listingId) }
 

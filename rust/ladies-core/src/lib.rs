@@ -11,6 +11,7 @@ mod map;
 mod media;
 mod media_url;
 mod operation;
+mod profile_detail;
 mod saved_search;
 mod schema;
 mod source;
@@ -147,6 +148,10 @@ pub use identity::IdentityCandidate;
 pub use map::{MapOverview, MapProfile};
 pub use media::{DisplayImage, MediaArchiveReport};
 pub use operation::RequestControl;
+pub use profile_detail::{
+    EvidenceStatus, FilterEvidence, PersonDetail, PersonListing, ProfileFacts, ProfileField,
+    SnapshotDifference,
+};
 pub use saved_search::{
     LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchInfo,
     SavedSearchResultPage,
@@ -397,6 +402,45 @@ impl LadiesCore {
         limit: u32,
     ) -> Result<Vec<ChangeRecord>, CoreError> {
         history::list(self, person_id, limit)
+    }
+
+    pub fn profile_facts(
+        &self,
+        snapshot_id: i64,
+        filters_json: String,
+    ) -> Result<ProfileFacts, CoreError> {
+        profile_detail::facts(self, snapshot_id, &filters_json)
+    }
+
+    pub fn person_detail(&self, person_id: i64) -> Result<PersonDetail, CoreError> {
+        profile_detail::person_detail(self, person_id)
+    }
+
+    pub fn person_note(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+    ) -> Result<Option<String>, CoreError> {
+        profile_detail::person_note(self, listing_id, person_id)
+    }
+
+    pub fn save_person_note(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+        expected: Option<String>,
+        note: Option<String>,
+    ) -> Result<(), CoreError> {
+        profile_detail::save_note(self, listing_id, person_id, expected, note)
+    }
+
+    pub fn compare_snapshots(
+        &self,
+        person_id: i64,
+        from_id: i64,
+        to_id: i64,
+    ) -> Result<Vec<SnapshotDifference>, CoreError> {
+        history::compare(self, person_id, from_id, to_id)
     }
 
     pub fn discovery_cards(
@@ -1028,15 +1072,24 @@ mod tests {
             .join("ladies.sqlite")
             .to_string_lossy()
             .to_string();
-        let id;
+        let (id, listing);
         {
             let core = LadiesCore::new(path.clone()).unwrap();
             id = core.create_person(Some("Persisted".into())).unwrap();
+            listing = core
+                .add_listing(id, None, "LADIES".into(), "persisted".into(), None)
+                .unwrap();
             core.set_favorite(id, true).unwrap();
+            core.save_person_note(listing, id, None, Some("Local note".into()))
+                .unwrap();
         }
         let again = LadiesCore::new(path).unwrap();
         assert_eq!(again.status().unwrap().schema_version, schema::VERSION);
         assert_eq!(again.get_person(id).unwrap().unwrap().favorite, true);
+        assert_eq!(
+            again.person_note(listing, id).unwrap().as_deref(),
+            Some("Local note")
+        );
     }
 
     #[test]

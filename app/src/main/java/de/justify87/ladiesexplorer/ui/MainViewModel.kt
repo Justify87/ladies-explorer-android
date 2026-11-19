@@ -115,6 +115,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val discoverState: StateFlow<DiscoverUiState> = _discoverState
     private val _searchUiState = MutableStateFlow(SearchUiState())
     val searchUiState: StateFlow<SearchUiState> = _searchUiState
+    private val _profileNotes = MutableStateFlow<Map<Long, NoteEditorState>>(emptyMap())
+    internal val profileNotes: StateFlow<Map<Long, NoteEditorState>> = _profileNotes
+    private val noteReadTickets = mutableMapOf<Long, Long>()
+    private var nextNoteTicket = 0L
+    internal val noteActions = NoteEditorActions(::loadProfileNote, ::editProfileNote, ::saveProfileNote, ::useStoredNote, ::keepNoteDraft)
 
     private val _mapState = MutableStateFlow(MapUiState())
     val mapState: StateFlow<MapUiState> = _mapState
@@ -904,6 +909,69 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
+    private fun updateNote(personId: Long, transform: (NoteEditorState) -> NoteEditorState) {
+        _profileNotes.update { notes ->
+            notes.updateNote(personId, transform)
+        }
+    }
+
+    private suspend fun loadProfileNote(listingId: Long, personId: Long) {
+        val ticket = ++nextNoteTicket
+        noteReadTickets[personId] = ticket
+        updateNote(personId) { it.copy(loading = true) }
+        try {
+            val saved = core.personNote(listingId, personId)
+            if (noteReadTickets[personId] == ticket) updateNote(personId) { it.loaded(saved) }
+        } catch (cancel: CancellationException) {
+            if (noteReadTickets[personId] == ticket) updateNote(personId) { it.copy(loading = false) }
+            throw cancel
+        } catch (failure: Exception) {
+            if (noteReadTickets[personId] == ticket) updateNote(personId) {
+                it.copy(loading = false, error = failure.message ?: "Notiz nicht verfügbar", readError = true)
+            }
+        }
+    }
+
+    private fun editProfileNote(personId: Long, text: String) {
+        if (_discoverState.value.busy) return
+        updateNote(personId) { it.copy(draft = it.draft?.edit(text), error = if (it.readError) it.error else null) }
+    }
+
+    private fun useStoredNote(personId: Long) {
+        if (_discoverState.value.busy) return
+        updateNote(personId) { it.copy(draft = it.draft?.useStored(), error = if (it.readError) it.error else null) }
+    }
+
+    private fun keepNoteDraft(personId: Long) {
+        if (_discoverState.value.busy) return
+        updateNote(personId) { it.copy(draft = it.draft?.keepDraft(), error = null) }
+    }
+
+    private fun saveProfileNote(listingId: Long, personId: Long) {
+        val entry = _profileNotes.value[personId] ?: return
+        val draft = entry.draft ?: return
+        if (_discoverState.value.busy || entry.loading || entry.readError || !draft.dirty || draft.conflict) return
+        val note = draft.text.takeUnless { it.isBlank() }
+        // Invalidate any older editor read. The same mutation guard and ViewModel
+        // lifetime cover navigation, preference writes and identity merges.
+        noteReadTickets[personId] = ++nextNoteTicket
+        updateNote(personId) { it.copy(error = null) }
+        mutateDiscovery("Notiz konnte nicht gespeichert werden", write = {
+            try {
+                core.savePersonNote(listingId, personId, draft.expected, note)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (failure: Exception) {
+                loadProfileNote(listingId, personId)
+                throw failure
+            }
+        }, afterWrite = {
+            updateNote(personId) { it.committed(note) }
+        }, onFailure = { message ->
+            updateNote(personId) { it.copy(error = message) }
+        })
+    }
+
     fun loadProfile(listingId: Long, personId: Long) {
         if (_discoverState.value.busy) return
         cancelPreview()
@@ -987,6 +1055,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun confirmIdentity(listingId: Long, targetPersonId: Long) {
         val active = _searchUiState.value
         if (_discoverState.value.busy || active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
+        val sourceOwner = active.profileIdentity?.personId ?: return
+        val dirtyOwners = _profileNotes.value.dirtyOwners(sourceOwner, targetPersonId)
+        if (dirtyOwners.isNotEmpty()) {
+            _searchUiState.update { it.copy(actionError =
+                "Ungespeicherte Notiz für Person(en) ${dirtyOwners.joinToString()}. Vor Zusammenführung speichern oder verwerfen.") }
+            return
+        }
         val requestId = profileRequestId
         val epoch = ++discoveryEpoch
         archiveControl?.cancel()
@@ -1002,6 +1077,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 core.confirmIdentityMatch(listingId, targetPersonId)
                 committed = true
+                for (owner in listOf(sourceOwner, targetPersonId)) {
+                    noteReadTickets[owner] = ++nextNoteTicket
+                }
+                _profileNotes.update { it - sourceOwner - targetPersonId }
                 val identity = core.profileIdentity(listingId)
                 val history = core.changeEvents(identity.personId)
                 val candidates = core.identityCandidates(listingId)
@@ -1087,6 +1166,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun importBundle(uri: Uri) {
         if (_uiState.value.loading || _searchUiState.value.loading || _discoverState.value.busy) return
+        if (_profileNotes.value.values.any { it.draft?.dirty == true }) {
+            _uiState.update { it.copy(error = "Ungespeicherte Notizen vor dem Import speichern oder verwerfen.") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(loading=true,error=null) }
             try {
@@ -1102,6 +1185,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         temp.delete()
                     }
                 }
+                noteReadTickets.clear()
+                _profileNotes.value = emptyMap()
                 _uiState.update { it.copy(lastImport=result) }
                 refresh()
                 refreshDiscovery()

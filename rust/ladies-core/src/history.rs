@@ -11,7 +11,11 @@ pub struct ChangeRecord {
     pub field_key: Option<String>,
     pub old_json: Option<String>,
     pub new_json: Option<String>,
+    pub old_display: Option<String>,
+    pub new_display: Option<String>,
     pub created_at: String,
+    pub from_snapshot_id: Option<i64>,
+    pub to_snapshot_id: Option<i64>,
 }
 
 const TRACKED: &[(&str, &str)] = &[
@@ -29,6 +33,37 @@ const TRACKED: &[(&str, &str)] = &[
     ("services_json", "services_json"),
     ("opening_times_json", "opening_times_json"),
 ];
+
+/// Rendering-only projection; the persisted payload and transition logic stay unchanged.
+fn readable(raw: Option<&str>) -> Option<String> {
+    let raw = raw?;
+    fn display(value: &Value) -> String {
+        match value {
+            Value::Null => String::new(),
+            Value::String(text) => text.clone(),
+            Value::Bool(value) => if *value { "Ja" } else { "Nein" }.into(),
+            Value::Number(number) => number.to_string(),
+            Value::Array(items) => items
+                .iter()
+                .map(display)
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            Value::Object(fields) => fields
+                .iter()
+                .filter_map(|(key, value)| {
+                    let value = display(value);
+                    (!value.is_empty()).then(|| format!("{key}: {value}"))
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        }
+    }
+    let visible = serde_json::from_str::<Value>(raw)
+        .map(|value| display(&value))
+        .unwrap_or_else(|_| raw.to_owned());
+    (!visible.is_empty()).then_some(visible)
+}
 
 fn field(db: &Connection, snapshot: i64, column: &str) -> Result<Option<String>, CoreError> {
     // Only internal allowlisted columns reach this statement.
@@ -170,20 +205,91 @@ pub(crate) fn list(
         return Err(CoreError::PersonNotFound(person_id));
     }
     let mut query = db.prepare(
-        "SELECT change_event_id, listing_id, event_type, field_key, old_json, new_json, created_at
+        "SELECT change_event_id, listing_id, event_type, field_key, old_json, new_json, created_at,
+                from_snapshot_id, to_snapshot_id
          FROM change_events WHERE person_id=?1
-         ORDER BY change_event_id DESC LIMIT ?2",
+         ORDER BY created_at DESC, change_event_id DESC LIMIT ?2",
     )?;
     let rows = query.query_map(params![person_id, limit], |row| {
+        let old_json: Option<String> = row.get(4)?;
+        let new_json: Option<String> = row.get(5)?;
         Ok(ChangeRecord {
             change_event_id: row.get(0)?,
             listing_id: row.get(1)?,
             event_type: row.get(2)?,
             field_key: row.get(3)?,
-            old_json: row.get(4)?,
-            new_json: row.get(5)?,
+            old_display: readable(old_json.as_deref()),
+            new_display: readable(new_json.as_deref()),
+            old_json,
+            new_json,
             created_at: row.get(6)?,
+            from_snapshot_id: row.get(7)?,
+            to_snapshot_id: row.get(8)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub(crate) fn compare(
+    core: &LadiesCore,
+    person_id: i64,
+    from_id: i64,
+    to_id: i64,
+) -> Result<Vec<crate::SnapshotDifference>, CoreError> {
+    let db = core.connection()?;
+    // Both snapshots must belong to the same listing and its current owner.
+    let allowed: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM listing_snapshots a
+         JOIN listing_snapshots b ON b.listing_id=a.listing_id
+         JOIN listings l ON l.listing_id=a.listing_id
+         WHERE a.snapshot_id=?1 AND b.snapshot_id=?2 AND l.person_id=?3)",
+        params![from_id, to_id, person_id],
+        |r| r.get(0),
+    )?;
+    if !allowed {
+        return Err(CoreError::IdentityConflict(
+            "Snapshots missing or not owned by this person/listing".into(),
+        ));
+    }
+    let mut differences = Vec::new();
+    for (key, column) in TRACKED {
+        let before = as_json(field(&db, from_id, column)?, key.ends_with("_json"))?;
+        let after = as_json(field(&db, to_id, column)?, key.ends_with("_json"))?;
+        if before != after {
+            differences.push(crate::SnapshotDifference {
+                field: (*key).into(),
+                before: readable(before.as_deref()),
+                after: readable(after.as_deref()),
+            });
+        }
+    }
+    let before = media(&db, from_id)?;
+    let after = media(&db, to_id)?;
+    if before != after {
+        differences.push(crate::SnapshotDifference {
+            field: "media".into(),
+            before: readable(Some(&before.to_string())),
+            after: readable(Some(&after.to_string())),
+        });
+    }
+    Ok(differences)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::readable;
+
+    #[test]
+    fn history_projection_handles_structured_scalar_null_and_imported_plain_text() {
+        assert_eq!(readable(Some(r#""Fixture""#)).as_deref(), Some("Fixture"));
+        assert_eq!(readable(Some("null")), None);
+        assert_eq!(
+            readable(Some("imported plain")).as_deref(),
+            Some("imported plain")
+        );
+        assert_eq!(
+            readable(Some(r#"{"Merkmal":["A","B"]}"#)).as_deref(),
+            Some("Merkmal: A\nB")
+        );
+    }
 }

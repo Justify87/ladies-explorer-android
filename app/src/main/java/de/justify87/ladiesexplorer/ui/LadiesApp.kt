@@ -70,10 +70,13 @@ fun LadiesApp(
     val search by viewModel.searchUiState.collectAsStateWithLifecycle()
     val discovery by viewModel.discoverState.collectAsStateWithLifecycle()
     val map by viewModel.mapState.collectAsStateWithLifecycle()
+    val notes by viewModel.profileNotes.collectAsStateWithLifecycle()
     var route by rememberSaveable(stateSaver = listSaver<ShellRoute, String>(
         save = { it.encode() }, restore = { ShellRoute.decode(it) },
     )) { mutableStateOf(ShellRoute()) }
     val stateHolder = rememberSaveableStateHolder()
+    val detailTabs = rememberProfileTabMemory()
+    val swipeTabs = rememberProfileTabMemory()
     var lastPresentedRun by rememberSaveable { mutableStateOf(search.response?.searchRunId) }
     LaunchedEffect(search.response?.searchRunId) {
         val run = search.response?.searchRunId
@@ -201,6 +204,9 @@ fun LadiesApp(
             key(search.profileSessionId) {
                 ProfileDetailScreen(
                     state = search,
+                    tabs = detailTabs,
+                    notes = notes,
+                    noteActions = viewModel.noteActions,
                     onFavorite = viewModel::toggleFavorite,
                     onPreference = viewModel::choosePreference,
                     onConfirmIdentity = viewModel::confirmIdentity,
@@ -228,7 +234,11 @@ fun LadiesApp(
                         if (route.discovery == DiscoverMode.Swipe) {
                             DiscoverScreen(
                                 state = discovery,
+                                tabs = swipeTabs,
+                                notes = notes,
+                                noteActions = viewModel.noteActions,
                                 searchLoading = search.loading,
+                                executedFiltersJson = search.response?.query?.filtersJson ?: "{}",
                                 onRefresh = viewModel::refreshDiscovery,
                                 onReset = viewModel::resetSwipe,
                                 onUndo = viewModel::undoSwipe,
