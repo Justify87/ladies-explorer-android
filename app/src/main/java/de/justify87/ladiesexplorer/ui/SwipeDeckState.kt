@@ -56,8 +56,8 @@ internal class SwipeSession {
 
     fun restoredPresentation(card: DiscoveryCard?): SwipePresentation? {
         val position = restoredPosition ?: return null
-        if (card == null) return null // a failed read must not discard a successful Undo
-        if (card.listingId != position.listingId || card.personId != position.ownerId) {
+        // Called only for a successful projection (including an empty result).
+        if (card == null || card.listingId != position.listingId || card.personId != position.ownerId) {
             restoredPosition = null
             return null
         }

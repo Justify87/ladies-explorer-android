@@ -149,7 +149,6 @@ class SwipeDeckStateTest {
         val last = requireNotNull(session.last)
         session.undo(last)
         assertEquals(position(17), session.restoredPresentation(card(17)))
-        assertNull(session.restoredPresentation(null))
         assertEquals(position(17), session.restoredPresentation(card(17)))
         assertNull(session.restoredPresentation(card(17, 99)))
         assertNull(session.restoredPresentation(card(17)))
@@ -169,6 +168,10 @@ class SwipeDeckStateTest {
         session.consumePresentation(position)
         assertNull(session.restoredPresentation(card(4, 1)))
         assertEquals(4L, session.queue(listOf(card(5), card(4, 1)), true).first().listingId)
+        session.visit(SwipeStep(4, 1, presentation = position))
+        session.undo(requireNotNull(session.last))
+        assertNull(session.restoredPresentation(null)) // successful empty result, no eligible profile
+        assertNull(session.restoredPresentation(card(4, 1)))
     }
 
     @Test fun presentationRequiresSameSnapshotOwnerListingAndFiltersButNotTransientRevision() {

@@ -126,8 +126,11 @@ internal class DiscoveryProjectionPublisher(
         if (epoch != currentEpoch() || projection.runId != _searchUiState.value.response?.searchRunId) return
         if (projection.runId == null) onLocalWindow(projection.page.cards.size)
         _searchUiState.update { it.copy(activeCards = projection.visible) }
+        val next = swipeSession.queue(projection.page.cards, active = projection.runId != null)
+        // A successful authoritative read resolves eligibility. Failed reads never
+        // consume the receipt; StateFlow's update lambda itself stays side-effect free.
+        val restore = swipeSession.restoredPresentation(next.firstOrNull())
         _discoverState.update {
-            val next = swipeSession.queue(projection.page.cards, active = projection.runId != null)
             val mergeNotice = it.pendingMergeListingId?.let { listing ->
                 if (next.firstOrNull()?.listingId == listing) "Personen zusammengeführt."
                 else "Personen zusammengeführt. Die bisherige Anzeige ist nicht mehr die nächste zulässige Karte."
@@ -136,7 +139,7 @@ internal class DiscoveryProjectionPublisher(
                 cards = next, pendingMergeListingId = null, mergeNotice = mergeNotice,
                 replayLikes = swipeSession.replayLikes,
                 canUndoSwipe = swipeSession.last != null,
-                swipeRestore = swipeSession.restoredPresentation(next.firstOrNull()),
+                swipeRestore = restore,
                 activeRunId = projection.runId,
                 activeVisibleCount = projection.visible.size,
                 nextCursor = projection.page.nextCursor,

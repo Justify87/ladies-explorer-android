@@ -339,9 +339,13 @@ fun LadiesApp(
                                 search = search,
                                 rootBarHeight = (padding.calculateBottomPadding() -
                                     WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()).coerceAtLeast(0.dp),
-                                onOpenSearch = { selectRoot(RootDestination.Search) },
+                                onOpenSearch = {
+                                    if (route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe)
+                                        selectRoot(RootDestination.Search)
+                                },
                                 onSelectMode = { mode ->
-                                    if (mode != DiscoverMode.Swipe) {
+                                    if (route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe &&
+                                        mode != DiscoverMode.Swipe) {
                                         profileTouchGate.invalidate()
                                         viewModel.setSwipeVisible(false)
                                         route = route.select(mode)

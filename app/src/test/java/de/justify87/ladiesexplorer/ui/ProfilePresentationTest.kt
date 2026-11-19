@@ -78,6 +78,24 @@ class ProfilePresentationTest {
         assertEquals(0, selection.resolve(listOf(a), true))
     }
 
+    @Test fun undoReferenceRestoresStableMediaAndRowWithSafeFallbacks() {
+        val position = SwipePresentation(4, 1, 11, "{}", "IMAGE:b", "profile-services", 60,
+            listOf("Services"), mediaIndex = 7)
+        val a = ProfileMediaItem("IMAGE", "a", null, 0u)
+        val b = ProfileMediaItem("IMAGE", "b", null, 1u)
+        val selection = ProfileMediaSelection(position.mediaIndex, position.mediaId)
+        assertEquals(0, selection.resolve(listOf(b, a), true))
+        assertEquals(0, selection.resolve(listOf(a), true))
+        assertEquals(0, selection.resolve(emptyList(), true))
+        assertTrue(ProfileSections(position.sections).expanded(ProfileSection.Services))
+        val memory = ProfileScrollMemory(ProfileScrollAnchor(requireNotNull(position.anchorKey), position.anchorOffset),
+            initialRecovery = true)
+        assertTrue(memory.needsFacts())
+        assertEquals(1 to 60, memory.target(listOf("hero", "profile-services")))
+        assertEquals(19, restoredRowOffset(position.anchorOffset, 20))
+        assertEquals(1 to 0, memory.target(listOf("hero", "profile-services"), readFailed = true))
+    }
+
     @Test fun openedNoteCoalescesDemandAndRetryDoesNotDependOnLazyItem() = runBlocking {
         val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
         val token = requireNotNull(state.swipeToken(fixtureSwipe()))

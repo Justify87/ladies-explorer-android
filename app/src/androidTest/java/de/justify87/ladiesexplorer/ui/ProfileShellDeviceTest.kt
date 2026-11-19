@@ -146,16 +146,16 @@ class ProfileShellDeviceTest {
             }
         }
         rule.onNodeWithText("A").assertExists()
-        rule.onNodeWithText("Gefällt").performClick()
+        rule.onNode(hasText("Gefällt") or hasContentDescription("Gefällt")).performClick()
         rule.runOnIdle { jump() }
         rule.onNodeWithText("B").assertExists()
-        rule.onNodeWithText("Nein").performClick()
-        rule.onNodeWithText("Später").performClick()
+        rule.onNode(hasText("Nein") or hasContentDescription("Nein")).performClick()
+        rule.onNode(hasText("Später") or hasContentDescription("Später")).performClick()
         rule.runOnIdle { clear() }
-        rule.onNodeWithText("Nein").assertIsNotEnabled()
-        rule.onNodeWithText("Später").assertIsNotEnabled()
-        rule.onNodeWithText("Gefällt").assertIsNotEnabled()
-        rule.onNodeWithText("Undo").performClick()
+        rule.onNode(hasText("Nein") or hasContentDescription("Nein")).assertIsNotEnabled()
+        rule.onNode(hasText("Später") or hasContentDescription("Später")).assertIsNotEnabled()
+        rule.onNode(hasText("Gefällt") or hasContentDescription("Gefällt")).assertIsNotEnabled()
+        rule.onNode(hasText("Undo") or hasContentDescription("Undo")).performClick()
         rule.runOnIdle { assertEquals(listOf("LIKE", "DISLIKE", "skip", "undo"), actions) }
     }
 

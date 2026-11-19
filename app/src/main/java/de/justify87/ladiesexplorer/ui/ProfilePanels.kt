@@ -81,7 +81,9 @@ internal fun ProfileFlow(
     }
     val restored = swipeRestore?.takeIf { it.matches(projection, swipeRunId) }
     val sections = key(presentationOwner) { rememberProfileSections(restored?.sections.orEmpty()) }
-    val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection(restored?.mediaId) }
+    val mediaSelection = key(presentationOwner) {
+        rememberProfileMediaSelection(restored?.mediaIndex ?: 0, restored?.mediaId)
+    }
     val scroll = key(presentationOwner) {
         rememberProfileScrollMemory(ownerChanged, restored?.let { position ->
             position.anchorKey?.let { ProfileScrollAnchor(it, position.anchorOffset) }
@@ -96,7 +98,8 @@ internal fun ProfileFlow(
                     ProfileScrollAnchor(it, state.firstVisibleItemScrollOffset)
                 } ?: scroll.anchor
                 SwipePresentation(current.listingId, current.ownerId, current.snapshotId, current.filters,
-                    mediaSelection.id, anchor?.key, anchor?.offset ?: 0, sections.entries.toList(), swipeRunId)
+                    mediaSelection.id, anchor?.key, anchor?.offset ?: 0, sections.entries.toList(), swipeRunId,
+                    mediaSelection.index)
             }
         }
     }
@@ -144,7 +147,7 @@ internal fun ProfileFlow(
     // temporarily short loading row or treating a not-yet-loaded listing as absent.
     val recovering = scroll.recovering
     val consume by rememberUpdatedState(onSwipeRestoreConsumed)
-    LaunchedEffect(swipeRestore, projection, recovering, busy) {
+    LaunchedEffect(swipeRestore, projection, recovering, busy, token) {
         // Back/rotation before the anchor resolves preserves the pending receipt.
         // A valid or rejected receipt is consumed once, never re-applied after navigation.
         if (swipeRestore != null && available && !busy && (!recovering || restored == null))

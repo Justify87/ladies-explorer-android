@@ -17,6 +17,7 @@ data class SwipePresentation(
     val listingId: Long, val ownerId: Long, val snapshotId: Long, val filters: String,
     val mediaId: String?, val anchorKey: String?, val anchorOffset: Int, val sections: List<String>,
     val runId: Long? = null,
+    val mediaIndex: Int = 0,
 ) {
     internal fun matches(projection: ProfileProjectionKey?, run: Long?) = projection != null &&
         runId == run && listingId == projection.listingId && ownerId == projection.ownerId &&
@@ -127,12 +128,12 @@ internal class ProfileMediaSelection(initialIndex: Int = 0, initialId: String? =
 }
 
 @Composable
-internal fun rememberProfileMediaSelection(initialId: String? = null): ProfileMediaSelection = rememberSaveable(
+internal fun rememberProfileMediaSelection(initialIndex: Int = 0, initialId: String? = null): ProfileMediaSelection = rememberSaveable(
     saver = listSaver<ProfileMediaSelection, String>(
         save = { listOf(it.index.toString(), it.id.orEmpty()) },
         restore = { ProfileMediaSelection(it[0].toInt(), it[1].ifEmpty { null }) },
     ),
-) { ProfileMediaSelection(initialId = initialId) }
+) { ProfileMediaSelection(initialIndex = initialIndex, initialId = initialId) }
 
 /** Owns only demand for one immutable local projection, never the draft or its write.
  * Both automatic demand and explicit retry live outside lazy items. */
