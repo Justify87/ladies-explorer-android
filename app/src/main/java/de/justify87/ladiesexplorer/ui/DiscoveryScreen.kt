@@ -52,7 +52,7 @@ internal fun DiscoverScreen(
     var readError by remember(card?.listingId) { mutableStateOf<String?>(null) }
     val current = card?.let { decks[it.listingId] }
     val owner = current?.identity?.personId ?: card?.personId
-    val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson)
+    val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson, current?.media.orEmpty())
     val tab = tabs.selected(owner)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)

@@ -18,6 +18,21 @@ class ProfileTabsTest {
         assertEquals(ProfileTab.History, ProfileTabMemory(swipe.entries).selected(10L))
     }
 
+    @Test fun restoredNoteDraftRetainsOriginalExpectedValueAfterReload() {
+        val draft = ProfileNoteDraft(1L)
+        draft.initialize("original")
+        draft.edit("new text")
+        val restored = ProfileNoteDraft(1L, draft.savedState)
+        restored.initialize("external change")
+        assertEquals("original", restored.expected)
+        assertEquals("new text", restored.text)
+        assertEquals(true, restored.dirty)
+        restored.discard()
+        restored.initialize("external change")
+        assertEquals(false, restored.dirty)
+        assertEquals("external change", restored.expected)
+    }
+
     @Test fun missingEvidenceIsNotNegativeEvidence() {
         assertEquals("Ja", evidenceLabel(EvidenceStatus.YES))
         assertEquals("Nein", evidenceLabel(EvidenceStatus.NO))

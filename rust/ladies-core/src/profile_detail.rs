@@ -271,6 +271,60 @@ mod tests {
         assert_eq!(evidence("value", &rows), EvidenceStatus::Yes);
     }
 
+
+    #[test]
+    fn facts_listings_and_snapshot_comparison_use_only_stored_evidence() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let other = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "11".into(), None)
+            .unwrap();
+        let second = core
+            .add_listing(person, None, "LADIES".into(), "12".into(), None)
+            .unwrap();
+        let (before, after, unrelated) = {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,name,city,traits_json)
+                 VALUES (?1,'before','Fixture A','City A',?2)",
+                params![listing, r#"{"A":["Ja"],"B":["Nein"]}"#],
+            )
+            .unwrap();
+            let before = db.last_insert_rowid();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,name,city,traits_json)
+                 VALUES (?1,'after','Fixture B','City A',?2)",
+                params![listing, r#"{"A":["Ja"],"B":["Nein"]}"#],
+            )
+            .unwrap();
+            let after = db.last_insert_rowid();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,name,city)
+                 VALUES (?1,'second','Fixture B','City B')",
+                [second],
+            )
+            .unwrap();
+            (before, after, db.last_insert_rowid())
+        };
+        let projected = facts(&core, before, r#"{"group":["A","B","missing"]}"#).unwrap();
+        assert_eq!(projected.traits.len(), 2);
+        assert_eq!(projected.filters[0].status, EvidenceStatus::Yes);
+        assert_eq!(projected.filters[1].status, EvidenceStatus::No);
+        assert_eq!(projected.filters[2].status, EvidenceStatus::Unknown);
+        assert!(facts(&core, -1, "{}").is_err());
+        let details = person_detail(&core, person).unwrap();
+        assert_eq!(details.listings.len(), 2);
+        assert_eq!(details.known_names, 2);
+        assert_eq!(details.known_cities, 2);
+        let changes = crate::history::compare(&core, person, before, after).unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].field, "name");
+        assert!(crate::history::compare(&core, other, before, after).is_err());
+        assert!(crate::history::compare(&core, person, before, unrelated).is_err());
+        assert!(crate::history::compare(&core, person, before, -1).is_err());
+    }
+
     #[test]
     fn note_cas_preserves_other_fields_and_rejects_wrong_owner() {
         let core = LadiesCore::new(":memory:".into()).unwrap();

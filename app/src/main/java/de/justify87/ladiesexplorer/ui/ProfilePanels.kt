@@ -44,14 +44,53 @@ internal class ProfileTabMemory(initial: List<String> = emptyList()) {
 
 @Composable
 internal fun rememberProfileTabMemory(): ProfileTabMemory = rememberSaveable(
-    saver = listSaver(save = { it.entries }, restore = { ProfileTabMemory(it) })
+    saver = listSaver<ProfileTabMemory, String>(save = { it.entries }, restore = { ProfileTabMemory(it) })
 ) { ProfileTabMemory() }
+
+/** Carries the original CAS value with the user's draft even through recreation.
+ * A refreshed person projection must not silently rebase an unsaved edit. */
+@Stable
+internal class ProfileNoteDraft(
+    val owner: Long?,
+    initial: List<String> = emptyList(),
+) {
+    private var data by mutableStateOf(initial)
+    val expected: String? get() = data.getOrNull(1)?.takeIf { data.firstOrNull() == "value" }
+    val text: String? get() = data.getOrNull(2)
+    val dirty: Boolean get() = text != null && text != expected.orEmpty()
+    val savedState: List<String> get() = data
+
+    fun initialize(note: String?) {
+        if (text == null) accept(note)
+    }
+
+    fun accept(note: String?) {
+        data = listOf(if (note == null) "null" else "value", note.orEmpty(), note.orEmpty())
+    }
+
+    fun edit(value: String) {
+        if (text != null) data = data.take(2) + value
+    }
+
+    fun discard() { data = emptyList() }
+}
+
+@Composable
+private fun rememberNoteDraft(owner: Long?): ProfileNoteDraft = key(owner) {
+    rememberSaveable(
+        saver = listSaver<ProfileNoteDraft, String>(
+            save = { it.savedState },
+            restore = { ProfileNoteDraft(owner, it) },
+        ),
+    ) { ProfileNoteDraft(owner) }
+}
 
 internal class ProfilePanels(
     private val core: CoreStore,
     private val scope: CoroutineScope,
     private val listingId: Long?,
     private val personId: Long?,
+    val draft: ProfileNoteDraft,
 ) {
     var facts by mutableStateOf<ProfileFacts?>(null)
         private set
@@ -65,8 +104,6 @@ internal class ProfilePanels(
         private set
     var saving by mutableStateOf(false)
         private set
-    var noteDraft by mutableStateOf<String?>(null)
-    private var expectedNote: String? = null
     var showDescriptionChanges by mutableStateOf(false)
     var comparison by mutableStateOf<List<SnapshotDifference>?>(null)
         private set
@@ -82,10 +119,15 @@ internal class ProfilePanels(
         if (!saving) {
             facts = null
             detail = null
-            noteError = null
-            noteDraft = null
-            expectedNote = null
             revision++
+        }
+    }
+
+    fun discardNote() {
+        if (!saving) {
+            noteError = null
+            draft.discard()
+            reload()
         }
     }
 
@@ -100,19 +142,14 @@ internal class ProfilePanels(
         try {
             val loaded = core.personDetail(personId)
             detail = loaded
-            if (noteDraft == null) {
-                expectedNote = loaded.privateNote
-                noteDraft = loaded.privateNote.orEmpty()
-            }
+            draft.initialize(loaded.privateNote)
         } catch (cancel: CancellationException) { throw cancel }
         catch (failure: Exception) { detailError = failure.message ?: "Personendaten nicht verfügbar" }
     }
 
-    fun noteDirty(): Boolean = noteDraft != null && noteDraft != expectedNote.orEmpty()
-
     fun saveNote() {
-        val text = noteDraft ?: return
-        val expected = expectedNote
+        val text = draft.text ?: return
+        val expected = draft.expected
         val owner = personId ?: return
         val listing = listingId ?: return
         if (saving || detail == null) return
@@ -123,8 +160,7 @@ internal class ProfilePanels(
                 val note = text.takeUnless { it.isBlank() }
                 core.savePersonNote(listing, owner, expected, note)
                 detail = detail?.copy(privateNote = note)
-                expectedNote = note
-                noteDraft = note.orEmpty()
+                draft.accept(note)
             } catch (cancel: CancellationException) { throw cancel }
             catch (failure: Exception) { noteError = failure.message ?: "Notiz konnte nicht gespeichert werden" }
             finally { saving = false }
@@ -159,14 +195,24 @@ internal class ProfilePanels(
 }
 
 @Composable
-internal fun rememberProfilePanels(profile: ProfileResponse?, personId: Long?, filters: String): ProfilePanels {
+internal fun rememberProfilePanels(
+    profile: ProfileResponse?,
+    personId: Long?,
+    filters: String,
+    media: List<ProfileMediaItem>,
+): ProfilePanels {
     val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
     // Owner/snapshot keyed holder: late results cannot update a new person's UI.
     val scope = rememberCoroutineScope()
-    val panels = remember(core, scope, profile?.listingId, profile?.snapshotId, personId) {
-        ProfilePanels(core, scope, profile?.listingId, personId)
+    val draft = rememberNoteDraft(personId)
+    val panels = remember(core, scope, profile?.listingId, profile?.snapshotId, personId, draft) {
+        ProfilePanels(core, scope, profile?.listingId, personId, draft)
     }
-    LaunchedEffect(panels, filters, panels.revision) { panels.load(profile?.snapshotId, filters) }
+    // Local archive changes can alter counts; refreshing while a note write is pending
+    // would race the write's CAS baseline, so wait for completion via the effect key.
+    LaunchedEffect(panels, filters, panels.revision, media, panels.saving) {
+        if (!panels.saving) panels.load(profile?.snapshotId, filters)
+    }
     return panels
 }
 
@@ -242,14 +288,14 @@ private fun NotesPanel(panels: ProfilePanels, owner: Long?, busy: Boolean) {
             else Text(panels.detailError ?: "Person nicht verfügbar.")
             TextButton(onClick = panels::reload, enabled = !busy) { Text("Neu laden") }
         } else {
-            OutlinedTextField(panels.noteDraft.orEmpty(), { panels.noteDraft = it }, modifier = Modifier.fillMaxWidth(),
+            OutlinedTextField(panels.draft.text.orEmpty(), panels.draft::edit, modifier = Modifier.fillMaxWidth(),
                 label = { Text("Notiz") }, minLines = 4, enabled = !busy && !panels.saving)
             Text("Lokal gespeichert, unabhängig von einzelnen Anzeigen.", style = MaterialTheme.typography.bodySmall)
             panels.noteError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = panels::saveNote,
-                    enabled = !busy && !panels.saving && panels.noteDirty()) { Text("Speichern") }
-                TextButton(onClick = panels::reload,
+                    enabled = !busy && !panels.saving && panels.draft.dirty) { Text("Speichern") }
+                TextButton(onClick = panels::discardNote,
                     enabled = !busy && !panels.saving) { Text("Verwerfen / neu laden") }
             }
             if (panels.saving) LinearProgressIndicator(Modifier.fillMaxWidth())

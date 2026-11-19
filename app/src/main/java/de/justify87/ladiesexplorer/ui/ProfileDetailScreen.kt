@@ -25,7 +25,7 @@ internal fun ProfileDetailScreen(
     val profile = state.profile
     val owner = state.profileIdentity?.personId
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
-    val panels = rememberProfilePanels(profile, owner, filters)
+    val panels = rememberProfilePanels(profile, owner, filters, state.profileMedia)
     val tab = tabs.selected(owner)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
