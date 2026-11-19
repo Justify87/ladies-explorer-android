@@ -119,6 +119,9 @@ internal fun DiscoverScreen(
     val latestReadCard by rememberUpdatedState(card)
     val latestReadVisible by rememberUpdatedState(visible)
     val latestRetryLocally by rememberUpdatedState(retryLocally)
+    val markCurrentRead by rememberUpdatedState<(DiscoveryCard) -> Unit>({ target ->
+        if (sameSwipeCard(target, card)) readError = null
+    })
     val reportCurrentRead by rememberUpdatedState<(DiscoveryCard, Exception?) -> Unit>({ target, error ->
         if (sameSwipeCard(target, card)) {
             readError = error?.message ?: if (error == null) null else "Profil konnte nicht geladen werden"
@@ -145,6 +148,7 @@ internal fun DiscoverScreen(
                     if (!eligible()) return@withLock false
                     if (decks[target] != null && explicitRetry == 0) return@withLock true
                     val currentRole = sameSwipeCard(target, latestReadCard)
+                    if (currentRole) markCurrentRead(target)
                     val live = latestReadState
                     val policy = swipeReadPolicy(
                         currentRole, live.activeRunId, target.listingId,
@@ -169,7 +173,7 @@ internal fun DiscoverScreen(
                     } catch (cancel: CancellationException) {
                         throw cancel
                     } catch (failure: Exception) {
-                        if (sameSwipeCard(target, latestReadCard)) {
+                        if (currentRole) {
                             reportCurrentRead(target, failure)
                             true
                         } else {
@@ -188,6 +192,8 @@ internal fun DiscoverScreen(
         LaunchedEffect(decks, model?.revision, heroSize, started) {
             if (!started || sameSwipeCard(target, latestReadCard) || heroSize.width <= 0 || heroSize.height <= 0)
                 return@LaunchedEffect
+            snapshotFlow { latestReadVisible }.first { it }
+            if (sameSwipeCard(target, latestReadCard)) return@LaunchedEffect
             try {
                 warmSwipeImages(context, target, model, heroSize)
             } catch (cancel: CancellationException) {
