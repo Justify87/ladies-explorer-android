@@ -93,23 +93,23 @@ internal class ProfilePanels(
 
 @Composable
 internal fun rememberProfilePanels(
-    profile: ProfileResponse?,
-    personId: Long?,
+    model: ProfileReadModel?,
     filters: String,
-    media: List<ProfileMediaItem>,
     tab: ProfileTab,
 ): ProfilePanels {
     val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
     val scope = rememberCoroutineScope()
-    val panels = remember(core, scope, profile?.listingId, profile?.snapshotId, personId) {
-        ProfilePanels(scope, personId, core::profileFacts, core::personDetail, core::compareSnapshots)
+    val panels = remember(core, scope, model?.profile?.listingId, model?.profile?.snapshotId,
+        model?.identity?.personId, model?.revision) {
+        ProfilePanels(scope, model?.identity?.personId, core::profileFacts, core::personDetail, core::compareSnapshots)
     }
+    DisposableEffect(panels) { onDispose { panels.closeComparison() } }
     val factsVisible = tab == ProfileTab.Info || tab == ProfileTab.Services
     val detailVisible = tab == ProfileTab.Analysis || tab == ProfileTab.History
     LaunchedEffect(panels, filters, panels.revision, factsVisible) {
-        if (factsVisible) panels.loadFacts(profile?.snapshotId, filters)
+        if (factsVisible) panels.loadFacts(model?.profile?.snapshotId, filters)
     }
-    LaunchedEffect(panels, panels.revision, media, detailVisible) {
+    LaunchedEffect(panels, panels.revision, detailVisible) {
         if (detailVisible) panels.loadDetail()
     }
     return panels

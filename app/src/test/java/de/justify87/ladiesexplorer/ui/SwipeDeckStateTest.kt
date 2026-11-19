@@ -54,15 +54,13 @@ class SwipeDeckStateTest {
         assertEquals(Preference.DISLIKE, swipePreference(-96f))
     }
 
-    @Test fun explicitNoneIsCurrentlyAVisitButSkipHasNoPreviousPreference() {
+    @Test fun explicitNoneDoesNotVisitButSkipHasNoPreviousPreference() {
         val session = SwipeSession()
         val cleared = SwipeStep(4, 1, Preference.LIKE, Preference.NONE)
         val rows = listOf(card(4, 1), card(5, 2))
         session.visit(cleared)
-        assertEquals(listOf(5L), session.queue(rows, true).map { it.listingId })
-        assertEquals(Preference.NONE, session.last?.after)
-        session.undo(cleared)
         assertEquals(listOf(4L, 5L), session.queue(rows, true).map { it.listingId })
+        assertNull(session.last)
         val skipped = SwipeStep(4, 1)
         session.visit(skipped)
         assertNull(session.last?.before)
@@ -86,16 +84,58 @@ class SwipeDeckStateTest {
         assertEquals(2L, session.queue(rows, true).first().listingId)
     }
 
-    @Test fun knownGapListingOnlyAdmissionUsesNewOwnerForOldRenderedListing() {
+    @Test fun renderedAdmissionRejectsChangedOwnerRunSessionPreferenceAndBusyState() {
         val rendered = card(4, 1)
-        val changed = rendered.copy(personId = 7L)
-        val state = DiscoverUiState(cards = listOf(changed, card(5)), activeRunId = 2L, loading = false)
-        // Characterizes the bug, NOT the desired target. Replace with rejection of the
-        // rendered owner/run token when T10.2 changes the real admission contract.
-        assertEquals(changed, currentSwipeActionCard(state, false, rendered.listingId))
-        assertNull(currentSwipeActionCard(state, false, 5L))
-        assertNull(currentSwipeActionCard(state.copy(busy = true), false, 4L))
-        assertNull(currentSwipeActionCard(state.copy(loading = true), false, 4L))
-        assertNull(currentSwipeActionCard(state, true, 4L))
+        val state = DiscoverUiState(cards = listOf(rendered, card(5)), activeRunId = 2L,
+            swipeSessionId = 8L, loading = false)
+        val token = requireNotNull(state.swipeToken(fixtureSwipe(4L, 1L)))
+        assertEquals(rendered, currentSwipeActionCard(state, false, token))
+        assertNull(currentSwipeActionCard(state.copy(cards = listOf(rendered.copy(personId = 7L))), false, token))
+        assertNull(currentSwipeActionCard(state.copy(activeRunId = 3L), false, token))
+        assertNull(currentSwipeActionCard(state.copy(swipeSessionId = 9L), false, token))
+        assertNull(currentSwipeActionCard(state.copy(cards = listOf(rendered.copy(preference = Preference.LIKE))), false, token))
+        assertNull(currentSwipeActionCard(state.copy(busy = true), false, token))
+        assertNull(currentSwipeActionCard(state.copy(loading = true), false, token))
+        assertNull(currentSwipeActionCard(state, true, token))
+        assertNull(state.swipeToken(fixtureSwipe(4L, 7L)))
+    }
+    @Test fun nativePersonStateOwnsActionTokenAndMismatchBlocksAdmission() {
+        val row = card(4, 1)
+        val state = DiscoverUiState(cards = listOf(row), loading = false)
+        val native = fixtureSwipe()
+        val profile = native.copy(local = native.local.copy(
+            person = native.person.copy(preference = Preference.LIKE, favorite = true),
+        ))
+        val token = requireNotNull(state.swipeToken(profile))
+        assertEquals(Preference.LIKE, token.preference)
+        assertTrue(token.favorite)
+        assertNull(currentSwipeActionCard(state, false, token))
+        val reconciled = row.copy(preference = Preference.LIKE, favorite = true)
+        assertEquals(reconciled, currentSwipeActionCard(state.copy(cards = listOf(reconciled)), false, token))
+    }
+
+    @Test fun mergeReconcilesVisitedAliasesWithoutCreatingVisitOrRetargetingUndo() {
+        val session = SwipeSession()
+        session.visit(SwipeStep(1, 1, Preference.NONE, Preference.LIKE))
+        session.reconcileMerge(1, 2, 4)
+        assertNull(session.last)
+        assertEquals(listOf(2L), session.excludedPeople)
+        assertEquals(listOf(4L, 3L), session.queue(listOf(card(3), card(2), card(4)), true).map { it.listingId })
+        session.reconcileMerge(2, 3, null)
+        assertEquals(listOf(3L), session.excludedPeople)
+        assertEquals(listOf(4L), session.queue(listOf(card(3), card(4)), true).map { it.listingId })
+        session.reset()
+        assertTrue(session.excludedPeople.isEmpty())
+    }
+    @Test fun traversalWithoutFullProfileStillRejectsReplacedRunSessionAndOwner() {
+        val state = DiscoverUiState(cards = listOf(card(4, 1)), activeRunId = 3L,
+            swipeSessionId = 8L, loading = false)
+        val token = requireNotNull(state.cardToken())
+        assertNull(state.swipeToken(null))
+        assertEquals(4L, currentSwipeTraversalCard(state, false, token)?.listingId)
+        assertNull(currentSwipeTraversalCard(state.copy(swipeSessionId = 9L), false, token))
+        assertNull(currentSwipeTraversalCard(state.copy(activeRunId = 4L), false, token))
+        assertNull(currentSwipeTraversalCard(state.copy(cards = listOf(card(4, 2))), false, token))
+        assertNull(currentSwipeTraversalCard(state.copy(busy = true), false, token))
     }
 }

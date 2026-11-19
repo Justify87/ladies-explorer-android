@@ -110,4 +110,27 @@ class ProfileTabsTest {
         val resolved = notes.updateNote(1L) { it.copy(draft = it.draft!!.useStored()) }
         assertEquals(listOf(2L), resolved.dirtyOwners(1L, 2L))
     }
+    @Test fun noteCallbacksCannotRetargetAfterRenderedContextChanges() = runBlocking {
+        val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
+        val token = requireNotNull(state.swipeToken(fixtureSwipe()))
+        var active: ProfileIdentityToken? = token
+        val calls = mutableListOf<String>()
+        val raw = NoteEditorActions(
+            load = { listing, owner -> calls += "load:$listing:$owner" },
+            edit = { owner, _ -> calls += "edit:$owner" },
+            save = { listing, owner -> calls += "save:$listing:$owner" },
+            useStored = { owner -> calls += "discard:$owner" },
+            keepDraft = { owner -> calls += "keep:$owner" },
+        )
+        val bound = raw.boundTo(token) { it == active }
+        bound.load(4L, 1L)
+        bound.edit(1L, "draft")
+        bound.save(99L, 1L)
+        bound.edit(2L, "wrong owner")
+        active = token.copy(projectionRevision = token.projectionRevision + 1)
+        bound.save(4L, 1L)
+        bound.useStored(1L)
+        bound.keepDraft(1L)
+        assertEquals(listOf("load:4:1", "edit:1"), calls)
+    }
 }

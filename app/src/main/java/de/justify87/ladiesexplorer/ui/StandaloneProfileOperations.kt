@@ -3,23 +3,27 @@ package de.justify87.ladiesexplorer.ui
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Existing standalone IO calls, bound to CoreStore in MainViewModel. No transport or state. */
 internal class StandaloneProfileIo<C : Any>(
-    val loadProfile: suspend (Long) -> ProfileResponse,
+    val loadProfile: suspend (Long, C) -> ProfileResponse,
     val cachedProfile: suspend (Long) -> ProfileResponse?,
-    val profileMedia: suspend (Long) -> List<ProfileMediaItem>,
-    val profileIdentity: suspend (Long) -> ProfileIdentity,
-    val person: suspend (Long) -> PersonSummary?,
-    val changeEvents: suspend (Long) -> List<ChangeRecord>,
-    val identityCandidates: suspend (Long) -> List<IdentityCandidate>,
+    val profileProjection: suspend (Long) -> NativeProfileProjection?,
     val archiveProfileMedia: suspend (Long, C) -> MediaArchiveReport,
     val newArchiveControl: () -> C,
     val cancelArchive: (C) -> Unit,
-    val confirmIdentityMatch: suspend (Long, Long) -> Unit,
+    val confirmIdentityMatch: suspend (Long, Long, Long, Long) -> Unit,
+    val newSourceControl: () -> C,
+    val cancelSource: (C) -> Unit,
 )
 
 /** The existing independent projection owners remain in MainViewModel/SavedSearchController. */
@@ -32,13 +36,14 @@ internal class ProfileProjectionCallbacks(
     val savedSearch: () -> Unit,
     val map: () -> Unit,
     val home: () -> Unit,
+    val admitSwipe: (SwipeActionToken) -> Boolean = { false },
+    val beginMerge: () -> Unit = {},
+    val mergeCommitted: (ProfileIdentityToken, Long) -> Unit = { _, _ -> },
+    val profileChanged: () -> Unit = {},
 )
 
-/**
- * Extracted standalone operation bodies, not the future unified profile controller.
- * The ViewModel still owns the same StateFlows and coroutine lifetime. Generation and
- * archive control are moved here, not duplicated. Known baseline gaps remain for T10.2.
- */
+/** Standalone read/archive lifecycle and the shared, context-neutral identity operation.
+ * Only detail delivery uses profileGeneration. A Swipe merge never opens a detail route. */
 internal class StandaloneProfileOperations<C : Any>(
     private val scope: CoroutineScope,
     private val _searchUiState: MutableStateFlow<SearchUiState>,
@@ -49,96 +54,224 @@ internal class StandaloneProfileOperations<C : Any>(
     private val projections: ProfileProjectionCallbacks,
 ) {
     private val profileGeneration = RequestGeneration()
-    private var archiveControl: C? = null
+    private val projectionGeneration = RequestGeneration()
+    private class MissingLocalProfile : IllegalStateException("Kein gespeichertes Profil vorhanden")
+    private class NativeProfileCall<C>(val control: C) {
+        val drained = CompletableDeferred<Unit>()
+        var cancelled = false
+        fun cancel(signal: (C) -> Unit) {
+            if (!cancelled) {
+                cancelled = true
+                signal(control)
+            }
+        }
+    }
+    private var archiveCall: NativeProfileCall<C>? = null
+    private var sourceCall: NativeProfileCall<C>? = null
+    private var presentationVisible = true
+    private var requestedListingId: Long? = null
+    private var requestedPersonId: Long = 0L
+    private var localProfileKnown = false
+
+    private fun currentDetail(session: Long, listingId: Long): Boolean =
+        presentationVisible && profileGeneration.isCurrent(session) &&
+            _searchUiState.value.profileOpen && requestedListingId == listingId
+
+    /** All detail reads, including archive completion and mutation recovery, use
+     * one delivery owner. A superseded success or failure has no UI side effect. */
+    private suspend fun readDetail(
+        session: Long,
+        listingId: Long,
+        allowMissing: Boolean = false,
+        publish: SearchUiState.(NativeProfileProjection, Long) -> SearchUiState,
+    ): NativeProfileProjection? {
+        if (!currentDetail(session, listingId)) return null
+        projectionGeneration.invalidate()
+        val ticket = projectionGeneration.value
+        fun admitted() = currentDetail(session, listingId) && projectionGeneration.isCurrent(ticket)
+        try {
+            val local = io.profileProjection(listingId) ?: throw MissingLocalProfile()
+            check(local.profile.listingId == listingId && local.identity.personId == local.person.personId) {
+                "Inkonsistente Profilprojektion"
+            }
+            coroutineContext.ensureActive()
+            if (!admitted()) return null
+            localProfileKnown = true
+            _searchUiState.update { it.publish(local, ticket) }
+            return local
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (failure: Exception) {
+            if (!admitted()) return null
+            _searchUiState.update {
+                it.invalidateMergedProfile(listingId).copy(
+                    profileSourceRetryAllowed = allowMissing && !localProfileKnown && failure is MissingLocalProfile,
+                )
+            }
+            throw failure
+        }
+    }
+
+    private fun revokeDetail(session: Long, listingId: Long) {
+        if (!currentDetail(session, listingId)) return
+        projectionGeneration.invalidate()
+        _searchUiState.update { it.invalidateMergedProfile(listingId) }
+    }
+
+    private fun SearchUiState.withProjection(
+        local: NativeProfileProjection,
+        revision: Long,
+        fromArchive: Boolean = profileFromArchive,
+        warning: String? = profileRead?.warning ?: mediaWarning,
+    ) = copy(
+        profileRead = ProfileReadModel(local, fromArchive, warning, revision),
+        retryProfileListingId = null,
+        profileRetryFromArchive = false,
+        profileSourceRetryAllowed = false,
+    )
 
     fun invalidateProfileRequest() {
         profileGeneration.invalidate()
-        archiveControl?.let(io.cancelArchive)
-        archiveControl = null
+        projectionGeneration.invalidate()
+        sourceCall?.cancel(io.cancelSource)
+        archiveCall?.cancel(io.cancelArchive)
     }
 
     fun cancelMediaArchive() {
-        archiveControl?.let(io.cancelArchive)
-        _searchUiState.update { it.copy(archiving = false) }
+        // Cancellation is a signal, not completion; the native call still owns the slot.
+        archiveCall?.cancel(io.cancelArchive)
     }
 
     fun closeProfile() {
+        requestedListingId = null
         invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(profileOpen = false, profile = null, profileIdentity = null, profileFromArchive = false, selectedPersonId = null,
-                selectedPerson = null, profileMedia = emptyList(), loading = false,
-                archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
-                actionBusy = false, actionError = null, error = null)
+            it.copy(profileOpen = false, profileRead = null, profileRetryFromArchive = false, profileSourceRetryAllowed = false,
+                loading = false, archiving = false, actionBusy = false, actionError = null,
+                error = null, retryProfileListingId = null, mediaArchive = null, mediaWarning = null)
         }
     }
 
     fun loadProfile(listingId: Long, personId: Long, beforeOpen: () -> Unit) {
+        if (!presentationVisible) return
         invalidateProfileRequest()
+        requestedListingId = listingId
+        requestedPersonId = personId
+        localProfileKnown = false
         beforeOpen()
         val requestId = profileGeneration.value
         _searchUiState.update {
-            it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
-                loading=true,profile=null,profileIdentity=null,profileFromArchive=false,profileMedia=emptyList(),changeEvents=emptyList(),
-                identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
-                mediaArchive=null,mediaWarning=null,archiving=false)
+            it.copy(profileOpen=true,profileSessionId=requestId,loading=true,
+                profileRead=null,profileRetryFromArchive=false,profileSourceRetryAllowed=false,error=null,actionBusy=false,actionError=null,
+                mediaArchive=null,mediaWarning=null,archiving=false,retryProfileListingId=null)
         }
         scope.launch {
+            var localReadReady = false
+            var missingInitialProfile = false
+            var showingArchive = false
+            var refreshError: String? = null
             try {
-                var showingArchive = false
-                var refreshError: String? = null
-                val profile = try {
+                sourceCall?.drained?.await()
+                archiveCall?.drained?.await()
+                if (!profileGeneration.isCurrent(requestId)) return@launch
+                try {
+                    val call = NativeProfileCall(io.newSourceControl())
+                    check(sourceCall == null)
+                    sourceCall = call
                     try {
-                        io.loadProfile(listingId)
+                        withContext(NonCancellable) {
+                            io.loadProfile(listingId, call.control)
+                            if (requestedListingId == listingId) localProfileKnown = true
+                        }
+                        coroutineContext.ensureActive()
                     } finally {
+                        if (sourceCall === call) sourceCall = null
                         // A source read can persist before a later failure or invalidation.
-                        projections.savedSearch()
-                        projections.discovery()
+                        try {
+                            projections.profileChanged()
+                            projections.savedSearch()
+                            projections.discovery()
+                            projections.map()
+                        } finally {
+                            call.drained.complete(Unit)
+                        }
                     }
                 } catch (failure: CancellationException) {
                     throw failure
                 } catch (failure: Exception) {
-                    val archived = io.cachedProfile(listingId) ?: throw failure
+                    if (!profileGeneration.isCurrent(requestId)) return@launch
+                    if (io.cachedProfile(listingId) == null) {
+                        missingInitialProfile = true
+                        throw failure
+                    }
+                    localProfileKnown = true
                     showingArchive = true
                     refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
-                    archived
                 }
                 if (!profileGeneration.isCurrent(requestId)) return@launch
-                val items = io.profileMedia(profile.snapshotId)
-                val identity = io.profileIdentity(listingId)
-                val person = io.person(identity.personId)
-                val changes = io.changeEvents(identity.personId)
-                val candidates = io.identityCandidates(listingId)
-                if (!profileGeneration.isCurrent(requestId)) return@launch
-                _searchUiState.update {
-                    it.copy(loading=false,profile=profile,profileIdentity=identity,profileFromArchive=showingArchive,
-                        selectedPersonId=identity.personId,selectedPerson=person,
-                        profileMedia=items,changeEvents=changes,identityCandidates=candidates,
+                localReadReady = true
+                val local = readDetail(requestId, listingId) { value, revision ->
+                    withProjection(value, revision, showingArchive, refreshError).copy(loading=false,
                         mediaWarning=refreshError,archiving=!showingArchive)
-                }
-                projections.map()
+                } ?: return@launch
                 if (showingArchive) return@launch
-                val control = io.newArchiveControl()
-                archiveControl = control
+                val profile = local.profile
+                val call = NativeProfileCall(io.newArchiveControl())
+                check(archiveCall == null)
+                archiveCall = call
                 try {
-                    val report = io.archiveProfileMedia(profile.snapshotId,control)
-                    val updatedMedia = io.profileMedia(profile.snapshotId)
-                    if (profileGeneration.isCurrent(requestId)) {
-                        _searchUiState.update { it.copy(profileMedia=updatedMedia,mediaArchive=report) }
+                    // Archive persistence is incremental. A failed call can have
+                    // committed media, so outcome and local projection are independent.
+                    var archiveWarning: String? = null
+                    val report = try {
+                        withContext(NonCancellable) {
+                            io.archiveProfileMedia(profile.snapshotId, call.control)
+                        }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (failure: Exception) {
+                        archiveWarning = failure.message ?: "Medienarchivierung fehlgeschlagen"
+                        null
                     }
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (failure: Exception) {
+                    coroutineContext.ensureActive()
                     if (profileGeneration.isCurrent(requestId)) {
-                        _searchUiState.update {
-                            it.copy(mediaWarning=failure.message ?: "Medienarchivierung fehlgeschlagen")
+                        try {
+                            readDetail(requestId, listingId) { updated, revision ->
+                                withProjection(updated, revision)
+                            }
+                            if (currentDetail(requestId, listingId)) {
+                                _searchUiState.update {
+                                    it.copy(
+                                        mediaArchive = report?.takeIf { _ -> it.profile?.snapshotId == profile.snapshotId },
+                                        mediaWarning = archiveWarning,
+                                    )
+                                }
+                            }
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Exception) {
+                            if (profileGeneration.isCurrent(requestId)) {
+                                _searchUiState.update {
+                                    // Revoke stale actions and retry the projection, not the archive.
+                                    it.copy(
+                                        mediaWarning = archiveWarning,
+                                        error = "Profilansicht konnte nicht aktualisiert werden.",
+                                    )
+                                }
+                            }
                         }
                     }
                 } finally {
-                    if (archiveControl === control) archiveControl = null
+                    if (archiveCall === call) archiveCall = null
                     if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(archiving=false) }
                     // Even a cancelled archive may already have committed individual media.
-                    projections.savedSearch()
-                    projections.discovery()
+                    try {
+                        projections.profileChanged()
+                        projections.savedSearch()
+                        projections.discovery()
+                    } finally {
+                        call.drained.complete(Unit)
+                    }
                 }
             } catch (cancellation: CancellationException) {
                 if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(loading=false,archiving=false) }
@@ -146,72 +279,202 @@ internal class StandaloneProfileOperations<C : Any>(
             } catch (failure: Exception) {
                 if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update {
-                        it.copy(loading=false,archiving=false,error=failure.message ?: "Profil konnte nicht geladen werden")
+                        it.copy(loading=false,archiving=false,error=failure.message ?: "Profil konnte nicht geladen werden",
+                            retryProfileListingId = listingId,
+                            profileSourceRetryAllowed = missingInitialProfile && !localReadReady,
+                            profileRetryFromArchive = showingArchive, mediaWarning = refreshError)
                     }
                 }
             }
         }
     }
 
-    fun confirmIdentity(listingId: Long, targetPersonId: Long) {
+    /** ON_STOP revokes delivery, not native execution ownership. Resume only projects locally. */
+    fun setPresentationVisible(visible: Boolean) {
+        if (presentationVisible == visible) return
+        presentationVisible = visible
         val active = _searchUiState.value
-        val sourceOwner = active.currentIdentityConfirmationOwner(listingId, _discoverState.value.busy) ?: return
+        val listing = requestedListingId ?: return
+        if (!active.profileOpen) return
+        if (!visible) {
+            invalidateProfileRequest()
+            _searchUiState.update {
+                it.copy(profileSessionId = profileGeneration.value, profileRead = null,
+                    profileRetryFromArchive = it.profileRead?.fromArchive ?: it.profileRetryFromArchive,
+                    profileSourceRetryAllowed = false,
+                    retryProfileListingId = listing, loading = false, archiving = false,
+                    actionBusy = false, actionError = null, mediaArchive = null)
+            }
+        } else {
+            val ticket = profileGeneration.value
+            scope.launch {
+                _discoverState.first { !it.busy }
+                if (presentationVisible && profileGeneration.isCurrent(ticket)) retryProfileProjection()
+            }
+        }
+    }
+
+    /** Mutation completion and rejection use the same local projection owner. */
+    suspend fun refreshLocalProfileForOwner(personId: Long) {
+        val active = _searchUiState.value
+        val listingId = active.profile?.listingId ?: return
+        if (!active.profileOpen || active.selectedPersonId != personId) return
+        refreshLocalProfile(active.profileSessionId, listingId)
+    }
+
+    suspend fun refreshLocalProfile(session: Long, listingId: Long) {
+        readDetail(session, listingId) { local, revision -> withProjection(local, revision) }
+    }
+
+    /** Recover locally first. Only an explicit retry after confirmed local absence
+     * may start a first source read; a known persisted profile never replays it. */
+    fun retryProfileProjection() {
+        val active = _searchUiState.value
+        val listingId = active.retryProfileListingId ?: return
+        if (!presentationVisible || !active.profileOpen || active.actionBusy || _discoverState.value.busy) return
+        val requestId = profileGeneration.value
+        val explicitSourceRetry = active.profileSourceRetryAllowed
+        _searchUiState.update { it.copy(actionBusy = true, actionError = null, error = null) }
+        scope.launch {
+            try {
+                sourceCall?.drained?.await()
+                archiveCall?.drained?.await()
+                if (!presentationVisible || !profileGeneration.isCurrent(requestId)) return@launch
+                try {
+                    readDetail(requestId, listingId, allowMissing = true) { local, revision ->
+                        withProjection(local, revision)
+                    }
+                } catch (missing: MissingLocalProfile) {
+                    if (explicitSourceRetry && !localProfileKnown && currentDetail(requestId, listingId)) {
+                        loadProfile(listingId, requestedPersonId) {}
+                        return@launch
+                    }
+                    throw missing
+                }
+                projections.discovery()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                if (profileGeneration.isCurrent(requestId)) {
+                    _searchUiState.update { it.copy(actionError = if (failure is MissingLocalProfile)
+                        if (_searchUiState.value.profileSourceRetryAllowed)
+                            "Kein lokales Profil vorhanden. Online-Abruf kann ausdrücklich wiederholt werden."
+                        else "Gespeichertes Profil momentan nicht verfügbar."
+                        else "Ansicht konnte nicht aktualisiert werden.") }
+                }
+            } finally {
+                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(actionBusy = false) }
+            }
+        }
+    }
+
+    fun confirmIdentity(token: ProfileIdentityToken, targetPersonId: Long) {
+        val active = _searchUiState.value
+        if (_discoverState.value.busy || active.actionBusy || active.loading ||
+            token.ownerId == targetPersonId || token.candidates.none { it.personId == targetPersonId }) return
+        val detailRequest = when (token) {
+            is DetailIdentityToken -> {
+                if (active.currentIdentityConfirmationOwner(token, targetPersonId, false) == null) return
+                token.sessionId
+            }
+            is SwipeActionToken -> {
+                if (active.profileOpen || !projections.admitSwipe(token)) return
+                null
+            }
+        }
+        val sourceOwner = token.ownerId
+        val listingId = token.listingId
+        fun detailCurrent() = detailRequest != null && profileGeneration.isCurrent(detailRequest)
+        fun report(message: String) {
+            if (detailCurrent()) _searchUiState.update { it.copy(actionError = message) }
+            else _discoverState.update { it.copy(mutationError = message) }
+        }
         val dirtyOwners = _profileNotes.value.dirtyOwners(sourceOwner, targetPersonId)
         if (dirtyOwners.isNotEmpty()) {
-            _searchUiState.update { it.copy(actionError =
-                "Ungespeicherte Notiz für Person(en) ${dirtyOwners.joinToString()}. Vor Zusammenführung speichern oder verwerfen.") }
+            report("Ungespeicherte Notiz für Person(en) ${dirtyOwners.joinToString()}. Vor Zusammenführung speichern oder verwerfen.")
             return
         }
-        val requestId = profileGeneration.value
+        projections.beginMerge()
         val epoch = projections.nextEpoch()
-        archiveControl?.let(io.cancelArchive)
+        val pendingSource = sourceCall
+        val pendingArchive = archiveCall
+        pendingSource?.cancel(io.cancelSource)
+        pendingArchive?.cancel(io.cancelArchive)
         // The mutation outlives the detail screen. Keep the shared write guard until
         // it finishes even if Back clears the screen's own actionBusy flag.
         _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
             savedLoadingMore = false, savedRecentLoadingMore = false, mutationError = null) }
-        _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
+        if (detailCurrent()) _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
         scope.launch {
             var committed = false
-            var profileUpdated = false
             var projectionUpdated = false
             try {
-                io.confirmIdentityMatch(listingId, targetPersonId)
-                committed = true
-                for (owner in listOf(sourceOwner, targetPersonId)) {
-                    noteReadTickets.invalidate(owner)
-                }
-                _profileNotes.update { it - sourceOwner - targetPersonId }
-                val identity = io.profileIdentity(listingId)
-                val history = io.changeEvents(identity.personId)
-                val candidates = io.identityCandidates(listingId)
-                val person = io.person(identity.personId)
-                if (profileGeneration.isCurrent(requestId)) {
-                    _searchUiState.update {
-                        if (it.profile?.listingId == listingId) {
-                            it.copy(selectedPersonId = identity.personId, profileIdentity = identity,
-                                selectedPerson = person, changeEvents = history, identityCandidates = candidates)
-                        } else it
+                pendingSource?.drained?.await()
+                pendingArchive?.drained?.await()
+                coroutineContext.ensureActive()
+                // Once sent, the native write and its commit bookkeeping must drain together.
+                withContext(NonCancellable) {
+                    io.confirmIdentityMatch(listingId, sourceOwner, token.snapshotId, targetPersonId)
+                    committed = true
+                    for (owner in listOf(sourceOwner, targetPersonId)) {
+                        noteReadTickets.invalidate(owner)
+                    }
+                    _profileNotes.update { it - sourceOwner - targetPersonId }
+                    projections.mergeCommitted(token, targetPersonId)
+                    if (detailCurrent()) {
+                        revokeDetail(detailRequest!!, listingId)
                     }
                 }
-                profileUpdated = true
+                coroutineContext.ensureActive()
+                // A failed detail read must not suppress the independent feed projection.
+                var detailFailed = false
+                if (token is DetailIdentityToken) {
+                    try {
+                        refreshLocalProfile(token.sessionId, listingId)
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        detailFailed = true
+                    }
+                }
                 projectionUpdated = projections.projectDiscovery(epoch)
+                if (detailFailed || !projectionUpdated) {
+                    report("Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden.")
+                }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
                 val message = if (committed) "Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
                     else failure.message ?: "Zusammenführung fehlgeschlagen"
-                if (profileGeneration.isCurrent(requestId)) {
-                    _searchUiState.update {
-                        it.identityConfirmationFailure(message, committed, profileUpdated)
+                if (!committed) {
+                    // A rejection can mean that the rendered evidence/owner has
+                    // changed. Reconcile independently; no write or note is replayed.
+                    projections.profileChanged()
+                    if (token is DetailIdentityToken && detailCurrent()) {
+                        try {
+                            refreshLocalProfile(token.sessionId, listingId)
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (_: Exception) {
+                            // readDetail already revoked the stale capabilities.
+                        }
                     }
-                } else {
-                    _discoverState.update { it.copy(mutationError = message) }
+                    try {
+                        projectionUpdated = projections.projectDiscovery(epoch)
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        // Independent owners retain their read error/retry state.
+                    }
+                    projections.savedSearch()
+                    projections.map()
                 }
+                report(message)
             } finally {
-                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(actionBusy = false) }
+                if (detailCurrent()) _searchUiState.update { it.copy(actionBusy = false) }
                 if (epoch == projections.epoch()) {
                     _discoverState.update { it.copy(busy = false) }
-                    if (committed && !projectionUpdated || projections.pending()) projections.discovery()
+                    if (!projectionUpdated || projections.pending()) projections.discovery()
                 }
                 if (committed) {
                     projections.savedSearch()

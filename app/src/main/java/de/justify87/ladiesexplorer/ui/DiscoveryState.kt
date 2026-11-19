@@ -59,11 +59,14 @@ internal suspend fun writeAndProject(
     project: suspend () -> Unit,
     afterWrite: suspend () -> Unit = {},
     onWriteFailure: () -> Unit = {},
+    recoverWriteFailure: suspend () -> Unit = {},
 ): DiscoveryMutationOutcome {
     val writeFailure = failureOf(write)
     if (writeFailure != null) {
         onWriteFailure()
-        return DiscoveryMutationOutcome.WriteFailed(writeFailure, failureOf(project))
+        val recoveryFailure = failureOf(recoverWriteFailure)
+        val feedFailure = failureOf(project)
+        return DiscoveryMutationOutcome.WriteFailed(writeFailure, feedFailure ?: recoveryFailure)
     }
     val detailFailure = failureOf(afterWrite)
     val feedFailure = failureOf(project)
@@ -124,8 +127,13 @@ internal class DiscoveryProjectionPublisher(
         if (projection.runId == null) onLocalWindow(projection.page.cards.size)
         _searchUiState.update { it.copy(activeCards = projection.visible) }
         _discoverState.update {
+            val next = swipeSession.queue(projection.page.cards, active = projection.runId != null)
+            val mergeNotice = it.pendingMergeListingId?.let { listing ->
+                if (next.firstOrNull()?.listingId == listing) "Personen zusammengeführt."
+                else "Personen zusammengeführt. Die bisherige Anzeige ist nicht mehr die nächste zulässige Karte."
+            } ?: it.mergeNotice
             it.copy(
-                cards = swipeSession.queue(projection.page.cards, active = projection.runId != null),
+                cards = next, pendingMergeListingId = null, mergeNotice = mergeNotice,
                 replayLikes = swipeSession.replayLikes,
                 canUndoSwipe = swipeSession.last != null,
                 activeRunId = projection.runId,
@@ -177,7 +185,7 @@ internal suspend fun projectMapOverview(
         throw cancelled
     } catch (failure: Exception) {
         if (current()) state.update {
-            it.copy(loading = false, error = failure.message ?: "Karte konnte nicht geladen werden")
+            it.copy(overview = null, loading = false, error = failure.message ?: "Karte konnte nicht geladen werden")
         }
     }
 }

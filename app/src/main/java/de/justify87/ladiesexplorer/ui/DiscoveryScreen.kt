@@ -19,6 +19,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 
 @Composable
 internal fun DiscoverScreen(
@@ -28,66 +30,127 @@ internal fun DiscoverScreen(
     noteActions: NoteEditorActions,
     searchLoading: Boolean = false,
     executedFiltersJson: String = "{}",
-    onRefresh: () -> Unit,
-    onReset: () -> Unit,
-    onUndo: () -> Unit,
-    onReplayLikes: (Boolean) -> Unit,
-    onSkip: (Long) -> Unit,
-    onChoose: (Long, Preference) -> Unit,
-    onSnapshotChanged: () -> Unit,
-    onFavorite: (Long) -> Unit,
-    onProfile: (Long, Long) -> Unit,
+    onRefresh: (SwipeDeckToken) -> Unit,
+    onReset: (SwipeDeckToken) -> Unit,
+    onUndo: (SwipeDeckToken) -> Unit,
+    onReplayLikes: (SwipeDeckToken, Boolean) -> Unit,
+    onSkip: (SwipeCardToken) -> Unit,
+    onChoose: (SwipeActionToken, Preference) -> Unit,
+    onSwipeVisibility: (Boolean) -> Unit,
+    onRenderedSwipe: (SwipeActionToken?) -> Unit,
+    onProjectionMismatch: (SwipeActionToken) -> Unit,
+    onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
+    onSnapshotChanged: (Boolean) -> Unit,
+    onFavorite: (ProfileIdentityToken) -> Unit,
+    isProfileCurrent: (ProfileIdentityToken) -> Boolean,
+    onProfile: (SwipeCardToken) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val card = state.cards.firstOrNull()
+    val deckToken = state.deckToken()
+    val cardToken = state.cardToken()
     val context = LocalContext.current
     val core = (context.applicationContext as LadiesApplication).coreStore
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
-    val visible = lifecycle.isAtLeast(Lifecycle.State.STARTED) && !searchLoading && !state.loading && !state.busy
-    val enabled = !state.busy && !state.loading && !searchLoading
-    val decks = remember(state.activeRunId) { SwipeProfileWindow(mutableStateMapOf()) }
-    var retry by remember(card?.listingId) { mutableIntStateOf(0) }
-    var readError by remember(card?.listingId) { mutableStateOf<String?>(null) }
-    val current = card?.let { decks[it.listingId] }
+    val started = lifecycle.isAtLeast(Lifecycle.State.STARTED)
+    DisposableEffect(started) {
+        onSwipeVisibility(started)
+        onDispose { onSwipeVisibility(false) }
+    }
+    val visible = started && !searchLoading && !state.loading && !state.busy
+    val enabled = visible
+    val decks = remember(state.activeRunId, state.swipeProfileRevision, started) {
+        SwipeProfileWindow(mutableStateMapOf(), state.swipeExternalRevision)
+    }
+    DisposableEffect(decks) { onDispose { decks.close() } }
+    var retry by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableIntStateOf(0) }
+    var readError by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf<String?>(null) }
+    var retryLocally by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf(false) }
+    val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }?.let { decks[it] }
+    val projectedToken = state.swipeToken(current)
+    val token = projectedToken?.takeIf { visible && currentSwipeActionCard(state, searchLoading, it) != null }
+    // Native person state is authoritative for rendering; stale queue membership
+    // must be reconciled before enabling callbacks. Do not spin on a persistent mismatch.
+    var lastMismatch by remember(state.activeRunId, card?.listingId, card?.personId) {
+        mutableStateOf<Pair<Pair<Preference, Boolean>, Pair<Preference, Boolean>>?>(null)
+    }
+    LaunchedEffect(projectedToken, card?.preference, card?.favorite, visible) {
+        if (!visible || projectedToken == null || card == null) return@LaunchedEffect
+        val queueState = card.preference to card.favorite
+        val profileState = projectedToken.preference to projectedToken.favorite
+        if (queueState == profileState) lastMismatch = null
+        else if (lastMismatch != (queueState to profileState)) {
+            lastMismatch = queueState to profileState
+            onProjectionMismatch(projectedToken)
+        }
+    }
+    SideEffect { onRenderedSwipe(token) }
+    var confirmation by remember(token) { mutableStateOf<Long?>(null) }
+    confirmation?.let { target ->
+        IdentityConfirmationDialog(target, enabled = token != null && visible,
+            onConfirm = { confirmation = null; token?.let { onConfirmIdentity(it, target) } },
+            onDismiss = { confirmation = null })
+    }
     val owner = current?.identity?.personId ?: card?.personId
     val tab = tabs.selected(owner)
-    val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson, current?.media.orEmpty(), tab)
-    rememberProfileNote(current?.profile?.listingId, current?.identity?.personId, noteActions, state.busy, tab == ProfileTab.Notes)
+    val boundNotes = noteActions.boundTo(token, isProfileCurrent)
+    val panels = rememberProfilePanels(current, executedFiltersJson, tab)
+    rememberProfileNote(token, boundNotes, state.busy || token == null, tab == ProfileTab.Notes)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
-    val control = remember(state.activeRunId, card?.listingId, retry, visible) { RequestControl() }
+    SideEffect {
+        decks.retain(window)
+        decks.applyExternalRevision(state.swipeExternalRevision)
+    }
+    val control = remember(decks, card?.listingId, card?.personId, decks.invalidation(card), retry, visible) { RequestControl() }
     DisposableEffect(control) { onDispose { control.cancel() } }
     LaunchedEffect(control) {
-        if (!visible || card == null || current != null && retry == 0) return@LaunchedEffect
+        if (!visible || card == null || decks[card] != null && retry == 0) return@LaunchedEffect
         readError = null
         try {
-            decks.readCurrent(card.listingId) {
-                core.readSwipeProfile(card.listingId, control, refresh = true, onSourceRead = onSnapshotChanged)
+            decks.retain(window)
+            decks.readCurrent(card) { invalidateOtherProfiles ->
+                val localOnly = retryLocally || decks.requiresLocal(card) || card.listingId in state.localProfileStrictIds
+                val preferLocal = localOnly || decks.invalidation(card) != 0L || card.listingId in state.localProfileReloadIds
+                core.readSwipeProfile(card.listingId, control, refresh = !preferLocal,
+                    allowNetwork = !localOnly, onSourceRead = {
+                        invalidateOtherProfiles()
+                        onSnapshotChanged(decks.closed)
+                    })
             }
             retry = 0
+            retryLocally = false
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (failure: Exception) {
+            retryLocally = retryLocally || failure is LocalProfileReadFailure
             readError = failure.message ?: "Profil konnte nicht geladen werden"
         }
     }
-    val prefetchControl = remember(state.activeRunId, window.map { it.listingId }, visible, current != null, state.busy) {
+    val prefetchControl = remember(decks, window.map { it.listingId to it.personId }, visible, state.busy) {
         RequestControl()
     }
     DisposableEffect(prefetchControl) { onDispose { prefetchControl.cancel() } }
     LaunchedEffect(prefetchControl) {
-        decks.retain(window.map { it.listingId })
-        if (!visible || state.busy || current == null) return@LaunchedEffect
+        decks.retain(window)
+        if (!visible || state.busy || card == null) return@LaunchedEffect
+        // Wait for the first current projection, not for every subsequent refresh.
+        // Prefetch may itself invalidate the current entry; do not cancel its own control.
+        snapshotFlow { decks[card] }.filterNotNull().first()
         for (next in upcoming) {
             try {
-                val profile = decks.prefetch(next.listingId) {
+                val profile = decks.prefetch(next) { invalidateOtherProfiles ->
                     core.readSwipeProfile(next.listingId, prefetchControl,
-                        refresh = false, allowNetwork = state.activeRunId != null,
-                        onSourceRead = onSnapshotChanged)
+                        refresh = false, allowNetwork = state.activeRunId != null && !decks.requiresLocal(next) &&
+                            next.listingId !in state.localProfileStrictIds,
+                        onSourceRead = {
+                            invalidateOtherProfiles()
+                            onSnapshotChanged(decks.closed)
+                        })
                 }
-                warmSwipeImages(context, next, profile)
+                if (profile != null) warmSwipeImages(context, next, profile)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (_: Exception) {
@@ -108,16 +171,17 @@ internal fun DiscoverScreen(
                 else "Aktive Suche · ${state.activeVisibleCount} sichtbar · ${state.cards.size} im Deck",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { decks.clear(); onRefresh() }, enabled = enabled) { Text("Aktualisieren") }
+            TextButton(onClick = { onRefresh(deckToken) }, enabled = enabled) { Text("Aktualisieren") }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (state.activeRunId != null) FilterChip(
-                selected = state.replayLikes, enabled = enabled, onClick = { onReplayLikes(!state.replayLikes) },
+                selected = state.replayLikes, enabled = enabled, onClick = { onReplayLikes(deckToken, !state.replayLikes) },
                 label = { Text("Likes erneut zeigen") },
             )
-            TextButton(onClick = onUndo, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
-            TextButton(onClick = { decks.clear(); onReset() }, enabled = enabled) { Text("Reset") }
+            TextButton(onClick = { onUndo(deckToken) }, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
+            TextButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Reset") }
         }
+        state.mergeNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         state.mutationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (state.loading && card == null) {
@@ -127,19 +191,17 @@ internal fun DiscoverScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
                     Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
-                    OutlinedButton(onClick = onReset, enabled = enabled) { Text("Deck neu beginnen") }
+                    OutlinedButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Deck neu beginnen") }
                 }
             }
-        } else key(card.listingId) {
+        } else key(card.listingId, card.personId) {
             val profile = current
-            val matchesOwner = profile == null || profile.identity.personId == card.personId
-            val actions = enabled && matchesOwner
+            val matchesOwner = profile != null && profile.identity.personId == card.personId
+            val actions = enabled && token != null
             val density = LocalDensity.current.density
             var drag by remember { mutableFloatStateOf(0f) }
             val listState = rememberLazyListState()
-            val person = profile?.person?.takeIf { matchesOwner }?.copy(
-                preference = card.preference, favorite = card.favorite,
-            )
+            val person = profile?.person?.takeIf { matchesOwner }
             val fallback = listOfNotNull(card.thumbnailUrl?.let {
                 ProfileMediaItem("IMAGE", it, card.localPath, 0u)
             } ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
@@ -154,7 +216,7 @@ internal fun DiscoverScreen(
                             media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             modifier = Modifier.fillMaxWidth().height(heroHeight)
                                 .graphicsLayer { translationX = drag; rotationZ = drag / (45 * density) }
-                                .pointerInput(card.listingId, actions, density) {
+                                .pointerInput(token, actions, density) {
                                     if (actions) detectHorizontalDragGestures(
                                         onHorizontalDrag = { change, delta ->
                                             change.consume()
@@ -163,19 +225,25 @@ internal fun DiscoverScreen(
                                         onDragEnd = {
                                             val decision = swipePreference(drag / density)
                                             drag = 0f
-                                            decision?.let { onChoose(card.listingId, it) }
+                                            if (token != null && decision != null) onChoose(token, decision)
                                         },
                                         onDragCancel = { drag = 0f },
                                     )
                                 },
                             originalUrl = profile?.identity?.profileUrl,
+                            actionsEnabled = actions,
+                            isCurrent = { token?.let(isProfileCurrent) == true },
                         )
                     }
                     item(key = "header") {
                         if (profile == null) ProfileIdentityHeader(card.name, card.city, hasVideo = card.hasVideo)
                         else ProfileHeader(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
-                        if (!matchesOwner) Text("Personenzuordnung geändert. Bitte aktualisieren.")
+                        
                         profile?.warning?.let { Text(it) }
+                        if (visible && projectedToken != null && token == null) {
+                            Text("Profil- und Deckzustand unterscheiden sich. Bitte Ansicht aktualisieren.",
+                                color = MaterialTheme.colorScheme.error)
+                        }
                         readError?.let {
                             Text(it, color = MaterialTheme.colorScheme.error)
                             TextButton(onClick = { decks.remove(card.listingId); retry++ }, enabled = enabled) { Text("Profil erneut laden") }
@@ -184,24 +252,23 @@ internal fun DiscoverScreen(
                     }
                     item(key = "actions") {
                         ProfileActionRail(person, profile?.profile?.phoneDisplay, !actions,
-                            onFavorite = onFavorite, onPreference = { _, preference -> onChoose(card.listingId, preference) })
-                        if (person == null) TextButton(onClick = { onFavorite(card.personId) }, enabled = actions) {
-                            Text(if (card.favorite) "Favorit entfernen" else "Favorit")
-                        }
-                        TextButton(onClick = { onProfile(card.listingId, card.personId) }, enabled = enabled) { Text("Profil öffnen") }
+                            onFavorite = { token?.let(onFavorite) },
+                            onPreference = { _, preference -> token?.let { onChoose(it, preference) } },
+                            isCurrent = { token?.let(isProfileCurrent) == true })
+                        TextButton(onClick = { cardToken?.let(onProfile) }, enabled = enabled && cardToken != null) { Text("Profil öffnen") }
                     }
                     if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
                         panels, tab, selectTab, profile.candidates, profile.history, !actions,
-                        owner?.let(notes::get) ?: NoteEditorState(), noteActions, onConfirm = null, onOpenDetail = { onProfile(card.listingId, card.personId) })
+                        owner?.let(notes::get) ?: NoteEditorState(), boundNotes, onConfirm = { target -> if (token != null) confirmation = target })
                     else card.description?.let { item { Text(it) } }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(onClick = { onChoose(card.listingId, Preference.DISLIKE) },
+                OutlinedButton(onClick = { token?.let { onChoose(it, Preference.DISLIKE) } },
                     enabled = actions, modifier = Modifier.weight(1f)) { Text("Nein") }
-                OutlinedButton(onClick = { onSkip(card.listingId) },
-                    enabled = enabled, modifier = Modifier.weight(1f)) { Text("Später") }
-                Button(onClick = { onChoose(card.listingId, Preference.LIKE) },
+                OutlinedButton(onClick = { cardToken?.let(onSkip) },
+                    enabled = enabled && cardToken != null, modifier = Modifier.weight(1f)) { Text("Später") }
+                Button(onClick = { token?.let { onChoose(it, Preference.LIKE) } },
                     enabled = actions, modifier = Modifier.weight(1f)) { Text("Gefällt") }
             }
         }

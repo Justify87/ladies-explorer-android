@@ -137,6 +137,9 @@ class CoreStore(context: Context) {
         recorded("setPreference") { engine.setPreference(personId, preference) }
     }
 
+    suspend fun setListingFavorite(listingId: Long, personId: Long, expected: Boolean, favorite: Boolean) =
+        withContext(Dispatchers.IO) { engine.setListingFavorite(listingId, personId, expected, favorite) }
+
     suspend fun setFavorite(personId: Long, favorite: Boolean) = withContext(Dispatchers.IO) {
         recorded("setFavorite") { engine.setFavorite(personId, favorite) }
     }
@@ -172,19 +175,13 @@ class CoreStore(context: Context) {
             }
         }
 
-    suspend fun loadProfile(listingId: Long): ProfileResponse = withContext(Dispatchers.IO) {
-        recorded("loadProfile listingId=$listingId") {
-            engine.loadSourceProfile(listingId)
-        }
-    }
+    // Source profile reads and identity confirmation share native execution ownership.
+    private val profileSourceMutex = Mutex()
 
-    // One current/standalone profile request at a time for the swipe window.
-    private val swipeProfileMutex = Mutex()
-
-    suspend fun loadSwipeProfile(listingId: Long, control: RequestControl): ProfileResponse =
-        swipeProfileMutex.withLock {
+    suspend fun loadProfile(listingId: Long, control: RequestControl): ProfileResponse =
+        profileSourceMutex.withLock {
             withContext(Dispatchers.IO) {
-                recorded("loadSwipeProfile listingId=$listingId") {
+                recorded("loadProfile listingId=$listingId") {
                     engine.loadSwipeProfile(listingId, control)
                 }
             }
@@ -249,6 +246,9 @@ class CoreStore(context: Context) {
     suspend fun compareSnapshots(personId: Long, fromId: Long, toId: Long): List<SnapshotDifference> =
         withContext(Dispatchers.IO) { engine.compareSnapshots(personId, fromId, toId) }
 
+    suspend fun profileProjection(listingId: Long): NativeProfileProjection? =
+        withContext(Dispatchers.IO) { engine.profileProjection(listingId) }
+
     suspend fun profileIdentity(listingId: Long): ProfileIdentity =
         withContext(Dispatchers.IO) { engine.profileIdentity(listingId) }
 
@@ -258,10 +258,12 @@ class CoreStore(context: Context) {
     suspend fun identityCandidates(listingId: Long): List<IdentityCandidate> =
         withContext(Dispatchers.IO) { engine.listIdentityCandidates(listingId) }
 
-    suspend fun confirmIdentityMatch(listingId: Long, targetPersonId: Long) =
-        withContext(Dispatchers.IO) {
-            recorded("confirmIdentityMatch listing=$listingId") {
-                engine.confirmIdentityMatch(listingId, targetPersonId)
+    suspend fun confirmIdentityMatch(listingId: Long, expectedSourcePersonId: Long, expectedSnapshotId: Long, targetPersonId: Long) =
+        profileSourceMutex.withLock {
+            withContext(Dispatchers.IO) {
+                recorded("confirmIdentityMatch listing=$listingId") {
+                    engine.confirmIdentityMatch(listingId, expectedSourcePersonId, expectedSnapshotId, targetPersonId)
+                }
             }
         }
 

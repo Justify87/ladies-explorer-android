@@ -1,5 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
+import de.justify87.ladiesexplorer.core.IdentityCandidate
+import de.justify87.ladiesexplorer.core.ProfileMediaItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
@@ -9,64 +11,175 @@ import org.junit.Test
 
 class SwipeProfileWindowTest {
     @Test fun actualWindowPrunesAndReusesCurrentAndTwoFollowingProfiles() = runBlocking {
-        val entries = mutableMapOf<Long, SwipeProfile>()
+        val entries = mutableMapOf<Long, ProfileReadModel>()
         val cache = SwipeProfileWindow(entries)
         val cards = (1L..250L).map { fixtureCard(it) }
-        val ids = (listOf(cards.first()) + prefetchCards(cards)).map { it.listingId }
-        cache.readCurrent(1L) { fixtureSwipe(1L) }
-        ids.drop(1).forEach { id -> cache.prefetch(id) { fixtureSwipe(id) } }
+        val window = listOf(cards.first()) + prefetchCards(cards)
+        cache.retain(window)
+        cache.readCurrent(window.first()) { fixtureSwipe(1L, 1L) }
+        window.drop(1).forEach { card -> cache.prefetch(card) { fixtureSwipe(card.listingId, card.personId) } }
         assertEquals(setOf(1L, 2L, 3L), entries.keys)
-        cache.retain(listOf(2L, 3L, 4L))
+        cache.retain(cards.drop(1).take(3))
         assertEquals(setOf(2L, 3L), entries.keys)
-        assertEquals(2L, cache.prefetch(2L) { error("cached profile must not read") }.profile.listingId)
-        cache.prefetch(4L) { fixtureSwipe(4L) }
+        assertEquals(2L, cache.prefetch(cards[1]) { error("cached profile must not read") }?.profile?.listingId)
+        cache.prefetch(cards[3]) { fixtureSwipe(4L, 4L) }
         assertEquals(setOf(2L, 3L, 4L), entries.keys)
         cache.clear()
         assertTrue(entries.isEmpty())
     }
 
-    @Test fun knownGapSameListingOwnerSnapshotAndContactRemainCached() = runBlocking {
+    @Test fun sameListingOwnerChangeInvalidatesOldSnapshotAndContact() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
-        val old = fixtureSwipe(4L, 1L, 11L)
-        cache.prefetch(4L) { old }
+        val oldCard = fixtureCard(4L, 1L)
+        cache.retain(listOf(oldCard))
+        cache.prefetch(oldCard) { fixtureSwipe(4L, 1L, 11L) }
         val changed = fixtureCard(4L, 7L)
-        cache.retain(listOf(changed.listingId))
-        val returned = cache.prefetch(changed.listingId) { fixtureSwipe(4L, 7L, 12L) }
-        assertEquals(1L, returned.identity.personId)
-        assertEquals(1L, returned.person?.personId)
-        assertEquals(11L, returned.profile.snapshotId)
-        assertEquals(old.profile.phoneDisplay, returned.profile.phoneDisplay)
-        assertEquals(old.media, returned.media)
-        // New run uses a different Compose remember instance; the old one is not reused.
-        assertNull(SwipeProfileWindow(mutableMapOf())[4L])
+        cache.retain(listOf(changed))
+        assertNull(cache[changed])
+        val returned = requireNotNull(cache.prefetch(changed) { fixtureSwipe(4L, 7L, 12L) })
+        assertEquals(7L, returned.identity.personId)
+        assertEquals(12L, returned.profile.snapshotId)
+        assertNull(cache[oldCard])
     }
 
-    @Test fun knownGapLateCompletionAfterSameWindowResetOrPruneCanRepopulate() = runBlocking {
-        val entries = mutableMapOf<Long, SwipeProfile>()
-        val cache = SwipeProfileWindow(entries)
+    @Test fun lateCompletionAfterResetAndSameListingReuseCannotRepopulate() = runBlocking {
+        val cache = SwipeProfileWindow(mutableMapOf())
+        val card = fixtureCard(4L, 1L)
+        cache.retain(listOf(card))
         val started = CompletableDeferred<Unit>()
         val done = CompletableDeferred<Unit>()
-        val late = launch { cache.prefetch(4L) { started.complete(Unit); done.await(); fixtureSwipe(4L) } }
+        val late = launch {
+            assertNull(cache.prefetch(card) { started.complete(Unit); done.await(); fixtureSwipe(4L, 1L, 11L) })
+        }
         started.await()
         cache.clear()
-        cache.retain(listOf(5L, 6L, 7L))
+        cache.retain(listOf(card))
+        cache.readCurrent(card) { fixtureSwipe(4L, 1L, 12L) }
         done.complete(Unit)
         late.join()
-        // Characterizes a delivered result: actual Compose cancellation can prevent delivery,
-        // but the cache itself has no admission check for a still-running scope.
-        assertNotNull(cache[4L])
-        cache.retain(listOf(5L, 6L, 7L))
-        assertNull(cache[4L])
+        assertEquals(12L, cache[card]?.profile?.snapshotId)
+    }
+
+    @Test fun sourceCompletionRevokesOtherProfilesEvenWithSameOwnerAndSnapshot() = runBlocking {
+        val entries = mutableMapOf<Long, ProfileReadModel>()
+        val cache = SwipeProfileWindow(entries)
+        val current = fixtureCard(1L)
+        val next = fixtureCard(2L)
+        cache.retain(listOf(current, next))
+        val initial = requireNotNull(cache.readCurrent(current) {
+            fixtureSwipe(1L, 1L, 11L).copy(fromArchive = false)
+        })
+        val oldInvalidation = cache.invalidation(current)
+        cache.prefetch(next) { sourceCompleted ->
+            sourceCompleted()
+            assertNull(cache[current])
+            assertTrue(cache.requiresLocal(current))
+            fixtureSwipe(2L, 2L, 12L)
+        }
+        assertTrue(cache.invalidation(current) > oldInvalidation)
+        assertNotNull(cache[next])
+        val refreshed = requireNotNull(cache.readCurrent(current) {
+            val native = fixtureSwipe(1L, 1L, 11L)
+            native.copy(local = native.local.copy(
+                media = listOf(ProfileMediaItem("IMAGE", "https://example.invalid/changed.jpg", "/fixture/local.jpg", 0u)),
+                candidates = listOf(IdentityCandidate(9L, "CANDIDATE", false, true, 0u, 0u, null)),
+            ))
+        })
+        assertEquals(initial.profile.snapshotId, refreshed.profile.snapshotId)
+        assertNotEquals(initial.revision, refreshed.revision)
+        assertEquals("/fixture/local.jpg", refreshed.media.single().localPath)
+        assertEquals(9L, refreshed.candidates.single().personId)
+        assertFalse(refreshed.fromArchive)
+        assertFalse(cache.requiresLocal(current))
+    }
+
+    @Test fun sourceCompletionRejectsAnotherInFlightLocalRead() = runBlocking {
+        val cache = SwipeProfileWindow(mutableMapOf())
+        val a = fixtureCard(1L)
+        val b = fixtureCard(2L)
+        cache.retain(listOf(a, b))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val late = launch {
+            assertNull(cache.readCurrent(a) { started.complete(Unit); release.await(); fixtureSwipe(1L) })
+        }
+        started.await()
+        val before = cache.invalidation(a)
+        cache.prefetch(b) { sourceCompleted -> sourceCompleted(); fixtureSwipe(2L, 2L) }
+        // Reject the pending read, but do not cancel/restart a native operation
+        // because of another source completion.
+        assertEquals(before, cache.invalidation(a))
+        assertTrue(late.isActive)
+        release.complete(Unit)
+        late.join()
+        assertNull(cache[a])
+        assertTrue(cache.invalidation(a) > before)
+        assertTrue(cache.requiresLocal(a))
+        assertNotNull(cache[b])
+    }
+
+    @Test fun laterSourceCompletionFromReplacedSlotRevokesItsNewProjection() = runBlocking {
+        val cache = SwipeProfileWindow(mutableMapOf())
+        val card = fixtureCard(4L, 1L)
+        cache.retain(listOf(card))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val old = launch {
+            assertNull(cache.readCurrent(card) { sourceCompleted ->
+                started.complete(Unit)
+                release.await()
+                sourceCompleted()
+                fixtureSwipe(4L)
+            })
+        }
+        started.await()
+        cache.remove(card.listingId)
+        cache.readCurrent(card) { fixtureSwipe(4L) }
+        assertNotNull(cache[card])
+        release.complete(Unit)
+        old.join()
+        assertNull(cache[card])
+        assertTrue(cache.requiresLocal(card))
+    }
+
+    @Test fun externalCompletionRevokesReplacementWithoutRestartingItsRunningRead() = runBlocking {
+        val cache = SwipeProfileWindow(mutableMapOf(), initialExternalRevision = 5L)
+        val card = fixtureCard(4L, 1L)
+        cache.retain(listOf(card))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val current = launch {
+            assertNull(cache.readCurrent(card) { started.complete(Unit); release.await(); fixtureSwipe(4L) })
+        }
+        started.await()
+        val before = cache.invalidation(card)
+        assertFalse(cache.isCurrent(6L))
+        cache.applyExternalRevision(6L)
+        assertTrue(cache.isCurrent(6L))
+        assertEquals(before, cache.invalidation(card))
+        assertTrue(current.isActive)
+        release.complete(Unit)
+        current.join()
+        assertNull(cache[card])
+        assertTrue(cache.requiresLocal(card))
+        val after = cache.invalidation(card)
+        assertTrue(after > before)
+        cache.readCurrent(card) { fixtureSwipe(4L) }
+        cache.applyExternalRevision(6L)
+        assertEquals(after, cache.invalidation(card))
+        assertNotNull(cache[card])
     }
 
     @Test fun cancelledSuspendingReadCannotWriteIntoCache() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
+        val card = fixtureCard(4L, 1L)
+        cache.retain(listOf(card))
         val started = CompletableDeferred<Unit>()
         val done = CompletableDeferred<Unit>()
-        val late = launch { cache.readCurrent(4L) { started.complete(Unit); done.await(); fixtureSwipe(4L) } }
+        val late = launch { cache.readCurrent(card) { started.complete(Unit); done.await(); fixtureSwipe(4L) } }
         started.await()
         late.cancelAndJoin()
         done.complete(Unit)
-        assertNull(cache[4L])
+        assertNull(cache[card])
     }
 }

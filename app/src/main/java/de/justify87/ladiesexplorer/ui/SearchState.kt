@@ -65,7 +65,8 @@ internal class RequestGeneration {
 }
 
 internal fun SearchUiState.beginRun(): SearchUiState = copy(
-    loading = true, searchCancelling = false, error = null, profile = null, profileOpen = false,
+    loading = true, searchCancelling = false, error = null, profileRead = null, profileOpen = false,
+    profileRetryFromArchive = false, profileSourceRetryAllowed = false, retryProfileListingId = null,
 )
 
 internal fun SearchUiState.endRun(errorMessage: String? = null): SearchUiState =
@@ -157,20 +158,48 @@ internal class DrainingOperation<T> {
 internal fun canAcquireImport(search: DrainingOperation<*>, home: DrainingOperation<*>, uiBusy: Boolean) =
     !search.occupied && !home.occupied && !uiBusy
 
-// Existing standalone admission: characterization only. T10.2 replaces the profileOpen
-// requirement and listing-only input with the rendered context/owner/evidence token.
-internal fun SearchUiState.currentIdentityConfirmationOwner(listingId: Long, discoveryBusy: Boolean): Long? {
-    if (discoveryBusy || actionBusy || !profileOpen || profile?.listingId != listingId) return null
-    return profileIdentity?.personId
+/** Both render contexts carry the same native identity and evidence contract. */
+internal sealed interface ProfileIdentityToken {
+    val listingId: Long
+    val ownerId: Long
+    val snapshotId: Long
+    val projectionRevision: Long
+    val preference: de.justify87.ladiesexplorer.core.Preference
+    val favorite: Boolean
+    val candidates: List<de.justify87.ladiesexplorer.core.IdentityCandidate>
 }
 
-// Existing post-commit read-failure publication. The remaining profile/media are a
-// known gap: T10.2 must invalidate all stale capabilities and recover locally.
-internal fun SearchUiState.identityConfirmationFailure(
-    message: String,
-    committed: Boolean,
-    profileUpdated: Boolean,
-): SearchUiState = if (committed && !profileUpdated) copy(
-    actionError = message, selectedPersonId = null, selectedPerson = null, profileIdentity = null,
-    identityCandidates = emptyList(), changeEvents = emptyList(),
-) else copy(actionError = message)
+/** Captured from the rendered detail, never reconstructed at confirmation time. */
+internal data class DetailIdentityToken(
+    val sessionId: Long,
+    override val listingId: Long,
+    override val ownerId: Long,
+    override val snapshotId: Long,
+    override val projectionRevision: Long,
+    override val preference: de.justify87.ladiesexplorer.core.Preference,
+    override val favorite: Boolean,
+    override val candidates: List<de.justify87.ladiesexplorer.core.IdentityCandidate>,
+) : ProfileIdentityToken
+
+internal fun SearchUiState.detailIdentityToken(): DetailIdentityToken? {
+    if (!profileOpen || loading) return null
+    val current = profileRead ?: return null
+    return DetailIdentityToken(profileSessionId, current.profile.listingId, current.identity.personId,
+        current.profile.snapshotId, current.revision, current.person.preference, current.person.favorite, current.candidates)
+}
+
+internal fun SearchUiState.currentIdentityConfirmationOwner(
+    token: DetailIdentityToken,
+    targetPersonId: Long,
+    discoveryBusy: Boolean,
+): Long? {
+    if (discoveryBusy || actionBusy || detailIdentityToken() != token) return null
+    if (token.ownerId == targetPersonId || identityCandidates.none { it.personId == targetPersonId }) return null
+    return token.ownerId
+}
+
+/** A stale or failed local projection invalidates every rendered capability before recovery. */
+internal fun SearchUiState.invalidateMergedProfile(listingId: Long): SearchUiState = copy(
+    profileRead = null, profileRetryFromArchive = profileFromArchive,
+    mediaArchive = null, mediaWarning = null, retryProfileListingId = listingId, profileSourceRetryAllowed = false,
+)

@@ -254,7 +254,10 @@ fn rank(c: &IdentityCandidate) -> (u8, u8, u8, u32, u32, u32) {
     )
 }
 
-fn candidates(db: &Connection, listing_id: i64) -> Result<Vec<IdentityCandidate>, CoreError> {
+pub(crate) fn candidates(
+    db: &Connection,
+    listing_id: i64,
+) -> Result<Vec<IdentityCandidate>, CoreError> {
     let (owner, snapshot_id, _) = current_owner(db, listing_id)?;
     let Some(snapshot_id) = snapshot_id else {
         return Ok(Vec::new());
@@ -425,10 +428,24 @@ pub(crate) fn list(
     candidates(&db, listing_id)
 }
 
-pub(crate) fn confirm(core: &LadiesCore, listing_id: i64, target_id: i64) -> Result<(), CoreError> {
+pub(crate) fn confirm(
+    core: &LadiesCore,
+    listing_id: i64,
+    expected_source_id: i64,
+    expected_snapshot_id: i64,
+    target_id: i64,
+) -> Result<(), CoreError> {
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    let (source_id, _, state) = current_owner(&tx, listing_id)?;
+    let (source_id, snapshot_id, state) = current_owner(&tx, listing_id)?;
+    if source_id != expected_source_id {
+        return Err(CoreError::IdentityConflict("Listing owner changed".into()));
+    }
+    if snapshot_id != Some(expected_snapshot_id) {
+        return Err(CoreError::IdentityConflict(
+            "Listing snapshot changed".into(),
+        ));
+    }
     if source_id == target_id || state == "MANUAL_SPLIT" {
         return Err(CoreError::IdentityConflict("Identity merge refused".into()));
     }
@@ -597,6 +614,14 @@ pub(crate) fn confirm(core: &LadiesCore, listing_id: i64, target_id: i64) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot_id(core: &LadiesCore, listing: i64) -> i64 {
+        current_owner(&core.connection().unwrap(), listing)
+            .unwrap()
+            .1
+            .unwrap()
+    }
+
     #[test]
     fn phone_normalization_matches_legacy() {
         assert_eq!(
@@ -653,7 +678,11 @@ mod tests {
         )
         .unwrap();
         drop(db);
-        assert!(core.confirm_identity_match(listing, target).is_err());
+        let expected_snapshot = snapshot_id(&core, listing);
+        assert!(
+            core.confirm_identity_match(listing, source, expected_snapshot, target)
+                .is_err()
+        );
         assert_eq!(core.status().unwrap().person_count, 2);
     }
 
@@ -732,8 +761,9 @@ mod tests {
             )
             .unwrap();
         }
+        let expected_snapshot = snapshot_id(&core, listing);
         assert!(matches!(
-            core.confirm_identity_match(listing, target),
+            core.confirm_identity_match(listing, source, expected_snapshot, target),
             Err(CoreError::IdentityConflict(_))
         ));
         assert_eq!(core.status().unwrap().person_count, 2);
@@ -790,7 +820,9 @@ mod tests {
             refresh(&db, listing).unwrap();
         }
         assert_eq!(core.list_identity_candidates(listing).unwrap().len(), 1);
-        core.confirm_identity_match(listing, target).unwrap();
+        let expected_snapshot = snapshot_id(&core, listing);
+        core.confirm_identity_match(listing, source, expected_snapshot, target)
+            .unwrap();
         assert_eq!(core.status().unwrap().person_count, 1);
         assert!(core.get_person(target).unwrap().unwrap().favorite);
         let saved = core
@@ -834,7 +866,10 @@ mod tests {
             core.save_person_note(listing, source, Some("Source note".into()), None)
                 .is_err()
         );
-        assert!(core.confirm_identity_match(listing, target).is_err());
+        assert!(
+            core.confirm_identity_match(listing, source, expected_snapshot, target)
+                .is_err()
+        );
         assert_eq!(core.profile_identity(listing).unwrap().person_id, target);
         let state = core.get_person(target).unwrap().unwrap();
         assert!(state.favorite);
@@ -921,14 +956,18 @@ mod tests {
             // Intentionally do not refresh the cached match status: confirm must
             // use current evidence, not a candidate that was previously rendered.
         }
-        assert!(core.confirm_identity_match(listing, target).is_err());
+        let expected_snapshot = snapshot_id(&core, listing);
+        assert!(
+            core.confirm_identity_match(listing, source, expected_snapshot, target)
+                .is_err()
+        );
         assert_eq!(core.profile_identity(listing).unwrap().person_id, source);
         assert_eq!(core.status().unwrap().person_count, 2);
         assert!(core.list_identity_candidates(listing).unwrap().is_empty());
     }
 
     #[test]
-    fn known_gap_stale_confirm_can_merge_a_different_current_source_owner() {
+    fn stale_confirm_cannot_merge_a_different_current_source_owner() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let a = core.create_person(None).unwrap();
         let b = core.create_person(None).unwrap();
@@ -962,11 +1001,46 @@ mod tests {
         assert!(rendered.iter().any(|candidate| candidate.person_id == b));
         assert!(rendered.iter().any(|candidate| candidate.person_id == c));
         assert_eq!(core.profile_identity(listing).unwrap().person_id, a);
-        core.confirm_identity_match(listing, b).unwrap();
+        let old_snapshot = snapshot_id(&core, listing);
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,normalized_phone)
+                 VALUES (?1,'refreshed','+491701234567')",
+                [listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![db.last_insert_rowid(), listing],
+            )
+            .unwrap();
+        }
+        // Same owner and same valid evidence still cannot authorize an old snapshot.
+        assert!(matches!(
+            core.confirm_identity_match(listing, a, old_snapshot, b),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert_eq!(core.status().unwrap().person_count, 3);
+        let expected_snapshot = snapshot_id(&core, listing);
+        core.confirm_identity_match(listing, a, expected_snapshot, b)
+            .unwrap();
         assert_eq!(core.profile_identity(listing).unwrap().person_id, b);
-        // A stale A->C confirmation currently cannot carry expected source A.
-        // Current evidence still supports C, so the old API merges B->C.
-        core.confirm_identity_match(listing, c).unwrap();
+        // C remains a valid candidate for B, but an old A->C confirmation is invalid.
+        assert!(
+            core.list_identity_candidates(listing)
+                .unwrap()
+                .iter()
+                .any(|candidate| candidate.person_id == c)
+        );
+        assert!(matches!(
+            core.confirm_identity_match(listing, a, expected_snapshot, c),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, b);
+        assert_eq!(core.status().unwrap().person_count, 2);
+        core.confirm_identity_match(listing, b, expected_snapshot, c)
+            .unwrap();
         assert_eq!(core.profile_identity(listing).unwrap().person_id, c);
         assert_eq!(core.status().unwrap().person_count, 1);
     }

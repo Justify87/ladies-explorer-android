@@ -60,6 +60,13 @@ data class DiscoverUiState(
     val mutationError: String? = null,
     val nextCursor: DiscoveryCursor? = null,
     val activeRunId: Long? = null,
+    val swipeSessionId: Long = 0L,
+    val swipeProfileRevision: Long = 0L,
+    val swipeExternalRevision: Long = 0L,
+    val localProfileReloadIds: Set<Long> = emptySet(),
+    val localProfileStrictIds: Set<Long> = emptySet(),
+    val pendingMergeListingId: Long? = null,
+    val mergeNotice: String? = null,
     val activeVisibleCount: Int = 0,
     val replayLikes: Boolean = true,
     val canUndoSwipe: Boolean = false,
@@ -107,21 +114,26 @@ data class SearchUiState(
     val response: SearchResponse? = null,
     val profileOpen: Boolean = false,
     val profileSessionId: Long = 0L,
-    val profile: ProfileResponse? = null,
-    val profileIdentity: ProfileIdentity? = null,
-    val profileFromArchive: Boolean = false,
-    val selectedPersonId: Long? = null,
-    val selectedPerson: PersonSummary? = null,
-    val profileMedia: List<ProfileMediaItem> = emptyList(),
-    val changeEvents: List<ChangeRecord> = emptyList(),
-    val identityCandidates: List<IdentityCandidate> = emptyList(),
+    val profileRead: ProfileReadModel? = null,
+    val profileRetryFromArchive: Boolean = false,
+    val profileSourceRetryAllowed: Boolean = false,
     val actionBusy: Boolean = false,
     val actionError: String? = null,
+    val retryProfileListingId: Long? = null,
     val mediaArchive: MediaArchiveReport? = null,
     val archiving: Boolean = false,
     val mediaWarning: String? = null,
     val error: String? = null,
-)
+) {
+    val profile get() = profileRead?.profile
+    val profileIdentity get() = profileRead?.identity
+    val profileFromArchive get() = profileRead?.fromArchive ?: profileRetryFromArchive
+    val selectedPersonId get() = profileRead?.identity?.personId
+    val selectedPerson get() = profileRead?.person
+    val profileMedia get() = profileRead?.media.orEmpty()
+    val changeEvents get() = profileRead?.history.orEmpty()
+    val identityCandidates get() = profileRead?.candidates.orEmpty()
+}
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val core = (app as LadiesApplication).coreStore
@@ -150,6 +162,110 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val previewGeneration = RequestGeneration()
     private var previewRequest: SearchRequest? = null
     private var discoveryEpoch = 0L
+    private var swipeVisible = false
+    private var renderedSwipe: SwipeActionToken? = null
+
+    internal fun setSwipeVisible(visible: Boolean) {
+        if (swipeVisible == visible) return
+        swipeVisible = visible
+        renderedSwipe = null
+        _discoverState.update {
+            val window = it.cards.take(3).map { card -> card.listingId }.toSet()
+            it.copy(swipeSessionId = it.swipeSessionId + 1,
+                localProfileReloadIds = if (visible) it.localProfileReloadIds else window,
+                localProfileStrictIds = it.localProfileStrictIds.intersect(window))
+        }
+    }
+
+    internal fun publishRenderedSwipe(token: SwipeActionToken?) {
+        renderedSwipe = token?.takeIf {
+            swipeVisible && currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, it) != null &&
+                !_searchUiState.value.profileOpen
+        }
+    }
+
+    private fun admittedSwipe(token: SwipeActionToken): DiscoveryCard? =
+        if (!swipeVisible || renderedSwipe != token || _searchUiState.value.profileOpen) null
+        else currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, token)
+
+    internal fun reconcileSwipeProjection(token: SwipeActionToken) {
+        val state = _discoverState.value
+        val card = state.cards.firstOrNull() ?: return
+        if (!swipeVisible || state.busy || state.loading || _searchUiState.value.profileOpen ||
+            state.activeRunId != token.runId || state.swipeSessionId != token.session ||
+            card.listingId != token.listingId || card.personId != token.ownerId ||
+            card.preference == token.preference && card.favorite == token.favorite) return
+        invalidateSwipeProfilesLocally(token.listingId)
+        refreshDiscovery()
+    }
+
+    internal fun isProfileActionCurrent(token: ProfileIdentityToken): Boolean = when (token) {
+        is SwipeActionToken -> admittedSwipe(token) != null
+        is DetailIdentityToken -> !_discoverState.value.busy && !_searchUiState.value.actionBusy &&
+            _searchUiState.value.detailIdentityToken() == token
+    }
+
+    internal fun chooseDetailPreference(token: ProfileIdentityToken, preference: Preference) {
+        if (token !is DetailIdentityToken || !isProfileActionCurrent(token)) return
+        _searchUiState.update { it.copy(actionError = null) }
+        mutateDiscovery("Entscheidung nicht gespeichert", write = {
+            core.setSwipePreference(token.listingId, token.ownerId, token.preference, preference)
+        }, afterWrite = { profileOperations.refreshLocalProfile(token.sessionId, token.listingId) },
+            recoverWriteFailure = { profileOperations.refreshLocalProfile(token.sessionId, token.listingId) },
+            onFailure = { message ->
+            _searchUiState.update { if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it }
+        })
+    }
+
+    internal fun toggleProfileFavorite(token: ProfileIdentityToken) {
+        if (!isProfileActionCurrent(token)) return
+        _searchUiState.update { it.copy(actionError = null) }
+        mutateDiscovery("Favorit konnte nicht geändert werden", write = {
+            core.setListingFavorite(token.listingId, token.ownerId, token.favorite, !token.favorite)
+        }, afterWrite = {
+            refreshMap()
+            if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
+        }, recoverWriteFailure = {
+            refreshMap()
+            if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
+        }, onFailure = { message ->
+            if (token is DetailIdentityToken) _searchUiState.update {
+                if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it
+            }
+        })
+    }
+
+    private fun admittedDeck(token: SwipeDeckToken): Boolean =
+        swipeVisible && !_searchUiState.value.profileOpen &&
+            currentSwipeDeck(_discoverState.value, _searchUiState.value.loading, token)
+
+    private fun admittedTraversal(token: SwipeCardToken): DiscoveryCard? =
+        if (!admittedDeck(token.deck)) null
+        else currentSwipeTraversalCard(_discoverState.value, _searchUiState.value.loading, token)
+
+    internal fun openSwipeProfile(token: SwipeCardToken) {
+        val card = admittedTraversal(token) ?: return
+        loadProfile(card.listingId, card.personId)
+    }
+
+    private fun invalidateSwipeProfilesLocally(strictListing: Long? = null) {
+        renderedSwipe = null
+        _discoverState.update {
+            val window = it.cards.take(3).map { card -> card.listingId }.toSet()
+            val strict = it.localProfileStrictIds.intersect(window) + listOfNotNull(strictListing)
+            it.copy(swipeSessionId = it.swipeSessionId + 1, swipeProfileRevision = it.swipeProfileRevision + 1,
+                localProfileReloadIds = window + strict, localProfileStrictIds = strict)
+        }
+    }
+
+    private fun invalidateSwipeActions(invalidateProfiles: Boolean = false) {
+        renderedSwipe = null
+        _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1,
+            swipeProfileRevision = it.swipeProfileRevision + if (invalidateProfiles) 1 else 0,
+            localProfileReloadIds = if (invalidateProfiles) emptySet() else it.localProfileReloadIds,
+            localProfileStrictIds = if (invalidateProfiles) emptySet() else it.localProfileStrictIds,
+            mergeNotice = null, pendingMergeListingId = null) }
+    }
     private var localWindow = 0
     private val savedWindows = SavedWindowMemory()
     private val filterGeneration = RequestGeneration()
@@ -160,7 +276,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         store = SavedSearchStore(core),
         canOperate = { !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
         ordinaryDraft = { SearchDraft.from(_searchUiState.value) },
-        onSourceFinished = ::refreshAfterSourceSearch,
+        onSourceFinished = { refreshAfterSourceSearch() },
     )
 
 
@@ -179,15 +295,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         StandaloneProfileOperations(
             viewModelScope, _searchUiState, _discoverState, _profileNotes, noteReadTickets,
             StandaloneProfileIo(
-                core::loadProfile, core::cachedProfile, core::profileMedia, core::profileIdentity,
-                core::person, core::changeEvents, core::identityCandidates, core::archiveProfileMedia,
+                core::loadProfile, core::cachedProfile, core::profileProjection, core::archiveProfileMedia,
                 { RequestControl() }, { it.cancel() }, core::confirmIdentityMatch,
+                { RequestControl() }, { it.cancel() },
             ),
             ProfileProjectionCallbacks(
                 epoch = { discoveryEpoch }, nextEpoch = { ++discoveryEpoch },
                 pending = { swipeInvalidation.pending }, projectDiscovery = ::projectDiscovery,
                 discovery = ::refreshDiscovery, savedSearch = savedSearch::refreshResultProjection,
                 map = ::refreshMap, home = ::refresh,
+                admitSwipe = { admittedSwipe(it) != null },
+                beginMerge = { invalidateSwipeActions() },
+                mergeCommitted = ::onIdentityMergeCommitted,
+                profileChanged = { invalidateSwipeProfilesLocally() },
             ),
         )
     }
@@ -223,6 +343,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelMediaArchive() = profileOperations.cancelMediaArchive()
 
     fun closeProfile() = profileOperations.closeProfile()
+
+    internal fun setProfilePresentationVisible(visible: Boolean) {
+        if (!visible) setSwipeVisible(false)
+        profileOperations.setPresentationVisible(visible)
+    }
 
     private fun cancelPreview() {
         previewGeneration.invalidate()
@@ -296,7 +421,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // Both ordinary and saved searches can persist before a later projection failure
     // or generation invalidation. Refresh local projections after the native call
     // finishes, independently of whether its response became the active UI run.
-    private fun refreshAfterSourceSearch() {
+    private fun refreshAfterSourceSearch(invalidateProfileWindow: Boolean = true) {
+        if (invalidateProfileWindow && swipeVisible) invalidateSwipeProfilesLocally()
         refreshDiscovery()
         refreshMap()
         refresh()
@@ -326,12 +452,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startSearch(requestOverride: SearchRequest? = null, localOverride: LocalVisibility? = null) {
         if (searchOwner.occupied || _searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
         val input = _searchUiState.value
+        invalidateSwipeActions(invalidateProfiles = true)
         cancelPreview()
         val control = RequestControl()
         val ticket = checkNotNull(searchOwner.start(control))
         invalidateProfileRequest()
         _searchUiState.update { it.beginRun() }
         viewModelScope.launch {
+            var acceptedRun = false
             try {
                 val result = core.search(requestOverride ?: request(input), localOverride ?: input.local, control)
                 if (!searchOwner.accepts(ticket)) return@launch
@@ -345,6 +473,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         savedLoadingMore = false, savedRecentLoadingMore = false, error = null)
                 }
                 _searchUiState.update { it.acceptRun(result, cards) }
+                acceptedRun = true
             } catch (cancellation: CancellationException) {
                 if (searchOwner.accepts(ticket)) _searchUiState.update { it.endRun() }
                 throw cancellation
@@ -360,7 +489,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (searchOwner.finish(ticket)) {
                     _searchUiState.update { it.copy(loading = false, searchCancelling = false) }
                     savedSearch.refresh()
-                    refreshAfterSourceSearch()
+                    // A new run already replaced the old window. Keep its normal source
+                    // policy; only a completion without a replacement needs local recovery.
+                    refreshAfterSourceSearch(invalidateProfileWindow = !acceptedRun)
                     schedulePreview()
                 }
             }
@@ -459,12 +590,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun projectDiscovery(epoch: Long): Boolean = discoveryPublisher.project(epoch)
 
-    fun markSwipeSnapshotChanged() = swipeInvalidation.sourceCompleted()
+    fun markSwipeSnapshotChanged(oldWindow: Boolean) {
+        // The active window invalidates its other tickets synchronously. A late
+        // completion must revoke the replacement without disposing it again:
+        // otherwise cancellation of one window could repeatedly cancel another.
+        renderedSwipe = null
+        _discoverState.update {
+            it.copy(swipeSessionId = it.swipeSessionId + 1,
+                swipeExternalRevision = it.swipeExternalRevision + if (oldWindow) 1 else 0)
+        }
+        swipeInvalidation.sourceCompleted()
+    }
 
     fun setDiscoveryProjectionVisibility(listVisible: Boolean, mapVisible: Boolean) =
         swipeInvalidation.setVisibility(listVisible, mapVisible)
 
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
+
+    internal fun refreshSwipe(token: SwipeDeckToken) {
+        if (!admittedDeck(token)) return
+        invalidateSwipeActions(invalidateProfiles = true)
+        refreshDiscovery()
+    }
 
     private fun refreshDiscoveryAfter(message: String?) {
         if (!swipeInvalidation.beginDiscovery(_discoverState.value.busy)) return
@@ -551,23 +698,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun resetSwipe() {
-        if (_discoverState.value.busy || _searchUiState.value.loading) return
+    internal fun resetSwipe(token: SwipeDeckToken) {
+        if (!admittedDeck(token)) return
         swipeSession.reset()
+        invalidateSwipeActions(invalidateProfiles = true)
         _discoverState.update { it.copy(canUndoSwipe = false) }
         refreshDiscovery()
     }
 
-    fun setReplayLikes(replay: Boolean) {
-        if (_discoverState.value.busy || _searchUiState.value.loading || swipeSession.replayLikes == replay) return
+    internal fun setReplayLikes(token: SwipeDeckToken, replay: Boolean) {
+        if (!admittedDeck(token) || swipeSession.replayLikes == replay) return
+        invalidateSwipeActions()
         swipeSession.replayLikes = replay
         core.setReplayLikes(replay)
         _discoverState.update { it.copy(replayLikes = replay) }
         refreshDiscovery()
     }
 
-    fun skipCard(listingId: Long) {
-        val card = currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, listingId) ?: return
+    internal fun skipCard(token: SwipeCardToken) {
+        val card = admittedTraversal(token) ?: return
+        invalidateSwipeActions()
         swipeSession.visit(SwipeStep(card.listingId, card.personId))
         _discoverState.update {
             it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true)
@@ -583,7 +733,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         afterWrite: suspend () -> Unit = {},
         onWriteFailure: () -> Unit = {},
         onFailure: (String) -> Unit = {},
+        refreshProfileWindow: Boolean = true,
+        recoverWriteFailure: suspend () -> Unit = {},
     ) {
+        invalidateSwipeActions()
         val epoch = ++discoveryEpoch
         _discoverState.update { it.copy(busy = true, loading = false, mutationError = null,
             loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false) }
@@ -597,8 +750,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         // A profile-side failure must not keep the discovery feed stale.
                         check(projectDiscovery(epoch)) { "Ansicht konnte nicht vollständig aktualisiert werden." }
                     },
-                    afterWrite = afterWrite,
+                    afterWrite = {
+                        // Revision can change even if membership did not. Existing controller coalesces hidden reads.
+                        savedSearch.refreshResultProjection()
+                        if (refreshProfileWindow) invalidateSwipeProfilesLocally()
+                        afterWrite()
+                    },
                     onWriteFailure = onWriteFailure,
+                    recoverWriteFailure = {
+                        invalidateSwipeProfilesLocally()
+                        savedSearch.refreshResultProjection()
+                        recoverWriteFailure()
+                    },
                 )
                 when (outcome) {
                     is DiscoveryMutationOutcome.WriteFailed -> {
@@ -624,16 +787,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun decideSwipe(listingId: Long, preference: Preference) {
-        val card = currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, listingId) ?: return
+    internal fun decideSwipe(token: SwipeActionToken, preference: Preference) {
+        val card = admittedSwipe(token) ?: return
         mutateDiscovery("Entscheidung fehlgeschlagen", write = {
-            val previous = core.setSwipePreference(listingId, card.personId, null, preference)
-            swipeSession.visit(SwipeStep(listingId, card.personId, previous, preference))
+            val previous = core.setSwipePreference(card.listingId, card.personId, token.preference, preference)
+            swipeSession.visit(SwipeStep(card.listingId, card.personId, previous, preference))
         })
     }
 
-    fun undoSwipe() {
-        if (_discoverState.value.busy || _discoverState.value.loading || _searchUiState.value.loading) return
+    internal fun undoSwipe(token: SwipeDeckToken) {
+        if (!admittedDeck(token)) return
         val step = swipeSession.last ?: return
         mutateDiscovery("Undo fehlgeschlagen", write = {
             val previous = step.before
@@ -664,18 +827,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
-    private suspend fun refreshSelectedPerson(personId: Long) {
-        try {
-            val person = core.person(personId)
-            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = person) else it }
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (failure: Exception) {
-            // Do not leave stale actionable detail state after a committed write.
-            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = null) else it }
-            throw failure
-        }
-    }
+    private suspend fun refreshSelectedPerson(personId: Long) =
+        profileOperations.refreshLocalProfileForOwner(personId)
 
     fun checkAllSavedStatus() = checkSavedStatus(null)
 
@@ -729,7 +882,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             core.setPreference(personId, preference)
         }, afterWrite = {
             refreshSelectedPerson(personId)
-        }, onFailure = { message ->
+        }, recoverWriteFailure = { refreshSelectedPerson(personId) }, onFailure = { message ->
             _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
         })
     }
@@ -743,7 +896,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }, afterWrite = {
             refreshMap()
             refreshSelectedPerson(personId)
-        }, onFailure = { message ->
+        }, recoverWriteFailure = { refreshMap(); refreshSelectedPerson(personId) }, onFailure = { message ->
             _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
         })
     }
@@ -812,13 +965,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadProfile(listingId: Long, personId: Long) {
         if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
+        invalidateSwipeActions()
         cancelPreview()
         invalidateActiveSearch()
         profileOperations.loadProfile(listingId, personId) { savedSearch.setVisible(false) }
     }
 
-    fun confirmIdentity(listingId: Long, targetPersonId: Long) =
-        profileOperations.confirmIdentity(listingId, targetPersonId)
+    internal fun confirmIdentity(token: ProfileIdentityToken, targetPersonId: Long) =
+        profileOperations.confirmIdentity(token, targetPersonId)
+
+    private fun onIdentityMergeCommitted(token: ProfileIdentityToken, target: Long) {
+        val current = _discoverState.value
+        val preferred = if (token is SwipeActionToken) token.listingId else current.cards.firstOrNull()?.listingId
+        swipeSession.reconcileMerge(token.ownerId, target, preferred)
+        // Revocation is bounded to the displayed window. Known merged listing must recover
+        // locally; other cards prefer cached native records but may lack a snapshot entirely.
+        invalidateSwipeProfilesLocally(token.listingId)
+        _mapState.update { it.copy(overview = null) }
+        _discoverState.update {
+            it.copy(pendingMergeListingId = if (token is SwipeActionToken) token.listingId else null,
+                canUndoSwipe = swipeSession.last != null)
+        }
+    }
+
+    internal fun retryProfileProjection() = profileOperations.retryProfileProjection()
 
     fun refresh() {
         if (homeOwner.occupied) {

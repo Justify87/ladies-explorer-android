@@ -16,10 +16,12 @@ internal fun ProfileDetailScreen(
     tabs: ProfileTabMemory,
     notes: Map<Long, NoteEditorState>,
     noteActions: NoteEditorActions,
-    onFavorite: (Long) -> Unit,
-    onPreference: (Long, Preference) -> Unit,
-    onConfirmIdentity: (Long,Long) -> Unit,
+    onFavorite: (ProfileIdentityToken) -> Unit,
+    onPreference: (ProfileIdentityToken, Preference) -> Unit,
+    isProfileCurrent: (ProfileIdentityToken) -> Boolean,
+    onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     onCancelArchive: () -> Unit,
+    onRetryProfile: () -> Unit,
     onBack: () -> Unit,
     actionsBusy: Boolean,
     modifier: Modifier = Modifier,
@@ -28,31 +30,20 @@ internal fun ProfileDetailScreen(
     val owner = state.profileIdentity?.personId
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
     val tab = tabs.selected(owner)
-    val panels = rememberProfilePanels(profile, owner, filters, state.profileMedia, tab)
-    rememberProfileNote(profile?.listingId, owner, noteActions, actionsBusy || state.actionBusy, tab == ProfileTab.Notes)
+    val renderedToken = state.detailIdentityToken()
+    val busy = actionsBusy || state.actionBusy || renderedToken == null
+    val boundNotes = noteActions.boundTo(renderedToken, isProfileCurrent)
+    val panels = rememberProfilePanels(state.profileRead, filters, tab)
+    rememberProfileNote(renderedToken, boundNotes, busy, tab == ProfileTab.Notes)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
     val detailListState = rememberLazyListState()
-    var confirmTarget by remember(profile?.listingId) { mutableStateOf<Long?>(null) }
+    var confirmTarget by remember(renderedToken, state.identityCandidates) { mutableStateOf<Pair<DetailIdentityToken, Long>?>(null) }
 
-    confirmTarget?.let { target ->
-        AlertDialog(
-            onDismissRequest = { confirmTarget = null },
-            title = { Text("Personen zusammenführen?") },
-            text = {
-                Text("Das Inserat wird mit Person #$target zusammengeführt. Die Entscheidung verändert Zuordnungen und die gemeinsame Historie. Bitte nur bei sicherer Identität bestätigen.")
-            },
-            confirmButton = {
-                Button(enabled = !actionsBusy && !state.actionBusy, onClick = {
-                    val listingId = profile?.listingId
-                    confirmTarget = null
-                    if (listingId != null) onConfirmIdentity(listingId,target)
-                }) { Text("Zusammenführen") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmTarget = null }) { Text("Abbrechen") }
-            },
-        )
+    confirmTarget?.let { (token, target) ->
+        IdentityConfirmationDialog(target, enabled = !actionsBusy && !state.actionBusy,
+            onConfirm = { confirmTarget = null; onConfirmIdentity(token, target) },
+            onDismiss = { confirmTarget = null })
     }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val heroHeight = (maxHeight * .84f).coerceIn(220.dp, 720.dp)
@@ -68,10 +59,16 @@ internal fun ProfileDetailScreen(
             if (state.loading) item { CircularProgressIndicator() }
             state.error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
             state.actionError?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
+            if (state.retryProfileListingId != null) item {
+                TextButton(onClick = onRetryProfile, enabled = !state.actionBusy && !actionsBusy) {
+                    Text(if (state.profileSourceRetryAllowed) "Profil online abrufen" else "Profil erneut laden")
+                }
+            }
             if (profile != null) {
                 item(key = "media") {
                     ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
-                        onBack = onBack, originalUrl = state.profileIdentity?.profileUrl)
+                        onBack = onBack, originalUrl = state.profileIdentity?.profileUrl,
+                        actionsEnabled = !busy, isCurrent = { renderedToken?.let(isProfileCurrent) == true })
                 }
                 item(key = "identity") {
                     ProfileHeader(profile, state.profileIdentity, state.selectedPerson,
@@ -84,7 +81,10 @@ internal fun ProfileDetailScreen(
                 }
                 item(key = "actions") {
                     ProfileActionRail(state.selectedPerson, profile.phoneDisplay,
-                        actionsBusy || state.actionBusy, onFavorite, onPreference)
+                        busy,
+                        onFavorite = { renderedToken?.let(onFavorite) },
+                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } },
+                        isCurrent = { renderedToken?.let(isProfileCurrent) == true })
                 }
                 if (state.archiving) {
                     item {
@@ -108,8 +108,8 @@ internal fun ProfileDetailScreen(
                 }
                 profileContent(profile, state.profileIdentity, state.selectedPerson, state.profileMedia,
                     panels, tab, selectTab, state.identityCandidates, state.changeEvents,
-                    actionsBusy || state.actionBusy, owner?.let(notes::get) ?: NoteEditorState(), noteActions,
-                    onConfirm = { confirmTarget = it })
+                    busy, owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
+                    onConfirm = { target -> renderedToken?.let { confirmTarget = it to target } })
             }
         }
     }
@@ -130,4 +130,23 @@ internal fun ProfileHeader(
         hasVideo = media.any { it.kind == "VIDEO" }, fromArchive = fromArchive,
     )
     profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+}
+
+/** The same explicit destructive confirmation in both profile contexts. */
+@Composable
+internal fun IdentityConfirmationDialog(
+    target: Long,
+    enabled: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Personen zusammenführen?") },
+        text = {
+            Text("Das Inserat wird mit Person #$target zusammengeführt. Die Entscheidung verändert Zuordnungen und die gemeinsame Historie. Bitte nur bei sicherer Identität bestätigen.")
+        },
+        confirmButton = { Button(enabled = enabled, onClick = onConfirm) { Text("Zusammenführen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+    )
 }

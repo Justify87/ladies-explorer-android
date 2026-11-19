@@ -47,14 +47,13 @@ internal fun rememberProfileTabMemory(): ProfileTabMemory = rememberSaveable(
 
 @Composable
 internal fun rememberProfileNote(
-    listingId: Long?,
-    owner: Long?,
+    token: ProfileIdentityToken?,
     actions: NoteEditorActions,
     busy: Boolean,
     visible: Boolean,
 ) {
-    LaunchedEffect(listingId, owner, busy, visible) {
-        if (listingId != null && owner != null && !busy && visible) actions.load(listingId, owner)
+    LaunchedEffect(token, busy, visible) {
+        if (token != null && !busy && visible) actions.load(token.listingId, token.ownerId)
     }
 }
 
@@ -248,8 +247,7 @@ internal fun LazyListScope.profileContent(
     actionsBusy: Boolean,
     note: NoteEditorState,
     noteActions: NoteEditorActions,
-    onConfirm: ((Long) -> Unit)?,
-    onOpenDetail: (() -> Unit)? = null,
+    onConfirm: (Long) -> Unit,
 ) {
     item(key = "profile-tabs") {
         ScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 0.dp) {
@@ -313,10 +311,8 @@ internal fun LazyListScope.profileContent(
                         "Quellprofil".takeIf { candidate.sourceProfileMatch },
                         "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
                         .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
-                    if (onConfirm != null) OutlinedButton(onClick = { onConfirm(candidate.personId) },
+                    OutlinedButton(onClick = { onConfirm(candidate.personId) },
                         enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
-                    else if (onOpenDetail != null) OutlinedButton(onClick = onOpenDetail,
-                        enabled = !actionsBusy) { Text("Im Detail prüfen") }
                 }
             }
         }

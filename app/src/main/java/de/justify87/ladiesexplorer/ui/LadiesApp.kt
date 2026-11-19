@@ -117,15 +117,19 @@ fun LadiesApp(
         }
         val observer = LifecycleEventObserver { _, event ->
             publishVisibility()
+            if (event == Lifecycle.Event.ON_START) viewModel.setProfilePresentationVisible(true)
             if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.setProfilePresentationVisible(false)
                 viewModel.cancelSavedStatus()
                 viewModel.savedSearch.cancelCheck()
             }
         }
         lifecycle.addObserver(observer)
         publishVisibility()
+        viewModel.setProfilePresentationVisible(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         onDispose {
             lifecycle.removeObserver(observer)
+            viewModel.setProfilePresentationVisible(false)
             viewModel.savedSearch.setVisible(false)
         }
     }
@@ -270,10 +274,12 @@ fun LadiesApp(
                     tabs = detailTabs,
                     notes = notes,
                     noteActions = viewModel.noteActions,
-                    onFavorite = viewModel::toggleFavorite,
-                    onPreference = viewModel::choosePreference,
+                    onFavorite = viewModel::toggleProfileFavorite,
+                    onPreference = viewModel::chooseDetailPreference,
+                    isProfileCurrent = viewModel::isProfileActionCurrent,
                     onConfirmIdentity = viewModel::confirmIdentity,
                     onCancelArchive = viewModel::cancelMediaArchive,
+                    onRetryProfile = viewModel::retryProfileProjection,
                     onBack = viewModel::closeProfile,
                     actionsBusy = discovery.busy,
                     modifier = modifier,
@@ -302,15 +308,20 @@ fun LadiesApp(
                                 noteActions = viewModel.noteActions,
                                 searchLoading = search.loading,
                                 executedFiltersJson = search.response?.query?.filtersJson ?: "{}",
-                                onRefresh = viewModel::refreshDiscovery,
+                                onRefresh = viewModel::refreshSwipe,
                                 onReset = viewModel::resetSwipe,
                                 onUndo = viewModel::undoSwipe,
                                 onReplayLikes = viewModel::setReplayLikes,
                                 onSkip = viewModel::skipCard,
                                 onChoose = viewModel::decideSwipe,
+                                onSwipeVisibility = viewModel::setSwipeVisible,
+                                onRenderedSwipe = viewModel::publishRenderedSwipe,
+                                onProjectionMismatch = viewModel::reconcileSwipeProjection,
+                                onConfirmIdentity = viewModel::confirmIdentity,
                                 onSnapshotChanged = viewModel::markSwipeSnapshotChanged,
-                                onFavorite = viewModel::toggleFavorite,
-                                onProfile = viewModel::loadProfile,
+                                onFavorite = viewModel::toggleProfileFavorite,
+                                isProfileCurrent = viewModel::isProfileActionCurrent,
+                                onProfile = viewModel::openSwipeProfile,
                                 modifier = Modifier.weight(1f),
                             )
                         } else if (route.discovery == DiscoverMode.Grid) {

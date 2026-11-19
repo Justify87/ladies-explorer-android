@@ -22,9 +22,11 @@ internal fun fixtureCard(listing: Long, owner: Long = listing) = DiscoveryCard(
     favorite = false, hasVideo = false, hasAiContent = false, isPremium = false, age = null,
 )
 
-internal fun fixtureSwipe(listing: Long = 4L, owner: Long = 1L, snapshot: Long = 11L) = SwipeProfile(
-    fixtureProfile(snapshot).copy(listingId = listing, phoneDisplay = "+49000000000"),
-    fixtureIdentity(owner), fixturePerson(owner),
-    listOf(ProfileMediaItem("IMAGE", "https://example.invalid/fixture.jpg", null, 0u)),
-    emptyList(), emptyList(), true,
+internal fun fixtureSwipe(listing: Long = 4L, owner: Long = 1L, snapshot: Long = 11L) = ProfileReadModel(
+    NativeProfileProjection(
+        fixtureProfile(snapshot).copy(listingId = listing, phoneDisplay = "+49000000000"),
+        fixtureIdentity(owner), fixturePerson(owner),
+        listOf(ProfileMediaItem("IMAGE", "https://example.invalid/fixture.jpg", null, 0u)),
+        emptyList(), emptyList(),
+    ), true,
 )
