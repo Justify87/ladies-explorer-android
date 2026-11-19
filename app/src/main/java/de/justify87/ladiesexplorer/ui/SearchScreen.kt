@@ -63,6 +63,7 @@ fun SearchScreen(
     var categoryExpanded by rememberSaveable { mutableStateOf(false) }
     val filterListState = rememberLazyListState()
     val resultListState = rememberLazyListState()
+    var lastRunId by rememberSaveable { mutableStateOf<String?>(null) }
     val editing = state.editingSavedSearchId != null
     val listState = if (!editing && resultsVisible && state.response != null) resultListState else filterListState
     LaunchedEffect(state.response?.searchRunId) {

@@ -42,14 +42,14 @@ Einziger operativer Status-Tracker. Die Tabelle dokumentiert den aktuellen Stand
 | T6.4 | 6.1 | P30 | Analyse aus vorhandenen Konsistenz-/Medien-/Identitätsdaten; Merge-Bestätigung beibehalten. | Tests: Mehrfachanzeigen, Konflikt, keine erfundene Analyse | DONE | PR #20 gemergt (8f326056); Full-CI #350 grün; DEVICE_PENDING |
 | T6.5 | 6.1 | P31 | Typisierte Personennotiz-API in Rust/UniFFI/CoreStore, Editor mit Laden/Speichern/Fehler/Draft. | Import, Neustart, Leerwert, fremde Felder unverändert, Merge-Erhalt | DONE | PR #20 gemergt (8f326056); Full-CI #350 grün; DEVICE_PENDING |
 | T6.6 | 6.1 | P32 | Timeline, alle verknüpften Anzeigen und Snapshot-Vergleich; minimale Read-API. | Historie mit fehlenden Snapshots/Offline, Sortierung, Original-Link | DONE | PR #20 gemergt (8f326056); Full-CI #350 grün; DEVICE_PENDING |
-| T7.1 | 6.2,6.6 | P33 | Paginiertes gespeichertes Personenmodell FAVORITE/LIKE/DISLIKE mit echten Counts, stabiler Datum-/Namenssortierung. | Rust-Fixtures: Kombinationen, Cursor, Gleichstände, keine Doppelung | REVIEW | Rust/UniFFI/CoreStore-Personenprojektion und Regression ergänzt; CI und Integrationsreview offen |
-| T7.2 | 7.1 | P34 | Tabs, Thumbnail, Metadaten, Menü und favorisieren; List-State je Tab. | Direkte Aktionen, Back, kleine Displays | REVIEW | Native Ansicht und gemeinsame Projektionsbindung im PR; CI/Review offen; DEVICE_PENDING |
-| T7.3 | 7.1,7.2 | P35 | Watchlist 36h, Top 3 + expand, übrige Favoriten dedupliziert; Changed-/Relisting-Badges. | Grenzzeit, Datumssortierung, mehrere Anzeigen/Änderungen | REVIEW | Rust-getrennte Seiten mit gemeinsamer Zeitgrenze und Grenztest, Compose-Abschnitte; CI/Review offen |
-| T7.4 | 7.2,7.3 | P36 | Einzel-/Batchstatus mit sicherer Quellen-API, Abbruch, begrenzte Parallelität, Progress und Fehler. | Offline/404/Timeout/Prüfseite unterscheiden; keine falsche Inaktivität | REVIEW | Rust-Statusprüfung, Transaktion, Abbruch und Compose-Fortschritt; CI offen |
-| T8.1 | 7.4 | P37 | Gespeicherte-Suchen-Screen und Header-Neuindikator, bestehende CRUD/Run/Delta/Acknowledge. | Neu-/Gelesen, Umbenennen versus Definitionsänderung | TODO | — |
-| T8.2 | 8.1,2.2,2.6 | P38 | Gemeinsamen Editor für gespeicherte Vorlagen, getrennte Drafts und Unsupported-Regeln. | Import/Save/Rename/Edit/Cancel und Delta-Regression | TODO | — |
-| T8.3 | 8.1,5.1 | P39 | Gespeicherte Ergebnisse über gemeinsame Grid-Karten, Cursor und Offline-Profilopen. | Stabile Paging-Keys, sichtbare Deltas, keine 1000-Grenze | TODO | — |
-| T8.4 | 8.2,8.3 | P40 | Konsistenzreview Loading/Empty/Error, Back/Scroll, TalkBack, Font Scale, Rotation/Neustart; nur M05-Defekte beheben. | Synthetische UI-Matrix und Fehlerzustände | TODO | — |
+| T7.1 | 6.2,6.6 | P33 | Paginiertes gespeichertes Personenmodell FAVORITE/LIKE/DISLIKE mit echten Counts, stabiler Datum-/Namenssortierung. | Rust-Fixtures: Kombinationen, Cursor, Gleichstände, keine Doppelung | DONE | PR #21 gemergt, Full-CI #368/#369 erfolgreich; DEVICE_PENDING |
+| T7.2 | 7.1 | P34 | Tabs, Thumbnail, Metadaten, Menü und favorisieren; List-State je Tab. | Direkte Aktionen, Back, kleine Displays | DONE | PR #21 gemergt, Full-CI #368/#369 erfolgreich; DEVICE_PENDING |
+| T7.3 | 7.1,7.2 | P35 | Watchlist 36h, Top 3 + expand, übrige Favoriten dedupliziert; Changed-/Relisting-Badges. | Grenzzeit, Datumssortierung, mehrere Anzeigen/Änderungen | DONE | PR #21 gemergt, Full-CI #368/#369 erfolgreich; DEVICE_PENDING |
+| T7.4 | 7.2,7.3 | P36 | Einzel-/Batchstatus mit sicherer Quellen-API, Abbruch, begrenzte Parallelität, Progress und Fehler. | Offline/404/Timeout/Prüfseite unterscheiden; keine falsche Inaktivität | DONE | PR #21 gemergt, Full-CI #368/#369 erfolgreich; DEVICE_PENDING |
+| T8.1 | 7.4 | P37 | Gespeicherte-Suchen-Screen und Header-Neuindikator, bestehende CRUD/Run/Delta/Acknowledge. | Neu-/Gelesen, Umbenennen versus Definitionsänderung | REVIEW | PR #22 Implementierung/Tests, Full-CI und Abschlussreview offen; DEVICE_PENDING |
+| T8.2 | 8.1,2.2,2.6 | P38 | Gemeinsamen Editor für gespeicherte Vorlagen, getrennte Drafts und Unsupported-Regeln. | Import/Save/Rename/Edit/Cancel und Delta-Regression | REVIEW | PR #22 Implementierung/Tests, Full-CI und Abschlussreview offen; DEVICE_PENDING |
+| T8.3 | 8.1,5.1 | P39 | Gespeicherte Ergebnisse über gemeinsame Grid-Karten, Cursor und Offline-Profilopen. | Stabile Paging-Keys, sichtbare Deltas, keine 1000-Grenze | REVIEW | PR #22 Implementierung/Tests, Full-CI und Abschlussreview offen; DEVICE_PENDING |
+| T8.4 | 8.2,8.3 | P40 | Konsistenzreview Loading/Empty/Error, Back/Scroll, TalkBack, Font Scale, Rotation/Neustart; nur M05-Defekte beheben. | Synthetische UI-Matrix und Fehlerzustände | REVIEW | PR #22 Implementierung/Tests, Full-CI und Abschlussreview offen; DEVICE_PENDING |
 | T9.1 | 8.4 | P41 | Gesamtdiff gegen alle P-IDs/X-IDs, Architektur/Scope/Altcode, Full-CI incl. APK und visuelles Testprotokoll. | Alle Gates belegt; offene Abweichungen/Blocker, konkrete APK/CI-Referenz | TODO | — |
 | T9.2 | 9.1 | — | Geräteabnahme der M05-Szenarien und Dokumentationsabgleich; erst bei tatsächlicher Evidenz Roadmap schließen. | G9: kein offener kritischer Befund, Status explizit für nicht ausgeführte Tests | TODO | — |
 
@@ -65,8 +65,8 @@ Einziger operativer Status-Tracker. Die Tabelle dokumentiert den aktuellen Stand
 | G4a | T4a.1–T4a.6 | G4 | Rust-Quellentransport, Coil, Diagnose, Architekturcheck | DONE | PR #18, CI 44406432843; DEVICE_PENDING |
 | G5 | T5.1–T5.3 | G4a | Grid, Ansichtswechsel, ein Ergebniszustand | DONE | PR #19 gemergt; Full-CI #341 grün; DEVICE_PENDING |
 | G6 | T6.1–T6.6 | G5 | Tabs, Notizen, Historie, Identitätsintegrität | DONE | PR #20 gemergt; Full-CI #350 grün; DEVICE_PENDING |
-| G7 | T7.1–T7.4 | G6 | Listen, Status, Sortierung und Watchlist | IN_PROGRESS | Full-CI und Geräteabnahme offen |
-| G8 | T8.1–T8.4 | G7 | Gemeinsamer Editor/Grid, Delta, UX-Konsistenz | TODO | — |
+| G7 | T7.1–T7.4 | G6 | Listen, Status, Sortierung und Watchlist | DONE | PR #21 gemergt, Full-CI #368/#369 erfolgreich; DEVICE_PENDING; Fortsetzung freigegeben |
+| G8 | T8.1–T8.4 | G7 | Gemeinsamer Editor/Grid, Delta, UX-Konsistenz | IN_PROGRESS | PR #22, CI und Review offen |
 | G9 | T9.1–T9.2 | G8 | Komplette Matrix, CI, APK, visuelle/physische Abnahme | TODO | — |
 
 Vor Beginn eines Meilensteins muss das Vorgänger-Gate erfüllt bzw. eine ausdrücklich dokumentierte Freigabe für offene Gerätebelege vorhanden sein; Task-Abhängigkeiten allein ersetzen dieses Gate nicht. Für jedes Gate: alle Tasks/Matrix-IDs prüfen; gezielte Tests und Full-CI pro PR; Diff nach redundanter Implementierung, Folgefehlern, Daten-/State-Konsistenz und Scope prüfen. Kritische/hohe Befunde beheben und erneut testen. Offene Geräteprüfungen bezeichnen; echte Geräteabnahme ist G9-Voraussetzung. Bei externem Blocker sachlichen Teil weiterführen soweit Abhängigkeiten zulassen, nicht auf DONE setzen. Kein automatischer Merge.
@@ -197,3 +197,12 @@ Ausgangs-CI #359: 156 reguläre Rust-Tests + separater synthetischer Importtest,
 | M03 / L01 | Rust-Regressionen für Mehrfachinserate, Identität, Änderung während Paging und Metadaten; JVM-Regression für Fensterkapazität und Batch-Teilcommit mit fehlgeschlagener Projektion. SavedPeopleState extrahiert, kein neuer Mutationsowner. Dokumentation konsolidiert. |
 
 T7.1–T7.4 bleiben REVIEW, G7 IN_PROGRESS bis erfolgreiche Full-CI und Abschlussreview. DEVICE_PENDING (Scroll-Restore, kleine Displays, reale Quellenkompatibilität/Abbruch). Keine M05.8-Arbeit.
+
+### G8 – PR #22, M05.8
+
+G7 wurde auf main `2b6ad36` integriert; Full-CI #369 erfolgreich, Gerätebelege weiterhin offen. Nutzer hat Fortsetzung ausdrücklich freigegeben.
+
+T8.1/P37: eigenständige Übersicht mit Header-Neuindikator, typisierten Rust-Deltas (native und importierte Formate), Rename ohne Dekodierung/Änderung der Definition, Löschen mit Bestätigung, explizites Acknowledge und unabhängige Quellenprüfung ohne Ersetzen des aktiven Entdecken-Laufs. Kein Hintergrundpolling/zusätzlicher Source-Stack.
+T8.2/P38: derselbe native Filtereditor, separate vorübergehende Vorlagensession; Cancel/Save stellt den ursprünglichen Suchentwurf wieder her; nicht ausführbare importierte Regeln dürfen nicht editiert oder ausgeführt werden, Name bleibt separat änderbar.
+T8.3/P39: gemeinsame ProfileGridCard, bestehender Result-Keyset, lokaler Medienpfad und Alter aus vorhandenen Rust-Daten. Fehlende Verknüpfung bleibt sichtbar, kein erfundener Profilzugriff. Fehlerzustand und manuelles Retry ohne Retry-Loop.
+T8.4/P40: Pane-/Back-Vertrag, je Ergebnis-ID gespeicherter Scrollzustand, Editor-Session, Geräteprüfungen noch offen (360/390/430 dp, Font Scale, TalkBack, Rotation/Neustart, Offline/Back). Kein M05.9 vor Integration. Full-CI ausstehend.

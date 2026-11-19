@@ -139,6 +139,11 @@ fun LadiesApp(
     val savedResultsOpen = route.root == RootDestination.Search && pane == SearchPane.SavedResults
     val savedEditorOpen = route.root == RootDestination.Search && pane == SearchPane.SavedEditor
     val savedOverviewOpen = route.root == RootDestination.Search && pane == SearchPane.SavedList
+    LaunchedEffect(search.savedEditorSession, pane) {
+        if (pane != SearchPane.SavedEditor && search.savedEditorSession != 0L) {
+            searchStateHolder.removeState("editor/${search.savedEditorSession}")
+        }
+    }
     fun back() {
         if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen)) {
             if (savedEditorOpen) viewModel.cancelSavedEditor() else viewModel.closeSavedSearches()
@@ -310,7 +315,7 @@ fun LadiesApp(
                     RootDestination.Search -> searchStateHolder.SaveableStateProvider(
                         when (pane) {
                             SearchPane.SavedResults -> "results/${search.showingSavedSearchId}"
-                            SearchPane.SavedEditor -> "editor/${search.editingSavedSearchId}"
+                            SearchPane.SavedEditor -> "editor/${search.savedEditorSession}"
                             else -> pane.name
                         }
                     ) { when (pane) {
@@ -325,7 +330,7 @@ fun LadiesApp(
                             { search.showingSavedSearchId?.let(viewModel::showSavedResults) },
                             viewModel::loadProfile, modifier)
                     }
-                    else -> key(pane, search.editingSavedSearchId) { SearchScreen(
+                    else -> key(pane, search.savedEditorSession.takeIf { pane == SearchPane.SavedEditor }) { SearchScreen(
                         state=search,
                         canStartSearch = !home.loading && !discovery.busy,
                         onCity=viewModel::setSearchCity,

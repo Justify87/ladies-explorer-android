@@ -101,6 +101,7 @@ data class SearchUiState(
     val editingSavedSearchId: String? = null,
     val savedOverviewOpen: Boolean = false,
     val savedEditorLoading: Boolean = false,
+    val savedEditorSession: Long = 0L,
     val savedListLoading: Boolean = false,
     val loading: Boolean = false,
     val saving: Boolean = false,
@@ -288,8 +289,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun runAvailability(mode: AvailabilityMode) {
         val state = _searchUiState.value
         val active = state.response
-        val query = (active?.query ?: request(state)).withAvailabilityMode(mode)
-        startSearch(requestOverride = query, localOverride = active?.local ?: state.local)
+        val query = (active?.query ?: ordinaryDraft?.query ?: request(state)).withAvailabilityMode(mode)
+        startSearch(requestOverride = query, localOverride = active?.local ?: ordinaryDraft?.local ?: state.local)
     }
 
     fun toggleFilter(group: String, value: String) = editDraft {
@@ -419,9 +420,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val definition = core.loadSavedSearch(id)
                 val draft = SearchDraft(definition.query, definition.local)
                 if (!searchGeneration.isCurrent(epoch)) return@launch
-                ordinaryDraft = ordinaryDraft ?: SearchDraft(request(input), input.local)
+                ordinaryDraft = ordinaryDraft ?: SearchDraft(request(input).copy(city = input.city), input.local)
                 _searchUiState.update { draft.restore(it).copy(editingSavedSearchId = id,
-                    savedOverviewOpen = true, savedEditorLoading = false, error = null) }
+                    savedOverviewOpen = true, savedEditorLoading = false, savedEditorSession = epoch, error = null) }
                 schedulePreview()
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -437,11 +438,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         mutateSavedDefinition("Gespeicherte Suche konnte nicht entfernt werden", { core.deleteSavedSearch(id) })
 
     fun closeSavedResults() {
-        if (_searchUiState.value.loading) return
+        if (_searchUiState.value.loading || _searchUiState.value.saving) return
         invalidateActiveSearch()
         _searchUiState.update {
             it.copy(showingSavedSearchId = null, savedResultCards = emptyList(),
-                savedResultCursor = null, savedResultsLoadingMore = false)
+                savedResultCursor = null, savedResultsLoadingMore = false, error = null)
         }
     }
 
@@ -514,7 +515,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startSearch(requestOverride: SearchRequest? = null, localOverride: LocalVisibility? = null) {
-        if (_searchUiState.value.loading || _searchUiState.value.saving || _uiState.value.loading || _discoverState.value.busy || _searchUiState.value.editingSavedSearchId != null) return
+        if (_searchUiState.value.loading || _searchUiState.value.saving || _uiState.value.loading || _discoverState.value.busy || _searchUiState.value.savedEditorLoading) return
+        if (_searchUiState.value.editingSavedSearchId != null) cancelSavedEditor()
         val input = _searchUiState.value
         cancelPreview()
         invalidateActiveSearch()
