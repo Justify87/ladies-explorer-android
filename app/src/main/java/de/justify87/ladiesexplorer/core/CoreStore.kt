@@ -172,17 +172,19 @@ class CoreStore(context: Context) {
             }
         }
 
-    suspend fun loadProfile(listingId: Long): ProfileResponse = withContext(Dispatchers.IO) {
-        recorded("loadProfile listingId=$listingId") {
-            engine.loadSourceProfile(listingId)
+    // Source profile reads and identity confirmation share native execution ownership.
+    private val profileSourceMutex = Mutex()
+
+    suspend fun loadProfile(listingId: Long): ProfileResponse = profileSourceMutex.withLock {
+        withContext(Dispatchers.IO) {
+            recorded("loadProfile listingId=$listingId") {
+                engine.loadSourceProfile(listingId)
+            }
         }
     }
 
-    // One current/standalone profile request at a time for the swipe window.
-    private val swipeProfileMutex = Mutex()
-
     suspend fun loadSwipeProfile(listingId: Long, control: RequestControl): ProfileResponse =
-        swipeProfileMutex.withLock {
+        profileSourceMutex.withLock {
             withContext(Dispatchers.IO) {
                 recorded("loadSwipeProfile listingId=$listingId") {
                     engine.loadSwipeProfile(listingId, control)
@@ -262,9 +264,11 @@ class CoreStore(context: Context) {
         withContext(Dispatchers.IO) { engine.listIdentityCandidates(listingId) }
 
     suspend fun confirmIdentityMatch(listingId: Long, expectedSourcePersonId: Long, targetPersonId: Long) =
-        withContext(Dispatchers.IO) {
-            recorded("confirmIdentityMatch listing=$listingId") {
-                engine.confirmIdentityMatch(listingId, expectedSourcePersonId, targetPersonId)
+        profileSourceMutex.withLock {
+            withContext(Dispatchers.IO) {
+                recorded("confirmIdentityMatch listing=$listingId") {
+                    engine.confirmIdentityMatch(listingId, expectedSourcePersonId, targetPersonId)
+                }
             }
         }
 

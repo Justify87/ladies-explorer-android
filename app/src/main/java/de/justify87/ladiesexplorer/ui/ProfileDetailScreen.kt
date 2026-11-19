@@ -18,7 +18,7 @@ internal fun ProfileDetailScreen(
     noteActions: NoteEditorActions,
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
-    onConfirmIdentity: (DetailIdentityToken, Long) -> Unit,
+    onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     onCancelArchive: () -> Unit,
     onRetryProfile: () -> Unit,
     onBack: () -> Unit,
@@ -38,22 +38,9 @@ internal fun ProfileDetailScreen(
     var confirmTarget by remember(renderedToken, state.identityCandidates) { mutableStateOf<Pair<DetailIdentityToken, Long>?>(null) }
 
     confirmTarget?.let { (token, target) ->
-        AlertDialog(
-            onDismissRequest = { confirmTarget = null },
-            title = { Text("Personen zusammenführen?") },
-            text = {
-                Text("Das Inserat wird mit Person #$target zusammengeführt. Die Entscheidung verändert Zuordnungen und die gemeinsame Historie. Bitte nur bei sicherer Identität bestätigen.")
-            },
-            confirmButton = {
-                Button(enabled = !actionsBusy && !state.actionBusy, onClick = {
-                    confirmTarget = null
-                    onConfirmIdentity(token, target)
-                }) { Text("Zusammenführen") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmTarget = null }) { Text("Abbrechen") }
-            },
-        )
+        IdentityConfirmationDialog(target, enabled = !actionsBusy && !state.actionBusy,
+            onConfirm = { confirmTarget = null; onConfirmIdentity(token, target) },
+            onDismiss = { confirmTarget = null })
     }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val heroHeight = (maxHeight * .84f).coerceIn(220.dp, 720.dp)
@@ -136,4 +123,23 @@ internal fun ProfileHeader(
         hasVideo = media.any { it.kind == "VIDEO" }, fromArchive = fromArchive,
     )
     profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+}
+
+/** The same explicit destructive confirmation in both profile contexts. */
+@Composable
+internal fun IdentityConfirmationDialog(
+    target: Long,
+    enabled: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Personen zusammenführen?") },
+        text = {
+            Text("Das Inserat wird mit Person #$target zusammengeführt. Die Entscheidung verändert Zuordnungen und die gemeinsame Historie. Bitte nur bei sicherer Identität bestätigen.")
+        },
+        confirmButton = { Button(enabled = enabled, onClick = onConfirm) { Text("Zusammenführen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
+    )
 }

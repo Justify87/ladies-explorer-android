@@ -33,13 +33,13 @@ internal class ProfileProjectionCallbacks(
     val savedSearch: () -> Unit,
     val map: () -> Unit,
     val home: () -> Unit,
+    val admitSwipe: (SwipeActionToken) -> Boolean = { false },
+    val beginMerge: () -> Unit = {},
+    val mergeCommitted: (ProfileIdentityToken, Long) -> Unit = { _, _ -> },
 )
 
-/**
- * Extracted standalone operation bodies, not the future unified profile controller.
- * The ViewModel still owns the same StateFlows and coroutine lifetime. Generation and
- * archive control are moved here, not duplicated. Known baseline gaps remain for T10.2.
- */
+/** Standalone read/archive lifecycle and the shared, context-neutral identity operation.
+ * Only detail delivery uses profileGeneration. A Swipe merge never opens a detail route. */
 internal class StandaloneProfileOperations<C : Any>(
     private val scope: CoroutineScope,
     private val _searchUiState: MutableStateFlow<SearchUiState>,
@@ -209,17 +209,33 @@ internal class StandaloneProfileOperations<C : Any>(
         }
     }
 
-    fun confirmIdentity(token: DetailIdentityToken, targetPersonId: Long) {
+    fun confirmIdentity(token: ProfileIdentityToken, targetPersonId: Long) {
         val active = _searchUiState.value
-        val sourceOwner = active.currentIdentityConfirmationOwner(token, targetPersonId, _discoverState.value.busy) ?: return
+        if (_discoverState.value.busy || active.actionBusy || active.loading ||
+            token.ownerId == targetPersonId || token.candidates.none { it.personId == targetPersonId }) return
+        val detailRequest = when (token) {
+            is DetailIdentityToken -> {
+                if (active.currentIdentityConfirmationOwner(token, targetPersonId, false) == null) return
+                token.sessionId
+            }
+            is SwipeActionToken -> {
+                if (active.profileOpen || !projections.admitSwipe(token)) return
+                null
+            }
+        }
+        val sourceOwner = token.ownerId
         val listingId = token.listingId
+        fun detailCurrent() = detailRequest != null && profileGeneration.isCurrent(detailRequest)
+        fun report(message: String) {
+            if (detailCurrent()) _searchUiState.update { it.copy(actionError = message) }
+            else _discoverState.update { it.copy(mutationError = message) }
+        }
         val dirtyOwners = _profileNotes.value.dirtyOwners(sourceOwner, targetPersonId)
         if (dirtyOwners.isNotEmpty()) {
-            _searchUiState.update { it.copy(actionError =
-                "Ungespeicherte Notiz für Person(en) ${dirtyOwners.joinToString()}. Vor Zusammenführung speichern oder verwerfen.") }
+            report("Ungespeicherte Notiz für Person(en) ${dirtyOwners.joinToString()}. Vor Zusammenführung speichern oder verwerfen.")
             return
         }
-        val requestId = profileGeneration.value
+        projections.beginMerge()
         val epoch = projections.nextEpoch()
         val pendingArchive = archiveCall
         pendingArchive?.cancel(io.cancelArchive)
@@ -227,7 +243,7 @@ internal class StandaloneProfileOperations<C : Any>(
         // it finishes even if Back clears the screen's own actionBusy flag.
         _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
             savedLoadingMore = false, savedRecentLoadingMore = false, mutationError = null) }
-        _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
+        if (detailCurrent()) _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
         scope.launch {
             var committed = false
             var projectionUpdated = false
@@ -242,32 +258,40 @@ internal class StandaloneProfileOperations<C : Any>(
                         noteReadTickets.invalidate(owner)
                     }
                     _profileNotes.update { it - sourceOwner - targetPersonId }
-                    if (profileGeneration.isCurrent(requestId)) {
+                    projections.mergeCommitted(token, targetPersonId)
+                    if (detailCurrent()) {
                         _searchUiState.update { it.invalidateMergedProfile(listingId) }
                     }
                 }
                 coroutineContext.ensureActive()
-                val local = project(listingId)
-                if (profileGeneration.isCurrent(requestId)) {
-                    _searchUiState.update {
-                        if (it.retryProfileListingId == listingId) it.withProjection(local) else it
+                // A failed detail read must not suppress the independent feed projection.
+                var detailFailed = false
+                if (token is DetailIdentityToken) {
+                    try {
+                        val local = project(listingId)
+                        if (detailCurrent()) {
+                            _searchUiState.update {
+                                if (it.retryProfileListingId == listingId) it.withProjection(local) else it
+                            }
+                        }
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        detailFailed = true
                     }
                 }
                 projectionUpdated = projections.projectDiscovery(epoch)
+                if (detailFailed || !projectionUpdated) {
+                    report("Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden.")
+                }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
                 val message = if (committed) "Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
                     else failure.message ?: "Zusammenführung fehlgeschlagen"
-                if (profileGeneration.isCurrent(requestId)) {
-                    _searchUiState.update {
-                        it.copy(actionError = message)
-                    }
-                } else {
-                    _discoverState.update { it.copy(mutationError = message) }
-                }
+                report(message)
             } finally {
-                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(actionBusy = false) }
+                if (detailCurrent()) _searchUiState.update { it.copy(actionBusy = false) }
                 if (epoch == projections.epoch()) {
                     _discoverState.update { it.copy(busy = false) }
                     if (committed && !projectionUpdated || projections.pending()) projections.discovery()

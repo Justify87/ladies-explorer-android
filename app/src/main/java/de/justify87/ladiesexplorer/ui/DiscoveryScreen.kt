@@ -36,6 +36,7 @@ internal fun DiscoverScreen(
     onChoose: (SwipeActionToken, Preference) -> Unit,
     onSwipeVisibility: (Boolean) -> Unit,
     onRenderedSwipe: (SwipeActionToken?) -> Unit,
+    onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     onSnapshotChanged: () -> Unit,
     onFavorite: (Long) -> Unit,
     onProfile: (Long, Long) -> Unit,
@@ -59,6 +60,12 @@ internal fun DiscoverScreen(
     val current = card?.let { decks[it] }
     val token = state.swipeToken(current).takeIf { visible }
     SideEffect { onRenderedSwipe(token) }
+    var confirmation by remember(token) { mutableStateOf<Long?>(null) }
+    confirmation?.let { target ->
+        IdentityConfirmationDialog(target, enabled = token != null && visible,
+            onConfirm = { confirmation = null; token?.let { onConfirmIdentity(it, target) } },
+            onDismiss = { confirmation = null })
+    }
     val owner = current?.identity?.personId ?: card?.personId
     val tab = tabs.selected(owner)
     val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson, current?.media.orEmpty(), tab)
@@ -76,7 +83,9 @@ internal fun DiscoverScreen(
         try {
             decks.retain(window)
             decks.readCurrent(card) {
-                core.readSwipeProfile(card.listingId, control, refresh = true, onSourceRead = onSnapshotChanged)
+                val localOnly = card.listingId in state.localProfileReloadIds
+                core.readSwipeProfile(card.listingId, control, refresh = !localOnly,
+                    allowNetwork = !localOnly, onSourceRead = onSnapshotChanged)
             }
             retry = 0
         } catch (cancel: CancellationException) {
@@ -96,7 +105,7 @@ internal fun DiscoverScreen(
             try {
                 val profile = decks.prefetch(next) {
                     core.readSwipeProfile(next.listingId, prefetchControl,
-                        refresh = false, allowNetwork = state.activeRunId != null,
+                        refresh = false, allowNetwork = state.activeRunId != null && next.listingId !in state.localProfileReloadIds,
                         onSourceRead = onSnapshotChanged)
                 }
                 if (profile != null) warmSwipeImages(context, next, profile)
@@ -204,7 +213,7 @@ internal fun DiscoverScreen(
                     }
                     if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
                         panels, tab, selectTab, profile.candidates, profile.history, !actions,
-                        owner?.let(notes::get) ?: NoteEditorState(), noteActions, onConfirm = null, onOpenDetail = { onProfile(card.listingId, card.personId) })
+                        owner?.let(notes::get) ?: NoteEditorState(), noteActions, onConfirm = { target -> if (token != null) confirmation = target })
                     else card.description?.let { item { Text(it) } }
                 }
             }

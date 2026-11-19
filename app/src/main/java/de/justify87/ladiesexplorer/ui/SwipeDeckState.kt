@@ -9,14 +9,29 @@ internal data class SwipeStep(
     val personId: Long,
     val before: Preference? = null,
     val after: Preference? = null,
+    val undoable: Boolean = true,
 )
 
 internal class SwipeSession {
     var replayLikes: Boolean = true
     private val history = mutableListOf<SwipeStep>()
     private var restoredListingId: Long? = null
-    val last: SwipeStep? get() = history.lastOrNull()
-    val excludedPeople: List<Long> get() = history.map { it.personId }.distinct()
+    private val mergedOwners = mutableMapOf<Long, Long>()
+    val last: SwipeStep? get() = history.lastOrNull()?.takeIf { it.undoable }
+    private fun canonicalOwner(personId: Long): Long {
+        var owner = personId
+        while (mergedOwners.containsKey(owner)) owner = mergedOwners.getValue(owner)
+        return owner
+    }
+    val excludedPeople: List<Long> get() = history.map { canonicalOwner(it.personId) }.distinct()
+
+    /** Merge is not a Visit. Old owner-bound undo steps may not mutate the canonical person. */
+    fun reconcileMerge(source: Long, target: Long, preferredListing: Long?) {
+        val affected = history.indices.filter { canonicalOwner(history[it].personId) in setOf(source, target) }
+        affected.forEach { history[it] = history[it].copy(undoable = false) }
+        mergedOwners[source] = target
+        if (preferredListing != null) restoredListingId = preferredListing
+    }
 
     fun visit(step: SwipeStep) {
         history.add(step)
@@ -31,11 +46,12 @@ internal class SwipeSession {
 
     fun reset() {
         history.clear()
+        mergedOwners.clear()
         restoredListingId = null
     }
 
     fun queue(cards: List<DiscoveryCard>, active: Boolean): List<DiscoveryCard> {
-        val people = history.mapTo(hashSetOf()) { it.personId }
+        val people = excludedPeople.toHashSet()
         val listings = history.mapTo(hashSetOf()) { it.listingId }
         // After an identity merge, a visited listing may now have a different owner.
         cards.filter { it.listingId in listings }.forEach { people.add(it.personId) }
@@ -62,12 +78,12 @@ internal fun prefetchCards(cards: List<DiscoveryCard>): List<DiscoveryCard> =
 internal data class SwipeActionToken(
     val runId: Long?,
     val session: Long,
-    val listingId: Long,
-    val ownerId: Long,
-    val snapshotId: Long,
+    override val listingId: Long,
+    override val ownerId: Long,
+    override val snapshotId: Long,
     val preference: Preference,
-    val candidateIds: Set<Long>,
-)
+    override val candidates: List<de.justify87.ladiesexplorer.core.IdentityCandidate>,
+) : ProfileIdentityToken
 
 internal fun DiscoverUiState.swipeToken(profile: SwipeProfile?): SwipeActionToken? {
     val card = cards.firstOrNull() ?: return null
@@ -75,7 +91,7 @@ internal fun DiscoverUiState.swipeToken(profile: SwipeProfile?): SwipeActionToke
     if (local.profile.listingId != card.listingId || local.identity.personId != card.personId ||
         local.person?.personId != card.personId) return null
     return SwipeActionToken(activeRunId, swipeSessionId, card.listingId, card.personId,
-        local.profile.snapshotId, card.preference, local.candidates.map { it.personId }.toSet())
+        local.profile.snapshotId, card.preference, local.candidates)
 }
 
 internal fun currentSwipeActionCard(

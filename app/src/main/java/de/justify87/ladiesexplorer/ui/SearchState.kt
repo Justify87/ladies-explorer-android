@@ -157,19 +157,28 @@ internal class DrainingOperation<T> {
 internal fun canAcquireImport(search: DrainingOperation<*>, home: DrainingOperation<*>, uiBusy: Boolean) =
     !search.occupied && !home.occupied && !uiBusy
 
+/** Both render contexts carry the same native identity and evidence contract. */
+internal sealed interface ProfileIdentityToken {
+    val listingId: Long
+    val ownerId: Long
+    val snapshotId: Long
+    val candidates: List<de.justify87.ladiesexplorer.core.IdentityCandidate>
+}
+
 /** Captured from the rendered detail, never reconstructed at confirmation time. */
 internal data class DetailIdentityToken(
     val sessionId: Long,
-    val listingId: Long,
-    val ownerId: Long,
-    val snapshotId: Long,
-)
+    override val listingId: Long,
+    override val ownerId: Long,
+    override val snapshotId: Long,
+    override val candidates: List<de.justify87.ladiesexplorer.core.IdentityCandidate>,
+) : ProfileIdentityToken
 
 internal fun SearchUiState.detailIdentityToken(): DetailIdentityToken? {
     if (!profileOpen || loading) return null
     val current = profile ?: return null
     val owner = profileIdentity?.personId ?: return null
-    return DetailIdentityToken(profileSessionId, current.listingId, owner, current.snapshotId)
+    return DetailIdentityToken(profileSessionId, current.listingId, owner, current.snapshotId, identityCandidates)
 }
 
 internal fun SearchUiState.currentIdentityConfirmationOwner(

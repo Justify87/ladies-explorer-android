@@ -19,6 +19,7 @@ class StandaloneProfileOperationsTest {
         var epoch = 0L
         var pending = false
         var feedOk = true
+        var renderedSwipe: SwipeActionToken? = null
         var source: suspend (Long) -> ProfileResponse = { error("offline") }
         var cached: ProfileResponse? = fixtureProfile()
         var identityError: Exception? = null
@@ -54,6 +55,7 @@ class StandaloneProfileOperationsTest {
                 projectDiscovery = { calls += "project:$it"; feedOk },
                 discovery = { calls += "discovery"; pending = false },
                 savedSearch = { calls += "saved" }, map = { calls += "map" }, home = { calls += "home" },
+                admitSwipe = { it == renderedSwipe && currentSwipeActionCard(discovery.value, false, it) != null },
             ),
         )
         suspend fun idle() { scope.coroutineContext[Job]!!.children.toList().joinAll() }
@@ -158,7 +160,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.tickets.isCurrent(1L, a))
         assertEquals(setOf(3L), f.notes.value.keys)
         assertTrue(f.search.value.actionError!!.startsWith("Zusammenführung gespeichert"))
-        assertEquals(listOf("confirm:4:2", "profile:4", "discovery", "saved", "map", "home"), f.calls)
+        assertEquals(listOf("confirm:4:2", "profile:4", "project:1", "saved", "map", "home"), f.calls)
         f.confirmCurrent()
         f.identityError = null
         f.operations.retryProfileProjection()
@@ -338,4 +340,27 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.tickets.isCurrent(7L, currentTicket))
     }
 
+    @Test fun swipeMergeUsesSameNativeWriteWithoutOpeningDetailAndRejectsStaleToken() = runBlocking {
+        val f = Fixture(this)
+        val candidate = IdentityCandidate(2L, "CANDIDATE", false, true, 0u, 0u, null)
+        f.discovery.value = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
+        val token = requireNotNull(f.discovery.value.swipeToken(fixtureSwipe().copy(candidates = listOf(candidate))))
+        f.renderedSwipe = token
+        f.oldNotes()
+        f.notes.value = f.notes.value.updateNote(2L) { it.copy(draft = it.draft!!.edit("unsaved")) }
+        f.operations.confirmIdentity(token, 2L)
+        assertTrue(f.discovery.value.mutationError!!.contains("2"))
+        assertTrue(f.calls.isEmpty())
+        f.oldNotes()
+        f.operations.confirmIdentity(token.copy(snapshotId = 99L), 2L)
+        assertTrue(f.calls.isEmpty())
+        f.operations.confirmIdentity(token, 2L)
+        f.idle()
+        assertEquals(2L, f.owner)
+        assertEquals(listOf("confirm:4:2", "project:1", "saved", "map", "home"), f.calls)
+        assertFalse(f.search.value.profileOpen)
+        assertNull(f.search.value.profile)
+        assertEquals(setOf(3L), f.notes.value.keys)
+        assertFalse(f.discovery.value.busy)
+    }
 }

@@ -101,4 +101,17 @@ class SwipeDeckStateTest {
         assertNull(currentSwipeActionCard(state, true, token))
         assertNull(state.swipeToken(fixtureSwipe(4L, 7L)))
     }
+    @Test fun mergeReconcilesVisitedAliasesWithoutCreatingVisitOrRetargetingUndo() {
+        val session = SwipeSession()
+        session.visit(SwipeStep(1, 1, Preference.NONE, Preference.LIKE))
+        session.reconcileMerge(1, 2, 4)
+        assertNull(session.last)
+        assertEquals(listOf(2L), session.excludedPeople)
+        assertEquals(listOf(4L, 3L), session.queue(listOf(card(3), card(2), card(4)), true).map { it.listingId })
+        session.reconcileMerge(2, 3, null)
+        assertEquals(listOf(3L), session.excludedPeople)
+        assertEquals(listOf(4L), session.queue(listOf(card(3), card(4)), true).map { it.listingId })
+        session.reset()
+        assertTrue(session.excludedPeople.isEmpty())
+    }
 }

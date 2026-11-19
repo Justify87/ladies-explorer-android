@@ -62,6 +62,7 @@ data class DiscoverUiState(
     val activeRunId: Long? = null,
     val swipeSessionId: Long = 0L,
     val swipeProfileRevision: Long = 0L,
+    val localProfileReloadIds: Set<Long> = emptySet(),
     val activeVisibleCount: Int = 0,
     val replayLikes: Boolean = true,
     val canUndoSwipe: Boolean = false,
@@ -177,7 +178,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun invalidateSwipeActions(invalidateProfiles: Boolean = false) {
         renderedSwipe = null
         _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1,
-            swipeProfileRevision = it.swipeProfileRevision + if (invalidateProfiles) 1 else 0) }
+            swipeProfileRevision = it.swipeProfileRevision + if (invalidateProfiles) 1 else 0,
+            localProfileReloadIds = if (invalidateProfiles) emptySet() else it.localProfileReloadIds) }
     }
     private var localWindow = 0
     private val savedWindows = SavedWindowMemory()
@@ -216,6 +218,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 pending = { swipeInvalidation.pending }, projectDiscovery = ::projectDiscovery,
                 discovery = ::refreshDiscovery, savedSearch = savedSearch::refreshResultProjection,
                 map = ::refreshMap, home = ::refresh,
+                admitSwipe = { admittedSwipe(it) != null },
+                beginMerge = { invalidateSwipeActions() },
+                mergeCommitted = ::onIdentityMergeCommitted,
             ),
         )
     }
@@ -859,8 +864,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         profileOperations.loadProfile(listingId, personId) { savedSearch.setVisible(false) }
     }
 
-    internal fun confirmIdentity(token: DetailIdentityToken, targetPersonId: Long) =
+    internal fun confirmIdentity(token: ProfileIdentityToken, targetPersonId: Long) =
         profileOperations.confirmIdentity(token, targetPersonId)
+
+    private fun onIdentityMergeCommitted(token: ProfileIdentityToken, target: Long) {
+        val current = _discoverState.value
+        val preferred = if (token is SwipeActionToken) token.listingId else current.cards.firstOrNull()?.listingId
+        swipeSession.reconcileMerge(token.ownerId, target, preferred)
+        // All old cache capabilities are revoked; existing affected listings recover locally.
+        val affected = (current.cards.take(3).filter { it.personId == token.ownerId || it.personId == target }
+            .map { it.listingId } + token.listingId).toSet()
+        renderedSwipe = null
+        _discoverState.update {
+            it.copy(swipeSessionId = it.swipeSessionId + 1,
+                swipeProfileRevision = it.swipeProfileRevision + 1,
+                localProfileReloadIds = affected, canUndoSwipe = swipeSession.last != null)
+        }
+    }
 
     internal fun retryProfileProjection() = profileOperations.retryProfileProjection()
 
