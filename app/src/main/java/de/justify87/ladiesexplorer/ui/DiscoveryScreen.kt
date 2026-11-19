@@ -34,7 +34,6 @@ internal fun DiscoverScreen(
     onReplayLikes: (SwipeDeckToken, Boolean) -> Unit,
     onSkip: (SwipeCardToken) -> Unit,
     onChoose: (SwipeActionToken, Preference) -> Unit,
-    onIndependentPreference: (ProfileIdentityToken, Preference) -> Unit,
     onSwipeVisibility: (Boolean) -> Unit,
     onRenderedSwipe: (SwipeActionToken?) -> Unit,
     onProjectionMismatch: (SwipeActionToken) -> Unit,
@@ -218,6 +217,8 @@ internal fun DiscoverScreen(
                                     )
                                 },
                             originalUrl = profile?.identity?.profileUrl,
+                            selection = mediaSelection,
+                            projectionAvailable = profile != null,
                             actionsEnabled = actions,
                             isCurrent = { token?.let(isProfileCurrent) == true },
                         )
@@ -240,10 +241,7 @@ internal fun DiscoverScreen(
                     item(key = "actions") {
                         ProfileActionRail(person, !actions,
                             onFavorite = { token?.let(onFavorite) },
-                            onPreference = { _, preference -> token?.let {
-                                if (preference == Preference.NONE) onIndependentPreference(it, preference)
-                                else onChoose(it, preference)
-                            } })
+                            onPreference = { _, preference -> token?.let { onChoose(it, preference) } })
                     }
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                 }

@@ -90,7 +90,6 @@ class ProfilePanelsTest {
         }, { detail() }, { _, _, _ -> emptyList() })
         val read = launch { panel.loadFacts(11L, "old") }
         started.await()
-        panel.reload()
         panel.loadFacts(11L, "new")
         assertEquals(new, panel.facts)
         finish.complete(Unit)
@@ -160,6 +159,41 @@ class ProfilePanelsTest {
         assertEquals(raw.values, all.preview(true).source.map { it.second })
         assertEquals(listOf("Nein", "Unbekannt", "Nein", "Unbekannt", "Nein", "Unbekannt"),
             all.preview(true).filters.map { it.second })
+    }
+
+    @Test fun sameKeyFactsRetryCannotResetSuccessfulDetail() = runBlocking {
+        var attempts = 0
+        val panel = ProfilePanels(this, 7L, { _, _ ->
+            if (++attempts == 1) error("facts failed") else facts()
+        }, { detail() }, { _, _, _ -> emptyList() })
+        panel.loadFacts(11L, "{}")
+        panel.loadDetail()
+        val previousDetail = panel.detail
+        panel.loadFacts(11L, "{}")
+        assertEquals(1, attempts)
+        panel.retryFacts()
+        panel.retryFacts()
+        coroutineContext[Job]!!.children.toList().forEach { it.join() }
+        assertEquals(2, attempts)
+        assertNotNull(panel.facts)
+        assertNull(panel.factsError)
+        assertEquals(previousDetail, panel.detail)
+    }
+
+    @Test fun lateFactsFailureCannotReplaceNewSuccess() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val panel = ProfilePanels(this, 7L, { _, filter ->
+            if (filter == "old") { started.complete(Unit); finish.await(); error("late") }
+            facts()
+        }, { detail() }, { _, _, _ -> emptyList() })
+        val old = launch { panel.loadFacts(11L, "old") }
+        started.await()
+        panel.loadFacts(11L, "new")
+        finish.complete(Unit)
+        old.join()
+        assertNull(panel.factsError)
+        assertNotNull(panel.facts)
     }
 
     @Test fun demandUsesVisibleLazyItemsNotCollapsedHeaders() {

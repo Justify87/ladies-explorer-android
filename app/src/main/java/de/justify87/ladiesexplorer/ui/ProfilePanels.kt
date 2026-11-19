@@ -3,7 +3,6 @@ package de.justify87.ladiesexplorer.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -22,11 +21,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 
 internal enum class ProfileSection(val label: String) {
-    Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), History("Verlauf / verknüpfte Anzeigen")
+    Description("Beschreibung"), Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), History("Verlauf / verknüpfte Anzeigen")
 }
 
 @Stable
@@ -50,23 +49,6 @@ internal fun rememberProfileSections(): ProfileSections = rememberSaveable(
     saver = listSaver<ProfileSections, String>(save = { it.entries }, restore = { ProfileSections(it) })
 ) { ProfileSections() }
 
-@Composable
-internal fun rememberProfileNote(
-    token: ProfileIdentityToken?,
-    actions: NoteEditorActions,
-    busy: Boolean,
-    sections: ProfileSections,
-) {
-    // Opening is a one-shot demand for this rendered revision. Folding the
-    // section does not cancel a local read or reload on every toggle.
-    LaunchedEffect(token, busy, sections) {
-        if (token != null && !busy) {
-            snapshotFlow { sections.expanded(ProfileSection.Notes) }.first { it }
-            actions.load(token.listingId, token.ownerId)
-        }
-    }
-}
-
 /** Shared scroll, section state, read demand and dialogs. The leading slot
  * supplies only context-specific hero/status/navigation; no second profile route. */
 @Composable
@@ -82,18 +64,30 @@ internal fun ProfileFlow(
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    leading: LazyListScope.() -> Unit,
+    leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
-    // A temporary read gap must not lose presentation state for the same owner.
-    // A genuine owner replacement or different outer profile session resets it.
     var lastOwner by rememberSaveable { mutableStateOf<Long?>(null) }
-    SideEffect { if (owner != null) lastOwner = owner }
-    val sections = key(owner ?: lastOwner) { rememberProfileSections() }
+    val ownerChanged = owner != null && lastOwner != null && owner != lastOwner
+    val presentationOwner = owner ?: lastOwner
+    val sections = key(presentationOwner) { rememberProfileSections() }
+    val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
+    val scroll = remember(presentationOwner) { ProfileScrollMemory() }
+    SideEffect {
+        if (owner != null) lastOwner = owner
+        else scroll.gap()
+    }
     val panels = rememberProfilePanels(model, filters, state)
     val busy = actionsBusy || token == null
     val boundNotes = noteActions.boundTo(token, isProfileCurrent)
-    rememberProfileNote(token, boundNotes, busy, sections)
+    val scope = rememberCoroutineScope()
+    val noteDemand = remember(model?.profile?.listingId, owner, model?.profile?.snapshotId,
+        model?.revision, scope) { ProfileNoteDemand(scope) }
+    DisposableEffect(noteDemand) { onDispose { noteDemand.close() } }
+    val noteExpanded = sections.expanded(ProfileSection.Notes)
+    LaunchedEffect(noteDemand, noteExpanded, token, busy) {
+        if (noteExpanded && !busy) noteDemand.request(token, false, isProfileCurrent, noteActions.load)
+    }
     ComparisonDialog(panels, active = !busy)
     var confirmation by remember(token) { mutableStateOf<Long?>(null) }
     val current = { token?.let(isProfileCurrent) == true }
@@ -106,14 +100,43 @@ internal fun ProfileFlow(
             },
             onDismiss = { confirmation = null })
     }
-    LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val rows = ProfileFlowRows(mediaSelection).apply {
         leading()
         if (model != null) profileContent(model.profile, model.identity, model.person, model.media,
             panels, sections, model.candidates, model.history, busy,
             owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
+            noteDemand = noteDemand,
+            onRetryNote = { if (!busy) noteDemand.request(token, true, isProfileCurrent, noteActions.load) },
             isCurrent = current,
             onConfirm = { target -> if (!busy && current()) confirmation = target })
+    }.build()
+    val keys = rows.map { it.key }
+    val available = model != null
+    // An anchor into linked listings itself constitutes demand for the local detail read.
+    LaunchedEffect(panels, scroll, available) {
+        if (available && scroll.needsListings()) panels.loadDetail()
+    }
+    val waitingForListings = scroll.needsListings() && panels.detail == null && panels.detailError == null
+    LaunchedEffect(state, scroll, available, keys, waitingForListings) {
+        if (!available || waitingForListings) return@LaunchedEffect
+        // Wait for the new manifest to be measured, never resolve against the gap's rows.
+        snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
+        if (ownerChanged) state.scrollToItem(0)
+        else scroll.target(keys)?.let { (index, offset) ->
+            state.scrollToItem(index, offset)
+            scroll.restored()
+        }
+        snapshotFlow {
+            val index = state.firstVisibleItemIndex
+            val item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+            (item?.key as? String)?.let { ProfileScrollAnchor(it, state.firstVisibleItemScrollOffset) }
+        }.collect { anchor ->
+            if (anchor != null && anchor.key in keys) scroll.observe(anchor.key, anchor.offset)
+        }
+    }
+    LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(rows, key = { it.key }) { row -> row.content() }
     }
 }
 
@@ -136,10 +159,6 @@ private fun SectionToggle(
             contentDescription = null)
     }
 }
-
-/** An explicit neutral reset in Swipe remains a person operation, never a deck visit. */
-internal fun independentProfilePreference(token: ProfileIdentityToken, preference: Preference): Boolean =
-    token is DetailIdentityToken || preference == Preference.NONE
 
 internal fun noteSectionHint(note: NoteEditorState): String? = when {
     note.draft?.conflict == true -> "Notizkonflikt"
@@ -224,8 +243,8 @@ internal fun ProfileFacts.serviceRows(): ProfileServiceRows = ProfileServiceRows
 )
 
 @Composable
-private fun ProfileDescription(profile: ProfileResponse) {
-    var expanded by rememberSaveable(profile.snapshotId) { mutableStateOf(false) }
+private fun ProfileDescription(profile: ProfileResponse, sections: ProfileSections) {
+    val expanded = sections.expanded(ProfileSection.Description)
     var overflow by remember(profile.snapshotId) { mutableStateOf(false) }
     val text = profile.description.ifBlank { "Keine Beschreibung gespeichert." }
     ProfileGroup("Über das Profil") {
@@ -236,7 +255,7 @@ private fun ProfileDescription(profile: ProfileResponse) {
                 })
         }
         if (expanded || overflow) {
-            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Weniger" else "Mehr anzeigen") }
+            TextButton(onClick = { sections.toggle(ProfileSection.Description) }) { Text(if (expanded) "Weniger" else "Mehr anzeigen") }
         }
     }
 }
@@ -248,11 +267,13 @@ private fun NotesPanel(
     state: NoteEditorState,
     actions: NoteEditorActions,
     busy: Boolean,
+    demand: ProfileNoteDemand,
+    onRetry: () -> Unit,
 ) {
     ProfileGroup("Private Personennotiz") {
         val draft = state.draft
-        val scope = rememberCoroutineScope()
-        val editable = owner != null && !busy && !state.loading && !state.readError
+        val loading = demand.status != ProfileNoteDemand.Status.Settled || state.loading
+        val editable = owner != null && !busy && !loading && !state.readError
         if (draft != null && owner != null) {
             OutlinedTextField(draft.text, { actions.edit(owner, it) },
                 modifier = Modifier.fillMaxWidth(), label = { Text("Notiz") },
@@ -273,14 +294,14 @@ private fun NotesPanel(
                 Button(onClick = { actions.save(listingId, owner) },
                     enabled = editable && draft.dirty && !draft.conflict) { Text("Speichern") }
                 TextButton(onClick = { actions.useStored(owner) },
-                    enabled = !busy && !state.loading && draft.dirty) { Text("Verwerfen") }
+                    enabled = !busy && !loading && draft.dirty) { Text("Verwerfen") }
             }
         } else if (owner == null) Text("Person nicht verfügbar.")
-        if (state.loading || busy && draft != null) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (loading || busy && draft != null) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (owner != null && (state.readError || state.error != null || draft == null && !state.loading)) {
-            TextButton(onClick = { scope.launch { actions.load(listingId, owner) } },
-                enabled = !busy && !state.loading) { Text("Neu laden") }
+            TextButton(onClick = onRetry,
+                enabled = !busy && !loading) { Text("Neu laden") }
         }
     }
 }
@@ -324,7 +345,7 @@ private fun HistoryValues(before: String?, after: String?) {
 }
 
 /** Both routes render identical inline sections in a single lazy list. */
-private fun LazyListScope.profileContent(
+private fun ProfileFlowRows.profileContent(
     profile: ProfileResponse,
     identity: ProfileIdentity?,
     person: PersonSummary?,
@@ -336,6 +357,8 @@ private fun LazyListScope.profileContent(
     actionsBusy: Boolean,
     note: NoteEditorState,
     noteActions: NoteEditorActions,
+    noteDemand: ProfileNoteDemand,
+    onRetryNote: () -> Unit,
     isCurrent: () -> Boolean,
     onConfirm: (Long) -> Unit,
 ) {
@@ -351,7 +374,7 @@ private fun LazyListScope.profileContent(
             }
         }
     }
-    if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile) }
+    if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile, sections) }
     item(key = "profile-services") {
         ProfileGroup("Dienste und Filterbelege") {
             FactsContent(panels) { facts ->
@@ -414,7 +437,7 @@ private fun LazyListScope.profileContent(
             hintError = note.error != null || note.draft?.conflict == true)
     }
     if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes") {
-        NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy)
+        NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy, noteDemand, onRetryNote)
     }
     item(key = "history-toggle") { SectionToggle(ProfileSection.History, sections) }
     if (sections.expanded(ProfileSection.History)) {
@@ -427,6 +450,7 @@ private fun LazyListScope.profileContent(
                 Checkbox(sections.showDescriptionChanges, sections::setShowDescriptionChanges)
                 Text("Beschreibungstexte im Verlauf anzeigen")
             }
+            if (panels.detail == null) DetailStatus(panels)
             if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
         }
         items(visibleEvents, key = { "event/${it.changeEventId}" }) { event ->

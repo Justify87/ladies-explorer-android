@@ -205,14 +205,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _searchUiState.value.detailIdentityToken() == token
     }
 
-    internal fun chooseIndependentProfilePreference(token: ProfileIdentityToken, preference: Preference) {
-        if (!independentProfilePreference(token, preference) || !isProfileActionCurrent(token)) return
+    internal fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference) {
+        if (!isProfileActionCurrent(token)) return
         _searchUiState.update { it.copy(actionError = null) }
         suspend fun refreshDetail() {
             if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
         }
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
-            core.setSwipePreference(token.listingId, token.ownerId, token.preference, preference)
+            swipeSession.commitProfilePreference(token, preference, core::setSwipePreference)
         }, afterWrite = { refreshDetail() },
             recoverWriteFailure = { refreshDetail() },
             onFailure = { message ->
@@ -785,15 +785,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-    }
-
-    internal fun decideSwipe(token: SwipeActionToken, preference: Preference) {
-        if (preference == Preference.NONE) return
-        val card = admittedSwipe(token) ?: return
-        mutateDiscovery("Entscheidung fehlgeschlagen", write = {
-            val previous = core.setSwipePreference(card.listingId, card.personId, token.preference, preference)
-            swipeSession.visit(SwipeStep(card.listingId, card.personId, previous, preference))
-        })
     }
 
     internal fun undoSwipe(token: SwipeDeckToken) {

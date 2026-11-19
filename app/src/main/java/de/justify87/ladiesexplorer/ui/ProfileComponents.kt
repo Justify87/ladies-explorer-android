@@ -160,11 +160,14 @@ internal fun ProfileMediaHero(
     originalUrl: String? = null,
     actionsEnabled: Boolean = true,
     isCurrent: () -> Boolean = { true },
+    selection: ProfileMediaSelection,
+    projectionAvailable: Boolean = true,
 ) {
     val context = LocalContext.current
-    var selected by rememberSaveable { mutableIntStateOf(0) }
-    val index = mediaIndex(selected, media.size)
-    LaunchedEffect(index, selected) { if (selected != index) selected = index }
+    val index = selection.resolve(media, projectionAvailable)
+    LaunchedEffect(media, index, projectionAvailable) {
+        if (projectionAvailable) selection.select(media, index)
+    }
     val item = media.getOrNull(index)
     var more by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
@@ -204,9 +207,9 @@ internal fun ProfileMediaHero(
                 }
             }
             MediaTapZone("Vorheriges Medium", Icons.Default.ChevronLeft, index > 0,
-                Modifier.align(Alignment.CenterStart)) { selected = index - 1 }
+                Modifier.align(Alignment.CenterStart)) { if (projectionAvailable) selection.select(media, index - 1) }
             MediaTapZone("Nächstes Medium", Icons.Default.ChevronRight, index < media.lastIndex,
-                Modifier.align(Alignment.CenterEnd)) { selected = index + 1 }
+                Modifier.align(Alignment.CenterEnd)) { if (projectionAvailable) selection.select(media, index + 1) }
         }
         onBack?.let {
             HeroButton(it, "Zurück", Icons.Default.ArrowBack,
