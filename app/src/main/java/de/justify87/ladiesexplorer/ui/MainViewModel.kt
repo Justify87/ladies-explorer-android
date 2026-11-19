@@ -17,8 +17,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+enum class HomeOperation { Status, Import }
+
 data class HomeUiState(
-    val loading: Boolean = true,
+    val operation: HomeOperation? = HomeOperation.Status,
     val schemaVersion: String? = null,
     val personCount: String = "0",
     val sourceProfileCount: String = "0",
@@ -34,7 +36,10 @@ data class HomeUiState(
     val diagnosticSizeBytes: Long = 0,
     val diagnosticLastError: String? = null,
     val error: String? = null,
-)
+) {
+    val loading get() = operation != null
+    val importing get() = operation == HomeOperation.Import
+}
 
 data class SavedStatusProgress(
     val total: Int = 0,
@@ -1042,15 +1047,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private enum class HomeOperation { Status, Import }
-
     fun refresh() {
         if (homeOwner.occupied) {
             homeRefreshPending = true
             return
         }
         val ticket = checkNotNull(homeOwner.start(HomeOperation.Status))
-        _uiState.update { it.copy(loading=true,error=null) }
+        _uiState.update { it.copy(operation=HomeOperation.Status,error=null) }
         viewModelScope.launch {
             try {
                 val status = core.status()
@@ -1075,7 +1078,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _uiState.update { it.copy(error=failure.message ?: "Rust-Datenbank nicht verfügbar") }
             } finally {
                 if (homeOwner.finish(ticket)) {
-                    _uiState.update { it.copy(loading=false) }
+                    _uiState.update { it.copy(operation=null) }
                     if (homeRefreshPending) {
                         homeRefreshPending = false
                         refresh()
@@ -1097,7 +1100,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val ticket = checkNotNull(homeOwner.start(HomeOperation.Import))
-        _uiState.update { it.copy(loading=true,error=null) }
+        _uiState.update { it.copy(operation=HomeOperation.Import,error=null) }
         viewModelScope.launch {
             var imported = false
             try {
@@ -1128,7 +1131,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } finally {
                 if (homeOwner.finish(ticket)) {
                     homeRefreshPending = false
-                    _uiState.update { it.copy(loading=false) }
+                    _uiState.update { it.copy(operation=null) }
                     if (imported) refresh()
                 }
             }

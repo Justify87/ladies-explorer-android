@@ -133,7 +133,7 @@ fun LadiesApp(
     // Root changes must not reload already paginated lists or discard their scroll state.
     // Explicit refresh and data mutations remain owned by the ViewModel.
     fun selectRoot(destination: RootDestination) {
-        if (route.root == destination || saved.blockingNavigation) return
+        if (route.root == destination || saved.blockingNavigation || home.importing) return
         route = route.select(destination)
         viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -168,6 +168,7 @@ fun LadiesApp(
         previousEditorSession = saved.editor?.session
     }
     fun back() {
+        if (home.importing) return
         if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen || savedResultsOpen)) {
             viewModel.savedSearch.back()
             return
@@ -179,7 +180,7 @@ fun LadiesApp(
             BackAction.System -> Unit
         }
     }
-    BackHandler(enabled = savedEditorOpen || savedOverviewOpen || route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
+    BackHandler(enabled = home.importing || savedEditorOpen || savedOverviewOpen || route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
 
     Scaffold(
         topBar = {
@@ -233,7 +234,7 @@ fun LadiesApp(
                         NavigationBarItem(
                             selected = route.root == destination,
                             onClick = { selectRoot(destination) },
-                            enabled = !saved.blockingNavigation || route.root == destination,
+                            enabled = (!saved.blockingNavigation && !home.importing) || route.root == destination,
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,

@@ -270,3 +270,5 @@ G9-F01 Folgeprüfung: Auch normale Source-Suchen können nach SQLite-Commit durc
 - M04: P01–P44 und X01–X11 einzeln mit aktuellen Code-/Testankern in M05-PARITY dokumentiert. Statischer Abgleich ersetzt keine visuelle/physische Abnahme; Abweichungsfreigaben und finale CI bleiben offen.
 
 Der vor dem Review geprüfte Head d1e22971 wurde durch [Full-CI #387](https://github.com/Justify87/ladies-explorer-android/actions/runs/44509899258) vollständig grün. Die Korrekturen sind neu und benötigen Full-CI ihres eigenen Heads. T9.1 IN_PROGRESS, T9.2 DEVICE_PENDING; G9 nicht geschlossen.
+
+Vertikale Folgeprüfung H01: HomeUiState leitet loading/importing aus dem Operationstyp ab; Root-/Back-Navigation während Import gesperrt (nicht bei normalem Statusrefresh). Zusätzliche Regressionen: `suspendedNativeSearchRetainsAdmissionUntilDrainAndDiscardsLateReply`, `failedPrimaryReadStillPublishesIndependentSavedPeopleProjection`.
