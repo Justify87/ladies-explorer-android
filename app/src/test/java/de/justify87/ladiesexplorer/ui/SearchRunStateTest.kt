@@ -192,4 +192,33 @@ class SearchRunStateTest {
         assertFalse(search.isCurrent(firstSearch))
     }
 
+    @Test fun cancelledNativeOwnerCannotBeReplacedUntilDrain() {
+        val owner = DrainingOperation<String>()
+        val first = owner.start("source")!!
+        var signalled = 0
+        owner.cancel { signalled++ }
+        owner.cancel { signalled++ }
+        assertEquals(1, signalled)
+        assertTrue(owner.occupied)
+        assertFalse(owner.accepts(first))
+        assertEquals(null, owner.start("import"))
+        assertTrue(owner.finish(first))
+        val second = owner.start("import")!!
+        assertFalse(owner.finish(first))
+        assertTrue(owner.accepts(second))
+    }
+
+    @Test fun secondaryReadFailureDoesNotEraseSuccessfulActiveRun() = runBlocking {
+        var active = listOf(card(1))
+        var savedFailed = false
+        val complete = readIndependentProjections(
+            first = { listOf(card(1), card(2)) },
+            second = { error("saved read failed") },
+            publishFirst = { active = it.getOrThrow() },
+            publishSecond = { savedFailed = it.isFailure },
+        )
+        assertFalse(complete)
+        assertTrue(savedFailed)
+        assertEquals(listOf(1L, 2L), active.map { it.listingId })
+    }
 }

@@ -102,9 +102,10 @@ internal fun SearchScreen(
         if (state.loading && !editorVisible) item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator()
-                TextButton(onClick = onCancelSearch) { Text("Suche abbrechen") }
+                TextButton(onClick = onCancelSearch, enabled = !state.searchCancelling) { Text(if (state.searchCancelling) "Suche wird beendet …" else "Suche abbrechen") }
             }
         }
+        state.filterError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
         (if (editing) saved.error else state.error)?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error) }
         }
@@ -186,7 +187,7 @@ internal fun SearchScreen(
                     } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { filterQuery = ""; onReset() }, enabled = enabled) { Text("Reset") }
                         Button(onClick = if (state.loading) onCancelSearch else onSearch,
-                            enabled = state.loading || (canStartSearch && enabled && state.city.isNotBlank()), modifier = Modifier.weight(1f)) {
+                            enabled = !state.searchCancelling && (state.loading || (canStartSearch && enabled && state.city.isNotBlank())), modifier = Modifier.weight(1f)) {
                             Text(if (state.loading) "Abbrechen" else "Suchen")
                         }
                     }

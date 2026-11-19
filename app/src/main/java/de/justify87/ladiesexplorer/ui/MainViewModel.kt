@@ -51,6 +51,7 @@ data class DiscoverUiState(
     val savedSort: SavedPersonSort = SavedPersonSort.DATE,
     val savedPage: SavedPersonPage? = null,
     val savedRecent: SavedPersonPage? = null,
+    val savedError: String? = null,
     val nextCursor: DiscoveryCursor? = null,
     val activeRunId: Long? = null,
     val activeVisibleCount: Int = 0,
@@ -88,6 +89,7 @@ data class SearchUiState(
     val filterCatalog: SourceFilterCatalog? = null,
     val local: LocalVisibility = defaultLocalVisibility(),
     val frequentFilters: List<FrequentFilter> = emptyList(),
+    val filterError: String? = null,
     val preview: SearchPreview? = null,
     val previewTarget: SearchRequest? = null,
     val previewLoading: Boolean = false,
@@ -95,6 +97,7 @@ data class SearchUiState(
     val activeCards: List<DiscoveryCard> = emptyList(),
     val gridHiddenLikes: Set<Long> = emptySet(),
     val loading: Boolean = false,
+    val searchCancelling: Boolean = false,
     val response: SearchResponse? = null,
     val profileOpen: Boolean = false,
     val profileSessionId: Long = 0L,
@@ -135,7 +138,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var savedStatusControl: RequestControl? = null
 
     private var archiveControl: RequestControl? = null
-    private var searchControl: RequestControl? = null
+    private val searchOwner = DrainingOperation<RequestControl>()
+    private val homeOwner = DrainingOperation<HomeOperation>()
+    private var homeRefreshPending = false
     private var previewControl: RequestControl? = null
     private var previewJob: Job? = null
     private val previewGeneration = RequestGeneration()
@@ -148,7 +153,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var swipeSnapshotDirty = false
     private var discoveryListVisible = false
     private var mapProjectionVisible = false
-    private val searchGeneration = RequestGeneration()
     private val filterGeneration = RequestGeneration()
     private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
 
@@ -167,15 +171,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun invalidateActiveSearch() {
-        searchGeneration.invalidate()
-        searchControl?.cancel()
-        searchControl = null
+        searchOwner.cancel { it.cancel() }
     }
 
     fun cancelActiveSearch() {
+        if (!searchOwner.occupied) return
         invalidateActiveSearch()
-        _searchUiState.update { it.endRun() }
-        schedulePreview()
+        _searchUiState.update { it.copy(searchCancelling = true) }
     }
 
     private fun invalidateProfileRequest() {
@@ -207,7 +209,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
                 actionBusy = false, actionError = null, error = null)
         }
-        if (savedSearch.state.value.result != null) savedSearch.refresh()
     }
 
     private fun cancelPreview() {
@@ -297,34 +298,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val catalog = core.sourceFilterCatalog()
                 val frequent = core.frequentFilters()
                 if (filterGeneration.isCurrent(ticket)) _searchUiState.update {
-                    it.copy(filterCatalog = catalog, frequentFilters = frequent)
+                    it.copy(filterCatalog = catalog, frequentFilters = frequent, filterError = null)
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
                 if (filterGeneration.isCurrent(ticket)) _searchUiState.update {
-                    it.copy(error = failure.message ?: "Filter konnten nicht geladen werden")
+                    it.copy(filterError = failure.message ?: "Filter konnten nicht geladen werden")
                 }
             }
         }
     }
 
     fun startSearch(requestOverride: SearchRequest? = null, localOverride: LocalVisibility? = null) {
-        if (_searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
+        if (searchOwner.occupied || _searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
         val input = _searchUiState.value
         cancelPreview()
-        invalidateActiveSearch()
-        val epoch = searchGeneration.value
         val control = RequestControl()
-        searchControl = control
+        val ticket = checkNotNull(searchOwner.start(control))
         invalidateProfileRequest()
         _searchUiState.update { it.beginRun() }
         viewModelScope.launch {
             try {
                 val result = core.search(requestOverride ?: request(input), localOverride ?: input.local, control)
-                if (!searchGeneration.isCurrent(epoch)) return@launch
+                if (!searchOwner.accepts(ticket)) return@launch
                 val cards = core.activeSearchCards(result.searchRunId, result.local)
-                if (!searchGeneration.isCurrent(epoch)) return@launch
+                if (!searchOwner.accepts(ticket)) return@launch
                 swipeSession.reset()
                 discoveryEpoch++
                 _discoverState.update {
@@ -334,21 +333,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _searchUiState.update { it.acceptRun(result, cards) }
             } catch (cancellation: CancellationException) {
-                if (searchGeneration.isCurrent(epoch)) _searchUiState.update { it.endRun() }
+                if (searchOwner.accepts(ticket)) _searchUiState.update { it.endRun() }
                 throw cancellation
             } catch (failure: Exception) {
-                if (searchGeneration.isCurrent(epoch)) {
+                if (searchOwner.accepts(ticket)) {
                     _searchUiState.update {
                         it.endRun(failure.message ?: "Online-Suche fehlgeschlagen")
                     }
                 }
             } finally {
-                // The persisted DB can have changed even when this run was discarded.
-                savedSearch.refresh()
-                refreshAfterSourceSearch()
-                if (searchControl === control) {
-                    searchControl = null
-                    if (_searchUiState.value.loading.not()) schedulePreview()
+                // Native ownership lasts until the call has drained. Reconciliation
+                // happens before another search/import can acquire the UI.
+                if (searchOwner.finish(ticket)) {
+                    _searchUiState.update { it.copy(loading = false, searchCancelling = false) }
+                    savedSearch.refresh()
+                    refreshAfterSourceSearch()
+                    schedulePreview()
                 }
             }
         }
@@ -471,11 +471,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshDiscovery()
     }
 
-    private fun publishDiscovery(
-        epoch: Long,
-        projection: DiscoveryProjection,
-        saved: SavedPeopleWindow,
-    ) {
+    private fun publishDiscovery(epoch: Long, projection: DiscoveryProjection) {
         if (epoch != discoveryEpoch || projection.runId != _searchUiState.value.response?.searchRunId) return
         if (projection.runId == null) localWindow = maxOf(localWindow, projection.page.cards.size)
         _searchUiState.update { it.copy(activeCards = projection.visible) }
@@ -487,12 +483,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 activeRunId = projection.runId,
                 activeVisibleCount = projection.visible.size,
                 nextCursor = projection.page.nextCursor,
-                savedPage = saved.regular,
-                savedRecent = saved.recent,
-                loading = false, busy = false, loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false, error = null,
+                loadingMore = false, error = null,
             )
         }
     }
+
+    // The reads share an epoch but not validity or failure. Mutation ownership
+    // is released only by its caller, never by publication of a partial view.
+    private suspend fun projectDiscovery(epoch: Long): Boolean = readIndependentProjections(
+        first = ::discoveryPage,
+        second = ::savedPage,
+        publishFirst = { result ->
+            if (epoch == discoveryEpoch) result.fold(
+                onSuccess = { publishDiscovery(epoch, it) },
+                onFailure = { failure ->
+                    _searchUiState.update { it.copy(activeCards = emptyList()) }
+                    _discoverState.update { it.copy(cards = emptyList(), nextCursor = null,
+                        activeVisibleCount = 0, error = failure.message ?: "Entdecken fehlgeschlagen") }
+                },
+            )
+        },
+        publishSecond = { result ->
+            if (epoch == discoveryEpoch) result.fold(
+                onSuccess = { page -> _discoverState.update { it.copy(savedPage = page.regular,
+                    savedRecent = page.recent, savedError = null) } },
+                onFailure = { failure -> _discoverState.update { it.copy(savedPage = null, savedRecent = null,
+                    savedError = failure.message ?: "Gespeicherte Personen konnten nicht geladen werden") } },
+            )
+        },
+    )
 
     fun markSwipeSnapshotChanged() {
         swipeSnapshotDirty = true
@@ -524,20 +543,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             try {
-                val cards = discoveryPage()
-                val saved = savedPage()
-                publishDiscovery(epoch, cards, saved)
+                projectDiscovery(epoch)
                 if (epoch == discoveryEpoch && message != null) _discoverState.update { it.copy(error = message) }
-            } catch (cancellation: CancellationException) {
+            } finally {
                 if (epoch == discoveryEpoch) _discoverState.update { it.copy(loading = false) }
-                throw cancellation
-            } catch (failure: Exception) {
-                if (epoch == discoveryEpoch) {
-                    clearDiscoveryProjection()
-                    _discoverState.update {
-                        it.copy(loading = false, error = message ?: failure.message ?: "Entdecken fehlgeschlagen")
-                    }
-                }
             }
         }
     }
@@ -584,7 +593,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val epoch = discoveryEpoch
         savedWindows.requestMore(state.savedKind, state.savedSort, recent, page.rows.size)
         _discoverState.update {
-            it.copy(savedLoadingMore = !recent, savedRecentLoadingMore = recent, error = null)
+            it.copy(savedLoadingMore = !recent, savedRecentLoadingMore = recent, savedError = null)
         }
         viewModelScope.launch {
             try {
@@ -600,7 +609,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        it.copy(error = failure.message ?: "Weitere Profile konnten nicht geladen werden")
+                        it.copy(savedError = failure.message ?: "Weitere Profile konnten nicht geladen werden")
                     }
                 }
             } finally {
@@ -657,9 +666,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     write = write,
                     project = {
                         // A profile-side failure must not keep the discovery feed stale.
-                        val cards = discoveryPage()
-                        val saved = savedPage()
-                        publishDiscovery(epoch, cards, saved)
+                        check(projectDiscovery(epoch)) { "Ansicht konnte nicht vollständig aktualisiert werden." }
                     },
                     afterWrite = afterWrite,
                     onWriteFailure = onWriteFailure,
@@ -677,7 +684,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } finally {
                 if (epoch == discoveryEpoch) {
-                    if (retryProjection) clearDiscoveryProjection()
                     _discoverState.update { it.copy(busy = false, error = message ?: it.error,
                         canUndoSwipe = swipeSession.last != null) }
                     message?.let(onFailure)
@@ -685,15 +691,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-    }
-
-    private fun clearDiscoveryProjection() {
-        _searchUiState.update { it.copy(activeCards = emptyList()) }
-        _discoverState.update {
-            it.copy(cards = emptyList(), savedPage = null, savedRecent = null, nextCursor = null,
-                activeVisibleCount = 0, canUndoSwipe = swipeSession.last != null)
-        }
-        // The requested window survives a failed projection; recovery re-reads it, never the write.
     }
 
     fun decideSwipe(listingId: Long, preference: Preference) {
@@ -1009,10 +1006,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 profileUpdated = true
-                val cards = discoveryPage()
-                val saved = savedPage()
-                publishDiscovery(epoch, cards, saved)
-                projectionUpdated = true
+                projectionUpdated = projectDiscovery(epoch)
+                check(projectionUpdated) { "Ansicht konnte nicht vollständig aktualisiert werden." }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {
@@ -1030,16 +1025,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } finally {
                 if (requestId == profileRequestId) _searchUiState.update { it.copy(actionBusy = false) }
-                if (epoch == discoveryEpoch && !projectionUpdated) {
-                    _discoverState.update {
-                        if (committed) it.copy(busy = false, cards = emptyList(), savedPage = null, savedRecent = null,
-                            nextCursor = null, activeVisibleCount = 0)
-                        else it.copy(busy = false)
-                    }
-                    if (committed) {
-                        _searchUiState.update { it.copy(activeCards = emptyList()) }
-                        refreshDiscovery()
-                    } else if (discoveryRefreshPending) refreshDiscovery()
+                if (epoch == discoveryEpoch) {
+                    _discoverState.update { it.copy(busy = false) }
+                    if (committed && !projectionUpdated || discoveryRefreshPending) refreshDiscovery()
                 }
                 if (committed) {
                     savedSearch.refreshResultProjection()
@@ -1051,15 +1039,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private enum class HomeOperation { Status, Import }
+
     fun refresh() {
+        if (homeOwner.occupied) {
+            homeRefreshPending = true
+            return
+        }
+        val ticket = checkNotNull(homeOwner.start(HomeOperation.Status))
+        _uiState.update { it.copy(loading=true,error=null) }
         viewModelScope.launch {
-            _uiState.update { it.copy(loading=true,error=null) }
             try {
                 val status = core.status()
                 val diagnostic = core.diagnosticStatus()
                 val capture = core.httpCaptureStatus()
                 _uiState.update {
-                    it.copy(loading=false,schemaVersion=status.schemaVersion.toString(),
+                    it.copy(schemaVersion=status.schemaVersion.toString(),
                         personCount=status.personCount.toString(),sourceProfileCount=status.sourceProfileCount.toString(),
                         listingCount=status.listingCount.toString(),diagnosticAvailable=diagnostic.available,
                         diagnosticSizeBytes=diagnostic.sizeBytes.toLong(),
@@ -1072,16 +1067,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         diagnosticLastError=diagnostic.lastWriteError)
                 }
             } catch (cancellation: CancellationException) {
-                _uiState.update { it.copy(loading=false) }
                 throw cancellation
             } catch (failure: Exception) {
-                _uiState.update { it.copy(loading=false,error=failure.message ?: "Rust-Datenbank nicht verfügbar") }
+                _uiState.update { it.copy(error=failure.message ?: "Rust-Datenbank nicht verfügbar") }
+            } finally {
+                if (homeOwner.finish(ticket)) {
+                    _uiState.update { it.copy(loading=false) }
+                    if (homeRefreshPending) {
+                        homeRefreshPending = false
+                        refresh()
+                    }
+                }
             }
         }
     }
 
     fun importBundle(uri: Uri) {
-        if (_uiState.value.loading || _searchUiState.value.loading || _discoverState.value.busy || savedSearch.state.value.busy) return
+        if (homeOwner.occupied || searchOwner.occupied || _uiState.value.loading || _searchUiState.value.loading || _discoverState.value.busy || savedSearch.state.value.busy) return
         if (savedSearch.state.value.editor != null || savedSearch.state.value.dialog != null) {
             _uiState.update { it.copy(error = "Gespeicherte Suchentwürfe vor dem Import speichern oder verwerfen.") }
             return
@@ -1090,8 +1092,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.update { it.copy(error = "Ungespeicherte Notizen vor dem Import speichern oder verwerfen.") }
             return
         }
+        val ticket = checkNotNull(homeOwner.start(HomeOperation.Import))
+        _uiState.update { it.copy(loading=true,error=null) }
         viewModelScope.launch {
-            _uiState.update { it.copy(loading=true,error=null) }
+            var imported = false
             try {
                 val result = withContext(Dispatchers.IO) {
                     val context = getApplication<Application>()
@@ -1109,15 +1113,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _profileNotes.value = emptyMap()
                 savedSearch.resetAfterImport()
                 _uiState.update { it.copy(lastImport=result) }
-                refresh()
+                imported = true
                 refreshDiscovery()
                 refreshMap()
                 refreshSearchDefinitions()
             } catch (cancellation: CancellationException) {
-                _uiState.update { it.copy(loading=false) }
                 throw cancellation
             } catch (failure: Exception) {
-                _uiState.update { it.copy(loading=false,error=failure.message ?: "Datenimport fehlgeschlagen") }
+                _uiState.update { it.copy(error=failure.message ?: "Datenimport fehlgeschlagen") }
+            } finally {
+                if (homeOwner.finish(ticket)) {
+                    homeRefreshPending = false
+                    _uiState.update { it.copy(loading=false) }
+                    if (imported) refresh()
+                }
             }
         }
     }

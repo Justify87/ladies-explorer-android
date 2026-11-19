@@ -111,7 +111,7 @@ internal fun SavedPeopleScreen(
                     overflow = TextOverflow.Ellipsis)
             }
         }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        (state.savedError ?: state.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         val selection = "${state.savedKind.name}-${state.savedSort.name}"
         if (page == null) {
             if (state.loading) CircularProgressIndicator()
@@ -121,8 +121,8 @@ internal fun SavedPeopleScreen(
             val listState = rememberLazyListState()
             var expanded by rememberSaveable { mutableStateOf(false) }
             val canPage = page.nextCursor != null && enabled && !state.savedLoadingMore && !state.savedRecentLoadingMore
-            LaunchedEffect(listState, page.nextCursor, canPage, state.error) {
-                if (canPage && state.error == null) {
+            LaunchedEffect(listState, page.nextCursor, canPage, state.savedError) {
+                if (canPage && state.savedError == null) {
                     snapshotFlow {
                         val layout = listState.layoutInfo
                         nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
