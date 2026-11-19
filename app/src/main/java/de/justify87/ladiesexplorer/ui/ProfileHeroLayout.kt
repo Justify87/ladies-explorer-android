@@ -20,6 +20,19 @@ internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight
     return minOf(desired, (available - peek).coerceAtLeast(0f))
 }
 
+/** Large type and very short/narrow windows keep identity outside the image.
+ * This is a presentation fallback, not a second scroll or media store. */
+internal fun useHeaderIdentity(width: Float, height: Float, fontScale: Float): Boolean =
+    width < 320f || height < 540f || fontScale >= 1.5f
+
+/** Never label local cards by an unexecuted draft or a different run. */
+internal fun swipeContextLabel(summary: String, executed: Boolean, matchingRun: Boolean, availability: AvailabilityMode): String =
+    when {
+        !matchingRun -> "$summary · Swipe · Suchlauf wird übernommen"
+        executed -> "$summary · Swipe · ${availability.label}"
+        else -> "$summary · Swipe"
+    }
+
 internal fun heroHasLeftViewport(firstIndex: Int, heroIndex: Int, heroEnd: Int?, viewportStart: Int): Boolean =
     if (heroEnd != null) heroEnd <= viewportStart else firstIndex > heroIndex
 
@@ -38,6 +51,8 @@ internal data class HeroIdentity(
 ) {
     val title get() = listOfNotNull(name.ifBlank { "Unbekannt" }, age?.takeIf { it.isNotBlank() }).joinToString(", ")
     val subtitle get() = listOfNotNull(place.ifBlank { "Ort unbekannt" }, status).joinToString(" · ")
+    // Keep source status ahead of a long place name in the single-line header.
+    val compactSubtitle get() = listOfNotNull(status, place.ifBlank { "Ort unbekannt" }).joinToString(" · ")
 }
 
 internal fun heroIdentity(profile: ProfileResponse, identity: ProfileIdentity?, archived: Boolean) =

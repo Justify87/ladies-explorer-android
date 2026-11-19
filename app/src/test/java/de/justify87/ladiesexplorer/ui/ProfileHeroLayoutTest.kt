@@ -22,6 +22,22 @@ class ProfileHeroLayoutTest {
         assertTrue(profileHeroHeight(390f, 780f, 350f) <= 350f)
     }
 
+    @Test fun identityMovesOutsideHeroForLargeTypeOrSmallWindows() {
+        assertFalse(useHeaderIdentity(390f, 844f, 1.3f))
+        assertTrue(useHeaderIdentity(390f, 844f, 2f))
+        assertTrue(useHeaderIdentity(300f, 700f, 1f))
+        assertTrue(useHeaderIdentity(600f, 400f, 1f))
+    }
+
+    @Test fun onlyAnExecutedMatchingRunDisplaysItsAvailability() {
+        assertEquals("Lokaler Bestand · Swipe",
+            swipeContextLabel("Lokaler Bestand", false, true, AvailabilityMode.Now))
+        assertEquals("Leipzig · Swipe · Heute",
+            swipeContextLabel("Leipzig", true, true, AvailabilityMode.Today))
+        assertEquals("Aktive Suche · Swipe · Suchlauf wird übernommen",
+            swipeContextLabel("Aktive Suche", false, false, AvailabilityMode.Now))
+    }
+
     @Test fun compactIdentityOnlyAfterHeroLeavesAndRestoresOnReturn() {
         assertFalse(heroHasLeftViewport(0, 0, 1, 0))
         assertTrue(heroHasLeftViewport(0, 0, 0, 0))
@@ -32,6 +48,7 @@ class ProfileHeroLayoutTest {
     @Test fun identityDoesNotInventAgeOrAvailability() {
         assertEquals("Test", HeroIdentity("Test", place = "Ort").title)
         assertEquals("Ort · Status unbekannt", HeroIdentity("Test", place = "Ort", status = statusLabel(null)).subtitle)
+        assertEquals("Status unbekannt · Ort", HeroIdentity("Test", place = "Ort", status = statusLabel(null)).compactSubtitle)
         assertEquals("Unbekannt", HeroIdentity("", "", "").title)
         assertEquals("Ort unbekannt", HeroIdentity("", "", "").subtitle)
     }

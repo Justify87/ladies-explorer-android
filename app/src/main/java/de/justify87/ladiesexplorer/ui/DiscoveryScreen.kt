@@ -1,7 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MoreVert
@@ -15,7 +14,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -166,6 +164,8 @@ internal fun DiscoverScreen(
         // Column measures the fixed controls before the weighted profile viewport.
         val usableHeight = maxHeight + rootBarHeight
         val windowWidth = maxWidth
+        val identityInHeader = useHeaderIdentity(windowWidth.value, usableHeight.value, LocalDensity.current.fontScale)
+        val matchingRun = search.response?.searchRunId == state.activeRunId
         key(state.activeRunId, card?.listingId, card?.personId) {
             val listState = rememberLazyListState()
             val scope = rememberCoroutineScope()
@@ -182,9 +182,12 @@ internal fun DiscoverScreen(
                 else "Quelle: ${active?.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"} · ${state.activeVisibleCount} sichtbar · ${state.cards.size} im Deck"
             Column(Modifier.widthIn(max = 600.dp).fillMaxSize()) {
                 SwipeShellHeader(
-                    identity = identity.takeIf { details }, summary = summary, counts = counts,
+                    identity = identity.takeIf { details || identityInHeader },
+                    showPhotoShortcut = details && identity != null,
+                    adaptiveHeader = identityInHeader, matchingRun = matchingRun,
+                    summary = summary, counts = counts,
                     availability = search.headerAvailability(), executed = active != null,
-                    availabilityEnabled = availabilityEnabled, deckEnabled = enabled,
+                    availabilityEnabled = availabilityEnabled && matchingRun, deckEnabled = enabled,
                     replay = state.replayLikes, hasRun = state.activeRunId != null,
                     person = person, profileActions = actions,
                     onPhoto = { scope.launch { listState.scrollToItem(0) } },
@@ -257,7 +260,7 @@ internal fun DiscoverScreen(
                                         },
                                     originalUrl = profile?.identity?.profileUrl,
                                     selection = mediaSelection,
-                                    identity = identity,
+                                    identity = identity.takeUnless { identityInHeader },
                                     actionToken = token,
                                     projectionAvailable = profile != null,
                                     actionsEnabled = actions,
@@ -266,8 +269,8 @@ internal fun DiscoverScreen(
                             }
                             item(key = "header") {
                                 Text("Profilinfos", style = MaterialTheme.typography.labelMedium)
-                                if (profile != null) ProfileHeader(profile.profile, profile.identity, person, profile.media,
-                                    profile.fromArchive, showIdentity = false)
+                                if (profile != null) ProfileMetadata(profile.profile, profile.identity, person, profile.media,
+                                    profile.fromArchive)
                             }
                             if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                         }
@@ -300,7 +303,8 @@ fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: Str
 /** A and B share the same reserved header; scrolling does not change the viewport budget. */
 @Composable
 private fun SwipeShellHeader(
-    identity: HeroIdentity?, summary: String, counts: String,
+    identity: HeroIdentity?, showPhotoShortcut: Boolean, adaptiveHeader: Boolean, matchingRun: Boolean,
+    summary: String, counts: String,
     availability: AvailabilityMode, executed: Boolean, availabilityEnabled: Boolean,
     deckEnabled: Boolean, replay: Boolean, hasRun: Boolean,
     person: PersonSummary?, profileActions: Boolean,
@@ -311,13 +315,19 @@ private fun SwipeShellHeader(
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 12.dp),
         verticalAlignment = Alignment.CenterVertically) {
+        val contextLabel = swipeContextLabel(summary, executed, matchingRun, availability)
         Column(Modifier.weight(1f)) {
             Text(identity?.title ?: "Ladies Explorer", style = MaterialTheme.typography.titleMedium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(identity?.subtitle ?: "$summary · Swipe · ${availability.label}",
-                style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                maxLines = if (adaptiveHeader) 2 else 1, overflow = TextOverflow.Ellipsis)
+            Text(identity?.compactSubtitle ?: contextLabel,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = if (adaptiveHeader) 2 else 1, overflow = TextOverflow.Ellipsis)
+            if (adaptiveHeader && identity != null) {
+                Text(contextLabel, style = MaterialTheme.typography.labelSmall,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
         }
-        if (identity != null) IconButton(onClick = onPhoto) {
+        if (showPhotoShortcut) IconButton(onClick = onPhoto) {
             Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
         } else IconButton(onClick = onSearch) {
             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
@@ -327,13 +337,19 @@ private fun SwipeShellHeader(
                 Icon(Icons.Default.MoreVert, contentDescription = "Filter, Modus und Deckaktionen")
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                Text(summary, Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                if (identity != null) Text("${identity.title}\n${identity.subtitle}",
+                    Modifier.padding(horizontal = 12.dp, vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
+                Text(contextLabel, Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.titleSmall)
                 Text(counts, Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.bodySmall)
                 DropdownMenuItem(text = { Text("Suche und Filter öffnen") }, onClick = { menu = false; onSearch() })
                 HorizontalDivider()
-                Text(if (executed) "Ausgeführte Verfügbarkeit" else "Verfügbarkeit (Suchentwurf)",
+                Text(when {
+                    !matchingRun -> "Suchlauf wird übernommen"
+                    executed -> "Ausgeführte Verfügbarkeit"
+                    else -> "Verfügbarkeit (Suchentwurf)"
+                },
                     Modifier.padding(horizontal = 12.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
                 AvailabilityMode.entries.forEach { mode ->
                     DropdownMenuItem(text = { Text(if (availability == mode) "✓ ${mode.label}" else mode.label) },

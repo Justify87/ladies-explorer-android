@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
 
@@ -40,15 +41,18 @@ internal fun ProfileDetailScreen(
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val usableHeight = maxHeight
         val windowWidth = maxWidth
+        val identityInHeader = useHeaderIdentity(windowWidth.value, usableHeight.value, LocalDensity.current.fontScale)
+        val compactIdentity = identity.takeIf { details || identityInHeader }
         Column(Modifier.widthIn(max = 600.dp).fillMaxSize()) {
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Zurück") }
                 Column(Modifier.weight(1f)) {
-                    Text(if (details) identity?.title ?: "Profil" else "Profil", style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    // Reserve the same two-line layout in A and B.
-                    Text(if (details) identity?.subtitle.orEmpty() else "",
-                        style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(compactIdentity?.title ?: "Profil", style = MaterialTheme.typography.titleMedium,
+                        maxLines = if (identityInHeader) 2 else 1, overflow = TextOverflow.Ellipsis)
+                    // Reserve the same two-line layout in normal A and B.
+                    Text(compactIdentity?.compactSubtitle.orEmpty(),
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = if (identityInHeader) 2 else 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (details && profile != null) IconButton(onClick = { scope.launch { detailListState.scrollToItem(0) } }) {
                     Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
@@ -82,13 +86,13 @@ internal fun ProfileDetailScreen(
                         item(key = "media") {
                             ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
                                 originalUrl = state.profileIdentity?.profileUrl, selection = mediaSelection,
-                                identity = identity, actionToken = renderedToken,
+                                identity = identity.takeUnless { identityInHeader }, actionToken = renderedToken,
                                 actionsEnabled = !busy, isCurrent = { renderedToken?.let(isProfileCurrent) == true })
                         }
                         item(key = "identity") {
                             Text("Profilinfos", style = MaterialTheme.typography.labelMedium)
-                            ProfileHeader(profile, state.profileIdentity, state.selectedPerson,
-                                state.profileMedia, state.profileFromArchive, showIdentity = false)
+                            ProfileMetadata(profile, state.profileIdentity, state.selectedPerson,
+                                state.profileMedia, state.profileFromArchive)
                         }
                         item(key = "actions") {
                             ProfileActionRail(state.selectedPerson, busy,
@@ -106,24 +110,6 @@ internal fun ProfileDetailScreen(
             }
         }
     }
-}
-
-@Composable
-internal fun ProfileHeader(
-    profile: ProfileResponse,
-    identity: ProfileIdentity?,
-    person: PersonSummary?,
-    media: List<ProfileMediaItem>,
-    fromArchive: Boolean,
-    showIdentity: Boolean = true,
-) {
-    ProfileIdentityHeader(
-        name = profile.name,
-        place = listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
-        age = identity?.age, identity = identity, person = person,
-        hasVideo = media.any { it.kind == "VIDEO" }, fromArchive = fromArchive, showIdentity = showIdentity,
-    )
-    profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 }
 
 /** The same explicit destructive confirmation in both profile contexts. */

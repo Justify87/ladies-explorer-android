@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 import de.justify87.ladiesexplorer.core.*
 import java.io.File
@@ -40,7 +41,7 @@ internal fun statusLabel(status: String?): String = when (status) {
     else -> "Status unbekannt"
 }
 
-/** The shared rail toggles a preference; its swipe adapter currently treats NONE as a visit. */
+/** The standalone preference chip toggles the same selected preference back to neutral. */
 internal fun toggledProfilePreference(current: Preference, action: Preference): Preference =
     if (current == action) Preference.NONE else action
 
@@ -136,24 +137,23 @@ private fun HeroButton(
 private fun MediaTapZone(
     label: String, enabled: Boolean, modifier: Modifier, onClick: () -> Unit,
 ) {
-    Box(modifier.fillMaxWidth(.30f).fillMaxHeight(.65f)
+    Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).fillMaxWidth(.30f).fillMaxHeight(.65f)
         .semantics { contentDescription = label }
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick))
 }
 
-/** Shared media hero; deck navigation is added by M05.4, not by this component. */
+/** Shared presentation only; the swipe surface owns horizontal decisions. */
 @Composable
 internal fun ProfileMediaHero(
     media: List<ProfileMediaItem>,
     modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null,
-    originalUrl: String? = null,
-    actionsEnabled: Boolean = true,
-    isCurrent: () -> Boolean = { true },
+    originalUrl: String?,
+    actionsEnabled: Boolean,
+    isCurrent: () -> Boolean,
     selection: ProfileMediaSelection,
     projectionAvailable: Boolean = true,
-    identity: HeroIdentity? = null,
-    actionToken: ProfileIdentityToken? = null,
+    identity: HeroIdentity?,
+    actionToken: ProfileIdentityToken?,
 ) {
     val context = LocalContext.current
     val index = selection.resolve(media, projectionAvailable)
@@ -167,10 +167,14 @@ internal fun ProfileMediaHero(
         if (item?.kind != "IMAGE" || !actionsEnabled) fullscreen = false
         if (!actionsEnabled) more = false
     }
-    if (fullscreen && item?.kind == "IMAGE") {
-        Dialog(onDismissRequest = { fullscreen = false }) {
-            ProfileImage(item.url, item.localPath, Modifier.fillMaxWidth().heightIn(min = 240.dp)
-                .aspectRatio(.72f).clickable { fullscreen = false }, ContentScale.Fit, allowRetry = true)
+    if (fullscreen && actionsEnabled && item?.kind == "IMAGE") {
+        Dialog(onDismissRequest = { fullscreen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                ProfileImage(item.url, item.localPath, Modifier.fillMaxSize(), ContentScale.Fit, allowRetry = true)
+                HeroButton({ fullscreen = false }, "Vollbild schließen", Icons.Default.Close,
+                    Modifier.align(Alignment.TopEnd).padding(12.dp))
+            }
         }
     }
     Box(modifier.clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceVariant)) {
@@ -203,10 +207,6 @@ internal fun ProfileMediaHero(
             MediaTapZone("Nächstes Medium", projectionAvailable && index < media.lastIndex,
                 Modifier.align(Alignment.CenterEnd)) { if (projectionAvailable) selection.select(media, index + 1) }
         }
-        onBack?.let {
-            HeroButton(it, "Zurück", Icons.Default.ArrowBack,
-                Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 30.dp))
-        }
         if (actionsEnabled && (item?.kind == "IMAGE" || originalUrl != null)) {
             Box(Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 12.dp)) {
                 HeroButton({ if (isCurrent()) more = true }, "Weitere Aktionen", Icons.Default.MoreVert)
@@ -218,7 +218,7 @@ internal fun ProfileMediaHero(
                 }
             }
         }
-        Surface(Modifier.align(Alignment.TopCenter).padding(top = 26.dp), shape = MaterialTheme.shapes.small,
+        Surface(Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 26.dp), shape = MaterialTheme.shapes.small,
             color = Color.Black.copy(alpha = .7f)) {
             Text(if (media.isEmpty()) "–" else "${index + 1} / ${media.size}",
                 Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = Color.White)
@@ -235,44 +235,36 @@ internal fun ProfileMediaHero(
     }
 }
 
+/** Supplementary facts only. The name/age/place/status have exactly one presentation
+ * owner (the hero or the fixed compact header). */
 @Composable
-internal fun ProfileIdentityHeader(
-    name: String,
-    place: String,
-    age: String? = null,
-    identity: ProfileIdentity? = null,
-    person: PersonSummary? = null,
-    hasVideo: Boolean = false,
-    fromArchive: Boolean = false,
-    showIdentity: Boolean = true,
+internal fun ProfileMetadata(
+    profile: ProfileResponse,
+    identity: ProfileIdentity?,
+    person: PersonSummary?,
+    media: List<ProfileMediaItem>,
+    fromArchive: Boolean,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (showIdentity) {
-            Text(listOfNotNull(name.ifBlank { "Unbekannt" }, age).joinToString(", "),
-                style = MaterialTheme.typography.headlineMedium)
-            Text(place.ifBlank { "Ort unbekannt" }, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        val badges = listOfNotNull(
-            statusLabel(identity?.status).takeIf { showIdentity && identity != null }
-                ?.let { if (fromArchive) "Zuletzt bekannt: $it" else it },
-            "Archivierte Daten".takeIf { fromArchive },
-            when {
-                (person?.listingCount ?: 0u) > 1u -> "Person bekannt · ${person?.listingCount} Anzeigen"
-                identity?.personNew == true -> "Person neu erkannt"
-                else -> null
-            },
-            "Anzeige neu".takeIf { identity?.listingNew == true },
-            "Video".takeIf { hasVideo || identity?.hasVideo == true },
-        )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            badges.forEach { label ->
-                Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer) {
-                    Text(label, Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                }
+    val badges = listOfNotNull(
+        "Archivierte Daten".takeIf { fromArchive },
+        when {
+            (person?.listingCount ?: 0u) > 1u -> "Person bekannt · ${person?.listingCount} Anzeigen"
+            identity?.personNew == true -> "Person neu erkannt"
+            else -> null
+        },
+        "Anzeige neu".takeIf { identity?.listingNew == true },
+        "Video".takeIf { media.any { it.kind == "VIDEO" } || identity?.hasVideo == true },
+    )
+    if (badges.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        badges.forEach { label ->
+            Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer) {
+                Text(label, Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
             }
         }
     }
+    profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 }
 
 @Composable
