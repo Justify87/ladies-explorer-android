@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -107,6 +108,141 @@ class ProfileRestoreDeviceTest {
         tester.emulateSavedInstanceStateRestore()
         rule.onNodeWithText("Medium 0").assertExists()
         rule.runOnIdle { assertEquals(1, consumed) }
+    }
+
+    @Test fun actualRailVisitUndoAndRepeatedSkipCarryPresentationAcrossRouteGap() {
+        val original = profile()
+        val readers = reads { facts() }
+        val session = SwipeSession()
+        val row = DiscoveryCard(listingId = 4, personId = 1, name = "Fixture", city = "Fixture",
+            thumbnailUrl = null, localPath = null, description = null, preference = Preference.NONE,
+            favorite = false, hasVideo = false, hasAiContent = false, isPremium = false, age = null)
+        var native = Preference.NONE
+        var writes = 0
+        var model by mutableStateOf<ProfileReadModel?>(original)
+        var cardVisible by mutableStateOf(true)
+        var routeVisible by mutableStateOf(true)
+        var receipt by mutableStateOf<SwipePresentation?>(null)
+        var generation by mutableLongStateOf(1)
+        lateinit var capture: SwipePresentationCapture
+        lateinit var services: () -> Unit
+        val write: suspend (Long, Long, Preference?, Preference) -> Preference = { listing, owner, expected, target ->
+            check(listing == 4L && owner == 1L && native == expected)
+            val previous = native
+            native = target
+            writes++
+            previous
+        }
+        fun advance() {
+            receipt = null
+            cardVisible = false
+            model = null
+            generation++
+        }
+        rule.setContent {
+            MaterialTheme {
+                val holder = rememberSaveableStateHolder()
+                val scope = rememberCoroutineScope()
+                if (routeVisible) holder.SaveableStateProvider("swipe") {
+                    val deck = SwipeDeckToken(3, generation)
+                    val card = SwipeCardToken(deck, 4, 1).takeIf { cardVisible }
+                    val action = model?.let { token(it).copy(session = generation, preference = native) }
+                    Column(Modifier.size(300.dp, 400.dp)) {
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            if (cardVisible) {
+                                val list = rememberLazyListState()
+                                capture = remember { SwipePresentationCapture() }
+                                services = { scope.launch { list.scrollToItem(3, 12) } }
+                                ProfileFlow(list, model, "{}", action, action == null, emptyMap(), notes,
+                                    { true }, { _, _ -> }, Modifier.fillMaxSize(), swipeRestore = receipt,
+                                    swipeRunId = 3, swipeCapture = capture,
+                                    onSwipeRestoreConsumed = { session.consumePresentation(it); receipt = null },
+                                    panelReads = readers) {
+                                    item("hero") {
+                                        Column(Modifier.height(440.dp)) {
+                                            Text("Medium ${mediaSelection.resolve(original.media, model != null)}")
+                                            TextButton(onClick = { mediaSelection.select(original.media, 1) }) {
+                                                Text("Nächstes Medium")
+                                            }
+                                        }
+                                    }
+                                }
+                            } else Text("Deck beendet")
+                        }
+                        Box(Modifier.fillMaxWidth().height(48.dp)) {
+                            val context = SwipeMenuContext(deck, card, action, true, true, true,
+                                AvailabilityMode.All, true, session.last != null)
+                            SwipeDecisionControls(context, if (cardVisible) "Fixture" else null,
+                                onUndo = {
+                                    scope.launch {
+                                        val step = requireNotNull(session.last)
+                                        undoSwipeStep(step, write, { 1 }, session::undo)
+                                        receipt = session.restoredPresentation(row)
+                                        generation++
+                                        cardVisible = true
+                                    }
+                                },
+                                onSkip = {
+                                    val current = requireNotNull(card)
+                                    session.visit(SwipeStep(4, 1,
+                                        presentation = presentationForDecision(receipt, capture.read(), current)))
+                                    advance()
+                                },
+                                onChoose = { preference ->
+                                    val current = requireNotNull(card)
+                                    val position = presentationForDecision(receipt, capture.read(), current)
+                                    scope.launch {
+                                        commitProfilePreference(requireNotNull(action), preference, write, session::visit, position)
+                                        advance()
+                                    }
+                                })
+                        }
+                    }
+                } else Text("Grid")
+            }
+        }
+        rule.onNodeWithText("Nächstes Medium").performClick()
+        rule.runOnIdle { services() }
+        rule.onNodeWithText("Alle 25 Angaben anzeigen").performClick()
+        rule.runOnIdle { services() }
+        lateinit var saved: SwipePresentation
+        rule.runOnIdle {
+            saved = requireNotNull(capture.read())
+            assertEquals("profile-services", saved.anchorKey)
+            assertEquals(12, saved.anchorOffset)
+            assertEquals(1, saved.mediaIndex)
+            assertTrue("Services" in saved.sections)
+        }
+        rule.onNode(hasText("Gefällt") or hasContentDescription("Gefällt")).performClick()
+        rule.onNodeWithText("Deck beendet").assertExists()
+        rule.onNode(hasText("Undo") or hasContentDescription("Undo")).performClick()
+        rule.runOnIdle { assertEquals(saved, receipt); assertNull(model) }
+        // Skip must remain available with a failed/missing projection without replacing the receipt.
+        rule.onNode(hasText("Später") or hasContentDescription("Später")).performClick()
+        rule.onNodeWithText("Deck beendet").assertExists()
+        rule.onNode(hasText("Undo") or hasContentDescription("Undo")).performClick()
+        rule.runOnIdle { assertEquals(saved, receipt); model = original }
+        rule.waitUntil(5_000) { receipt == null }
+        rule.runOnIdle {
+            assertEquals(saved.anchorKey, capture.read()?.anchorKey)
+            assertEquals(saved.anchorOffset, capture.read()?.anchorOffset)
+            assertEquals(saved.mediaId, capture.read()?.mediaId)
+            assertEquals(Preference.NONE, native)
+            assertEquals(2, writes)
+            routeVisible = false
+        }
+        rule.onNodeWithText("Grid").assertExists()
+        rule.runOnIdle { model = null; routeVisible = true }
+        rule.onNodeWithText("Medium 0").assertExists()
+        rule.runOnIdle { model = original }
+        rule.waitUntil(5_000) {
+            capture.read()?.let { it.anchorKey == saved.anchorKey && it.anchorOffset == saved.anchorOffset } == true
+        }
+        rule.runOnIdle {
+            assertEquals(saved.mediaId, capture.read()?.mediaId)
+            assertNull(receipt)
+            assertEquals(2, writes)
+        }
     }
 
     @Test fun changedSnapshotRestoresIndependentKeysAndFailedPanelReadUsesSafeRowStart() {
