@@ -487,6 +487,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun markSwipeSnapshotChanged() {
         swipeSnapshotDirty = true
+        savedSearch.refreshResultProjection()
         if (discoveryListVisible) refreshDiscovery()
         if (mapProjectionVisible) refreshMap()
     }
@@ -895,6 +896,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         core.loadProfile(listingId)
                     } finally {
                         // A source read can persist before a later failure or invalidation.
+                        savedSearch.refreshResultProjection()
                         refreshDiscovery()
                     }
                 } catch (failure: CancellationException) {
@@ -940,6 +942,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     if (archiveControl === control) archiveControl = null
                     if (requestId == profileRequestId) _searchUiState.update { it.copy(archiving=false) }
                     // Even a cancelled archive may already have committed individual media.
+                    savedSearch.refreshResultProjection()
                     refreshDiscovery()
                 }
             } catch (cancellation: CancellationException) {
@@ -1030,6 +1033,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     } else if (discoveryRefreshPending) refreshDiscovery()
                 }
                 if (committed) {
+                    savedSearch.refreshResultProjection()
                     if (discoveryRefreshPending) refreshDiscovery()
                     refreshMap()
                     refresh()
