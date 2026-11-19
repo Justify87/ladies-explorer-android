@@ -576,11 +576,19 @@ impl LadiesCore {
         saved_search::results(self, id, limit, cursor)
     }
 
-    pub fn saved_search_window(&self, id: String, limit: u32) -> Result<SavedSearchWindow, CoreError> {
+    pub fn saved_search_window(
+        &self,
+        id: String,
+        limit: u32,
+    ) -> Result<SavedSearchWindow, CoreError> {
         saved_search::window(self, id, limit)
     }
 
-    pub fn acknowledge_saved_search_revision(&self, id: String, revision: i64) -> Result<bool, CoreError> {
+    pub fn acknowledge_saved_search_revision(
+        &self,
+        id: String,
+        revision: i64,
+    ) -> Result<bool, CoreError> {
         saved_search::acknowledge_revision(self, id, revision)
     }
 
