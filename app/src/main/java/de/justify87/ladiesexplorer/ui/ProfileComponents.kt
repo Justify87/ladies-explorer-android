@@ -108,7 +108,7 @@ private fun ProfileImageSurface(
 @Composable
 private fun ImageFeedbackContent(feedback: ImageFeedback) {
     if (feedback.failed) Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Kein Bild verfügbar", style = MaterialTheme.typography.bodySmall,
+        Text("Kein Bild verfügbar", style = MaterialTheme.typography.bodySmall, maxLines = 2,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         feedback.retry?.let { retry -> TextButton(onClick = retry, modifier = Modifier.heightIn(min = 48.dp)) {
             Text("Erneut laden")

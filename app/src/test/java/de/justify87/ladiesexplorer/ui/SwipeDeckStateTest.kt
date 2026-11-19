@@ -84,6 +84,21 @@ class SwipeDeckStateTest {
         assertEquals(2L, session.queue(rows, true).first().listingId)
     }
 
+    @Test fun swipeAvailabilityRejectsAnOldMenuBeforeComposeRecomposes() {
+        val deck = DiscoverUiState(cards = listOf(card(4)), activeRunId = 3L,
+            swipeSessionId = 8L, loading = false)
+        val token = deck.deckToken()
+        assertTrue(currentSwipeAvailability(deck, false, 3L, token))
+        assertFalse(currentSwipeAvailability(deck, false, 4L, token))
+        assertFalse(currentSwipeAvailability(deck.copy(swipeSessionId = 9L), false, 3L, token))
+        assertFalse(currentSwipeAvailability(deck.copy(activeRunId = 4L), false, 4L, token))
+        assertFalse(currentSwipeAvailability(deck, true, 3L, token))
+        assertFalse(currentSwipeAvailability(deck.copy(busy = true), false, 3L, token))
+        val local = deck.copy(activeRunId = null)
+        assertTrue(currentSwipeAvailability(local, false, null, local.deckToken()))
+        assertFalse(currentSwipeAvailability(local, false, 3L, local.deckToken()))
+    }
+
     @Test fun renderedAdmissionRejectsChangedOwnerRunSessionPreferenceAndBusyState() {
         val rendered = card(4, 1)
         val state = DiscoverUiState(cards = listOf(rendered, card(5)), activeRunId = 2L,

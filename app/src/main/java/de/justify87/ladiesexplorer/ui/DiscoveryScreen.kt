@@ -33,7 +33,7 @@ internal fun DiscoverScreen(
     onOpenSearch: () -> Unit,
     onSelectMode: (DiscoverMode) -> Unit,
     availabilityEnabled: Boolean,
-    onAvailability: (AvailabilityMode) -> Unit,
+    onAvailability: (SwipeDeckToken, AvailabilityMode) -> Unit,
     onCancelSearch: () -> Unit,
     onRefresh: (SwipeDeckToken) -> Unit,
     onReset: (SwipeDeckToken) -> Unit,
@@ -205,7 +205,7 @@ internal fun DiscoverScreen(
                     presentation = presentation, identity = identity, context = menuContext,
                     summary = summary, counts = counts, executed = active != null, compactNotice = compactNotice,
                     onNotice = onNotice, onPhoto = { photoRequest++ }, onSearch = onOpenSearch,
-                    onMode = onSelectMode, onAvailability = onAvailability, onRefresh = { onRefresh(deckToken) },
+                    onMode = onSelectMode, onAvailability = { onAvailability(deckToken, it) }, onRefresh = { onRefresh(deckToken) },
                     onReset = { onReset(deckToken) }, onReplay = { onReplayLikes(deckToken, !state.replayLikes) },
                     onFavorite = { token?.let(onFavorite) }, onChoose = choose, onUndo = undo, onSkip = skip,
                 )
@@ -280,7 +280,7 @@ fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: Str
 @Composable
 private fun SwipeShellHeader(
     presentation: ProfileShellPresentation, identity: HeroIdentity?, context: SwipeMenuContext,
-    summary: String, counts: String, executed: Boolean, compactNotice: Boolean,
+    summary: String, counts: String, executed: Boolean, compactNotice: ProfileNoticeIndicator?,
     onNotice: () -> Unit, onPhoto: () -> Unit, onSearch: () -> Unit,
     onMode: (DiscoverMode) -> Unit, onAvailability: (AvailabilityMode) -> Unit,
     onRefresh: () -> Unit, onReset: () -> Unit, onReplay: () -> Unit, onFavorite: () -> Unit,
@@ -306,7 +306,7 @@ private fun SwipeShellHeader(
             shown?.let { listOfNotNull(it.status, it.shortDecision, it.place).joinToString(" · ") } ?: summary,
             presentation.budget.shortHeader, Modifier.weight(1f),
             onClick = if (shown == null) null else ({ info = true }))
-        if (compactNotice) ProfileStatusButton(onNotice)
+        if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
         if (!presentation.budget.narrowHeader) {
             if (presentation.photoShortcut) IconButton(onClick = onPhoto) {
                 Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
@@ -323,7 +323,7 @@ private fun SwipeShellHeader(
                 Text(swipeContextLabel(summary, executed, context.matchingRun, context.availability),
                     Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.titleSmall)
                 Text(counts, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
-                if (compactNotice) DropdownMenuItem(text = { Text("Status und Hinweise") }, onClick = { dispatch(onNotice) })
+                if (compactNotice != null) DropdownMenuItem(text = { Text("Status und Hinweise") }, onClick = { dispatch(onNotice) })
                 if (presentation.photoShortcut && context.card != null) DropdownMenuItem(text = { Text("Zum Foto") }, onClick = { dispatch(onPhoto) })
                 if (presentation.budget.railInMenu && context.card != null) {
                     DropdownMenuItem(text = { Text("Undo") }, enabled = context.deckEnabled && context.canUndo, onClick = { dispatch(onUndo) })

@@ -87,6 +87,10 @@ internal fun DiscoverUiState.cardToken(): SwipeCardToken? =
 internal fun currentSwipeDeck(state: DiscoverUiState, searchLoading: Boolean, token: SwipeDeckToken): Boolean =
     !state.busy && !state.loading && !searchLoading && state.deckToken() == token
 
+internal fun currentSwipeAvailability(
+    state: DiscoverUiState, searchLoading: Boolean, responseRunId: Long?, token: SwipeDeckToken,
+): Boolean = currentSwipeDeck(state, searchLoading, token) && responseRunId == token.runId
+
 internal fun currentSwipeTraversalCard(
     state: DiscoverUiState, searchLoading: Boolean, token: SwipeCardToken,
 ): DiscoveryCard? = if (!currentSwipeDeck(state, searchLoading, token.deck) || state.cardToken() != token) null

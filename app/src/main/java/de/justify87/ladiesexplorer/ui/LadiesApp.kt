@@ -314,7 +314,7 @@ fun LadiesApp(
                                 onOpenSearch = { selectRoot(RootDestination.Search) },
                                 onSelectMode = { route = route.select(it) },
                                 availabilityEnabled = !search.loading && !home.loading && !discovery.busy && !saved.busy,
-                                onAvailability = viewModel::runAvailability,
+                                onAvailability = viewModel::runSwipeAvailability,
                                 onCancelSearch = viewModel::cancelActiveSearch,
                                 onRefresh = viewModel::refreshSwipe,
                                 onReset = viewModel::resetSwipe,
@@ -421,11 +421,11 @@ fun LadiesApp(
 }
 
 @Composable
-internal fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit, includeSummary: Boolean = true) {
+private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         val active = state.response
         if (active != null) {
-            if (includeSummary) Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
+            Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
                 style = MaterialTheme.typography.labelMedium)
             if (active.partial || !active.radiusVerified) {
                 Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,

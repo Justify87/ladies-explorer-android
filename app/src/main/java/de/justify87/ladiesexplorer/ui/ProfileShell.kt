@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +28,8 @@ internal data class ProfileNotice(
     val warning: Boolean = false,
 )
 
+internal data class ProfileNoticeIndicator(val label: String, val warning: Boolean)
+
 internal data class ProfileShellPresentation(
     val budget: ProfileShellBudget,
     val heroHeight: Dp,
@@ -46,7 +49,7 @@ internal fun ProfileShell(
     hasRail: Boolean,
     notices: List<ProfileNotice>,
     noticeOwner: Any?,
-    header: @Composable (ProfileShellPresentation, Boolean, () -> Unit) -> Unit,
+    header: @Composable (ProfileShellPresentation, ProfileNoticeIndicator?, () -> Unit) -> Unit,
     rail: @Composable () -> Unit = {},
     content: @Composable (ProfileShellPresentation, (Int) -> Unit) -> Unit,
 ) {
@@ -67,13 +70,17 @@ internal fun ProfileShell(
         }
         val headerIdentity = budget.compactGallery || handoff
         val presentation = ProfileShellPresentation(budget, heroHeight, headerIdentity, headerIdentity && scrolled)
+        val summary = notices.firstOrNull { it.warning } ?: notices.firstOrNull()
+        val indicator = summary?.let { ProfileNoticeIndicator(it.label, it.warning) }
         val signature = notices.map { listOf(it.label, it.message, it.action, it.enabled, it.warning) }
         var dialog by remember(noticeOwner, signature) { mutableStateOf(false) }
+        var active by remember { mutableStateOf(true) }
+        DisposableEffect(Unit) { onDispose { active = false } }
         val currentNotices by rememberUpdatedState(notices)
         val currentOwner by rememberUpdatedState(noticeOwner)
         val currentSignature by rememberUpdatedState(signature)
         fun runNotice(index: Int) {
-            if (currentOwner != noticeOwner || currentSignature != signature) return
+            if (!active || currentOwner != noticeOwner || currentSignature != signature) return
             currentNotices.getOrNull(index)?.takeIf { it.enabled }?.invoke?.invoke()
             dialog = false
         }
@@ -95,7 +102,7 @@ internal fun ProfileShell(
         }
         Column(Modifier.width(width).fillMaxHeight()) {
             Box(Modifier.fillMaxWidth().height(budget.header.dp)) {
-                header(presentation, notices.isNotEmpty() && budget.noticeInHeader, { dialog = true })
+                header(presentation, indicator.takeIf { budget.noticeInHeader }, { dialog = true })
             }
             if (budget.notice > 0f) {
                 val index = notices.indexOfFirst { it.action != null && it.enabled }
@@ -104,7 +111,7 @@ internal fun ProfileShell(
                     verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { dialog = true }, modifier = Modifier.weight(1f).fillMaxHeight(),
                         contentPadding = PaddingValues(horizontal = 8.dp)) {
-                        Text(notices.firstOrNull { it.warning }?.label ?: notices.first().label,
+                        Text(indicator?.label.orEmpty(),
                             color = if (notices.any { it.warning }) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (notices.size > 1) Text(" +${notices.size - 1}", style = MaterialTheme.typography.labelSmall)
@@ -160,8 +167,10 @@ internal fun IdentityInfoDialog(identity: HeroIdentity, dismiss: () -> Unit) {
 }
 
 @Composable
-internal fun ProfileStatusButton(onClick: () -> Unit) {
+internal fun ProfileStatusButton(indicator: ProfileNoticeIndicator, onClick: () -> Unit) {
     IconButton(onClick = onClick) {
-        Icon(Icons.Default.Info, contentDescription = "Status und Hinweise", tint = MaterialTheme.colorScheme.error)
+        Icon(if (indicator.warning) Icons.Default.Warning else Icons.Default.Info,
+            contentDescription = "Status und Hinweise: ${indicator.label}",
+            tint = if (indicator.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

@@ -17,7 +17,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Rule
@@ -41,7 +40,7 @@ class ProfileShellDeviceTest {
                         header = { _, compactNotice, onNotice ->
                             Row(Modifier.fillMaxSize().testTag("header"), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Profil", Modifier.weight(1f))
-                                if (compactNotice) ProfileStatusButton(onNotice)
+                                if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
                             }
                         }, rail = { Box(Modifier.fillMaxSize().testTag("rail")) },
                     ) { _, _ ->
@@ -55,7 +54,7 @@ class ProfileShellDeviceTest {
         assertTrue(body.height > 0f)
         assertTrue(body.top >= header.bottom - 1f)
         rule.onNodeWithTag("rail").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Status und Hinweise").performClick()
+        rule.onNodeWithContentDescription("Status und Hinweise: Fehler").performClick()
         rule.onNodeWithText("Status und Hinweise").assertExists()
         // The long warning is scrollable; a dialog action need not fit its first viewport.
         rule.onNodeWithText("Erneut laden").performScrollTo().performClick()
@@ -63,12 +62,14 @@ class ProfileShellDeviceTest {
     }
 
     @Test fun measuredIdentityHandoffDoesNotResizeHeaderOrRail() {
-        lateinit var jump: (Int) -> Unit
+        lateinit var jump: (Int, Int) -> Unit
+        var heroPx = 0
+        var identityPx = 0
         rule.setContent {
             MaterialTheme {
                 val list = rememberLazyListState()
                 val scope = rememberCoroutineScope()
-                jump = { index -> scope.launch { list.scrollToItem(index) } }
+                jump = { index, offset -> scope.launch { list.scrollToItem(index, offset) } }
                 ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero", rootHeight = 80.dp,
                     hasRail = true, notices = emptyList(), noticeOwner = "fixture",
                     header = { presentation, _, _ ->
@@ -79,9 +80,9 @@ class ProfileShellDeviceTest {
                 ) { presentation, measured ->
                     LazyColumn(Modifier.fillMaxSize().testTag("body"), state = list) {
                         item(key = "hero") {
-                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight)) {
+                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight).onSizeChanged { heroPx = it.height }) {
                                 Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(90.dp)
-                                    .onSizeChanged { measured(it.height) })
+                                    .onSizeChanged { identityPx = it.height; measured(it.height) })
                             }
                         }
                         items(20) { Text("Detail $it", Modifier.height(48.dp)) }
@@ -92,12 +93,19 @@ class ProfileShellDeviceTest {
         rule.onNodeWithText("A").assertExists()
         val header = rule.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
         val rail = rule.onNodeWithTag("rail").fetchSemanticsNode().boundsInRoot
-        rule.runOnIdle { jump(1) }
+        // Cross the measured overlay edge before the entire hero disappears.
+        rule.runOnIdle {
+            assertTrue(heroPx > identityPx && identityPx > 0)
+            jump(0, heroPx - identityPx + 1)
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText("B").assertExists()
+        rule.runOnIdle { jump(1, 0) }
         rule.waitForIdle()
         rule.onNodeWithText("B").assertExists()
         assertEquals(header, rule.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot)
         assertEquals(rail, rule.onNodeWithTag("rail").fetchSemanticsNode().boundsInRoot)
-        rule.runOnIdle { jump(0) }
+        rule.runOnIdle { jump(0, 0) }
         rule.waitForIdle()
         rule.onNodeWithText("A").assertExists()
     }

@@ -59,7 +59,7 @@ internal fun ProfileDetailScreen(
                 ProfileShellTitle(shown?.title ?: "Profil", shown?.compactSubtitle ?: "Profilansicht",
                     shown?.decisions.orEmpty(), presentation.budget.shortHeader, Modifier.weight(1f),
                     onClick = if (identity == null) null else ({ info = true }))
-                if (compactNotice) ProfileStatusButton(onNotice)
+                if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
                 if (presentation.photoShortcut && profile != null) IconButton(onClick = { photoRequest++ }) {
                     Icon(Icons.Default.KeyboardArrowUp, "Zum Foto")
                 } else if (identity != null) IconButton(onClick = { info = true }) {

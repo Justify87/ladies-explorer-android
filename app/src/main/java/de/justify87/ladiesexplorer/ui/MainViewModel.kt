@@ -403,6 +403,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun resetSearchDraft() = editSearchDraft { SearchDraft() }
 
+    /** Swipe menu admission is checked against live VM state, even before the
+     * next Compose frame. Grid retains its existing direct quick-filter path. */
+    internal fun runSwipeAvailability(token: SwipeDeckToken, mode: AvailabilityMode) {
+        val search = _searchUiState.value
+        if (!swipeVisible || search.profileOpen ||
+            !currentSwipeAvailability(_discoverState.value, search.loading, search.response?.searchRunId, token)) return
+        runAvailability(mode)
+    }
+
     fun runAvailability(mode: AvailabilityMode) {
         val state = _searchUiState.value
         val active = state.response
