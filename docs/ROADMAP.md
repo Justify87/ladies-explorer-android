@@ -1,6 +1,6 @@
 # Roadmap und Abnahmestand
 
-Stand des Ist-Abgleichs: 18.11.2026, [main 7d768e5b](https://github.com/Justify87/ladies-explorer-android/commit/7d768e5bac9ddf0239de904e21f120e82c8db67a). Diese Roadmap rekonstruiert den ursprünglichen Android-Migrationsplan M00–M07 aus dem Projektverlauf vom 17.11.2026 und den gemergten Meilensteinen. Sie ist der Soll-/Fortschrittsindex, nicht eine zweite technische Spezifikation. Die späteren Diagnose-Meilensteine M0–M4 sind ein eigener Arbeitsstrang, keine Umnummerierung des Hauptplans.
+Historische Basis des Ist-Abgleichs: 18.11.2026, [main 7d768e5b](https://github.com/Justify87/ladies-explorer-android/commit/7d768e5bac9ddf0239de904e21f120e82c8db67a). Diese Roadmap rekonstruiert den ursprünglichen Android-Migrationsplan M00–M07 aus dem Projektverlauf vom 17.11.2026 und den gemergten Meilensteinen. Sie ist der Soll-/Fortschrittsindex, nicht eine zweite technische Spezifikation. Die späteren Diagnose-Meilensteine M0–M4 sind ein eigener Arbeitsstrang, keine Umnummerierung des Hauptplans.
 
 ## Verbindliches Ziel
 
@@ -35,7 +35,7 @@ Der Nutzer hat am 18.11.2026 die vollständige M05-Frontend-Adaption auf Grundla
 
 ## Offene Entscheidungen und Abnahme
 
-M05 zuerst gemäß aktivem Aufgabenregister abschließen (u. a. Personennotiz und Grid). Danach M06-Restumfang (Begegnungen, Bewertungen, manuelle Preislisten) und M07-Export-/Release-Anforderungen abgleichen. Nicht vorhandene Funktionen nicht durch bloße Schematabellen als erledigt markieren. Keine neue Funktion allein aufgrund dieser Dokumentationskonsolidierung umsetzen; bestätigte Scope-Änderungen hier ausdrücklich vermerken.
+M05 zuerst gemäß aktivem Aufgabenregister abschließen (G9-Restabnahme und M05.10; Personennotiz und Grid sind technisch integriert). Danach M06-Restumfang (Begegnungen, Bewertungen, manuelle Preislisten) und M07-Export-/Release-Anforderungen abgleichen. Nicht vorhandene Funktionen nicht durch bloße Schematabellen als erledigt markieren. Keine neue Funktion allein aufgrund dieser Dokumentationskonsolidierung umsetzen; bestätigte Scope-Änderungen hier ausdrücklich vermerken.
 
 Geräteabnahme: realer Import (mit lokalem Testbestand), vollständige Suche mit Radius und Pagination, gespeicherte Such-Deltas, Profil-/Medienabruf und Offline-Fallback, Swipe/Favoriten/Identitätsbestätigung, Karte inkl. Lifecycle/Geocoding, Diagnose inkl. Firefox-Import, App-Neustart und Performance. Bereichsspezifische Prüfschritte stehen in den Fachdateien. Automatisierte CI ist davon getrennt; keine unbelegte Geräte- oder Releasefreigabe.
 
