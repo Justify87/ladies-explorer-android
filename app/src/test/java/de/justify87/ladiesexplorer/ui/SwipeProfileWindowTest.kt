@@ -104,10 +104,17 @@ class SwipeProfileWindowTest {
             assertNull(cache.readCurrent(a) { started.complete(Unit); release.await(); fixtureSwipe(1L) })
         }
         started.await()
+        val before = cache.invalidation(a)
         cache.prefetch(b) { sourceCompleted -> sourceCompleted(); fixtureSwipe(2L, 2L) }
+        // Reject the pending read, but do not cancel/restart a native operation
+        // because of another source completion.
+        assertEquals(before, cache.invalidation(a))
+        assertTrue(late.isActive)
         release.complete(Unit)
         late.join()
         assertNull(cache[a])
+        assertTrue(cache.invalidation(a) > before)
+        assertTrue(cache.requiresLocal(a))
         assertNotNull(cache[b])
     }
 

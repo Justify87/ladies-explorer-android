@@ -86,6 +86,7 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
 internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileReadModel>) {
     private data class Slot(val owner: Long, val ticket: Long)
     private val slots = mutableMapOf<Long, Slot>()
+    private val inFlight = mutableMapOf<Long, Slot>()
     private var nextTicket = 0L
     private val invalidations = mutableStateMapOf<Long, Long>()
     private val staleProvenance = mutableMapOf<Long, Pair<Boolean, String?>>()
@@ -109,6 +110,7 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileR
     fun clear() {
         entries.clear()
         slots.clear()
+        inFlight.clear()
         invalidations.clear()
         staleProvenance.clear()
     }
@@ -127,7 +129,10 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileR
             entries.remove(id)?.let { staleProvenance[id] = it.fromArchive to it.warning }
             val next = ++nextTicket
             slots[id] = slot.copy(ticket = next)
-            invalidations[id] = next
+            // Revocation is immediate, but restarting a running effect here
+            // would cancel its native call and recursively invalidate its successor.
+            // The rejected read owns the scheduling of local recovery after drain.
+            if (id !in inFlight) invalidations[id] = next
         }
     }
 
@@ -136,6 +141,7 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileR
         val desired = cards.associate { it.listingId to it.personId }
         slots.keys.toList().filter { desired[it] != slots[it]?.owner }.forEach {
             slots.remove(it)
+            inFlight.remove(it)
             entries.remove(it)
             invalidations.remove(it)
             staleProvenance.remove(it)
@@ -147,18 +153,38 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileR
 
     private suspend fun obtain(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? {
         val slot = slots[card.listingId]?.takeIf { it.owner == card.personId } ?: return null
+        val listingId = card.listingId
         val ticket = slot.copy(ticket = ++nextTicket)
-        slots[card.listingId] = ticket
-        val profile = read { sourceCompleted(card.listingId, ticket) }
-        currentCoroutineContext().ensureActive()
-        if (slots[card.listingId] != ticket) return null
-        check(profile.profile.listingId == card.listingId && profile.identity.personId == card.personId &&
-            profile.person.personId == card.personId) { "Personenzuordnung geändert; Deck bitte aktualisieren." }
-        val provenance = staleProvenance.remove(card.listingId)
-        val published = if (provenance == null) profile.copy(revision = ticket.ticket)
-            else profile.copy(revision = ticket.ticket, fromArchive = provenance.first, warning = provenance.second)
-        entries[card.listingId] = published
-        return published
+        slots[listingId] = ticket
+        inFlight[listingId] = ticket
+        try {
+            val profile = read { sourceCompleted(listingId, ticket) }
+            currentCoroutineContext().ensureActive()
+            if (slots[listingId] != ticket) {
+                // A completed read proves local data exists, but its contents may
+                // predate another source commit. Keep only provenance for recovery.
+                if (inFlight[listingId] == ticket && slots[listingId]?.owner == card.personId &&
+                    profile.profile.listingId == listingId && profile.identity.personId == card.personId &&
+                    profile.person.personId == card.personId) {
+                    staleProvenance.putIfAbsent(listingId, profile.fromArchive to profile.warning)
+                }
+                return null
+            }
+            check(profile.profile.listingId == listingId && profile.identity.personId == card.personId &&
+                profile.person.personId == card.personId) { "Personenzuordnung geändert; Deck bitte aktualisieren." }
+            val provenance = staleProvenance.remove(listingId)
+            val published = if (provenance == null) profile.copy(revision = ticket.ticket)
+                else profile.copy(revision = ticket.ticket, fromArchive = provenance.first, warning = provenance.second)
+            entries[listingId] = published
+            return published
+        } finally {
+            if (inFlight[listingId] == ticket) {
+                inFlight.remove(listingId)
+                slots[listingId]?.takeIf { it.owner == card.personId && it != ticket }?.let {
+                    invalidations[listingId] = it.ticket
+                }
+            }
+        }
     }
 
     suspend fun readCurrent(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? =
