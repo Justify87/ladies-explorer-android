@@ -23,6 +23,7 @@ const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 struct Response {
     status: u16,
     body: String,
+    same_path: bool,
 }
 
 trait Transport {
@@ -90,21 +91,53 @@ impl SourceHttp {
         })
     }
 
+    // Shared evidence contract for detail reads and explicit checks.
     pub(super) fn get_profile(
         &self,
         url: &str,
+        advert_id: &str,
         control: Option<&RequestControl>,
-    ) -> Result<String, CoreError> {
+    ) -> Result<ProfileObservation, CoreError> {
         let url = parse::valid_profile_url(url)
             .ok_or_else(|| CoreError::InvalidInput("Invalid Ladies profile URL".into()))?;
         let response = self.get_cancellable(&url, control)?;
-        if response.status != 200 {
-            return Err(CoreError::Source(format!(
-                "Profile HTTP status {}",
-                response.status
-            )));
+        match classify_profile_status(&response, advert_id) {
+            Ok(("ACTIVE", _)) => Ok(ProfileObservation::Active(response.body)),
+            Ok((_, code)) => Ok(ProfileObservation::Unavailable(code)),
+            Err(_)
+                if response.status == 200
+                    && response.same_path
+                    && parse::profile_without_explicit_id(&response.body) =>
+            {
+                Ok(ProfileObservation::Unverified(response.body))
+            }
+            Err(error) => Err(error),
         }
-        Ok(response.body)
+    }
+}
+
+pub(super) enum ProfileObservation {
+    Active(String),
+    // Keep existing metadata parsing without asserting an unproven status.
+    Unverified(String),
+    Unavailable(u16),
+}
+
+fn classify_profile_status(
+    response: &Response,
+    advert_id: &str,
+) -> Result<(&'static str, u16), CoreError> {
+    match response.status {
+        404 | 410 if response.same_path && !parse::verification_page(&response.body) => {
+            Ok(("UNAVAILABLE", response.status))
+        }
+        200 if response.same_path && parse::confirms_profile(&response.body, advert_id) => {
+            Ok(("ACTIVE", 200))
+        }
+        _ => Err(CoreError::Source(format!(
+            "Profile status could not be verified (HTTP {})",
+            response.status
+        ))),
     }
 }
 
@@ -356,7 +389,11 @@ impl Transport for SourceHttp {
         if status >= 400 {
             self.diagnostics.html("http_error", &body);
         }
-        Ok(Response { status, body })
+        Ok(Response {
+            status,
+            body,
+            same_path: requested_path == redirected_path,
+        })
     }
 
     fn wait_between_pages(&self) {
@@ -909,8 +946,35 @@ mod tests {
             Ok(Response {
                 status: *status,
                 body: body.clone(),
+                same_path: true,
             })
         }
+    }
+
+    #[test]
+    fn status_requires_exact_profile_or_direct_not_found() {
+        let classify = |status, body: &str, same_path| {
+            classify_profile_status(
+                &Response {
+                    status,
+                    body: body.to_owned(),
+                    same_path,
+                },
+                "42",
+            )
+        };
+        let profile = r#"<h2 class="page-heading kuenstlername">Fixture</h2><script>advertId: replaceWithDefault("42", "")</script>"#;
+        assert_eq!(classify(200, profile, true).unwrap(), ("ACTIVE", 200));
+        assert_eq!(classify(404, "", true).unwrap(), ("UNAVAILABLE", 404));
+        assert_eq!(classify(410, "", true).unwrap(), ("UNAVAILABLE", 410));
+        assert!(classify(404, "", false).is_err());
+        assert!(classify(404, "<title>Just a moment</title>", true).is_err());
+        assert!(classify(410, "ich bin über 18 jahre", true).is_err());
+        assert!(classify(403, "", true).is_err());
+        assert!(classify(500, "", true).is_err());
+        assert!(classify(200, profile, false).is_err());
+        assert!(classify(200, "<title>Pruefung</title>", true).is_err());
+        assert!(classify(200, &profile.replace("42", "43"), true).is_err());
     }
 
     fn location() -> &'static str {

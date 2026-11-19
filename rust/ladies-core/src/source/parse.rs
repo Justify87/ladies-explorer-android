@@ -177,6 +177,28 @@ pub(super) fn is_radius_transition_placeholder(html: &str, requested_radius: u32
         })
 }
 
+fn bot_verification(lowered: &str) -> bool {
+    [
+        "cf-chl",
+        "challenge-platform",
+        "checking your browser",
+        "just a moment",
+        "verify you are human",
+        "captcha",
+    ]
+    .iter()
+    .any(|marker| lowered.contains(marker))
+}
+
+fn age_verification(lowered: &str) -> bool {
+    lowered.contains("ich bin über 18 jahre") || lowered.contains("enthält erotische inhalte")
+}
+
+pub(super) fn verification_page(html: &str) -> bool {
+    let lowered = html.to_lowercase();
+    bot_verification(&lowered) || age_verification(&lowered)
+}
+
 pub(super) fn search_page_diagnostics(html: &str) -> String {
     let doc = Html::parse_document(html);
     let title = first_text(&doc, "title").unwrap_or_else(|| "ohne Titel".into());
@@ -199,21 +221,9 @@ pub(super) fn search_page_diagnostics(html: &str) -> String {
         .count();
     let page_kind = if plausible_links > 0 {
         "Suchseite mit Anzeigen"
-    } else if [
-        "cf-chl",
-        "challenge-platform",
-        "checking your browser",
-        "just a moment",
-        "verify you are human",
-        "captcha",
-    ]
-    .iter()
-    .any(|marker| lowered.contains(marker))
-    {
+    } else if bot_verification(&lowered) {
         "Bot-Verifizierung"
-    } else if lowered.contains("ich bin über 18 jahre")
-        || lowered.contains("enthält erotische inhalte")
-    {
+    } else if age_verification(&lowered) {
         "Altersabfrage oder Website-Startseite"
     } else if lowered.contains("anzeigen für dich gefunden") {
         "Suchseite mit Ergebnisüberschrift"
@@ -518,29 +528,43 @@ fn gallery_media(doc: &Html, html: &str) -> Vec<MediaReference> {
     ordered
 }
 
+fn recognized_profile(doc: &Html) -> bool {
+    doc.select(&selector(
+        "h2.page-heading.kuenstlername, .share-advert-name strong, .einzelansicht-text, .auftrag-main-thumb[data-index]",
+    ))
+    .next()
+    .is_some()
+}
+
+fn profile_advert_id(html: &str) -> Option<String> {
+    Regex::new(r#"(?i)advertId:\s*replaceWithDefault\("(\d+)""#)
+        .expect("advert regex")
+        .captures(html)
+        .and_then(|m| m.get(1))
+        .map(|m| m.as_str().to_owned())
+}
+
+pub(super) fn confirms_profile(html: &str, advert_id: &str) -> bool {
+    profile_advert_id(html).as_deref() == Some(advert_id)
+        && recognized_profile(&Html::parse_document(html))
+}
+
+pub(super) fn profile_without_explicit_id(html: &str) -> bool {
+    profile_advert_id(html).is_none() && recognized_profile(&Html::parse_document(html))
+}
+
 pub(super) fn parse_profile(html: &str, fallback: &Card) -> Result<Profile, CoreError> {
     let doc = Html::parse_document(html);
-    if doc
-        .select(&selector(
-            "h2.page-heading.kuenstlername, .share-advert-name strong,              .einzelansicht-text, .auftrag-main-thumb[data-index]",
-        ))
-        .next()
-        .is_none()
-    {
+    if !recognized_profile(&doc) {
         return Err(CoreError::Source(
             "Response is not a recognized Ladies profile page".into(),
         ));
     }
-    if let Some(found_id) = Regex::new(r#"(?i)advertId:\s*replaceWithDefault\("(\d+)""#)
-        .expect("advert regex")
-        .captures(html)
-        .and_then(|m| m.get(1))
-    {
-        if found_id.as_str() != fallback.advert_id {
+    if let Some(found_id) = profile_advert_id(html) {
+        if found_id != fallback.advert_id {
             return Err(CoreError::Source(format!(
                 "Profile advert ID mismatch: expected {} but got {}",
-                fallback.advert_id,
-                found_id.as_str()
+                fallback.advert_id, found_id
             )));
         }
     }

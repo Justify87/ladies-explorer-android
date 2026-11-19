@@ -3,10 +3,7 @@ package de.justify87.ladiesexplorer.ui
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +19,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.first
 
 @Composable
 internal fun DiscoverScreen(
@@ -206,75 +202,6 @@ internal fun DiscoverScreen(
                     enabled = actions, modifier = Modifier.weight(1f)) { Text("Gefällt") }
             }
         }
-    }
-}
-
-@Composable
-fun FavoritesScreen(
-    state: DiscoverUiState,
-    onRefresh: () -> Unit,
-    onProfile: (Long, Long) -> Unit,
-    onFavorite: (Long) -> Unit,
-    onLoadMore: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val listState = rememberLazyListState()
-    val canPage = state.favoritesNextCursor != null && !state.loading && !state.busy && !state.favoritesLoadingMore
-    LaunchedEffect(listState, state.favoritesNextCursor, canPage, state.error) {
-        if (canPage && state.error == null) {
-            snapshotFlow {
-                val layout = listState.layoutInfo
-                nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
-            }.first { it }
-            onLoadMore()
-        }
-    }
-    LazyColumn(
-        state = listState,
-        modifier = modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Favoriten", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = onRefresh) { Text("Aktualisieren") }
-            }
-        }
-        if (state.loading) item { CircularProgressIndicator() }
-        if (!state.loading && state.favorites.isEmpty()) item {
-            Text("Noch keine Favoriten gespeichert. Markiere ein Profil im Entdecken-Deck oder in der Detailansicht.")
-        }
-        items(state.favorites, key = { it.personId }) { card ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    ProfileThumbnail(
-                        url = card.thumbnailUrl,
-                        localPath = card.localPath,
-                        modifier = Modifier.size(96.dp).clip(MaterialTheme.shapes.small),
-                    )
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(card.name, style = MaterialTheme.typography.titleMedium)
-                        Text(card.city, style = MaterialTheme.typography.bodySmall)
-                        TextButton(onClick = { onProfile(card.listingId,card.personId) }) {
-                            Text("Profil ansehen")
-                        }
-                    }
-                    IconButton(onClick = { onFavorite(card.personId) },enabled = !state.busy) {
-                        Icon(Icons.Default.Favorite, contentDescription = "Favorit entfernen")
-                    }
-                }
-            }
-        }
-        if (state.favoritesLoadingMore) item { CircularProgressIndicator() }
-        else if (state.favoritesNextCursor != null) item {
-            TextButton(onClick = onLoadMore, enabled = canPage) { Text("Weitere Favoriten") }
-        }
-        state.error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
     }
 }
 

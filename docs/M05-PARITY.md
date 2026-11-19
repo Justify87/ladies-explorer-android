@@ -172,3 +172,14 @@ G5 technisch DONE: PR #19 gemergt, Full-CI #341 auf e8c83e42 erfolgreich; Gerät
 P27–P32: ProfilePanels.kt (gemeinsame native Tabs), profile_detail.rs (typisierte Fakten, Filterbelege, Notizen und Analyse), history.rs (Vergleich mit Eigentümerprüfung), CoreStore. Native Gerätebelege/Full-CI offen; Preis-, Begegnungs- und KI-Analysefunktionen nicht im M05-Scope.
 
 Review PR #20: P27–P32 korrigiert (Notiz-Verantwortung im ViewModel, kataloggebundene gruppenbezogene Belege, kompakte responsive Abschnitte, verständlicher Verlauf, gezielte DB-/State-Tests). Technische Abnahme neuer Head und DEVICE_PENDING offen.
+
+### M05.7 – Review-Korrektur PR #21
+
+| ID | Native Umsetzung | Abnahme |
+|---|---|---|
+| P33 | Rust-Personencounts, Unicode-Basisnamensortierung, revidierte Cursor und atomare erweiterbare Fenster; gespeicherte vs. Präferenzzustände unabhängig. | REVIEW |
+| P34 | Native Tabs und kompakte Karten; Fallbacks vorhandener personenbezogener Metadaten, gemeinsame Aktionen/Read-Reconciliation und Scroll-State. | REVIEW / DEVICE_PENDING |
+| P35 | 36h-Watchlist mit Millisekunden-Grenze; beide Bereiche aus einem DB-Stand, stabile Personenkeys, native Relisting-Klassifikation. | REVIEW |
+| P36 | Ein gemeinsamer Rust-Quellenvertrag; Status-only ohne Umsortierung, eindeutige Evidenz, Teilfortschritt/Fehler und Abbruch bei Navigation/ON_STOP. | REVIEW / DEVICE_PENDING |
+
+Historische Referenzmatrix oben bleibt Inventar des M05-Ausgangsstands. Full-CI des Korrekturstands offen; keine Geräteabnahme.

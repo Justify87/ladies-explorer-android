@@ -141,7 +141,11 @@ pub struct ImportReport {
     pub media_files: u32,
 }
 
-pub use discovery::{DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem};
+pub use discovery::{
+    DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow,
+    SavedPersonCursor, SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection,
+    SavedPersonSort,
+};
 pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
@@ -197,6 +201,7 @@ impl LadiesCore {
         db.busy_timeout(Duration::from_secs(5))?;
         db.execute_batch("PRAGMA journal_mode = WAL;")?;
         schema::migrate(&mut db)?;
+        discovery::register_saved_name_collation(&db)?;
         diagnostics.event("CORE", "SQLite schema ready");
         let source_session =
             source::SourceSession::new(Arc::clone(&diagnostics), Arc::clone(&recorder))?;
@@ -451,6 +456,40 @@ impl LadiesCore {
         excluded_person_ids: Vec<i64>,
     ) -> Result<DiscoveryPage, CoreError> {
         discovery::page(self, favorites_only, limit, cursor, &excluded_person_ids)
+    }
+
+    pub fn saved_status_targets(&self) -> Result<Vec<i64>, CoreError> {
+        source::saved_status_targets(self)
+    }
+
+    pub fn check_saved_status(
+        &self,
+        listing_id: i64,
+        control: Arc<RequestControl>,
+    ) -> Result<String, CoreError> {
+        source::check_saved_status(self, listing_id, &control)
+    }
+
+    pub fn saved_people_window(
+        &self,
+        kind: SavedPersonKind,
+        sort: SavedPersonSort,
+        regular_limit: u32,
+        recent_limit: u32,
+    ) -> Result<SavedPeopleWindow, CoreError> {
+        discovery::saved_window(self, kind, sort, regular_limit, recent_limit)
+    }
+
+    pub fn saved_people(
+        &self,
+        kind: SavedPersonKind,
+        sort: SavedPersonSort,
+        section: SavedPersonSection,
+        limit: u32,
+        cursor: Option<SavedPersonCursor>,
+        as_of: Option<i64>,
+    ) -> Result<SavedPersonPage, CoreError> {
+        discovery::saved_people(self, kind, sort, section, limit, cursor, as_of)
     }
 
     pub fn map_overview(&self, favorites_only: bool) -> Result<MapOverview, CoreError> {

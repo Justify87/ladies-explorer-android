@@ -36,17 +36,30 @@ data class HomeUiState(
     val error: String? = null,
 )
 
+data class SavedStatusProgress(
+    val total: Int = 0,
+    val done: Int = 0,
+    val failed: Int = 0,
+    val running: Boolean = true,
+    val cancelled: Boolean = false,
+    val lastError: String? = null,
+)
+
 data class DiscoverUiState(
     val cards: List<DiscoveryCard> = emptyList(),
-    val favorites: List<DiscoveryCard> = emptyList(),
+    val savedKind: SavedPersonKind = SavedPersonKind.FAVORITE,
+    val savedSort: SavedPersonSort = SavedPersonSort.DATE,
+    val savedPage: SavedPersonPage? = null,
+    val savedRecent: SavedPersonPage? = null,
     val nextCursor: DiscoveryCursor? = null,
     val activeRunId: Long? = null,
     val activeVisibleCount: Int = 0,
     val replayLikes: Boolean = true,
     val canUndoSwipe: Boolean = false,
-    val favoritesNextCursor: DiscoveryCursor? = null,
     val loadingMore: Boolean = false,
-    val favoritesLoadingMore: Boolean = false,
+    val savedLoadingMore: Boolean = false,
+    val savedRecentLoadingMore: Boolean = false,
+    val savedStatusProgress: SavedStatusProgress? = null,
     val loading: Boolean = true,
     val busy: Boolean = false,
     val error: String? = null,
@@ -125,6 +138,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val mapState: StateFlow<MapUiState> = _mapState
     private var mapEpoch = 0L
     private var mapControl: RequestControl? = null
+    private var savedStatusControl: RequestControl? = null
 
     private var archiveControl: RequestControl? = null
     private var searchControl: RequestControl? = null
@@ -135,9 +149,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var profileRequestId = 0L
     private var discoveryEpoch = 0L
     private var localWindow = 0
-    private var favoritesWindow = 0
+    private val savedWindows = SavedWindowMemory()
     private var discoveryRefreshPending = false
     private var swipeSnapshotDirty = false
+    private var discoveryListVisible = false
+    private var mapProjectionVisible = false
     private val searchGeneration = RequestGeneration()
     private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
 
@@ -167,6 +183,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        savedStatusControl?.cancel()
         cancelMapResolution()
         cancelPreview()
         invalidateActiveSearch()
@@ -480,7 +497,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _discoverState.update {
                     it.copy(cards = swipeSession.queue(cards, active = true), canUndoSwipe = false, nextCursor = null, activeRunId = result.searchRunId,
                         activeVisibleCount = cards.size, loading = false, loadingMore = false,
-                        favoritesLoadingMore = false, error = null)
+                        savedLoadingMore = false, savedRecentLoadingMore = false, error = null)
                 }
                 _searchUiState.update { it.acceptRun(result, cards) }
                 refreshDiscovery()
@@ -615,18 +632,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return DiscoveryProjection(active.searchRunId, visible, DiscoveryPage(visible, null))
     }
 
-    private suspend fun favoritesPage(): DiscoveryPage = readDiscoveryWindow(favoritesWindow) { cursor ->
-        core.discoveryCards(favoritesOnly = true, cursor = cursor)
+    private suspend fun savedPage(): SavedPeopleWindow {
+        val state = _discoverState.value
+        return core.savedPeopleWindow(state.savedKind, state.savedSort,
+            savedWindows.limits(state.savedKind, state.savedSort))
+    }
+
+    fun selectSavedKind(kind: SavedPersonKind) {
+        val state = _discoverState.value
+        if (state.busy || state.loading || state.savedKind == kind) return
+        _discoverState.update { it.copy(savedKind = kind, savedPage = null, savedRecent = null) }
+        refreshDiscovery()
+    }
+
+    fun selectSavedSort(sort: SavedPersonSort) {
+        val state = _discoverState.value
+        if (state.busy || state.loading || state.savedSort == sort) return
+        _discoverState.update { it.copy(savedSort = sort, savedPage = null, savedRecent = null) }
+        refreshDiscovery()
     }
 
     private fun publishDiscovery(
         epoch: Long,
         projection: DiscoveryProjection,
-        favorites: DiscoveryPage,
+        saved: SavedPeopleWindow,
     ) {
         if (epoch != discoveryEpoch || projection.runId != _searchUiState.value.response?.searchRunId) return
         if (projection.runId == null) localWindow = maxOf(localWindow, projection.page.cards.size)
-        favoritesWindow = maxOf(favoritesWindow, favorites.cards.size)
         _searchUiState.update { it.copy(activeCards = projection.visible) }
         _discoverState.update {
             it.copy(
@@ -636,19 +668,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 activeRunId = projection.runId,
                 activeVisibleCount = projection.visible.size,
                 nextCursor = projection.page.nextCursor,
-                favorites = favorites.cards,
-                favoritesNextCursor = favorites.nextCursor,
-                loading = false, busy = false, loadingMore = false, favoritesLoadingMore = false, error = null,
+                savedPage = saved.regular,
+                savedRecent = saved.recent,
+                loading = false, busy = false, loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false, error = null,
             )
         }
     }
 
     fun markSwipeSnapshotChanged() {
         swipeSnapshotDirty = true
+        if (discoveryListVisible) refreshDiscovery()
+        if (mapProjectionVisible) refreshMap()
     }
 
-    fun refreshDiscoveryIfDirty() {
-        if (swipeSnapshotDirty) refreshDiscovery()
+    fun setDiscoveryProjectionVisibility(listVisible: Boolean, mapVisible: Boolean) {
+        val mapEntered = mapVisible && !mapProjectionVisible
+        discoveryListVisible = listVisible
+        mapProjectionVisible = mapVisible
+        if (listVisible && swipeSnapshotDirty) refreshDiscovery()
+        if (mapEntered) refreshMap()
     }
 
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
@@ -662,19 +700,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         swipeSnapshotDirty = false
         val epoch = ++discoveryEpoch
         _discoverState.update {
-            it.copy(loading = true, loadingMore = false, favoritesLoadingMore = false)
+            it.copy(loading = true, loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false)
         }
         viewModelScope.launch {
             try {
                 val cards = discoveryPage()
-                val favorites = favoritesPage()
-                publishDiscovery(epoch, cards, favorites)
+                val saved = savedPage()
+                publishDiscovery(epoch, cards, saved)
                 if (epoch == discoveryEpoch && message != null) _discoverState.update { it.copy(error = message) }
             } catch (cancellation: CancellationException) {
                 if (epoch == discoveryEpoch) _discoverState.update { it.copy(loading = false) }
                 throw cancellation
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
+                    clearDiscoveryProjection()
                     _discoverState.update {
                         it.copy(loading = false, error = message ?: failure.message ?: "Entdecken fehlgeschlagen")
                     }
@@ -713,31 +752,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun loadMoreFavorites() {
+    fun loadMoreSavedPeople() = loadMoreSaved(false)
+
+    fun loadMoreRecentPeople() = loadMoreSaved(true)
+
+    private fun loadMoreSaved(recent: Boolean) {
         val state = _discoverState.value
-        val cursor = state.favoritesNextCursor ?: return
-        if (state.loading || state.favoritesLoadingMore || state.busy) return
+        val page = (if (recent) state.savedRecent else state.savedPage) ?: return
+        if (page.nextCursor == null || state.loading || state.savedLoadingMore ||
+            state.savedRecentLoadingMore || state.busy) return
         val epoch = discoveryEpoch
-        _discoverState.update { it.copy(favoritesLoadingMore = true, error = null) }
+        savedWindows.requestMore(state.savedKind, state.savedSort, recent, page.rows.size)
+        _discoverState.update {
+            it.copy(savedLoadingMore = !recent, savedRecentLoadingMore = recent, error = null)
+        }
         viewModelScope.launch {
             try {
-                val page = core.discoveryCards(favoritesOnly = true, cursor = cursor)
+                val next = savedPage()
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        val known = it.favorites.mapTo(mutableSetOf()) { card -> card.personId }
-                        val favorites = it.favorites + page.cards.filter { card -> known.add(card.personId) }
-                        favoritesWindow = maxOf(favoritesWindow, favorites.size)
-                        it.copy(favorites = favorites, favoritesNextCursor = page.nextCursor, favoritesLoadingMore = false)
+                        it.copy(savedPage = next.regular, savedRecent = next.recent,
+                            savedLoadingMore = false, savedRecentLoadingMore = false)
                     }
                 }
-            } catch (cancellation: CancellationException) {
-                if (epoch == discoveryEpoch) _discoverState.update { it.copy(favoritesLoadingMore = false) }
-                throw cancellation
+            } catch (cancel: CancellationException) {
+                throw cancel
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        it.copy(favoritesLoadingMore = false, error = failure.message ?: "Weitere Favoriten konnten nicht geladen werden")
+                        it.copy(error = failure.message ?: "Weitere Profile konnten nicht geladen werden")
                     }
+                }
+            } finally {
+                if (epoch == discoveryEpoch) _discoverState.update {
+                    it.copy(savedLoadingMore = false, savedRecentLoadingMore = false)
                 }
             }
         }
@@ -780,7 +828,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     ) {
         val epoch = ++discoveryEpoch
         _discoverState.update { it.copy(busy = true, loading = false, error = null,
-            loadingMore = false, favoritesLoadingMore = false) }
+            loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false) }
         viewModelScope.launch {
             var message: String? = null
             var retryProjection = false
@@ -790,8 +838,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     project = {
                         // A profile-side failure must not keep the discovery feed stale.
                         val cards = discoveryPage()
-                        val favorites = favoritesPage()
-                        publishDiscovery(epoch, cards, favorites)
+                        val saved = savedPage()
+                        publishDiscovery(epoch, cards, saved)
                     },
                     afterWrite = afterWrite,
                     onWriteFailure = onWriteFailure,
@@ -822,8 +870,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun clearDiscoveryProjection() {
         _searchUiState.update { it.copy(activeCards = emptyList()) }
         _discoverState.update {
-            it.copy(cards = emptyList(), favorites = emptyList(), nextCursor = null,
-                favoritesNextCursor = null, activeVisibleCount = 0, canUndoSwipe = swipeSession.last != null)
+            it.copy(cards = emptyList(), savedPage = null, savedRecent = null, nextCursor = null,
+                activeVisibleCount = 0, canUndoSwipe = swipeSession.last != null)
         }
         // The requested window survives a failed projection; recovery re-reads it, never the write.
     }
@@ -881,6 +929,50 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = null) else it }
             throw failure
         }
+    }
+
+    fun checkAllSavedStatus() = checkSavedStatus(null)
+
+    fun checkSingleSavedStatus(listingId: Long) = checkSavedStatus(listingId)
+
+    fun cancelSavedStatus() {
+        val control = savedStatusControl ?: return
+        control.cancel()
+        _discoverState.update { state ->
+            state.copy(savedStatusProgress = state.savedStatusProgress?.copy(cancelled = true))
+        }
+    }
+
+    private fun checkSavedStatus(listingId: Long?) {
+        val state = _discoverState.value
+        if (state.busy || state.loading || _searchUiState.value.loading ||
+            _searchUiState.value.actionBusy || savedStatusControl != null) return
+        val control = RequestControl()
+        savedStatusControl = control
+        _discoverState.update { it.copy(savedStatusProgress = SavedStatusProgress()) }
+        mutateDiscovery("Statusprüfung fehlgeschlagen", write = {
+            try {
+                val targets = if (listingId == null) core.savedStatusTargets() else listOf(listingId)
+                runSavedStatusBatch(
+                    targets = targets,
+                    cancelled = { _discoverState.value.savedStatusProgress?.cancelled == true },
+                    check = { core.checkSavedStatus(it, control) },
+                    publish = { total, done, failed, lastError ->
+                        _discoverState.update { current ->
+                            current.copy(savedStatusProgress = current.savedStatusProgress?.copy(
+                                total = total, done = done, failed = failed, lastError = lastError))
+                        }
+                    },
+                )
+            } finally {
+                savedStatusControl = null
+                _discoverState.update { current ->
+                    current.copy(savedStatusProgress = current.savedStatusProgress?.copy(running = false))
+                }
+            }
+        }, afterWrite = {
+            refreshMap()
+        })
     }
 
     fun choosePreference(personId: Long, preference: Preference) {
@@ -990,8 +1082,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 var showingArchive = false
                 var refreshError: String? = null
                 val profile = try {
-                    core.loadProfile(listingId).also {
-                        // A request invalidated by Back may still have persisted its snapshot.
+                    try {
+                        core.loadProfile(listingId)
+                    } finally {
+                        // A source read can persist before a later failure or invalidation.
                         refreshDiscovery()
                     }
                 } catch (failure: CancellationException) {
@@ -1068,7 +1162,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // The mutation outlives the detail screen. Keep the shared write guard until
         // it finishes even if Back clears the screen's own actionBusy flag.
         _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
-            favoritesLoadingMore = false, error = null) }
+            savedLoadingMore = false, savedRecentLoadingMore = false, error = null) }
         _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
         viewModelScope.launch {
             var committed = false
@@ -1095,8 +1189,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 profileUpdated = true
                 val cards = discoveryPage()
-                val favorites = favoritesPage()
-                publishDiscovery(epoch, cards, favorites)
+                val saved = savedPage()
+                publishDiscovery(epoch, cards, saved)
                 projectionUpdated = true
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -1117,8 +1211,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (requestId == profileRequestId) _searchUiState.update { it.copy(actionBusy = false) }
                 if (epoch == discoveryEpoch && !projectionUpdated) {
                     _discoverState.update {
-                        if (committed) it.copy(busy = false, cards = emptyList(), favorites = emptyList(),
-                            nextCursor = null, favoritesNextCursor = null, activeVisibleCount = 0)
+                        if (committed) it.copy(busy = false, cards = emptyList(), savedPage = null, savedRecent = null,
+                            nextCursor = null, activeVisibleCount = 0)
                         else it.copy(busy = false)
                     }
                     if (committed) {

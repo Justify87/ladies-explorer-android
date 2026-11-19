@@ -31,9 +31,7 @@ internal suspend fun CoreStore.readSwipeProfile(
     var fromArchive = cached != null && !refresh
     var warning: String? = null
     if (allowNetwork && (refresh || cached == null)) {
-        // Mark before I/O: cancellation or a failed post-commit read must not lose
-        // the fact that this operation may have changed the persisted snapshot.
-        onSourceRead()
+        // Completion matters even if delivery was cancelled after a native commit.
         try {
             cached = loadSwipeProfile(listingId, control)
             fromArchive = false
@@ -44,6 +42,8 @@ internal suspend fun CoreStore.readSwipeProfile(
             if (cached == null) throw failure
             fromArchive = true
             warning = "Online-Aktualisierung fehlgeschlagen; archivierte Daten."
+        } finally {
+            onSourceRead()
         }
     }
     val profile = checkNotNull(cached) { "Kein archiviertes Profil vorhanden" }

@@ -203,17 +203,28 @@ pub(crate) fn load_profile(
     }
     core.diagnostics
         .event("PROFILE", format!("Profile requested listing={listing_id}"));
-    let (url, advert_id, name, city, category) = storage::listing_target(core, listing_id)?;
+    let target = storage::listing_target(core, listing_id, false)?;
     let network_started = Instant::now();
-    let html = core.source_session.0.get_profile(&url, control)?;
+    let observation = core
+        .source_session
+        .0
+        .get_profile(&target.url, &target.advert_id, control)?;
+    let (html, verified) = match observation {
+        network::ProfileObservation::Active(html) => (html, true),
+        network::ProfileObservation::Unverified(html) => (html, false),
+        network::ProfileObservation::Unavailable(code) => {
+            storage::save_status(core, &target, "UNAVAILABLE", code, false, control)?;
+            return Err(CoreError::Source(format!("Profile HTTP status {code}")));
+        }
+    };
     core.diagnostics
         .phase("HTTP", "profile_fetch", network_started);
     let fallback = Card {
-        advert_id,
-        name,
-        city,
-        category,
-        profile_url: url.clone(),
+        advert_id: target.advert_id.clone(),
+        name: target.name.clone(),
+        city: target.city.clone(),
+        category: target.category.clone(),
+        profile_url: target.url.clone(),
         thumbnail_url: None,
         has_video: false,
         is_premium: false,
@@ -222,14 +233,22 @@ pub(crate) fn load_profile(
         has_stars: false,
     };
     let parse_started = Instant::now();
-    let profile = parse::parse_profile(&html, &fallback).map_err(|error| {
-        core.diagnostics.html("profile_parse_failed", &html);
-        core.diagnostics.event(
-            "PROFILE",
-            format!("Profile parse failed listing={listing_id}: {error}"),
-        );
-        error
-    })?;
+    let profile = match parse::parse_profile(&html, &fallback) {
+        Ok(profile) => profile,
+        Err(error) => {
+            core.diagnostics.html("profile_parse_failed", &html);
+            core.diagnostics.event(
+                "PROFILE",
+                format!("Profile parse failed listing={listing_id}: {error}"),
+            );
+            // Metadata parsing failure does not negate independent, confirmed
+            // availability evidence. Still validate the observation at commit.
+            if verified {
+                storage::save_status(core, &target, "ACTIVE", 200, false, control)?;
+            }
+            return Err(error);
+        }
+    };
     core.diagnostics
         .phase("PROFILE", "html_parse", parse_started);
     core.diagnostics.event(
@@ -246,7 +265,7 @@ pub(crate) fn load_profile(
         control.check()?;
     }
     let storage_started = Instant::now();
-    let result = storage::save_profile(core, listing_id, &url, profile);
+    let result = storage::save_observed_profile(core, &target, profile, verified, control);
     core.diagnostics
         .phase("STORAGE", "profile_sqlite_write", storage_started);
     match &result {
@@ -262,6 +281,38 @@ pub(crate) fn load_profile(
             .event("STORAGE", format!("Profile save failed: {error}")),
     }
     result
+}
+
+pub(crate) fn saved_status_targets(core: &LadiesCore) -> Result<Vec<i64>, CoreError> {
+    storage::saved_status_targets(core)
+}
+
+pub(crate) fn check_saved_status(
+    core: &LadiesCore,
+    listing_id: i64,
+    control: &RequestControl,
+) -> Result<String, CoreError> {
+    control.check()?;
+    let target = storage::listing_target(core, listing_id, true)?;
+    let observation =
+        core.source_session
+            .0
+            .get_profile(&target.url, &target.advert_id, Some(control))?;
+    let (status, http_status) = match observation {
+        network::ProfileObservation::Active(_) => ("ACTIVE", 200),
+        network::ProfileObservation::Unavailable(code) => ("UNAVAILABLE", code),
+        network::ProfileObservation::Unverified(_) => {
+            return Err(CoreError::Source(
+                "Profile status: advert ID not verified".into(),
+            ));
+        }
+    };
+    storage::save_status(core, &target, status, http_status, true, Some(control))?;
+    core.diagnostics.event(
+        "PROFILE",
+        format!("Status checked listing={listing_id} status={status} HTTP={http_status}"),
+    );
+    Ok(status.into())
 }
 
 #[cfg(test)]
