@@ -133,12 +133,12 @@ fun LadiesApp(
     // Root changes must not reload already paginated lists or discard their scroll state.
     // Explicit refresh and data mutations remain owned by the ViewModel.
     fun selectRoot(destination: RootDestination) {
-        if (route.root == destination || saved.blockingNavigation) return
+        if (route.root == destination || saved.blockingNavigation || home.importing) return
         route = route.select(destination)
         viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         when (destination) {
-            RootDestination.Search -> viewModel.refreshSearchDefinitions()
+            RootDestination.Search -> if (saved.result == null) viewModel.refreshSearchDefinitions() else Unit
             RootDestination.Settings -> viewModel.refresh()
             else -> Unit
         }
@@ -168,6 +168,7 @@ fun LadiesApp(
         previousEditorSession = saved.editor?.session
     }
     fun back() {
+        if (home.importing) return
         if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen || savedResultsOpen)) {
             viewModel.savedSearch.back()
             return
@@ -179,7 +180,7 @@ fun LadiesApp(
             BackAction.System -> Unit
         }
     }
-    BackHandler(enabled = savedEditorOpen || savedOverviewOpen || route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
+    BackHandler(enabled = home.importing || savedEditorOpen || savedOverviewOpen || route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
 
     Scaffold(
         topBar = {
@@ -233,7 +234,7 @@ fun LadiesApp(
                         NavigationBarItem(
                             selected = route.root == destination,
                             onClick = { selectRoot(destination) },
-                            enabled = !saved.blockingNavigation || route.root == destination,
+                            enabled = (!saved.blockingNavigation && !home.importing) || route.root == destination,
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -349,6 +350,7 @@ fun LadiesApp(
                     SearchPane.SavedResults -> key(saved.result?.id) {
                         SavedSearchResultsScreen(saved, !discovery.busy && !search.loading && !home.loading,
                             onMore = viewModel.savedSearch::more, onRetry = viewModel.savedSearch::retryResults,
+                            onAcknowledge = viewModel.savedSearch::acknowledge,
                             onOpen = viewModel::loadProfile, modifier = modifier)
                     }
                     else -> SearchScreen(
@@ -415,7 +417,7 @@ private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
         if (state.loading) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Suche läuft …", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onCancel) { Text("Abbrechen") }
+                TextButton(onClick = onCancel, enabled = !state.searchCancelling) { Text(if (state.searchCancelling) "Wird beendet …" else "Abbrechen") }
             }
         }
         state.error?.let {

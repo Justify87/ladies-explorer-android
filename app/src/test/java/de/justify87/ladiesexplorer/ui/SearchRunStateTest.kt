@@ -9,6 +9,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import de.justify87.ladiesexplorer.core.DiscoveryCursor
 import de.justify87.ladiesexplorer.core.DiscoveryPage
 
@@ -172,6 +174,9 @@ class SearchRunStateTest {
         assertEquals(DiscoveryMutationOutcome.ProjectionFailed(false), writeAndProject(
             write = {}, afterWrite = { error("detail read failed") }, project = {},
         ))
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true, true), writeAndProject(
+            write = {}, afterWrite = { error("detail read failed") }, project = { error("feed read failed") },
+        ))
     }
 
     @Test fun paginationDoesNotFireBeforeLayoutOrUntilNearEnd() {
@@ -192,4 +197,77 @@ class SearchRunStateTest {
         assertFalse(search.isCurrent(firstSearch))
     }
 
+    @Test fun cancelledNativeOwnerCannotBeReplacedUntilDrain() {
+        val owner = DrainingOperation<String>()
+        val first = owner.start("source")!!
+        var signalled = 0
+        owner.cancel { signalled++ }
+        owner.cancel { signalled++ }
+        assertEquals(1, signalled)
+        assertTrue(owner.occupied)
+        assertFalse(owner.accepts(first))
+        val home = DrainingOperation<String>()
+        assertFalse(canAcquireImport(owner, home, false))
+        assertEquals(null, owner.start("replacement search"))
+        assertTrue(owner.finish(first))
+        assertTrue(canAcquireImport(owner, home, false))
+        val importing = home.start("import")!!
+        assertFalse(canAcquireImport(owner, home, false))
+        assertEquals(null, home.start("status"))
+        assertTrue(home.accepts(importing))
+        assertTrue(home.finish(importing))
+        val second = owner.start("replacement search")!!
+        assertFalse(owner.finish(first))
+        assertTrue(owner.accepts(second))
+    }
+
+    @Test fun secondaryReadFailureDoesNotEraseSuccessfulActiveRun() = runBlocking {
+        var active = listOf(card(1))
+        var savedFailed = false
+        val complete = readIndependentProjections<List<DiscoveryCard>, Unit>(
+            first = { listOf(card(1), card(2)) },
+            second = { error("saved read failed") },
+            publishFirst = { active = it.getOrThrow() },
+            publishSecond = { savedFailed = it.isFailure },
+        )
+        assertFalse(complete)
+        assertTrue(savedFailed)
+        assertEquals(listOf(1L, 2L), active.map { it.listingId })
+    }
+    @Test fun suspendedNativeSearchRetainsAdmissionUntilDrainAndDiscardsLateReply() = runBlocking {
+        val source = DrainingOperation<String>()
+        val home = DrainingOperation<HomeOperation>()
+        val started = CompletableDeferred<Unit>()
+        val drained = CompletableDeferred<Unit>()
+        val ticket = source.start("request")!!
+        var delivered = false
+        val job = launch {
+            started.complete(Unit)
+            drained.await()
+            delivered = source.accepts(ticket)
+            source.finish(ticket)
+        }
+        started.await()
+        source.cancel {}
+        assertFalse(canAcquireImport(source, home, false))
+        assertEquals(null, source.start("replacement"))
+        drained.complete(Unit)
+        job.join()
+        assertFalse(delivered)
+        assertTrue(canAcquireImport(source, home, false))
+    }
+
+    @Test fun failedPrimaryReadStillPublishesIndependentSavedPeopleProjection() = runBlocking {
+        var primaryFailed = false
+        var saved = emptyList<Long>()
+        val complete = readIndependentProjections<Unit, List<Long>>(
+            first = { error("primary failed") },
+            second = { listOf(42L) },
+            publishFirst = { primaryFailed = it.isFailure },
+            publishSecond = { saved = it.getOrThrow() },
+        )
+        assertFalse(complete)
+        assertTrue(primaryFailed)
+        assertEquals(listOf(42L), saved)
+    }
 }

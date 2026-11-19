@@ -18,6 +18,7 @@ internal data class SavedResultWindow(
     val cards: List<SavedSearchCard> = emptyList(),
     val hasMore: Boolean = false,
     val ready: Boolean = false,
+    val revision: Long? = null,
 )
 internal data class SavedSearchUiState(
     val overview: Boolean = false,
@@ -27,8 +28,12 @@ internal data class SavedSearchUiState(
     val result: SavedResultWindow? = null,
     val dialog: SavedDialog? = null,
     val operation: SavedOperation? = null,
-    val error: String? = null,
+    val actionError: String? = null,
+    val listError: String? = null,
+    val windowError: String? = null,
+    val resultDirty: Boolean = false,
 ) {
+    val error get() = actionError ?: if (result != null) windowError ?: listError else listError
     val busy get() = operation != null
     val blockingNavigation get() = operation == SavedOperation.Write || operation == SavedOperation.Check || operation == SavedOperation.Cancelling
     val pane get() = when {
@@ -93,20 +98,20 @@ internal class SavedSearchController(
 
     private fun operation(kind: SavedOperation, clearError: Boolean = true, work: suspend () -> Unit) {
         kotlin.check(!state.value.busy)
-        mutable.update { it.copy(operation = kind, error = if (clearError) null else it.error) }
+        mutable.update { it.copy(operation = kind, actionError = if (clearError) null else it.actionError) }
         scope.launch {
             try {
                 work()
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
-                mutable.update { it.copy(error = failure.message ?: "Gespeicherte Suche fehlgeschlagen") }
+                mutable.update { it.copy(actionError = failure.message ?: "Gespeicherte Suche fehlgeschlagen") }
             } finally {
                 mutable.update { it.copy(operation = null) }
                 if (refreshPending) {
                     refreshPending = false
-                    refresh(clearError = false)
-                }
+                    refresh()
+                } else refreshDirtyWindow()
             }
         }
     }
@@ -114,33 +119,54 @@ internal class SavedSearchController(
     private suspend fun reload(committed: Boolean = false) {
         try {
             val list = store.list()
-            mutable.update { it.copy(searches = list, listAvailable = true) }
+            mutable.update { it.copy(searches = list, listAvailable = true, listError = null) }
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (failure: Exception) {
             mutable.update { it.copy(searches = emptyList(), listAvailable = false,
-                error = if (committed) "Änderung gespeichert; Übersicht konnte nicht geladen werden. Bitte aktualisieren."
-                else it.error ?: failure.message ?: "Übersicht konnte nicht geladen werden") }
+                listError = if (committed) "Änderung gespeichert; Übersicht konnte nicht geladen werden. Bitte aktualisieren."
+                else failure.message ?: "Übersicht konnte nicht geladen werden") }
         }
     }
 
-    fun refresh() = refresh(clearError = true)
-
-    private fun refresh(clearError: Boolean) {
+    /** Definition refresh also updates the badge; never materialize a hidden grid. */
+    fun refresh() {
+        if (state.value.result != null) markResultDirty()
         if (state.value.busy) { refreshPending = true; return }
         val result = state.value.result
-        if (result != null) {
-            readWindow(result.id, limits[result.id] ?: 100u, acknowledge = false, clearError = clearError)
-        } else operation(SavedOperation.Refresh, clearError) { reload() }
+        if (result != null && visible) refreshDirtyWindow()
+        else operation(SavedOperation.Refresh, clearError = false) { reload() }
+    }
+
+    private fun markResultDirty() {
+        mutable.update { s ->
+            if (s.result == null) s else s.copy(resultDirty = true)
+        }
+    }
+
+    /** Native completions invalidate the projection even when another root is visible.
+     * Coalesce while reading and consume only when the result pane is visible. */
+    fun refreshResultProjection() {
+        markResultDirty()
+        refreshDirtyWindow()
+    }
+
+    private fun refreshDirtyWindow() {
+        val s = state.value
+        val result = s.result ?: return
+        if (visible && s.resultDirty && !s.busy) {
+            readWindow(result.id, limits[result.id] ?: 100u)
+        }
     }
 
     fun setVisible(value: Boolean) {
         visible = value
+        if (value) refreshDirtyWindow()
     }
 
     fun open() {
         if (!canOperate() || state.value.blockingNavigation) return
-        mutable.update { it.copy(overview = true, error = null) }
+        mutable.update { it.copy(overview = true, actionError = null) }
         refresh()
     }
 
@@ -150,9 +176,9 @@ internal class SavedSearchController(
             s.operation == SavedOperation.Check || s.operation == SavedOperation.Cancelling -> cancelCheck()
             s.operation == SavedOperation.Write -> Unit
             s.dialog != null -> dismissDialog()
-            s.result != null -> { readTicket++; mutable.update { it.copy(result = null, error = null) } }
-            s.editor != null -> mutable.update { it.copy(editor = null, error = null) }
-            else -> { session++; mutable.update { it.copy(overview = false, error = null) } }
+            s.result != null -> { readTicket++; mutable.update { it.copy(result = null, resultDirty = false, windowError = null, actionError = null) } }
+            s.editor != null -> mutable.update { it.copy(editor = null, actionError = null) }
+            else -> { session++; mutable.update { it.copy(overview = false, actionError = null) } }
         }
     }
 
@@ -167,7 +193,7 @@ internal class SavedSearchController(
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
-                if (ticket == session) mutable.update { it.copy(error = failure.message ?: "Vorlage konnte nicht geladen werden") }
+                if (ticket == session) mutable.update { it.copy(actionError = failure.message ?: "Vorlage konnte nicht geladen werden") }
                 return@operation
             }
             if (ticket == session && state.value.pane == SearchPane.SavedList) {
@@ -202,7 +228,7 @@ internal class SavedSearchController(
         val draft = if (kind == SavedDialogKind.Create) ordinaryDraft() else null
         val name = if (draft != null) "${draft.city} · ${draft.radiusKm} km"
             else s.searches.firstOrNull { it.searchId == id }?.name ?: return
-        mutable.update { it.copy(dialog = SavedDialog(kind, id, name, draft), error = null) }
+        mutable.update { it.copy(dialog = SavedDialog(kind, id, name, draft), actionError = null) }
     }
 
     fun dialogName(name: String) {
@@ -212,7 +238,7 @@ internal class SavedSearchController(
 
     fun dismissDialog() {
         if (state.value.operation == SavedOperation.Write) return
-        mutable.update { it.copy(dialog = null, error = null) }
+        mutable.update { it.copy(dialog = null, actionError = null) }
     }
 
     fun confirmDialog() {
@@ -233,63 +259,66 @@ internal class SavedSearchController(
         }
     }
 
-    fun acknowledge(id: String) {
+    fun acknowledge(id: String, displayedRevision: Long) {
         val info = state.value.searches.firstOrNull { it.searchId == id && it.unreadNewResults } ?: return
-        if (state.value.busy || !canOperate()) return
+        val s = state.value
+        if (s.busy || !canOperate() || !visible) return
+        if (s.result != null && (s.result.id != id || !s.result.ready || s.resultDirty)) return
+        // Explicit user intent is the linearization point for presentation.
+        // The native revision CAS still prevents acknowledging a newer baseline.
+        val revision = if (s.result != null) s.result.revision ?: return else info.revision
+        if (displayedRevision != revision) {
+            mutable.update { it.copy(actionError = "Ergebnisse haben sich geändert. Bitte erneut als gelesen markieren.") }
+            return
+        }
         operation(SavedOperation.Write) {
-            val accepted = store.acknowledge(id, info.revision)
+            val accepted = store.acknowledge(id, displayedRevision)
             reload(committed = accepted)
-            if (!accepted && state.value.listAvailable) mutable.update {
-                it.copy(error = "Ergebnisse haben sich geändert. Bitte erneut als gelesen markieren.")
+            if (!accepted) {
+                markResultDirty()
+                mutable.update { it.copy(actionError = "Ergebnisse haben sich geändert. Bitte erneut als gelesen markieren.") }
             }
         }
     }
 
     fun openResults(id: String) {
         if (state.value.busy || !canOperate() || state.value.pane != SearchPane.SavedList) return
-        mutable.update { it.copy(result = SavedResultWindow(id), error = null) }
-        readWindow(id, limits[id] ?: 100u, acknowledge = true)
+        mutable.update { it.copy(result = SavedResultWindow(id), resultDirty = false, windowError = null, actionError = null) }
+        readWindow(id, limits[id] ?: 100u)
     }
 
     fun more() {
         val result = state.value.result ?: return
-        if (state.value.busy || !result.hasMore || !canOperate()) return
+        if (state.value.busy || state.value.resultDirty || !result.hasMore || !canOperate()) return
         val next = (limits[result.id] ?: 100u).coerceAtMost(UInt.MAX_VALUE - 100u) + 100u
-        readWindow(result.id, next, acknowledge = false)
+        readWindow(result.id, next)
     }
 
     fun retryResults() {
         val result = state.value.result ?: return
         if (state.value.busy || !canOperate()) return
-        readWindow(result.id, limits[result.id] ?: 100u, acknowledge = true)
+        readWindow(result.id, limits[result.id] ?: 100u)
     }
 
-    private fun readWindow(id: String, limit: UInt, acknowledge: Boolean, clearError: Boolean = true) {
+    private fun readWindow(id: String, limit: UInt) {
         val ticket = ++readTicket
-        operation(SavedOperation.Results, clearError) {
+        mutable.update { it.copy(resultDirty = false, windowError = null) }
+        operation(SavedOperation.Results, clearError = false) {
             val window = try {
                 store.window(id, limit)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
                 if (ticket == readTicket && state.value.result?.id == id) mutable.update {
-                    it.copy(error = failure.message ?: "Ergebnisse konnten nicht geladen werden")
+                    it.copy(result = SavedResultWindow(id), windowError = failure.message ?: "Ergebnisse konnten nicht geladen werden")
                 }
                 return@operation
             }
             if (ticket != readTicket || state.value.result?.id != id) return@operation
             limits[id] = limit
-            mutable.update { it.copy(result = SavedResultWindow(id, window.cards, window.hasMore, true),
-                searches = window.searches, listAvailable = true) }
-            val info = window.searches.firstOrNull { it.searchId == id && it.unreadNewResults }
-            if (acknowledge && visible && info != null && ticket == readTicket && state.value.result?.id == id) {
-                val accepted = store.acknowledge(id, info.revision)
-                reload(committed = accepted)
-                // A newer baseline must remain unread; do not retry it automatically.
-                if (!accepted && state.value.result?.id == id && state.value.listAvailable) mutable.update {
-                    it.copy(error = "Neue Ergebnisse verfügbar. Bitte Ergebnisliste aktualisieren.")
-                }
-            }
+            mutable.update { it.copy(result = SavedResultWindow(id, window.cards, window.hasMore, true,
+                    window.searches.firstOrNull { info -> info.searchId == id }?.revision),
+                searches = window.searches, listAvailable = true, windowError = null, listError = null) }
         }
     }
 
@@ -305,7 +334,7 @@ internal class SavedSearchController(
                 throw cancel
             } catch (failure: Exception) {
                 if (state.value.operation != SavedOperation.Cancelling) mutable.update {
-                    it.copy(error = failure.message ?: "Prüfung fehlgeschlagen")
+                    it.copy(actionError = failure.message ?: "Prüfung fehlgeschlagen")
                 }
             } finally {
                 control = null
@@ -323,6 +352,7 @@ internal class SavedSearchController(
 
     fun resetAfterImport() {
         limits.clear()
+        refreshPending = false
         session++
         readTicket++
         mutable.update { SavedSearchUiState(operation = it.operation) }

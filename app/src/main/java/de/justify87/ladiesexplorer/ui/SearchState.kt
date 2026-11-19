@@ -65,16 +65,16 @@ internal class RequestGeneration {
 }
 
 internal fun SearchUiState.beginRun(): SearchUiState = copy(
-    loading = true, error = null, profile = null, profileOpen = false,
+    loading = true, searchCancelling = false, error = null, profile = null, profileOpen = false,
 )
 
 internal fun SearchUiState.endRun(errorMessage: String? = null): SearchUiState =
-    copy(loading = false, error = errorMessage)
+    copy(loading = false, searchCancelling = false, error = errorMessage)
 
 internal fun SearchUiState.acceptRun(
     run: SearchResponse,
     cards: List<DiscoveryCard>,
-): SearchUiState = copy(loading = false, error = null, response = run, activeCards = cards, gridHiddenLikes = emptySet())
+): SearchUiState = copy(loading = false, searchCancelling = false, error = null, response = run, activeCards = cards, gridHiddenLikes = emptySet())
 
 internal fun SearchUiState.applyDraftChange(next: SearchUiState): SearchUiState =
     next.copy(response = response, activeCards = activeCards, gridHiddenLikes = gridHiddenLikes, error = null)
@@ -124,3 +124,35 @@ internal data class SearchDraft(
             decodeSelectedFilters(query.filtersJson), local)
     }
 }
+
+/** Main-thread owner: cancel invalidates delivery, not native execution. */
+internal class DrainingOperation<T> {
+    private var next = 0L
+    private var active: Pair<Long, T>? = null
+    private var cancelled = false
+    val occupied get() = active != null
+    fun start(control: T): Long? {
+        if (occupied) return null
+        val ticket = ++next
+        active = ticket to control
+        cancelled = false
+        return ticket
+    }
+    fun accepts(ticket: Long) = active?.first == ticket && !cancelled
+    fun cancel(signal: (T) -> Unit) {
+        val owner = active ?: return
+        if (!cancelled) {
+            cancelled = true
+            signal(owner.second)
+        }
+    }
+    fun finish(ticket: Long): Boolean {
+        if (active?.first != ticket) return false
+        active = null
+        return true
+    }
+}
+
+/** Native ownership is authoritative even before/after a UI state emission. */
+internal fun canAcquireImport(search: DrainingOperation<*>, home: DrainingOperation<*>, uiBusy: Boolean) =
+    !search.occupied && !home.occupied && !uiBusy

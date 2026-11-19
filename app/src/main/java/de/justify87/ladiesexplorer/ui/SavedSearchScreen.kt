@@ -98,7 +98,7 @@ internal fun SavedSearchOverview(
                         TextButton(onClick = { controller.openEditor(saved.searchId) }, enabled = actions && saved.definitionSupported) { Text("Ändern") }
                         TextButton(onClick = { controller.showDialog(SavedDialogKind.Rename, saved.searchId) }, enabled = actions) { Text("Umbenennen") }
                         TextButton(onClick = { controller.showDialog(SavedDialogKind.Delete, saved.searchId) }, enabled = actions) { Text("Löschen") }
-                        if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(saved.searchId) }, enabled = actions) { Text("Gelesen") }
+                        if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(saved.searchId, saved.revision) }, enabled = actions) { Text("Gelesen") }
                     }
                 }
             }
@@ -112,6 +112,7 @@ internal fun SavedSearchResultsScreen(
     enabled: Boolean,
     onMore: () -> Unit,
     onRetry: () -> Unit,
+    onAcknowledge: (String, Long) -> Unit,
     onOpen: (Long, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -119,9 +120,9 @@ internal fun SavedSearchResultsScreen(
     // Keep the saved scroll position intact while re-opening the previously
     // loaded prefix. Never attach it to a temporary empty grid.
     val grid = rememberLazyGridState()
-    if (!result.ready) {
+    if (!result.ready || state.resultDirty) {
         Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (state.busy) CircularProgressIndicator()
+            if (state.busy || state.resultDirty) CircularProgressIndicator()
             else {
                 Text(state.error ?: "Ergebnisse konnten nicht geladen werden", color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = onRetry, enabled = enabled) { Text("Erneut versuchen") }
@@ -130,8 +131,8 @@ internal fun SavedSearchResultsScreen(
         return
     }
     val canPage = enabled && !state.busy && result.hasMore
-    LaunchedEffect(grid, result.cards.size, canPage, state.error) {
-        if (canPage && state.error == null) {
+    LaunchedEffect(grid, result.cards.size, canPage, state.windowError) {
+        if (canPage && state.windowError == null) {
             snapshotFlow {
                 val layout = grid.layoutInfo
                 nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
@@ -149,6 +150,8 @@ internal fun SavedSearchResultsScreen(
                 Text("${result.cards.size} geladen · aktuelle lokale Profildaten", style = MaterialTheme.typography.bodySmall)
                 info?.lastError?.let { Text("Letzte Prüfung fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error) }
                 TextButton(onClick = onRetry, enabled = enabled && !state.busy) { Text("Aktualisieren") }
+                if (info?.unreadNewResults == true && result.revision != null) TextButton(onClick = { onAcknowledge(result.id, result.revision) },
+                    enabled = enabled && !state.busy) { Text("Als gelesen markieren") }
             }
         }
         state.error?.let { error ->
