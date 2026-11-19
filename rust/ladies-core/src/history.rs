@@ -43,15 +43,24 @@ fn readable(raw: Option<&str>) -> Option<String> {
             Value::String(text) => text.clone(),
             Value::Bool(value) => if *value { "Ja" } else { "Nein" }.into(),
             Value::Number(number) => number.to_string(),
-            Value::Array(items) => items.iter().map(display).filter(|s| !s.is_empty())
-                .collect::<Vec<_>>().join("\n"),
-            Value::Object(fields) => fields.iter().filter_map(|(key, value)| {
-                let value = display(value);
-                (!value.is_empty()).then(|| format!("{key}: {value}"))
-            }).collect::<Vec<_>>().join("\n"),
+            Value::Array(items) => items
+                .iter()
+                .map(display)
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            Value::Object(fields) => fields
+                .iter()
+                .filter_map(|(key, value)| {
+                    let value = display(value);
+                    (!value.is_empty()).then(|| format!("{key}: {value}"))
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
         }
     }
-    let visible = serde_json::from_str::<Value>(raw).map(|value| display(&value))
+    let visible = serde_json::from_str::<Value>(raw)
+        .map(|value| display(&value))
         .unwrap_or_else(|_| raw.to_owned());
     (!visible.is_empty()).then_some(visible)
 }
@@ -274,7 +283,10 @@ mod tests {
     fn history_projection_handles_structured_scalar_null_and_imported_plain_text() {
         assert_eq!(readable(Some(r#""Fixture""#)).as_deref(), Some("Fixture"));
         assert_eq!(readable(Some("null")), None);
-        assert_eq!(readable(Some("imported plain")).as_deref(), Some("imported plain"));
+        assert_eq!(
+            readable(Some("imported plain")).as_deref(),
+            Some("imported plain")
+        );
         assert_eq!(
             readable(Some(r#"{"Merkmal":["A","B"]}"#)).as_deref(),
             Some("Merkmal: A\nB")

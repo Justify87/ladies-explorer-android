@@ -3,6 +3,9 @@ package de.justify87.ladiesexplorer.ui
 import de.justify87.ladiesexplorer.core.EvidenceStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class ProfileTabsTest {
     @Test fun routeAndPersonSelectionsDoNotLeak() {
@@ -46,6 +49,38 @@ class ProfileTabsTest {
         assertEquals("unsaved", reopened.draft?.text)
         assertEquals(true, reopened.draft?.dirty)
         assertEquals(false, drafts.getValue(2L).draft?.dirty)
+        assertEquals(listOf(1L), drafts.dirtyOwners(1L, 2L))
+    }
+
+    @Test fun navigationWhileWriteAwaitsDoesNotRedirectCommittedNote() = runBlocking {
+        var notes = emptyMap<Long, NoteEditorState>()
+            .updateNote(1L) { it.loaded("old") }
+            .updateNote(1L) { it.copy(draft = it.draft!!.edit("saved")) }
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val job = launch {
+            val outcome = writeAndProject(
+                write = { started.complete(Unit); finish.await() },
+                afterWrite = { notes = notes.updateNote(1L) { it.committed("saved") } },
+                project = {},
+            )
+            assertEquals(DiscoveryMutationOutcome.Success, outcome)
+        }
+        started.await()
+        notes = notes.updateNote(2L) { it.loaded("other") }
+        finish.complete(Unit)
+        job.join()
+        assertEquals("saved", notes.getValue(1L).draft?.text)
+        assertEquals(false, notes.getValue(1L).draft?.dirty)
+        assertEquals("other", notes.getValue(2L).draft?.text)
+    }
+
+    @Test fun failedWriteMessageSurvivesSuccessfulReadAndBlankCommitClearsDraft() {
+        val failed = NoteEditorState().loaded("a").copy(error = "write failed")
+        assertEquals("write failed", failed.loaded("a").error)
+        val dirty = failed.copy(draft = failed.draft!!.edit(" "))
+        assertEquals(false, dirty.committed(null).draft?.dirty)
+        assertEquals(null, dirty.committed(null).error)
     }
 
     @Test fun historyLabelsDoNotExposeStorageKeys() {

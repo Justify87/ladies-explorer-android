@@ -1,5 +1,8 @@
 //! Local-only typed detail projections. No source requests or schema changes.
-use crate::{CoreError, LadiesCore, source::filter::{EvidenceOption, evidence_option}};
+use crate::{
+    CoreError, LadiesCore,
+    source::filter::{EvidenceOption, evidence_option},
+};
 use rusqlite::{OptionalExtension, params};
 use serde_json::Value;
 
@@ -110,8 +113,8 @@ fn evidence(option: &EvidenceOption, fields: &[&ProfileField]) -> EvidenceStatus
             let label = normalize(&field.label);
             for raw in &field.values {
                 let value = normalize(raw);
-                yes |= value == target
-                    || (label == target && matches!(value.as_str(), "ja" | "yes"));
+                yes |=
+                    value == target || (label == target && matches!(value.as_str(), "ja" | "yes"));
                 no |= negative.contains(&value)
                     || (label == target && matches!(value.as_str(), "nein" | "no"));
             }
@@ -130,7 +133,10 @@ fn in_trait_group(group: &str, label: &str) -> bool {
     let label = normalize(label);
     match group {
         "figur" => matches!(label.as_str(), "figur" | "körperbau"),
-        "busen" => matches!(label.as_str(), "busen" | "oberweite" | "brustgröße" | "brustgroesse" | "brust"),
+        "busen" => matches!(
+            label.as_str(),
+            "busen" | "oberweite" | "brustgröße" | "brustgroesse" | "brust"
+        ),
         "haarfarbe" => matches!(label.as_str(), "haare" | "haarfarbe"),
         "haarlaenge" => matches!(label.as_str(), "haarlänge" | "haarlaenge"),
         "augenfarbe" => matches!(label.as_str(), "augen" | "augenfarbe"),
@@ -147,17 +153,35 @@ fn project_evidence(
     times: &[ProfileField],
 ) -> FilterEvidence {
     let scoped: Vec<&ProfileField> = match option.group.as_str() {
-        "service" => services.iter().filter(|field| {
-            !matches!(normalize(&field.label).as_str(), "treffpunkt" | "treff" | "location")
-        }).collect(),
-        "treff" => traits.iter().chain(services).filter(|field| {
-            matches!(normalize(&field.label).as_str(), "treffpunkt" | "treff" | "treffen")
-        }).collect(),
-        "location" => traits.iter().chain(services).filter(|field| {
-            normalize(&field.label) == "location"
-        }).collect(),
+        "service" => services
+            .iter()
+            .filter(|field| {
+                !matches!(
+                    normalize(&field.label).as_str(),
+                    "treffpunkt" | "treff" | "location"
+                )
+            })
+            .collect(),
+        "treff" => traits
+            .iter()
+            .chain(services)
+            .filter(|field| {
+                matches!(
+                    normalize(&field.label).as_str(),
+                    "treffpunkt" | "treff" | "treffen"
+                )
+            })
+            .collect(),
+        "location" => traits
+            .iter()
+            .chain(services)
+            .filter(|field| normalize(&field.label) == "location")
+            .collect(),
         "zeiten" => times.iter().collect(),
-        group => traits.iter().filter(|field| in_trait_group(group, &field.label)).collect(),
+        group => traits
+            .iter()
+            .filter(|field| in_trait_group(group, &field.label))
+            .collect(),
     };
     FilterEvidence {
         status: evidence(&option, &scoped),
@@ -179,8 +203,9 @@ pub(crate) fn facts(
     let traits = fields(traits)?;
     let services = fields(services)?;
     let opening_times = fields(times)?;
-    let selected: std::collections::BTreeMap<String, Vec<String>> = serde_json::from_str(filters_json)
-        .map_err(|e| CoreError::InvalidInput(format!("Invalid selected filters: {e}")))?;
+    let selected: std::collections::BTreeMap<String, Vec<String>> =
+        serde_json::from_str(filters_json)
+            .map_err(|e| CoreError::InvalidInput(format!("Invalid selected filters: {e}")))?;
     let mut choices = std::collections::BTreeMap::new();
     for (group, values) in selected {
         for value in values {
@@ -194,7 +219,14 @@ pub(crate) fn facts(
         .collect();
     let important = ["GV", "AV", "ZK", "Girlfriend-Sex"]
         .into_iter()
-        .map(|value| project_evidence(evidence_option("service", value), &traits, &services, &opening_times))
+        .map(|value| {
+            project_evidence(
+                evidence_option("service", value),
+                &traits,
+                &services,
+                &opening_times,
+            )
+        })
         .collect();
     Ok(ProfileFacts {
         traits,
@@ -371,7 +403,8 @@ mod tests {
             &core,
             before,
             r#"{"haarfarbe":["blond","schwarz"],"augenfarbe":["blau"]}"#,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(projected.traits.len(), 2);
         assert_eq!(projected.filters[0].status, EvidenceStatus::No);
         assert_eq!(projected.filters[1].status, EvidenceStatus::Yes);

@@ -911,7 +911,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun updateNote(personId: Long, transform: (NoteEditorState) -> NoteEditorState) {
         _profileNotes.update { notes ->
-            notes + (personId to transform(notes[personId] ?: NoteEditorState()))
+            notes.updateNote(personId, transform)
         }
     }
 
@@ -934,12 +934,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun editProfileNote(personId: Long, text: String) {
         if (_discoverState.value.busy) return
-        updateNote(personId) { it.copy(draft = it.draft?.copy(text = text)) }
+        updateNote(personId) { it.copy(draft = it.draft?.edit(text), error = if (it.readError) it.error else null) }
     }
 
     private fun useStoredNote(personId: Long) {
         if (_discoverState.value.busy) return
-        updateNote(personId) { it.copy(draft = it.draft?.useStored(), error = null) }
+        updateNote(personId) { it.copy(draft = it.draft?.useStored(), error = if (it.readError) it.error else null) }
     }
 
     private fun keepNoteDraft(personId: Long) {
@@ -966,8 +966,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 throw failure
             }
         }, afterWrite = {
-            updateNote(personId) { it.copy(draft = NoteDraft.from(note), loading = false,
-                error = null, readError = false) }
+            updateNote(personId) { it.committed(note) }
         }, onFailure = { message ->
             updateNote(personId) { it.copy(error = message) }
         })
@@ -1057,9 +1056,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val active = _searchUiState.value
         if (_discoverState.value.busy || active.actionBusy || !active.profileOpen || active.profile?.listingId != listingId) return
         val sourceOwner = active.profileIdentity?.personId ?: return
-        val dirtyOwners = listOf(sourceOwner, targetPersonId).filter {
-            _profileNotes.value[it]?.draft?.dirty == true
-        }
+        val dirtyOwners = _profileNotes.value.dirtyOwners(sourceOwner, targetPersonId)
         if (dirtyOwners.isNotEmpty()) {
             _searchUiState.update { it.copy(actionError =
                 "Ungespeicherte Notiz für Person(en) ${dirtyOwners.joinToString()}. Vor Zusammenführung speichern oder verwerfen.") }
