@@ -175,7 +175,7 @@ internal fun DiscoverScreen(
     val cardIdentity = card?.let { it.listingId to it.personId }
     var flight by remember(state.activeRunId, state.swipePresentationGeneration, started) { mutableStateOf<SwipeFlight?>(null) }
     var liveDrag by remember(cardIdentity) { mutableFloatStateOf(0f) }
-    var settledMedia by remember(cardIdentity) { mutableStateOf(false) }
+    var settledMedia by remember(cardIdentity, current?.revision) { mutableStateOf(false) }
     val motion = remember(flight) { Animatable(flight?.offset ?: 0f) }
     val latestState by rememberUpdatedState(state)
     val latestIdentity by rememberUpdatedState(cardIdentity)
@@ -260,14 +260,14 @@ internal fun DiscoverScreen(
                 (hero?.offset ?: 0) - layout.viewportStartOffset,
                 selected.takeIf { heroVisible && hero != null }, identity.takeIf { heroVisible })
         }
-        val undo = { if (!transitioning) onUndo(deckToken) }
+        val undo = { if (flight == null) onUndo(deckToken) }
         val skip = {
-            if (!transitioning) cardToken?.let { beginFlight(-1f); onSkip(it, capture.read()) }
+            if (flight == null) cardToken?.let { beginFlight(-1f); onSkip(it, capture.read()) }
             Unit
         }
         // Hero gestures, rail and menu use exactly this rendered-token dispatch.
         val choose: (Preference) -> Unit = { preference ->
-            if (!transitioning) token?.takeIf(isProfileCurrent)?.let {
+            if (flight == null) token?.takeIf(isProfileCurrent)?.let {
                 if (preference != Preference.NONE) beginFlight(if (preference == Preference.LIKE) 1f else -1f)
                 onChoose(it, preference, capture.read())
             }
@@ -301,7 +301,7 @@ internal fun DiscoverScreen(
                         else {
                             Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
                             Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
-                            OutlinedButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Deck neu beginnen") }
+                            OutlinedButton(onClick = { if (flight == null) onReset(deckToken) }, enabled = enabled && !transitioning) { Text("Deck neu beginnen") }
                         }
                     }
                 }
@@ -313,6 +313,7 @@ internal fun DiscoverScreen(
                     isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
                     modifier = Modifier.fillMaxSize(),
                     paddedDetails = true, photoRequest = photoRequest, onGallerySelection = { selectedMedia = it },
+                    userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }) {
                     item(key = "hero") {
@@ -325,6 +326,7 @@ internal fun DiscoverScreen(
                             heldDrag = flight?.takeIf { it.card == cardIdentity }?.offset,
                             onSwipeDrag = { liveDrag = it },
                             playbackVisible = heroVisible,
+                            galleryNavigationEnabled = !transitioning,
                             onMediaSettled = { settledMedia = it },
                             identity = identity, actionToken = token,
                             projectionAvailable = profile != null, actionsEnabled = actions,

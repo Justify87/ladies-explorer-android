@@ -76,6 +76,7 @@ internal fun ProfileFlow(
     onSwipeRestoreConsumed: (SwipePresentation) -> Unit = {},
     panelReads: ProfilePanelReads? = null,
     onGallerySelection: (ProfileMediaItem?) -> Unit = {},
+    userScrollEnabled: Boolean = true,
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -221,6 +222,7 @@ internal fun ProfileFlow(
         }
     }
     LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
+        userScrollEnabled = userScrollEnabled,
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(rows, key = { it.key }) { row ->
             if (paddedDetails && row.key != "hero" && row.key != "media") {

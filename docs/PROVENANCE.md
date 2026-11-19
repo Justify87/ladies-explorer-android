@@ -40,3 +40,5 @@ Additional third-party dependencies are declared in [the Android version catalog
 
 ## Embedded gallery player (M05.10, 20.11.2026)
 Pinned Maven AAR `dev.jdtech.mpv:libmpv:1.0.0`, [upstream tag](https://github.com/jarnedemeulemeester/libmpv-android/tree/v1.0.0), MIT wrapper; native mpv is GPL by default, bundled native dependencies have independent licenses. Before distribution outside development testing, verify exact shipped binary ABIs/dependency licenses, corresponding native source/build scripts and redistribution obligations. No license change to the original project; no release/publication authorized. Player receives only validated local MP4/WebM files, not original URLs. Native runtime/ABI and hardware decode require real device verification.
+
+Quellprüfung `v1.0.0/buildscripts/scripts/ffmpeg.sh`: `--enable-{gpl,version3}`. Die MIT-Lizenz des Wrappers ist ausdrücklich keine Lizenzfreigabe für die vollständige AAR. GPLv3-Redistributionsanforderungen und vollständiger Corresponding Source für die konkreten nativen Bibliotheken sind vor Verteilung zu klären.

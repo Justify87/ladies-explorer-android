@@ -152,6 +152,7 @@ internal fun ProfileMediaHero(
     heldDrag: Float? = null,
     onSwipeDrag: (Float) -> Unit = {},
     playbackVisible: Boolean = true,
+    galleryNavigationEnabled: Boolean = true,
     onMediaSettled: (Boolean) -> Unit = {},
 ) {
     val index = selection.resolve(media, projectionAvailable)
@@ -163,7 +164,7 @@ internal fun ProfileMediaHero(
     val next = projectionAvailable && index < media.lastIndex
     val gestureOwner = Triple(actionToken, media, index)
     val decision = onSwipe?.takeIf { actionsEnabled && projectionAvailable }
-    val galleryTaps = projectionAvailable && media.size > 1
+    val galleryTaps = galleryNavigationEnabled && projectionAvailable && media.size > 1
     var drag by remember(gestureOwner) { mutableFloatStateOf(0f) }
     // Gesture hit geometry stays stationary; only the drawn media moves.
     val displayedDrag = heldDrag ?: drag
@@ -222,7 +223,7 @@ internal fun ProfileMediaHero(
             if (identity != null && !compact) {
                 val hidden = if (headerOwnsIdentity) Modifier.alpha(0f).clearAndSetSemantics {} else Modifier
                 HeroIdentityOverlay(identity, Modifier.align(Alignment.BottomCenter)
-                    .onSizeChanged { onIdentityMeasured(it.height) }.then(hidden))
+                    .onSizeChanged { onIdentityMeasured(it.height) }.then(hidden).then(imageMotion))
             }
         }
     }

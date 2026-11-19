@@ -24,6 +24,8 @@ import de.justify87.ladiesexplorer.core.ProfileMediaItem
 import dev.jdtech.mpv.MPVLib
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -64,13 +66,15 @@ internal fun GalleryVideo(
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     val visible = mediaVisible && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
     val playing = visible && active
+    val playbackAllowed by rememberUpdatedState(active)
     var retry by remember(item) { mutableIntStateOf(0) }
     var paused by remember(item) { mutableStateOf(false) }
     var file by remember(item, retry, visible) { mutableStateOf<LocalGalleryVideo?>(null) }
     var failure by remember(item, retry, visible) { mutableStateOf(false) }
-    var ready by remember(item, retry, visible) { mutableStateOf(false) }
+    var ready by remember(item, retry, playing) { mutableStateOf(false) }
     LaunchedEffect(item, retry, visible) {
         if (!visible) return@LaunchedEffect
+        snapshotFlow { playbackAllowed }.first { it }
         // A transient action lock must not redownload a selected medium.
         // The file remains owned only while the media is actually visible.
         var temporary: File? = null
@@ -83,11 +87,9 @@ internal fun GalleryVideo(
             } else {
                 val app = context.applicationContext as LadiesApplication
                 val download = app.coreStore.loadDisplayVideo(item.url)
-                // Allocate the path before the cancellable IO section so finally
-                // can always remove it, even if delivery is cancelled.
-                temporary = File.createTempFile("gallery-video-", ".media", context.cacheDir)
-                val destination = checkNotNull(temporary)
                 file = withContext(Dispatchers.IO) {
+                    val destination = app.coreStore.createDisplayVideoFile()
+                    temporary = destination
                     destination.writeBytes(download.bytes)
                     checkNotNull(localVideo(destination)) { "Unsupported local video" }
                 }
@@ -98,7 +100,7 @@ internal fun GalleryVideo(
         } catch (_: Exception) {
             failure = true
         } finally {
-            temporary?.delete()
+            withContext(NonCancellable + Dispatchers.IO) { temporary?.delete() }
         }
     }
     val video = file
@@ -135,9 +137,11 @@ private fun LocalMpvPlayer(
     val latestReady by rememberUpdatedState(onReady)
     val latestFailure by rememberUpdatedState(onFailure)
     var owner by remember(video) { mutableStateOf<MpvSurfaceOwner?>(null) }
-    DisposableEffect(video) {
+    var surfaceGeneration by remember(video) { mutableIntStateOf(0) }
+    DisposableEffect(video, surfaceGeneration) {
         val instance = try {
-            MpvSurfaceOwner(context.applicationContext, video, { latestReady() }, { latestFailure() })
+            MpvSurfaceOwner(context.applicationContext, video, { latestReady() }, { latestFailure() },
+                onSurfaceLost = { surfaceGeneration++ })
         } catch (_: Exception) {
             latestFailure()
             null
@@ -152,7 +156,7 @@ private fun LocalMpvPlayer(
         }
     }
     val player = owner
-    if (player != null) {
+    if (player != null) key(player) {
         AndroidView(factory = { ctx ->
             TextureView(ctx).apply {
                 isClickable = false
@@ -168,6 +172,7 @@ private class MpvSurfaceOwner(
     private val source: LocalGalleryVideo,
     private val onReady: () -> Unit,
     private val onFailure: () -> Unit,
+    private val onSurfaceLost: () -> Unit,
 ) : TextureView.SurfaceTextureListener, MPVLib.EventObserver {
     private val main = Handler(Looper.getMainLooper())
     private val player = checkNotNull(MPVLib.create(context)) { "libmpv unavailable" }
@@ -184,7 +189,7 @@ private class MpvSurfaceOwner(
                 "autoload-files" to "no", "access-references" to "no",
                 "demuxer" to "lavf", "demuxer-lavf-format" to source.demuxer,
                 "demuxer-lavf-o" to "protocol_whitelist=file",
-                "aid" to "no", "mute" to "yes", "sub-auto" to "no",
+                "aid" to "no", "sid" to "no", "mute" to "yes", "sub-auto" to "no",
                 "audio-file-auto" to "no", "loop-file" to "inf",
                 "hwdec" to "mediacodec-copy", "vo" to "gpu", "gpu-context" to "android",
                 "idle" to "yes", "force-window" to "no", "terminal" to "no",
@@ -206,6 +211,7 @@ private class MpvSurfaceOwner(
             val target = Surface(texture)
             surface = target
             player.attachSurface(target)
+            player.setPropertyString("force-window", "yes")
             player.setPropertyString("android-surface-size", "${width}x$height")
             player.setPropertyBoolean("pause", desiredPause)
             // Only a private/archived local file path, never item.url.
@@ -219,7 +225,12 @@ private class MpvSurfaceOwner(
         if (!closed && surface != null) player.setPropertyString("android-surface-size", "${width}x$height")
     }
     override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
-        detach()
+        // Destroy joins the native event/render work before the Java Surface
+        // is released. Re-attachment uses a new native owner, never the old wid.
+        if (!closed) {
+            close()
+            onSurfaceLost()
+        }
         return true
     }
     override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
@@ -229,23 +240,17 @@ private class MpvSurfaceOwner(
         if (!closed && surface != null) player.setPropertyBoolean("pause", value)
     }
 
-    private fun detach() {
-        if (surface != null) {
-            if (!closed) {
-                runCatching { player.command(arrayOf("stop")) }
-                runCatching { player.detachSurface() }
-            }
+    fun close() {
+        if (closed) return
+        closed = true
+        player.removeObserver(this)
+        main.removeCallbacksAndMessages(null)
+        try {
+            player.destroy()
+        } finally {
             surface?.release()
             surface = null
         }
-    }
-
-    fun close() {
-        if (closed) return
-        detach()
-        closed = true
-        player.removeObserver(this)
-        runCatching { player.destroy() }
     }
 
     override fun event(eventId: Int) {

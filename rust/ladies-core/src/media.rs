@@ -644,14 +644,18 @@ fn display_video_with(
     } else if bytes.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]) {
         "video/webm"
     } else {
-        return Err(CoreError::Media("Unsupported display video container".into()));
+        return Err(CoreError::Media(
+            "Unsupported display video container".into(),
+        ));
     };
     if response
         .mime
         .as_deref()
         .is_some_and(|value| value != mime && value != "application/octet-stream")
     {
-        return Err(CoreError::Media("Unexpected display video content type".into()));
+        return Err(CoreError::Media(
+            "Unexpected display video content type".into(),
+        ));
     }
     Ok(DisplayVideo {
         bytes: response.bytes,

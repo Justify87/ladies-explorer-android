@@ -106,6 +106,18 @@ class CoreStore(context: Context) {
     // One bounded encoded video at a time; no competing source HTTP implementation.
     private val displayVideoDispatcher = Dispatchers.IO.limitedParallelism(1)
 
+    // Process-local initialization removes abandoned temporary playback files
+    // after a crash. Never shares the durable archive directory.
+    private val displayVideoDirectory by lazy {
+        File(context.cacheDir, "gallery-playback").apply {
+            check(isDirectory || mkdirs()) { "Playback cache unavailable" }
+            listFiles()?.filter { it.isFile && it.name.startsWith("video-") }?.forEach(File::delete)
+        }
+    }
+
+    internal fun createDisplayVideoFile(): File =
+        File.createTempFile("video-", ".media", displayVideoDirectory)
+
     suspend fun loadDisplayVideo(url: String): DisplayVideo = withContext(displayVideoDispatcher) {
         suspendCancellableCoroutine { continuation ->
             val control = RequestControl()
