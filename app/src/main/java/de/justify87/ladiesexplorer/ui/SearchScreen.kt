@@ -168,7 +168,8 @@ internal fun SearchScreen(
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(when {
-                        state.loading -> "Suche läuft …"
+                        state.searchCancelling -> "Suche wird beendet …"
+                         state.loading -> "Suche läuft …"
                         !previewMatches -> "Quellzahl noch nicht geprüft"
                         state.previewLoading -> "Quellzahl wird geprüft …"
                         state.previewError != null -> "Vorschau nicht verfügbar: ${state.previewError}"
@@ -188,7 +189,7 @@ internal fun SearchScreen(
                         OutlinedButton(onClick = { filterQuery = ""; onReset() }, enabled = enabled) { Text("Reset") }
                         Button(onClick = if (state.loading) onCancelSearch else onSearch,
                             enabled = !state.searchCancelling && (state.loading || (canStartSearch && enabled && state.city.isNotBlank())), modifier = Modifier.weight(1f)) {
-                            Text(if (state.loading) "Abbrechen" else "Suchen")
+                            Text(if (state.searchCancelling) "Wird beendet …" else if (state.loading) "Abbrechen" else "Suchen")
                         }
                     }
                 }

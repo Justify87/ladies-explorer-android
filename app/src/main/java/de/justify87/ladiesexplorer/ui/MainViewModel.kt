@@ -1086,7 +1086,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun importBundle(uri: Uri) {
-        if (homeOwner.occupied || searchOwner.occupied || _uiState.value.loading || _searchUiState.value.loading || _discoverState.value.busy || savedSearch.state.value.busy) return
+        if (!canAcquireImport(searchOwner, homeOwner, _uiState.value.loading || _searchUiState.value.loading ||
+                _discoverState.value.busy || savedSearch.state.value.busy)) return
         if (savedSearch.state.value.editor != null || savedSearch.state.value.dialog != null) {
             _uiState.update { it.copy(error = "Gespeicherte Suchentwürfe vor dem Import speichern oder verwerfen.") }
             return

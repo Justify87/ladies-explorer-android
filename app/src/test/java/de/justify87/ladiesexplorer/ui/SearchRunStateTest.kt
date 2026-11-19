@@ -201,9 +201,17 @@ class SearchRunStateTest {
         assertEquals(1, signalled)
         assertTrue(owner.occupied)
         assertFalse(owner.accepts(first))
-        assertEquals(null, owner.start("import"))
+        val home = DrainingOperation<String>()
+        assertFalse(canAcquireImport(owner, home, false))
+        assertEquals(null, owner.start("replacement search"))
         assertTrue(owner.finish(first))
-        val second = owner.start("import")!!
+        assertTrue(canAcquireImport(owner, home, false))
+        val importing = home.start("import")!!
+        assertFalse(canAcquireImport(owner, home, false))
+        assertEquals(null, home.start("status"))
+        assertTrue(home.accepts(importing))
+        assertTrue(home.finish(importing))
+        val second = owner.start("replacement search")!!
         assertFalse(owner.finish(first))
         assertTrue(owner.accepts(second))
     }

@@ -258,3 +258,15 @@ P13 fehlende STUDIO/FACEAPP/Business-Evidenz bleibt explizit nicht unterstützt;
 
 
 G9-F01 Folgeprüfung: Auch normale Source-Suchen können nach SQLite-Commit durch Generation/Abbruch verworfen werden oder beim nachfolgenden lokalen Lesen scheitern. Die bisherigen Erfolgs-Refreshes sind deshalb in die Abschlussphase des Auftrags verschoben; normale und gespeicherte Suche nutzen dieselbe lokale Reprojektion für Entdecken/Gespeichert, Karte, DB-Status und Filterusage. Der gespeicherte Ergebnis-Read bleibt beim Controller, normale Suche ersetzt einen alten aktiven Run weiterhin nur nach erfolgreicher akzeptierter Projektion. Kein erneuter Quellenabruf. Dieses Verhalten benötigt neue Full-CI; Tests für Run-Generation, Transaction/Cancel und den verzögerten Fenster-Read bilden die vorhandene Regressionsevidenz, kein Android-E2E behauptet.
+
+#### G9 – Review #5973687838: Ursachenbehandlung
+
+- H01: `DrainingOperation`, `canAcquireImport`, exklusiver Home-Owner, koaleszierte Statusprojektion. Cancel signalisiert Rust, UI zeigt Drain; keine Freigabe vor tatsächlichem Abschluss. Test `cancelledNativeOwnerCannotBeReplacedUntilDrain` prüft auch die produktive Importzulassung und Status-Ownership.
+- H02: `projectDiscovery` / `readIndependentProjections` in normalem Refresh, Mutation und Merge. Getrennte Read- und Mutationsfehler; sekundärer Lesefehler invalidiert nicht erfolgreich gelesenen aktiven Lauf. `secondaryReadFailureDoesNotEraseSuccessfulActiveRun`. Kein Source-Redo.
+- H03: explizite Acknowledge-Aktion statt Auto-Ack beim Öffnen; Result-Revision aus genau dem dargestellten DB-Fenster. Native CAS bleibt maßgeblich. Bei Konflikt dirty/Read, kein automatisches Ack. `explicitAckUsesDisplayedRevisionEvenIfVisibilityChangesDuringIo`; bisherige Back/Hidden-/stale-Ack-Tests aktualisiert. UI-Entscheidung bewusst dokumentiert; P37 fordert CRUD/Run/Acknowledge, nicht Auto-Ack.
+- M01: getrennte List-/Window-/Actionfehler, erfolgreiche Reads lösen ihren Fehler auf; Paging wird nicht von unabhängigen Aktionsfehlern blockiert. Kein verlorener Commit.
+- M02: unsichtbare Result-Fenster nur dirty markieren, sichtbare koalesziert lesen; Rückkehr verarbeitet Invalidierung, keine doppelte CloseProfile-Leseanforderung. Auch Statusprüfungsabschluss invalidiert betroffene lokale Fenster. `hiddenInvalidationsCoalesceAndSuccessfulReadClearsOnlyItsError`.
+- M03: Controller-Tests mit StateFlow-Idle-Bedingung und expliziten Deferred-Gates statt pauschaler yield-Anzahl; Fake prüft native Revision semantisch. Tests sind JVM-/Rust-Evidenz, kein Android-E2E.
+- M04: P01–P44 und X01–X11 einzeln mit aktuellen Code-/Testankern in M05-PARITY dokumentiert. Statischer Abgleich ersetzt keine visuelle/physische Abnahme; Abweichungsfreigaben und finale CI bleiben offen.
+
+Der vor dem Review geprüfte Head d1e22971 wurde durch [Full-CI #387](https://github.com/Justify87/ladies-explorer-android/actions/runs/44509899258) vollständig grün. Die Korrekturen sind neu und benötigen Full-CI ihres eigenen Heads. T9.1 IN_PROGRESS, T9.2 DEVICE_PENDING; G9 nicht geschlossen.

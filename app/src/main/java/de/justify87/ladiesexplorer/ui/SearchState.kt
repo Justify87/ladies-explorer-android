@@ -152,3 +152,7 @@ internal class DrainingOperation<T> {
         return true
     }
 }
+
+/** Native ownership is authoritative even before/after a UI state emission. */
+internal fun canAcquireImport(search: DrainingOperation<*>, home: DrainingOperation<*>, uiBusy: Boolean) =
+    !search.occupied && !home.occupied && !uiBusy
