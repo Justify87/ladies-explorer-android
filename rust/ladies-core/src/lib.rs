@@ -408,12 +408,14 @@ impl LadiesCore {
         &self,
         listing_id: i64,
         expected_source_person_id: i64,
+        expected_snapshot_id: i64,
         target_person_id: i64,
     ) -> Result<(), CoreError> {
         identity::confirm(
             self,
             listing_id,
             expected_source_person_id,
+            expected_snapshot_id,
             target_person_id,
         )
     }

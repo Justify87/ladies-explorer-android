@@ -114,8 +114,13 @@ class SwipeProfileReadTest {
         val failure = IllegalStateException("person projection failed")
         f.beforeProjection = { throw failure }
         val error = runCatching { readSwipeProfile(4L, true, true, { f.calls += "completion" }, f.reads) }.exceptionOrNull()
-        assertSame(failure, error)
+        assertTrue(error is LocalProfileReadFailure)
+        assertSame(failure, error?.cause)
         assertEquals(listOf("cache:4", "source:4", "completion", "profile:4"), f.calls)
+        f.beforeProjection = {}
+        val recovered = readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads)
+        assertEquals(12L, recovered.profile.snapshotId)
+        assertEquals(1, f.calls.count { it.startsWith("source:") })
     }
 
     @Test fun cachedActiveRunPrefetchStillAvoidsSource() = runBlocking {

@@ -57,6 +57,7 @@ internal fun DiscoverScreen(
     DisposableEffect(decks) { onDispose { decks.clear() } }
     var retry by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableIntStateOf(0) }
     var readError by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf<String?>(null) }
+    var retryLocally by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf(false) }
     val current = card?.let { decks[it] }
     val token = state.swipeToken(current).takeIf { visible }
     SideEffect { onRenderedSwipe(token) }
@@ -83,14 +84,16 @@ internal fun DiscoverScreen(
         try {
             decks.retain(window)
             decks.readCurrent(card) {
-                val localOnly = card.listingId in state.localProfileReloadIds
+                val localOnly = retryLocally || card.listingId in state.localProfileReloadIds
                 core.readSwipeProfile(card.listingId, control, refresh = !localOnly,
                     allowNetwork = !localOnly, onSourceRead = onSnapshotChanged)
             }
             retry = 0
+            retryLocally = false
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (failure: Exception) {
+            retryLocally = retryLocally || failure is LocalProfileReadFailure
             readError = failure.message ?: "Profil konnte nicht geladen werden"
         }
     }

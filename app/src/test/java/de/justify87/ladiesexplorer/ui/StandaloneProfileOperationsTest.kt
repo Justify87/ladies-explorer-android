@@ -45,8 +45,9 @@ class StandaloneProfileOperationsTest {
                 archiveProfileMedia = { snapshot, control -> calls += "archive:$snapshot"; archive(snapshot, control) },
                 newArchiveControl = { Control().also(controls::add) },
                 cancelArchive = { it.cancelled++; calls += "cancel" },
-                confirmIdentityMatch = { listing, expectedOwner, target ->
+                confirmIdentityMatch = { listing, expectedOwner, expectedSnapshot, target ->
                     check(owner == expectedOwner)
+                    check(cached?.snapshotId == expectedSnapshot)
                     calls += "confirm:$listing:$target"; commit(listing, target)
                 },
             ),
@@ -362,5 +363,21 @@ class StandaloneProfileOperationsTest {
         assertNull(f.search.value.profile)
         assertEquals(setOf(3L), f.notes.value.keys)
         assertFalse(f.discovery.value.busy)
+    }
+    @Test fun initialSourceCommitThenLocalReadFailureRetriesOnlyLocalProjection() = runBlocking {
+        val f = Fixture(this)
+        f.source = { fixtureProfile(12L) }
+        f.identityError = IllegalStateException("local read failed")
+        f.operations.loadProfile(4L, 1L) {}
+        f.idle()
+        assertEquals(4L, f.search.value.retryProfileListingId)
+        assertNull(f.search.value.profile)
+        assertEquals(1, f.calls.count { it.startsWith("source:") })
+        f.identityError = null
+        f.operations.retryProfileProjection()
+        f.idle()
+        assertEquals(12L, f.search.value.profile?.snapshotId)
+        assertEquals(1, f.calls.count { it.startsWith("source:") })
+        assertTrue(f.controls.isEmpty())
     }
 }

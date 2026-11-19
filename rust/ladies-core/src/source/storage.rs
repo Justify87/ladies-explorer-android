@@ -1242,7 +1242,7 @@ mod tests {
         );
 
         // Commit through the real identity transaction, not a simulated owner change.
-        core.confirm_identity_match(listing, owner, new_owner)
+        core.confirm_identity_match(listing, owner, snapshot.snapshot_id, new_owner)
             .unwrap();
         let rejected = save_observed_profile(&core, &in_flight, profile("Late"), true, None);
         assert!(matches!(rejected, Err(CoreError::Source(_))));

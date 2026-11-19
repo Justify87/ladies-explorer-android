@@ -20,7 +20,7 @@ internal class StandaloneProfileIo<C : Any>(
     val archiveProfileMedia: suspend (Long, C) -> MediaArchiveReport,
     val newArchiveControl: () -> C,
     val cancelArchive: (C) -> Unit,
-    val confirmIdentityMatch: suspend (Long, Long, Long) -> Unit,
+    val confirmIdentityMatch: suspend (Long, Long, Long, Long) -> Unit,
 )
 
 /** The existing independent projection owners remain in MainViewModel/SavedSearchController. */
@@ -103,11 +103,12 @@ internal class StandaloneProfileOperations<C : Any>(
                 mediaArchive=null,mediaWarning=null,archiving=false,retryProfileListingId=null)
         }
         scope.launch {
+            var localReadReady = false
+            var showingArchive = false
+            var refreshError: String? = null
             try {
                 archiveCall?.drained?.await()
                 if (!profileGeneration.isCurrent(requestId)) return@launch
-                var showingArchive = false
-                var refreshError: String? = null
                 try {
                     try {
                         io.loadProfile(listingId)
@@ -125,6 +126,7 @@ internal class StandaloneProfileOperations<C : Any>(
                     refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
                 }
                 if (!profileGeneration.isCurrent(requestId)) return@launch
+                localReadReady = true
                 val local = project(listingId)
                 if (!profileGeneration.isCurrent(requestId)) return@launch
                 _searchUiState.update {
@@ -176,7 +178,9 @@ internal class StandaloneProfileOperations<C : Any>(
             } catch (failure: Exception) {
                 if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update {
-                        it.copy(loading=false,archiving=false,error=failure.message ?: "Profil konnte nicht geladen werden")
+                        it.copy(loading=false,archiving=false,error=failure.message ?: "Profil konnte nicht geladen werden",
+                            retryProfileListingId = listingId.takeIf { localReadReady },
+                            profileFromArchive = showingArchive, mediaWarning = refreshError)
                     }
                 }
             }
@@ -189,7 +193,7 @@ internal class StandaloneProfileOperations<C : Any>(
         val listingId = active.retryProfileListingId ?: return
         if (!active.profileOpen || active.actionBusy || _discoverState.value.busy) return
         val requestId = profileGeneration.value
-        _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
+        _searchUiState.update { it.copy(actionBusy = true, actionError = null, error = null) }
         scope.launch {
             try {
                 val local = project(listingId)
@@ -252,7 +256,7 @@ internal class StandaloneProfileOperations<C : Any>(
                 coroutineContext.ensureActive()
                 // Once sent, the native write and its commit bookkeeping must drain together.
                 withContext(NonCancellable) {
-                    io.confirmIdentityMatch(listingId, sourceOwner, targetPersonId)
+                    io.confirmIdentityMatch(listingId, sourceOwner, token.snapshotId, targetPersonId)
                     committed = true
                     for (owner in listOf(sourceOwner, targetPersonId)) {
                         noteReadTickets.invalidate(owner)

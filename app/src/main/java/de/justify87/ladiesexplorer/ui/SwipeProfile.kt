@@ -19,6 +19,9 @@ internal data class SwipeProfile(
     val warning: String? = null,
 )
 
+/** A committed or cached profile exists; recovery must not repeat the source request. */
+internal class LocalProfileReadFailure(cause: Exception) : IllegalStateException(cause.message, cause)
+
 /** Source policy is context-specific; the local projection is shared with standalone. */
 internal class SwipeProfileReads(
     val cached: suspend (Long) -> ProfileResponse?,
@@ -66,7 +69,13 @@ internal suspend fun readSwipeProfile(
     }
     checkNotNull(cached) { "Kein archiviertes Profil vorhanden" }
     currentCoroutineContext().ensureActive()
-    val local = checkNotNull(reads.projection(listingId)) { "Profil nicht mehr verfügbar" }
+    val local = try {
+        checkNotNull(reads.projection(listingId)) { "Profil nicht mehr verfügbar" }
+    } catch (cancel: CancellationException) {
+        throw cancel
+    } catch (failure: Exception) {
+        throw LocalProfileReadFailure(failure)
+    }
     return SwipeProfile(local.profile, local.identity, local.person,
         local.media, local.history, local.candidates, fromArchive, warning)
 }
