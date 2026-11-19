@@ -62,6 +62,7 @@ data class DiscoverUiState(
     val activeRunId: Long? = null,
     val swipeSessionId: Long = 0L,
     val swipeProfileRevision: Long = 0L,
+    val swipeExternalRevision: Long = 0L,
     val localProfileReloadIds: Set<Long> = emptySet(),
     val localProfileStrictIds: Set<Long> = emptySet(),
     val pendingMergeListingId: Long? = null,
@@ -573,12 +574,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun projectDiscovery(epoch: Long): Boolean = discoveryPublisher.project(epoch)
 
     fun markSwipeSnapshotChanged(oldWindow: Boolean) {
-        // The active window invalidates all other tickets synchronously. A late
-        // completion from a disposed window must also revoke its replacement.
-        if (oldWindow) invalidateSwipeProfilesLocally()
-        else {
-            renderedSwipe = null
-            _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1) }
+        // The active window invalidates its other tickets synchronously. A late
+        // completion must revoke the replacement without disposing it again:
+        // otherwise cancellation of one window could repeatedly cancel another.
+        renderedSwipe = null
+        _discoverState.update {
+            it.copy(swipeSessionId = it.swipeSessionId + 1,
+                swipeExternalRevision = it.swipeExternalRevision + if (oldWindow) 1 else 0)
         }
         swipeInvalidation.sourceCompleted()
     }

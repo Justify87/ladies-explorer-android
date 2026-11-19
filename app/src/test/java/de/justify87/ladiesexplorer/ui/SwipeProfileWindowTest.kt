@@ -142,6 +142,34 @@ class SwipeProfileWindowTest {
         assertTrue(cache.requiresLocal(card))
     }
 
+    @Test fun externalCompletionRevokesReplacementWithoutRestartingItsRunningRead() = runBlocking {
+        val cache = SwipeProfileWindow(mutableMapOf(), initialExternalRevision = 5L)
+        val card = fixtureCard(4L, 1L)
+        cache.retain(listOf(card))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val current = launch {
+            assertNull(cache.readCurrent(card) { started.complete(Unit); release.await(); fixtureSwipe(4L) })
+        }
+        started.await()
+        val before = cache.invalidation(card)
+        assertFalse(cache.isCurrent(6L))
+        cache.applyExternalRevision(6L)
+        assertTrue(cache.isCurrent(6L))
+        assertEquals(before, cache.invalidation(card))
+        assertTrue(current.isActive)
+        release.complete(Unit)
+        current.join()
+        assertNull(cache[card])
+        assertTrue(cache.requiresLocal(card))
+        val after = cache.invalidation(card)
+        assertTrue(after > before)
+        cache.readCurrent(card) { fixtureSwipe(4L) }
+        cache.applyExternalRevision(6L)
+        assertEquals(after, cache.invalidation(card))
+        assertNotNull(cache[card])
+    }
+
     @Test fun cancelledSuspendingReadCannotWriteIntoCache() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
         val card = fixtureCard(4L, 1L)

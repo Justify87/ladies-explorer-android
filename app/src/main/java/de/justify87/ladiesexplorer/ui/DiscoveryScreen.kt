@@ -58,12 +58,14 @@ internal fun DiscoverScreen(
     }
     val visible = started && !searchLoading && !state.loading && !state.busy
     val enabled = visible
-    val decks = remember(state.activeRunId, state.swipeProfileRevision, started) { SwipeProfileWindow(mutableStateMapOf()) }
+    val decks = remember(state.activeRunId, state.swipeProfileRevision, started) {
+        SwipeProfileWindow(mutableStateMapOf(), state.swipeExternalRevision)
+    }
     DisposableEffect(decks) { onDispose { decks.close() } }
     var retry by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableIntStateOf(0) }
     var readError by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf<String?>(null) }
     var retryLocally by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf(false) }
-    val current = card?.let { decks[it] }
+    val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }?.let { decks[it] }
     val token = state.swipeToken(current).takeIf { visible }
     SideEffect { onRenderedSwipe(token) }
     var confirmation by remember(token) { mutableStateOf<Long?>(null) }
@@ -81,7 +83,10 @@ internal fun DiscoverScreen(
     ComparisonDialog(panels)
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
-    SideEffect { decks.retain(window) }
+    SideEffect {
+        decks.retain(window)
+        decks.applyExternalRevision(state.swipeExternalRevision)
+    }
     val control = remember(decks, card?.listingId, card?.personId, decks.invalidation(card), retry, visible) { RequestControl() }
     DisposableEffect(control) { onDispose { control.cancel() } }
     LaunchedEffect(control) {

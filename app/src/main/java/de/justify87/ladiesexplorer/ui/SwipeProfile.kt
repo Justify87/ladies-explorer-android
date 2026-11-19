@@ -1,6 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
 import android.content.Context
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
@@ -83,19 +84,33 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
 
 /** Bounded composition-owned cache. Every in-flight read owns a per-entry ticket.
  * Prune/reset/owner replacement makes a late delivery ineligible even without cancellation. */
-internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileReadModel>) {
+internal class SwipeProfileWindow(
+    private val entries: MutableMap<Long, ProfileReadModel>,
+    initialExternalRevision: Long = 0L,
+) {
     private data class Slot(val owner: Long, val ticket: Long)
     private val slots = mutableMapOf<Long, Slot>()
     private val inFlight = mutableMapOf<Long, Slot>()
     private var nextTicket = 0L
     private val invalidations = mutableStateMapOf<Long, Long>()
     private val staleProvenance = mutableMapOf<Long, Pair<Boolean, String?>>()
+    private val externalRevision = mutableLongStateOf(initialExternalRevision)
     var closed = false
         private set
 
     fun invalidation(card: DiscoveryCard?): Long = card?.let { invalidations[it.listingId] } ?: 0L
 
     fun requiresLocal(card: DiscoveryCard): Boolean = card.listingId in staleProvenance
+
+    fun isCurrent(revision: Long): Boolean = externalRevision.longValue >= revision
+
+    /** A completion from a disposed window may have persisted after this window
+     * began reading. Revoke its data, not its native execution ownership. */
+    fun applyExternalRevision(revision: Long) {
+        if (isCurrent(revision) || closed) return
+        invalidateSlots()
+        externalRevision.longValue = revision
+    }
 
     operator fun get(card: DiscoveryCard): ProfileReadModel? = entries[card.listingId]?.takeIf {
         it.profile.listingId == card.listingId && it.identity.personId == card.personId &&
@@ -123,7 +138,7 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileR
     /** Source persistence can change every candidate/person projection, even with
      * the same snapshot ID. Only the read currently returning from that source
      * may publish without a new local read. No extra network refresh is needed. */
-    private fun sourceCompleted(listingId: Long, ticket: Slot) {
+    private fun invalidateSlots(listingId: Long? = null, ticket: Slot? = null) {
         for ((id, slot) in slots.toMap()) {
             if (id == listingId && slot == ticket) continue
             entries.remove(id)?.let { staleProvenance[id] = it.fromArchive to it.warning }
@@ -158,7 +173,7 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileR
         slots[listingId] = ticket
         inFlight[listingId] = ticket
         try {
-            val profile = read { sourceCompleted(listingId, ticket) }
+            val profile = read { invalidateSlots(listingId, ticket) }
             currentCoroutineContext().ensureActive()
             if (slots[listingId] != ticket) {
                 // A completed read proves local data exists, but its contents may
