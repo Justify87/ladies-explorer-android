@@ -132,6 +132,7 @@ class ProfilePresentationTest {
         assertEquals(ProfileRowRead.Note, scroll.dependency(rows))
         // A projection gap must not consume the receipt or overwrite its anchor.
         coordinator.synchronize(saved, null, 3, media, sections, scroll)
+        assertEquals(ProfileRestoreCoordinator.Phase.Waiting, coordinator.phase)
         assertFalse(coordinator.terminal(saved))
         coordinator.synchronize(saved, key.copy(revision = 2), 3, media, sections, scroll)
         assertEquals(ProfileScrollAnchor("profile-notes", 23), scroll.anchor)

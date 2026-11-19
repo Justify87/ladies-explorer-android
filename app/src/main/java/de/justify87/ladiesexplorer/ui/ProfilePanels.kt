@@ -519,7 +519,7 @@ private fun ProfileFlowRows.profileContent(
             }
         }
     }
-    item(key = "notes-toggle") {
+    item(key = "notes-toggle", read = ProfileRowRead.Note.takeIf { sections.expanded(ProfileSection.Notes) }) {
         SectionToggle(ProfileSection.Notes, sections, noteSectionHint(note),
             hintError = note.error != null || note.draft?.conflict == true)
     }

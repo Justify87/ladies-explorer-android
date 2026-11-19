@@ -213,7 +213,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal fun chooseSwipePreference(token: SwipeActionToken, preference: Preference, presentation: SwipePresentation?) {
         val card = SwipeCardToken(SwipeDeckToken(token.runId, token.session), token.listingId, token.ownerId)
         chooseProfilePreference(token, preference,
-            presentationForDecision(_discoverState.value.swipeRestore, presentation, card))
+            presentationForDecision(_discoverState.value.swipeRestore,
+                presentation?.takeIf { it.snapshotId == token.snapshotId }, card))
     }
 
     private fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference, presentation: SwipePresentation?) {

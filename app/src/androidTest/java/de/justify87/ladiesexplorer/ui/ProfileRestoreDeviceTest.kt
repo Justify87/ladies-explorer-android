@@ -30,7 +30,8 @@ class ProfileRestoreDeviceTest {
                 hiddenLocation = null, sourceProfileId = null, canonicalId = null,
                 phoneDisplay = null, publishedAt = null, traitsJson = "{}", servicesJson = "{}",
                 openingTimesJson = "{}", media = emptyList()),
-            ProfileIdentity(1, "ACTIVE", null, false, false, false, null),
+            ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null,
+                personNew = false, listingNew = false, hasVideo = false, age = null),
             PersonSummary(1, "Fixture", Preference.NONE, false, 1u, ""),
             listOf(ProfileMediaItem("IMAGE", "", null, 0u),
                 ProfileMediaItem("VIDEO", "https://example.invalid/fixture", null, 1u)),
@@ -57,7 +58,7 @@ class ProfileRestoreDeviceTest {
         val original = profile()
         var model by mutableStateOf<ProfileReadModel?>(null)
         var receipt by mutableStateOf<SwipePresentation?>(null)
-        var consumed = 0
+        var consumed by mutableIntStateOf(0)
         lateinit var list: LazyListState
         lateinit var capture: SwipePresentationCapture
         lateinit var jump: () -> Unit
@@ -110,7 +111,8 @@ class ProfileRestoreDeviceTest {
 
     @Test fun changedSnapshotRestoresIndependentKeysAndFailedPanelReadUsesSafeRowStart() {
         val original = profile(12)
-        val readers = reads { error("Fixture read failure") }
+        var calls = 0
+        val readers = reads { if (++calls == 1) error("Fixture read failure") else facts() }
         var receipt by mutableStateOf<SwipePresentation?>(SwipePresentation(4, 1, 11, "{}",
             "VIDEO:https://example.invalid/fixture", "profile-services", 900, listOf("Services"), 3, 1))
         lateinit var capture: SwipePresentationCapture
@@ -131,6 +133,12 @@ class ProfileRestoreDeviceTest {
             assertEquals("profile-services", actual.anchorKey)
             assertEquals(0, actual.anchorOffset)
             assertEquals("VIDEO:https://example.invalid/fixture", actual.mediaId)
+        }
+        rule.onAllNodesWithText("Neu laden").onFirst().performClick()
+        rule.onNodeWithText("Value 1").assertExists()
+        rule.runOnIdle {
+            assertNull(receipt)
+            assertEquals("VIDEO:https://example.invalid/fixture", capture.read()?.mediaId)
         }
     }
 }

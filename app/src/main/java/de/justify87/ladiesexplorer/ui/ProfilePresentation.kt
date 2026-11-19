@@ -52,7 +52,7 @@ internal class ProfileRestoreCoordinator {
     enum class Phase { Idle, Waiting, Restoring, Applied, Invalid }
     var phase by mutableStateOf(Phase.Idle)
         private set
-    private var request: SwipePresentation? = null
+    private var request by mutableStateOf<SwipePresentation?>(null)
     private var prepared: ProfileProjectionKey? = null
 
     fun synchronize(
@@ -64,7 +64,11 @@ internal class ProfileRestoreCoordinator {
             prepared = null
             phase = if (receipt == null) Phase.Idle else Phase.Waiting
         }
-        if (receipt == null || projection == null || phase == Phase.Applied || phase == Phase.Invalid) return
+        if (receipt == null || phase == Phase.Applied || phase == Phase.Invalid) return
+        if (projection == null) {
+            phase = Phase.Waiting
+            return
+        }
         if (!receipt.matches(projection, run)) {
             media.restore(0, null)
             sections.restore(emptyList())
@@ -99,7 +103,7 @@ internal class ProfileScrollMemory(
     initialAnchor: ProfileScrollAnchor? = null,
     initialRecovery: Boolean = false,
 ) {
-    var anchor: ProfileScrollAnchor? = initialAnchor
+    var anchor by mutableStateOf(initialAnchor)
         private set
     var recovering by mutableStateOf(initialRecovery)
         private set
@@ -107,7 +111,7 @@ internal class ProfileScrollMemory(
 
     /** Also detects a direct revision replacement, where model never becomes null. */
     fun projectionChanged(next: ProfileProjectionKey?) {
-        if (projection != next && (projection != null || next == null)) gap()
+        if (projection != null && projection != next) gap()
         projection = next
     }
 
