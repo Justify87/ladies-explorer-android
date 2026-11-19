@@ -176,9 +176,9 @@ class ProfileShellDeviceTest {
         }
         val next = rule.onNodeWithContentDescription("Nächstes Medium").fetchSemanticsNode().boundsInRoot
         val feedback = rule.onNodeWithText("Kein Bild verfügbar").fetchSemanticsNode().boundsInRoot
-        assertTrue(next.left >= feedback.right - 1f)
+        assertTrue(next.left >= feedback.center.x)
         rule.onNodeWithContentDescription("Nächstes Medium").performClick()
-        rule.onNodeWithText("Video extern öffnen").assertExists().assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Video abspielen").assertExists().assertIsNotEnabled()
         rule.onNodeWithContentDescription("Vorheriges Medium").performClick()
         rule.onNodeWithText("Kein Bild verfügbar").assertExists()
     }

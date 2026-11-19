@@ -145,6 +145,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.coil.compose)
+    implementation(libs.libmpv)
     implementation(libs.coil.network.core)
     implementation(libs.kermit)
     implementation(libs.maplibre.sdk)

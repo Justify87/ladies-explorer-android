@@ -103,6 +103,23 @@ class CoreStore(context: Context) {
         }
     }
 
+    // One bounded encoded video at a time; no competing source HTTP implementation.
+    private val displayVideoDispatcher = Dispatchers.IO.limitedParallelism(1)
+
+    suspend fun loadDisplayVideo(url: String): DisplayVideo = withContext(displayVideoDispatcher) {
+        suspendCancellableCoroutine { continuation ->
+            val control = RequestControl()
+            continuation.invokeOnCancellation { control.cancel() }
+            if (continuation.isActive) {
+                try {
+                    continuation.resumeWith(Result.success(engine.loadDisplayVideo(url, control)))
+                } catch (failure: Exception) {
+                    continuation.resumeWith(Result.failure(failure))
+                }
+            }
+        }
+    }
+
     private inline fun <T> recorded(operation: String, work: () -> T): T {
         val started = SystemClock.elapsedRealtimeNanos()
         try {

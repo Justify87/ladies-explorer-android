@@ -621,6 +621,52 @@ pub(crate) fn display_image(
     display_image_with(url, &core.media_http, control)
 }
 
+/// Display-only encoded video, bounded by the existing media transport.
+/// Never creates an archive row, asset, or profile observation.
+#[derive(Debug, uniffi::Record)]
+pub struct DisplayVideo {
+    pub bytes: Vec<u8>,
+    pub mime: String,
+}
+
+fn display_video_with(
+    raw_url: &str,
+    fetcher: &impl Fetcher,
+    control: &RequestControl,
+) -> Result<DisplayVideo, CoreError> {
+    control.check()?;
+    let url = validate_media_url(raw_url, Some("VIDEO"))?;
+    let response = fetcher.get(url.as_str(), MAX_VIDEO_BYTES, MAX_REQUEST_DURATION, control)?;
+    control.check()?;
+    let bytes = &response.bytes;
+    let mime = if bytes.get(4..8) == Some(b"ftyp") {
+        "video/mp4"
+    } else if bytes.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]) {
+        "video/webm"
+    } else {
+        return Err(CoreError::Media("Unsupported display video container".into()));
+    };
+    if response
+        .mime
+        .as_deref()
+        .is_some_and(|value| value != mime && value != "application/octet-stream")
+    {
+        return Err(CoreError::Media("Unexpected display video content type".into()));
+    }
+    Ok(DisplayVideo {
+        bytes: response.bytes,
+        mime: mime.into(),
+    })
+}
+
+pub(crate) fn display_video(
+    core: &LadiesCore,
+    url: &str,
+    control: &RequestControl,
+) -> Result<DisplayVideo, CoreError> {
+    display_video_with(url, &core.media_http, control)
+}
+
 pub(crate) fn archive(
     core: &LadiesCore,
     snapshot_id: i64,
@@ -670,6 +716,55 @@ mod tests {
         assert_eq!(image.mime, "image/jpeg");
         assert_eq!(image.bytes, vec![0xff, 0xd8, 0xff, 0xe0]);
         assert!(display_image_with(url, &FixtureFetcher(b"<html>".to_vec()), &control).is_err());
+    }
+
+    #[test]
+    fn display_video_reuses_bounded_transport_and_rejects_cross_kind_and_cancel() {
+        struct FixtureVideo {
+            bytes: Vec<u8>,
+            mime: &'static str,
+        }
+        impl Fetcher for FixtureVideo {
+            fn get(
+                &self,
+                url: &str,
+                limit: u64,
+                timeout: Duration,
+                control: &RequestControl,
+            ) -> Result<Download, CoreError> {
+                assert_eq!(url, "https://video1.ladies-cdn.de/a.mp4");
+                assert_eq!(limit, MAX_VIDEO_BYTES);
+                assert_eq!(timeout, MAX_REQUEST_DURATION);
+                assert!(!control.is_cancelled());
+                Ok(Download {
+                    bytes: self.bytes.clone(),
+                    mime: Some(self.mime.into()),
+                    etag: None,
+                    last_modified: None,
+                })
+            }
+        }
+
+        let url = "https://video1.ladies-cdn.de/a.mp4";
+        let control = RequestControl::new();
+        let valid = FixtureVideo {
+            bytes: b"\0\0\0\x18ftypisom".to_vec(),
+            mime: "video/mp4",
+        };
+        let result = display_video_with(url, &valid, &control).unwrap();
+        assert_eq!(result.bytes, valid.bytes);
+        assert_eq!(result.mime, "video/mp4");
+        let invalid = FixtureVideo {
+            bytes: b"#EXTM3U".to_vec(),
+            mime: "video/mp4",
+        };
+        assert!(display_video_with(url, &invalid, &control).is_err());
+        assert!(display_video_with("https://example.org/a.mp4", &valid, &control).is_err());
+        assert!(
+            display_video_with("https://bilder1.ladies-cdn.de/a.jpg", &valid, &control).is_err()
+        );
+        control.cancel();
+        assert!(display_video_with(url, &valid, &control).is_err());
     }
 
     struct FixtureFetcher(Vec<u8>);

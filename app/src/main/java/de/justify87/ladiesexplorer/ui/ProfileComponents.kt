@@ -190,15 +190,15 @@ internal fun ProfileMediaHero(
                 }
                 "VIDEO" -> BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                     val side = if (galleryTaps) gallerySideFraction(maxWidth.value, true) else 0f
-                    GalleryTargets(side, hit, gestureOwner, previous, next,
-                        { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
-                    val context = LocalContext.current
-                    FilledTonalButton(enabled = actionsEnabled,
-                        onClick = { if (isCurrent()) openExternal(context, item.url) },
-                        modifier = Modifier.align(Alignment.Center).heightIn(min = 48.dp)) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Text("Video extern öffnen")
-                    }
+                    // Player is below the native side targets, with one independent
+                    // center control. It receives only validated local files.
+                    GalleryVideo(item, active = actionsEnabled && projectionAvailable && isCurrent(),
+                        modifier = Modifier.fillMaxSize().then(imageMotion),
+                        controlsModifier = Modifier.align(Alignment.Center),
+                        onTargets = {
+                            GalleryTargets(side, hit, gestureOwner, previous, next,
+                                { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
+                        })
                 }
                 else -> Box(Modifier.fillMaxSize().then(hit.photo), contentAlignment = Alignment.Center) {
                     Text("Keine Medien verfügbar")

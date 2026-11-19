@@ -11,6 +11,7 @@ jna = "5.19.1"
 junit = "4.13.2"
 androidxTestRunner = "1.7.0"
 coil = "3.6.3"
+libmpv = "1.0.0"
 kermit = "2.2.0"
 maplibre = "13.5.4"
 
@@ -31,6 +32,7 @@ androidx-compose-material3 = { module = "androidx.compose.material3:material3", 
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+libmpv = { module = "dev.jdtech.mpv:libmpv", version.ref = "libmpv" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-core = { module = "io.coil-kt.coil3:coil-network-core", version.ref = "coil" }
 kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }

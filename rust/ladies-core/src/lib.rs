@@ -150,7 +150,7 @@ pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
 pub use map::{MapOverview, MapProfile};
-pub use media::{DisplayImage, MediaArchiveReport};
+pub use media::{DisplayImage, DisplayVideo, MediaArchiveReport};
 pub use operation::RequestControl;
 pub use profile_detail::{
     EvidenceStatus, FilterEvidence, PersonDetail, PersonListing, ProfileFacts, ProfileField,
@@ -382,6 +382,16 @@ impl LadiesCore {
     ) -> Result<DisplayImage, CoreError> {
         self.diagnostics.timed("MEDIA", "display_image", || {
             media::display_image(self, &url, &control)
+        })
+    }
+
+    pub fn load_display_video(
+        &self,
+        url: String,
+        control: Arc<RequestControl>,
+    ) -> Result<DisplayVideo, CoreError> {
+        self.diagnostics.timed("MEDIA", "display_video", || {
+            media::display_video(self, &url, &control)
         })
     }
 

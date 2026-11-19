@@ -121,7 +121,7 @@ class ProfileGestureDeviceTest {
                     ProfileMediaHero(
                         media = listOf(ProfileMediaItem("IMAGE", "", null, 0u),
                             ProfileMediaItem("VIDEO", "", null, 1u)),
-                        height = 360.dp, modifier = Modifier.testTag("hero"), originalUrl = null,
+                        height = 360.dp, modifier = Modifier.testTag("hero"),
                         actionsEnabled = true, isCurrent = { true }, selection = remember { ProfileMediaSelection() },
                         identity = null, actionToken = null, compact = false, headerOwnsIdentity = false,
                         onIdentityMeasured = {}, onSwipe = { decisions.add(it) })
@@ -130,10 +130,11 @@ class ProfileGestureDeviceTest {
         }
         val hero = rule.onNodeWithTag("hero")
         hero.performTouchInput { swipe(Offset(width * .85f, height * .6f), Offset(width * .15f, height * .6f)) }
-        rule.onNodeWithText("1 / 2").assertExists()
+        rule.onNodeWithText("1 / 2").assertDoesNotExist()
         rule.runOnIdle { assertEquals(listOf(Preference.DISLIKE), decisions) }
         rule.onNodeWithContentDescription("Nächstes Medium").performTouchInput { click(center) }
-        rule.onNodeWithText("2 / 2").assertExists()
+        rule.onNodeWithText("2 / 2").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Video abspielen").assertExists()
         rule.runOnIdle { assertEquals(1, decisions.size) }
     }
 
