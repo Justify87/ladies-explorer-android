@@ -209,6 +209,14 @@ class CoreStore(context: Context) {
         engine.discoveryCards(favoritesOnly, 50u, cursor, excludedPeople)
     }
 
+    suspend fun savedStatusTargets(): List<Long> = withContext(Dispatchers.IO) {
+        engine.savedStatusTargets()
+    }
+
+    suspend fun checkSavedStatus(listingId: Long, control: RequestControl): String = withContext(Dispatchers.IO) {
+        recorded("checkSavedStatus listingId=$listingId") { engine.checkSavedStatus(listingId, control) }
+    }
+
     suspend fun savedPeople(
         kind: SavedPersonKind,
         sort: SavedPersonSort,

@@ -36,6 +36,14 @@ data class HomeUiState(
     val error: String? = null,
 )
 
+data class SavedStatusProgress(
+    val total: Int = 0,
+    val done: Int = 0,
+    val failed: Int = 0,
+    val running: Boolean = true,
+    val cancelled: Boolean = false,
+)
+
 data class DiscoverUiState(
     val cards: List<DiscoveryCard> = emptyList(),
     val savedKind: SavedPersonKind = SavedPersonKind.FAVORITE,
@@ -50,6 +58,7 @@ data class DiscoverUiState(
     val loadingMore: Boolean = false,
     val savedLoadingMore: Boolean = false,
     val savedRecentLoadingMore: Boolean = false,
+    val savedStatusProgress: SavedStatusProgress? = null,
     val loading: Boolean = true,
     val busy: Boolean = false,
     val error: String? = null,
@@ -128,6 +137,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val mapState: StateFlow<MapUiState> = _mapState
     private var mapEpoch = 0L
     private var mapControl: RequestControl? = null
+    private var savedStatusControl: RequestControl? = null
 
     private var archiveControl: RequestControl? = null
     private var searchControl: RequestControl? = null
@@ -171,6 +181,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        savedStatusControl?.cancel()
         cancelMapResolution()
         cancelPreview()
         invalidateActiveSearch()
@@ -927,6 +938,60 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = null) else it }
             throw failure
         }
+    }
+
+    fun checkAllSavedStatus() = checkSavedStatus(null)
+
+    fun checkSingleSavedStatus(listingId: Long) = checkSavedStatus(listingId)
+
+    fun cancelSavedStatus() {
+        val control = savedStatusControl ?: return
+        control.cancel()
+        _discoverState.update { state ->
+            state.copy(savedStatusProgress = state.savedStatusProgress?.copy(cancelled = true))
+        }
+    }
+
+    private fun checkSavedStatus(listingId: Long?) {
+        val state = _discoverState.value
+        if (state.busy || state.loading || _searchUiState.value.loading ||
+            _searchUiState.value.actionBusy || savedStatusControl != null) return
+        val control = RequestControl()
+        savedStatusControl = control
+        _discoverState.update { it.copy(savedStatusProgress = SavedStatusProgress()) }
+        mutateDiscovery("Statusprüfung fehlgeschlagen", write = {
+            try {
+                val targets = if (listingId == null) core.savedStatusTargets() else listOf(listingId)
+                _discoverState.update { current ->
+                    current.copy(savedStatusProgress = current.savedStatusProgress?.copy(total = targets.size))
+                }
+                for ((index, target) in targets.withIndex()) {
+                    if (_discoverState.value.savedStatusProgress?.cancelled == true) break
+                    var failed = false
+                    try {
+                        core.checkSavedStatus(target, control)
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        if (_discoverState.value.savedStatusProgress?.cancelled == true) break
+                        failed = true
+                    }
+                    _discoverState.update { current ->
+                        current.copy(savedStatusProgress = current.savedStatusProgress?.let {
+                            it.copy(done = it.done + 1, failed = it.failed + if (failed) 1 else 0)
+                        })
+                    }
+                    if (index < targets.lastIndex && _discoverState.value.savedStatusProgress?.cancelled != true) delay(350)
+                }
+            } finally {
+                savedStatusControl = null
+                _discoverState.update { current ->
+                    current.copy(savedStatusProgress = current.savedStatusProgress?.copy(running = false))
+                }
+            }
+        }, afterWrite = {
+            refreshMap()
+        })
     }
 
     fun choosePreference(personId: Long, preference: Preference) {

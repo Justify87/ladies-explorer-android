@@ -41,6 +41,9 @@ internal fun SavedPeopleScreen(
     onPreference: (Long, Preference) -> Unit,
     onLoadMore: () -> Unit,
     onLoadMoreRecent: () -> Unit,
+    onCheckAll: () -> Unit,
+    onCheckSingle: (Long) -> Unit,
+    onCancelCheck: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scrollMemory = rememberSaveableStateHolder()
@@ -76,8 +79,32 @@ internal fun SavedPeopleScreen(
             }
             TextButton(onClick = onRefresh, enabled = !state.busy) { Text("Laden") }
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onCheckAll, enabled = enabled) { Text("Alle Status prüfen") }
+            if (state.savedStatusProgress?.running == true) {
+                TextButton(onClick = onCancelCheck, enabled = !state.savedStatusProgress.cancelled) {
+                    Text(if (state.savedStatusProgress.cancelled) "Abbruch …" else "Abbrechen")
+                }
+            }
+        }
+        state.savedStatusProgress?.let { progress ->
+            if (progress.running) {
+                if (progress.total == 0) LinearProgressIndicator(Modifier.fillMaxWidth())
+                else LinearProgressIndicator(
+                    progress = { progress.done.toFloat() / progress.total },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Text("${progress.done}/${progress.total} geprüft · ${progress.failed} fehlgeschlagen" +
+                if (progress.cancelled) " · Abgebrochen" else "",
+                style = MaterialTheme.typography.bodySmall)
+        }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         val selection = "${state.savedKind.name}-${state.savedSort.name}"
+        if (page == null) {
+            if (state.loading) CircularProgressIndicator()
+            return@Column
+        }
         scrollMemory.SaveableStateProvider(selection) {
             val listState = rememberLazyListState()
             var expanded by rememberSaveable { mutableStateOf(false) }
@@ -99,7 +126,6 @@ internal fun SavedPeopleScreen(
                 contentPadding = PaddingValues(top = 6.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (state.loading && page == null) item { CircularProgressIndicator() }
                 if (!state.loading && page?.total == 0u) item {
                     Text("Noch nichts gespeichert.", modifier = Modifier.padding(16.dp))
                 }
@@ -108,7 +134,7 @@ internal fun SavedPeopleScreen(
                         Text("Neu & geändert", style = MaterialTheme.typography.titleMedium)
                     }
                     items(if (expanded) recent.rows else recent.rows.take(3), key = { "recent-${it.personId}" }) { row ->
-                        SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference, preferChangeTime = true)
+                        SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference, onCheckSingle, preferChangeTime = true)
                     }
                     if (recent.sectionTotal > 3u) item(key = "recent-toggle") {
                         TextButton(onClick = { expanded = !expanded }) {
@@ -126,7 +152,7 @@ internal fun SavedPeopleScreen(
                     }
                 }
                 items(page?.rows.orEmpty(), key = { "regular-${it.personId}" }) { row ->
-                    SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference)
+                    SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference, onCheckSingle)
                 }
                 if (state.savedLoadingMore) item { CircularProgressIndicator() }
                 else if (page?.nextCursor != null) item {
@@ -144,6 +170,7 @@ private fun SavedPersonCard(
     onProfile: (Long, Long) -> Unit,
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
+    onCheckSingle: (Long) -> Unit,
     preferChangeTime: Boolean = false,
 ) {
     val card = row.card
@@ -181,6 +208,9 @@ private fun SavedPersonCard(
                         else -> "Geändert"
                     }, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                     Text("Zuletzt: ${row.lastSeenAt.take(10)}", style = MaterialTheme.typography.labelSmall)
+                    row.statusCheckedAt?.let {
+                        Text("Geprüft: ${it.take(16).replace('T', ' ')} UTC", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
@@ -196,6 +226,10 @@ private fun SavedPersonCard(
                             Icon(Icons.Default.MoreVert, contentDescription = "Weitere Aktionen")
                         }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (card != null) DropdownMenuItem(
+                                text = { Text("Status prüfen") },
+                                onClick = { menu = false; onCheckSingle(card.listingId) },
+                            )
                             listOf(Preference.LIKE to "Like", Preference.DISLIKE to "Dislike",
                                 Preference.NONE to "Entscheidung entfernen").forEach { (target, title) ->
                                 DropdownMenuItem(text = { Text(title) }, enabled = row.preference != target,
