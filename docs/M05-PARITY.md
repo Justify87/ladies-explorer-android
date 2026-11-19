@@ -267,3 +267,18 @@ Codeanker auf `6db56f4cb6ae29ed1db9fa50004463b030ccfd32` (Reviewed G9-Korrekturs
 | X11 | Browser-Simulation | Native Shell und CI; [LadiesApp.kt](https://github.com/Justify87/ladies-explorer-android/blob/6db56f4cb6ae29ed1db9fa50004463b030ccfd32/app/src/main/java/de/justify87/ladiesexplorer/ui/LadiesApp.kt) / [android.yml](https://github.com/Justify87/ladies-explorer-android/blob/6db56f4cb6ae29ed1db9fa50004463b030ccfd32/.github/workflows/android.yml) |
 
 Keine neue ausgeschlossene Funktion im G9-Diff. Explizite Gelesen-Aktion statt automatischer Öffnungsbestätigung ist die dokumentierte G9-UX-Entscheidung (siehe Architektur); P37-Acknowledge bleibt verfügbar. G9 bleibt IN_PROGRESS bis technischem Gate, Abweichungsentscheidung und Gerätebelegen.
+
+
+## M05.10 – bestätigte Weiterentwicklung der nativen UX (Soll)
+
+P45–P51 ergänzen die bestehende funktionale Legacy-Matrix; sie sind explizit keine Ist-Behauptungen. Der neue UX-Vertrag in [M05-PLAN](M05-PLAN.md#m0510--unified-profile-experience-verbindliches-soll-19112026) hat für Layout/Gesten Vorrang, nicht für fachliche Regeln. Alte P-/X-IDs und Referenzanker bleiben stabil; T10-Tasks verfolgen die Umsetzung. Baseline PR #23/CI #393 siehe Aufgabenregister. Geräte- und Abweichungsfreigaben T9.2/T9.3 bleiben offen.
+
+| ID | Native Soll-Abweichung / funktionale Erhaltung | Vorgänger | Aufgaben / Abnahme |
+|---|---|---|---|
+| P45 | Ein gemeinsam scrollbareres Profil aus Swipe, Grid, Map, Suche, gespeichert; kein Swipe→Einzelprofil-Umweg. Standalone ohne Deck-Entscheidung | P19,P21,P27–P32 | T10.1,T10.5,T10.8: alle Einstiegspunkte, Back, Inline-Confirm |
+| P46 | Kompakte Shell, zusammengefasste Filter/Run/Modus/Deck-Menüs, Fehler und Teilstatus sichtbar; gleiche Optionen | P01–P05,P09,P20,P26 | T10.2,T10.6: Maß-/Erreichbarkeitsprüfung und Null zusätzlicher Runs |
+| P47 | Fotodominanter Hero: 65–72 % H, Ziel 70 %, Start ≤14 % H, 0–8 dp Seiten, Overlay/Story/Zähler, adaptive Ausnahmen gemäß Plan | P15–P17 | T10.3,T10.8: synthetische Layout-/Medienmatrix |
+| P48 | Tap-Galerie vs Horizontal-Entscheidung vs Vertical-Scroll eindeutig, genau ein Commit, keine Swipe-Entscheidung im Einzelprofil | P21,P22 | T10.4,T10.8: JVM-Sequenz + native Belege |
+| P49 | Eine Decision Rail, direkte Undo/Skip/Like/Dislike, getrennte Favoriten, bestehender Owner/Write/Projection-Vertrag | P18,P20–P23,P25 | T10.6,T10.7: Fehler-/Undo-/Replay-/Grid-Ketten |
+| P50 | Inline-Sektionen statt zwingendem Tab-Wechsel; vorhandene Info, Dienste, Analyse, Notiz, Historie, Vergleich, externe Kontakte, Archivsemantik | P16,P18,P27–P32 | T10.1,T10.5,T10.8: Notiz-/Merge-/Verlauf-/Offline-Szenarien |
+| P51 | Bestehende Native-Drain-, Saved-Search-Revision-, unabhängige Reprojektion, Prefetch-/Rust-HTTP-Grenzen bleiben zwingend; Präsentation getrennt | P03,P23,P37–P44 | T10.7–T10.9: Regression, Architektur-CI, reale Gerätebelege |
