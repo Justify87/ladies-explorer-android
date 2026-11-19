@@ -13,6 +13,7 @@ internal data class ProfileShellBudget(
     val rail: Float,
     val body: Float,
     val shortHeader: Boolean,
+    val narrowHeader: Boolean,
     val compactGallery: Boolean,
 ) {
     val railInMenu get() = rail == 0f
@@ -39,13 +40,13 @@ internal fun profileShellBudget(
     val header = preferredHeader.coerceAtMost(available)
     val minBody = minOf(96f, (available - header).coerceAtLeast(0f))
     var remainder = (available - header - minBody).coerceAtLeast(0f)
-    val rail = if (hasRail && remainder >= 48f && !short) 48f else 0f
+    val rail = if (hasRail && remainder >= 48f && !short && width >= 192f) 48f else 0f
     remainder -= rail
     val notice = if (hasNotice && remainder >= 48f && !short) 48f else 0f
     val body = (available - header - rail - notice).coerceAtLeast(0f)
     val compact = width < 320f || fontScale >= 1.5f ||
         profileHeroHeight(width, available + rootHeight, body) < 320f
-    return ProfileShellBudget(header, notice, rail, body, short, compact)
+    return ProfileShellBudget(header, notice, rail, body, short, width < 300f, compact)
 }
 
 /** In normal A the whole bottom identity overlay must remain visible. As soon as
@@ -110,13 +111,14 @@ internal data class HeroIdentity(
     val title get() = listOfNotNull(name.ifBlank { "Unbekannt" }, age?.takeIf { it.isNotBlank() }).joinToString(", ")
     val subtitle get() = listOfNotNull(place.ifBlank { "Ort unbekannt" }, status).joinToString(" · ")
     val compactSubtitle get() = listOfNotNull(status, place.ifBlank { "Ort unbekannt" }).joinToString(" · ")
+    val shortDecision get() = when (preference) {
+        Preference.LIKE -> "Gefällt"
+        Preference.DISLIKE -> "Nein"
+        Preference.NONE -> "Neutral"
+        null -> null
+    }
     val decisions get() = listOfNotNull(
-        when (preference) {
-            Preference.LIKE -> "Gefällt"
-            Preference.DISLIKE -> "Nein"
-            Preference.NONE -> "Neutral"
-            null -> null
-        },
+        shortDecision,
         favorite?.let { if (it) "Favorit" else "Kein Favorit" },
         "Video".takeIf { hasVideo },
     ).joinToString(" · ")

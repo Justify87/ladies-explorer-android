@@ -228,7 +228,7 @@ internal fun ProfileMediaHero(
                 ProfileImageSurface(item.url, item.localPath,
                     modifier.fillMaxWidth().height(maxOf(height, 160.dp)),
                     ContentScale.Crop, "Profilbild ${index + 1}", true) { feedback -> ImageFeedbackContent(feedback) }
-            } else Box(Modifier.fillMaxWidth().heightIn(min = maxOf(height, 96.dp))
+            } else Box(modifier.fillMaxWidth().heightIn(min = maxOf(height, 96.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { center() }
         }
     } else {
@@ -271,15 +271,9 @@ internal fun ProfileMediaHero(
         }
         val surface = Modifier.fillMaxWidth().height(height).clip(MaterialTheme.shapes.large)
         if (item?.kind == "IMAGE") {
-            ProfileImageSurface(surface.then(modifier), item, chrome)
-        } else Box(surface.background(MaterialTheme.colorScheme.surfaceVariant)) { chrome(null) }
-    }
-}
-
-@Composable
-private fun ProfileImageSurface(modifier: Modifier, item: ProfileMediaItem, chrome: @Composable (ImageFeedback?) -> Unit) {
-    ProfileImageSurface(item.url, item.localPath, modifier, ContentScale.Crop, "Profilbild", true) { feedback ->
-        chrome(feedback)
+            ProfileImageSurface(item.url, item.localPath, surface.then(modifier), ContentScale.Crop,
+                "Profilbild ${index + 1}", true) { feedback -> chrome(feedback) }
+        } else Box(surface.then(modifier).background(MaterialTheme.colorScheme.surfaceVariant)) { chrome(null) }
     }
 }
 

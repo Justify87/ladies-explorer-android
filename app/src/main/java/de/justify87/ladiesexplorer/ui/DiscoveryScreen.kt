@@ -156,7 +156,7 @@ internal fun DiscoverScreen(
     }
 
     val matchingRun = search.response?.searchRunId == state.activeRunId
-    key(state.activeRunId, state.swipeSessionId, card?.listingId, card?.personId) {
+    key(state.activeRunId, card?.listingId, card?.personId) {
         val listState = rememberLazyListState()
         var photoRequest by remember { mutableIntStateOf(0) }
         val profile = current
@@ -288,11 +288,12 @@ private fun SwipeShellHeader(
 ) {
     var opened by remember { mutableStateOf<SwipeMenuContext?>(null) }
     val latest by rememberUpdatedState(context)
+    DisposableEffect(Unit) { onDispose { opened = null } }
     val openContext = opened
     val expanded = swipeMenuCurrent(openContext, context)
     LaunchedEffect(context) { if (!swipeMenuCurrent(opened, context)) opened = null }
     fun dispatch(action: () -> Unit) {
-        if (!swipeMenuCurrent(openContext, latest)) return
+        if (opened != openContext || !swipeMenuCurrent(openContext, latest)) return
         opened = null
         action()
     }
@@ -302,13 +303,15 @@ private fun SwipeShellHeader(
     Row(Modifier.fillMaxSize().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         ProfileShellTitle(shown?.title ?: "Ladies Explorer",
             swipeContextShort(context.deck.runId != null, context.matchingRun, context.availability),
-            shown?.compactSubtitle ?: summary,
+            shown?.let { listOfNotNull(it.status, it.shortDecision, it.place).joinToString(" · ") } ?: summary,
             presentation.budget.shortHeader, Modifier.weight(1f),
             onClick = if (shown == null) null else ({ info = true }))
         if (compactNotice) ProfileStatusButton(onNotice)
-        if (presentation.photoShortcut) IconButton(onClick = onPhoto) {
-            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
-        } else IconButton(onClick = onSearch) { Icon(Icons.Default.Search, contentDescription = "Suche öffnen") }
+        if (!presentation.budget.narrowHeader) {
+            if (presentation.photoShortcut) IconButton(onClick = onPhoto) {
+                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
+            } else IconButton(onClick = onSearch) { Icon(Icons.Default.Search, contentDescription = "Suche öffnen") }
+        }
         Box {
             IconButton(onClick = { opened = context }) { Icon(Icons.Default.MoreVert, "Filter, Modus und Deckaktionen") }
             DropdownMenu(expanded = expanded, onDismissRequest = { opened = null }) {
@@ -321,6 +324,7 @@ private fun SwipeShellHeader(
                     Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.titleSmall)
                 Text(counts, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
                 if (compactNotice) DropdownMenuItem(text = { Text("Status und Hinweise") }, onClick = { dispatch(onNotice) })
+                if (presentation.photoShortcut && context.card != null) DropdownMenuItem(text = { Text("Zum Foto") }, onClick = { dispatch(onPhoto) })
                 if (presentation.budget.railInMenu && context.card != null) {
                     DropdownMenuItem(text = { Text("Undo") }, enabled = context.deckEnabled && context.canUndo, onClick = { dispatch(onUndo) })
                     DropdownMenuItem(text = { Text("Nein") }, enabled = context.profile != null, onClick = { dispatch { onChoose(Preference.DISLIKE) } })
@@ -329,7 +333,11 @@ private fun SwipeShellHeader(
                     HorizontalDivider()
                 }
                 DropdownMenuItem(text = { Text("Suche und Filter öffnen") }, onClick = { dispatch(onSearch) })
-                Text(if (executed) "Ausgeführte Verfügbarkeit" else "Verfügbarkeit (Suchentwurf)",
+                Text(when {
+                    !context.matchingRun -> "Suchlauf wird übernommen"
+                    executed -> "Ausgeführte Verfügbarkeit"
+                    else -> "Verfügbarkeit (Suchentwurf)"
+                },
                     Modifier.padding(12.dp), style = MaterialTheme.typography.labelMedium)
                 AvailabilityMode.entries.forEach { mode ->
                     DropdownMenuItem(text = { Text(if (context.availability == mode) "✓ ${mode.label}" else mode.label) },

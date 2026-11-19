@@ -65,7 +65,8 @@ internal fun ProfileShell(
         val scrolled by remember(listState) {
             derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
         }
-        val presentation = ProfileShellPresentation(budget, heroHeight, budget.compactGallery || handoff, scrolled)
+        val headerIdentity = budget.compactGallery || handoff
+        val presentation = ProfileShellPresentation(budget, heroHeight, headerIdentity, headerIdentity && scrolled)
         val signature = notices.map { listOf(it.label, it.message, it.action, it.enabled, it.warning) }
         var dialog by remember(noticeOwner, signature) { mutableStateOf(false) }
         val currentNotices by rememberUpdatedState(notices)
@@ -131,11 +132,18 @@ internal fun ProfileShellTitle(title: String, context: String, status: String, s
     modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val click = if (onClick == null) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick)
     Column(modifier.then(click).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
-        Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (!short) Text(context, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (!short && status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall, maxLines = 1,
-            overflow = TextOverflow.Ellipsis)
-        if (short) Text(context, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (short && LocalDensity.current.fontScale >= 1.5f) {
+            // One line at very large type in a short window; the complete identity
+            // and status remain accessible via the header's context action.
+            Text("$context · $title", style = MaterialTheme.typography.labelMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        } else {
+            Text(title, style = if (short) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(context, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (!short && status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 

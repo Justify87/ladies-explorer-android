@@ -118,13 +118,6 @@ internal fun ProfileFlow(
     val keys = rows.map { it.key }
     val available = model != null
     var appliedPhotoRequest by remember { mutableIntStateOf(photoRequest) }
-    LaunchedEffect(photoRequest, keys) {
-        if (appliedPhotoRequest != photoRequest && keys.isNotEmpty()) {
-            appliedPhotoRequest = photoRequest
-            scroll.returnToHero(keys.first())
-            state.scrollToItem(0)
-        }
-    }
     // Restoring an anchor is itself demand. Avoid restoring an offset into a
     // temporarily short loading row or treating a not-yet-loaded listing as absent.
     val recovering = scroll.recovering
@@ -136,7 +129,15 @@ internal fun ProfileFlow(
     }
     val waitingForAnchor = scroll.needsFacts() && panels.facts == null && panels.factsError == null ||
         scroll.needsDetail() && panels.detail == null && panels.detailError == null
-    LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor) {
+    // One scroll-command coroutine owns both explicit photo jumps and anchor
+    // recovery. A new jump cancels the previous recovery before it can scroll.
+    LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor, photoRequest) {
+        if (appliedPhotoRequest != photoRequest && keys.isNotEmpty()) {
+            snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
+            scroll.returnToHero(keys.first())
+            state.scrollToItem(0)
+            appliedPhotoRequest = photoRequest
+        }
         if (!available || waitingForAnchor) return@LaunchedEffect
         // Wait for the current manifest to be measured, never resolve against the gap's rows.
         snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
