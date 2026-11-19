@@ -683,7 +683,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         retryProjection = outcome.projectionFailure != null
                     }
                     is DiscoveryMutationOutcome.ProjectionFailed -> {
-                        message = "Änderung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
+                        // A feed read owns its own error/recovery. Only an independent
+                        // detail failure belongs to the mutation-level message.
+                        if (outcome.detailFailed) message = "Änderung gespeichert; Profil konnte nicht vollständig aktualisiert werden."
                         retryProjection = outcome.feedFailed
                     }
                     DiscoveryMutationOutcome.Success -> Unit
@@ -1015,7 +1017,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 profileUpdated = true
                 projectionUpdated = projectDiscovery(epoch)
-                check(projectionUpdated) { "Ansicht konnte nicht vollständig aktualisiert werden." }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Exception) {

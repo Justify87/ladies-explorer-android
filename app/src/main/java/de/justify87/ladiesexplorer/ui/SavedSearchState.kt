@@ -259,7 +259,7 @@ internal class SavedSearchController(
         }
     }
 
-    fun acknowledge(id: String) {
+    fun acknowledge(id: String, displayedRevision: Long) {
         val info = state.value.searches.firstOrNull { it.searchId == id && it.unreadNewResults } ?: return
         val s = state.value
         if (s.busy || !canOperate() || !visible) return
@@ -267,8 +267,12 @@ internal class SavedSearchController(
         // Explicit user intent is the linearization point for presentation.
         // The native revision CAS still prevents acknowledging a newer baseline.
         val revision = if (s.result != null) s.result.revision ?: return else info.revision
+        if (displayedRevision != revision) {
+            mutable.update { it.copy(actionError = "Ergebnisse haben sich geändert. Bitte erneut als gelesen markieren.") }
+            return
+        }
         operation(SavedOperation.Write) {
-            val accepted = store.acknowledge(id, revision)
+            val accepted = store.acknowledge(id, displayedRevision)
             reload(committed = accepted)
             if (!accepted) {
                 markResultDirty()

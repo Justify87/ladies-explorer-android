@@ -45,7 +45,7 @@ internal suspend fun readDiscoveryWindow(
 internal sealed interface DiscoveryMutationOutcome {
     data object Success : DiscoveryMutationOutcome
     data class WriteFailed(val failure: Exception, val projectionFailure: Exception?) : DiscoveryMutationOutcome
-    data class ProjectionFailed(val feedFailed: Boolean) : DiscoveryMutationOutcome
+    data class ProjectionFailed(val feedFailed: Boolean, val detailFailed: Boolean = !feedFailed) : DiscoveryMutationOutcome
 }
 
 /** A write is never retried by recovery. A failed conditional write can also mean stale
@@ -64,7 +64,7 @@ internal suspend fun writeAndProject(
     val detailFailure = failureOf(afterWrite)
     val feedFailure = failureOf(project)
     return if (detailFailure == null && feedFailure == null) DiscoveryMutationOutcome.Success
-    else DiscoveryMutationOutcome.ProjectionFailed(feedFailed = feedFailure != null)
+    else DiscoveryMutationOutcome.ProjectionFailed(feedFailed = feedFailure != null, detailFailed = detailFailure != null)
 }
 
 private suspend fun failureOf(action: suspend () -> Unit): Exception? = try {

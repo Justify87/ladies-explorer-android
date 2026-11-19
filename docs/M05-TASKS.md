@@ -272,3 +272,5 @@ G9-F01 Folgeprüfung: Auch normale Source-Suchen können nach SQLite-Commit durc
 Der vor dem Review geprüfte Head d1e22971 wurde durch [Full-CI #387](https://github.com/Justify87/ladies-explorer-android/actions/runs/44509899258) vollständig grün. Die Korrekturen sind neu und benötigen Full-CI ihres eigenen Heads. T9.1 IN_PROGRESS, T9.2 DEVICE_PENDING; G9 nicht geschlossen.
 
 Vertikale Folgeprüfung H01: HomeUiState leitet loading/importing aus dem Operationstyp ab; Root-/Back-Navigation während Import gesperrt (nicht bei normalem Statusrefresh). Zusätzliche Regressionen: `suspendedNativeSearchRetainsAdmissionUntilDrainAndDiscardsLateReply`, `failedPrimaryReadStillPublishesIndependentSavedPeopleProjection`.
+
+Weitere vertikale Prüfung H02/H03/M01: Compose übergibt die gerenderte Revision an den Controller, der abweichende Callback-Revisionen vor I/O verwirft (Test mit altem Callback nach sichtbarer neuer Baseline). Mutations-Recovery unterscheidet Detail- und Feed-Readfehler; reine Feedfehler können durch erfolgreichen Read vollständig verschwinden, echte Detail-/Writefehler bleiben. Identity-Merge behandelt Feedfehler ebenfalls unabhängig.

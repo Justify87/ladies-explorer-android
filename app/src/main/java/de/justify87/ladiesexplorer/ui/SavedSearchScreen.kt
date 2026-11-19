@@ -98,7 +98,7 @@ internal fun SavedSearchOverview(
                         TextButton(onClick = { controller.openEditor(saved.searchId) }, enabled = actions && saved.definitionSupported) { Text("Ändern") }
                         TextButton(onClick = { controller.showDialog(SavedDialogKind.Rename, saved.searchId) }, enabled = actions) { Text("Umbenennen") }
                         TextButton(onClick = { controller.showDialog(SavedDialogKind.Delete, saved.searchId) }, enabled = actions) { Text("Löschen") }
-                        if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(saved.searchId) }, enabled = actions) { Text("Gelesen") }
+                        if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(saved.searchId, saved.revision) }, enabled = actions) { Text("Gelesen") }
                     }
                 }
             }
@@ -112,7 +112,7 @@ internal fun SavedSearchResultsScreen(
     enabled: Boolean,
     onMore: () -> Unit,
     onRetry: () -> Unit,
-    onAcknowledge: (String) -> Unit,
+    onAcknowledge: (String, Long) -> Unit,
     onOpen: (Long, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -150,7 +150,7 @@ internal fun SavedSearchResultsScreen(
                 Text("${result.cards.size} geladen · aktuelle lokale Profildaten", style = MaterialTheme.typography.bodySmall)
                 info?.lastError?.let { Text("Letzte Prüfung fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error) }
                 TextButton(onClick = onRetry, enabled = enabled && !state.busy) { Text("Aktualisieren") }
-                if (info?.unreadNewResults == true) TextButton(onClick = { onAcknowledge(result.id) },
+                if (info?.unreadNewResults == true && result.revision != null) TextButton(onClick = { onAcknowledge(result.id, result.revision) },
                     enabled = enabled && !state.busy) { Text("Als gelesen markieren") }
             }
         }

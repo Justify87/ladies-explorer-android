@@ -174,6 +174,9 @@ class SearchRunStateTest {
         assertEquals(DiscoveryMutationOutcome.ProjectionFailed(false), writeAndProject(
             write = {}, afterWrite = { error("detail read failed") }, project = {},
         ))
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true, true), writeAndProject(
+            write = {}, afterWrite = { error("detail read failed") }, project = { error("feed read failed") },
+        ))
     }
 
     @Test fun paginationDoesNotFireBeforeLayoutOrUntilNearEnd() {

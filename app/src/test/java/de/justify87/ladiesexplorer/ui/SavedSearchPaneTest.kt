@@ -143,7 +143,7 @@ class SavedSearchPaneTest {
         assertEquals(listOf(100u, 100u, 200u, 300u, 300u), fake.windows)
         assertTrue(c.state.value.result!!.ready)
         assertEquals(0, fake.acknowledgements)
-        c.acknowledge("one"); idle(c)
+        c.acknowledge("one", 1L); idle(c)
         assertEquals(1, fake.acknowledgements)
     }
 
@@ -186,7 +186,7 @@ class SavedSearchPaneTest {
         fake.onRead = {}
         c.retryResults(); idle(c)
         assertEquals(0, fake.acknowledgements)
-        c.acknowledge("one"); idle(c)
+        c.acknowledge("one", 1L); idle(c)
         assertEquals(1, fake.acknowledgements)
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
@@ -247,7 +247,7 @@ class SavedSearchPaneTest {
         val c = controller(this, fake)
         c.open(); idle(c)
         c.openResults("one"); idle(c)
-        c.acknowledge("one"); idle(c)
+        c.acknowledge("one", 1L); idle(c)
         assertEquals(1, fake.acknowledgements)
         assertTrue(c.state.value.searches.single().unreadNewResults)
         assertNotNull(c.state.value.error)
@@ -282,7 +282,7 @@ class SavedSearchPaneTest {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         fake.onAck = { started.complete(Unit); finish.await() }
-        c.acknowledge("one")
+        c.acknowledge("one", 1L)
         started.await()
         c.setVisible(false)
         fake.list = listOf(info(unread = true, revision = 2L))
@@ -291,11 +291,13 @@ class SavedSearchPaneTest {
         assertTrue(c.state.value.searches.single().unreadNewResults)
         assertNotNull(c.state.value.actionError)
         assertTrue(c.state.value.resultDirty)
-        c.acknowledge("one")
+        c.acknowledge("one", 1L)
         assertEquals(1, fake.acknowledgements)
         c.setVisible(true); idle(c)
         assertEquals(2L, c.state.value.result!!.revision)
-        c.acknowledge("one"); idle(c)
+        c.acknowledge("one", 1L) // stale rendered callback must not clear the new revision
+        assertEquals(1, fake.acknowledgements)
+        c.acknowledge("one", 2L); idle(c)
         assertEquals(2, fake.acknowledgements)
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
