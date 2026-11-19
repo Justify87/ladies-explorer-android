@@ -25,8 +25,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 @Composable
-fun DiscoverScreen(
+internal fun DiscoverScreen(
     state: DiscoverUiState,
+    tabs: ProfileTabMemory,
     searchLoading: Boolean = false,
     executedFiltersJson: String = "{}",
     onRefresh: () -> Unit,
@@ -52,7 +53,9 @@ fun DiscoverScreen(
     val current = card?.let { decks[it.listingId] }
     val owner = current?.identity?.personId ?: card?.personId
     val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson)
-    val (tab, selectTab) = rememberProfileTab(owner)
+    val tab = tabs.selected(owner)
+    val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
+    ComparisonDialog(panels)
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
     val control = remember(state.activeRunId, card?.listingId, retry, visible) { RequestControl() }

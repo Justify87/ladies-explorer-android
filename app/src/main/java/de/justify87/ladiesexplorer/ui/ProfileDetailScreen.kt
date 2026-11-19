@@ -11,8 +11,9 @@ import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
 
 @Composable
-fun ProfileDetailScreen(
+internal fun ProfileDetailScreen(
     state: SearchUiState,
+    tabs: ProfileTabMemory,
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
     onConfirmIdentity: (Long,Long) -> Unit,
@@ -25,7 +26,9 @@ fun ProfileDetailScreen(
     val owner = state.profileIdentity?.personId
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
     val panels = rememberProfilePanels(profile, owner, filters)
-    val (tab, selectTab) = rememberProfileTab(owner)
+    val tab = tabs.selected(owner)
+    val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
+    ComparisonDialog(panels)
     val detailListState = rememberLazyListState()
     var confirmTarget by remember(profile?.listingId) { mutableStateOf<Long?>(null) }
 

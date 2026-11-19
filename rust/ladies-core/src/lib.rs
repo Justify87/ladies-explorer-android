@@ -148,7 +148,10 @@ pub use identity::IdentityCandidate;
 pub use map::{MapOverview, MapProfile};
 pub use media::{DisplayImage, MediaArchiveReport};
 pub use operation::RequestControl;
-pub use profile_detail::{FilterEvidence, ProfileFacts, ProfileField, PersonDetail, PersonListing, SnapshotDifference, EvidenceStatus};
+pub use profile_detail::{
+    EvidenceStatus, FilterEvidence, PersonDetail, PersonListing, ProfileFacts, ProfileField,
+    SnapshotDifference,
+};
 pub use saved_search::{
     LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchInfo,
     SavedSearchResultPage,
@@ -401,7 +404,11 @@ impl LadiesCore {
         history::list(self, person_id, limit)
     }
 
-    pub fn profile_facts(&self, snapshot_id: i64, filters_json: String) -> Result<ProfileFacts, CoreError> {
+    pub fn profile_facts(
+        &self,
+        snapshot_id: i64,
+        filters_json: String,
+    ) -> Result<ProfileFacts, CoreError> {
         profile_detail::facts(self, snapshot_id, &filters_json)
     }
 
@@ -409,11 +416,22 @@ impl LadiesCore {
         profile_detail::person_detail(self, person_id)
     }
 
-    pub fn save_person_note(&self, listing_id: i64, person_id: i64, expected: Option<String>, note: Option<String>) -> Result<(), CoreError> {
+    pub fn save_person_note(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+        expected: Option<String>,
+        note: Option<String>,
+    ) -> Result<(), CoreError> {
         profile_detail::save_note(self, listing_id, person_id, expected, note)
     }
 
-    pub fn compare_snapshots(&self, person_id: i64, from_id: i64, to_id: i64) -> Result<Vec<SnapshotDifference>, CoreError> {
+    pub fn compare_snapshots(
+        &self,
+        person_id: i64,
+        from_id: i64,
+        to_id: i64,
+    ) -> Result<Vec<SnapshotDifference>, CoreError> {
         history::compare(self, person_id, from_id, to_id)
     }
 

@@ -210,14 +210,20 @@ pub(crate) fn compare(
         |r| r.get(0),
     )?;
     if !allowed {
-        return Err(CoreError::IdentityConflict("Snapshots missing or not owned by this person/listing".into()));
+        return Err(CoreError::IdentityConflict(
+            "Snapshots missing or not owned by this person/listing".into(),
+        ));
     }
     let mut differences = Vec::new();
     for (key, column) in TRACKED {
         let before = as_json(field(&db, from_id, column)?, key.ends_with("_json"))?;
         let after = as_json(field(&db, to_id, column)?, key.ends_with("_json"))?;
         if before != after {
-            differences.push(crate::SnapshotDifference { field: (*key).into(), before, after });
+            differences.push(crate::SnapshotDifference {
+                field: (*key).into(),
+                before,
+                after,
+            });
         }
     }
     let before = media(&db, from_id)?;

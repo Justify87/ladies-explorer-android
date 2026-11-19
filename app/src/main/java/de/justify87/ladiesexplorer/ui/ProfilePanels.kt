@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -24,19 +25,27 @@ internal enum class ProfileTab(val label: String) {
     Info("Info"), Services("Dienste"), Analysis("Analyse"), Notes("Notizen"), History("Verlauf")
 }
 
-/** Persist selection per canonical person and route, not across unrelated people. */
-@Composable
-internal fun rememberProfileTab(personId: Long?): Pair<ProfileTab, (ProfileTab) -> Unit> {
-    var selections by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
-    val prefix = "$personId:"
-    val selected = selections.firstOrNull { it.startsWith(prefix) }?.substringAfter(':')
-    val tab = ProfileTab.entries.firstOrNull { it.name == selected } ?: ProfileTab.Info
-    return tab to { next ->
-        if (personId != null) selections = ArrayList(
-            selections.filterNot { it.startsWith(prefix) }.takeLast(99) + "$personId:${next.name}"
-        )
+/** App-owned route-specific memory survives closing a detail session. */
+@Stable
+internal class ProfileTabMemory(initial: List<String> = emptyList()) {
+    var entries by mutableStateOf(initial)
+        private set
+
+    fun selected(personId: Long?): ProfileTab {
+        val selected = entries.firstOrNull { it.startsWith("$personId:") }?.substringAfter(':')
+        return ProfileTab.entries.firstOrNull { it.name == selected } ?: ProfileTab.Info
+    }
+
+    fun select(personId: Long?, tab: ProfileTab) {
+        if (personId != null) entries =
+            entries.filterNot { it.startsWith("$personId:") }.takeLast(99) + "$personId:${tab.name}"
     }
 }
+
+@Composable
+internal fun rememberProfileTabMemory(): ProfileTabMemory = rememberSaveable(
+    saver = listSaver(save = { it.entries }, restore = { ProfileTabMemory(it) })
+) { ProfileTabMemory() }
 
 internal class ProfilePanels(
     private val core: CoreStore,
@@ -56,6 +65,9 @@ internal class ProfilePanels(
         private set
     var saving by mutableStateOf(false)
         private set
+    var noteDraft by mutableStateOf<String?>(null)
+    private var expectedNote: String? = null
+    var showDescriptionChanges by mutableStateOf(false)
     var comparison by mutableStateOf<List<SnapshotDifference>?>(null)
         private set
     var comparisonError by mutableStateOf<String?>(null)
@@ -71,6 +83,8 @@ internal class ProfilePanels(
             facts = null
             detail = null
             noteError = null
+            noteDraft = null
+            expectedNote = null
             revision++
         }
     }
@@ -84,12 +98,21 @@ internal class ProfilePanels(
         } catch (cancel: CancellationException) { throw cancel }
         catch (failure: Exception) { factsError = failure.message ?: "Profilfelder nicht verfügbar" }
         try {
-            detail = core.personDetail(personId)
+            val loaded = core.personDetail(personId)
+            detail = loaded
+            if (noteDraft == null) {
+                expectedNote = loaded.privateNote
+                noteDraft = loaded.privateNote.orEmpty()
+            }
         } catch (cancel: CancellationException) { throw cancel }
         catch (failure: Exception) { detailError = failure.message ?: "Personendaten nicht verfügbar" }
     }
 
-    fun saveNote(expected: String?, text: String) {
+    fun noteDirty(): Boolean = noteDraft != null && noteDraft != expectedNote.orEmpty()
+
+    fun saveNote() {
+        val text = noteDraft ?: return
+        val expected = expectedNote
         val owner = personId ?: return
         val listing = listingId ?: return
         if (saving || detail == null) return
@@ -100,6 +123,8 @@ internal class ProfilePanels(
                 val note = text.takeUnless { it.isBlank() }
                 core.savePersonNote(listing, owner, expected, note)
                 detail = detail?.copy(privateNote = note)
+                expectedNote = note
+                noteDraft = note.orEmpty()
             } catch (cancel: CancellationException) { throw cancel }
             catch (failure: Exception) { noteError = failure.message ?: "Notiz konnte nicht gespeichert werden" }
             finally { saving = false }
@@ -136,7 +161,7 @@ internal class ProfilePanels(
 @Composable
 internal fun rememberProfilePanels(profile: ProfileResponse?, personId: Long?, filters: String): ProfilePanels {
     val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
-    // Owner/snapshot keyed child scope: late results can only update the old holder.
+    // Owner/snapshot keyed holder: late results cannot update a new person's UI.
     val scope = rememberCoroutineScope()
     val panels = remember(core, scope, profile?.listingId, profile?.snapshotId, personId) {
         ProfilePanels(core, scope, profile?.listingId, personId)
@@ -193,12 +218,16 @@ private fun List<ProfileField>.rows() = map { it.label to it.values.joinToString
 @Composable
 private fun DescriptionCard(profile: ProfileResponse) {
     var expanded by rememberSaveable(profile.snapshotId) { mutableStateOf(false) }
+    var overflow by remember(profile.snapshotId) { mutableStateOf(false) }
     val text = profile.description.ifBlank { "Keine Beschreibung gespeichert." }
     PanelCard("Über das Profil") {
         SelectionContainer {
-            Text(text, maxLines = if (expanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis)
+            Text(text, maxLines = if (expanded) Int.MAX_VALUE else 6,
+                overflow = TextOverflow.Ellipsis, onTextLayout = {
+                    if (!expanded) overflow = it.hasVisualOverflow
+                })
         }
-        if (text.length > 180 || text.count { it == '\n' } >= 6) {
+        if (expanded || overflow) {
             TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Weniger" else "Mehr anzeigen") }
         }
     }
@@ -213,16 +242,14 @@ private fun NotesPanel(panels: ProfilePanels, owner: Long?, busy: Boolean) {
             else Text(panels.detailError ?: "Person nicht verfügbar.")
             TextButton(onClick = panels::reload, enabled = !busy) { Text("Neu laden") }
         } else {
-            val saved = detail.privateNote
-            var draft by rememberSaveable(owner, saved) { mutableStateOf(saved.orEmpty()) }
-            OutlinedTextField(draft, { draft = it }, modifier = Modifier.fillMaxWidth(),
+            OutlinedTextField(panels.noteDraft.orEmpty(), { panels.noteDraft = it }, modifier = Modifier.fillMaxWidth(),
                 label = { Text("Notiz") }, minLines = 4, enabled = !busy && !panels.saving)
             Text("Lokal gespeichert, unabhängig von einzelnen Anzeigen.", style = MaterialTheme.typography.bodySmall)
             panels.noteError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { panels.saveNote(saved, draft) },
-                    enabled = !busy && !panels.saving && draft != saved.orEmpty()) { Text("Speichern") }
-                TextButton(onClick = { draft = saved.orEmpty(); panels.reload() },
+                Button(onClick = panels::saveNote,
+                    enabled = !busy && !panels.saving && panels.noteDirty()) { Text("Speichern") }
+                TextButton(onClick = panels::reload,
                     enabled = !busy && !panels.saving) { Text("Verwerfen / neu laden") }
             }
             if (panels.saving) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -231,7 +258,7 @@ private fun NotesPanel(panels: ProfilePanels, owner: Long?, busy: Boolean) {
 }
 
 @Composable
-private fun ComparisonDialog(panels: ProfilePanels) {
+internal fun ComparisonDialog(panels: ProfilePanels) {
     if (!panels.comparing && panels.comparison == null && panels.comparisonError == null) return
     AlertDialog(
         onDismissRequest = panels::closeComparison,
@@ -257,6 +284,7 @@ private fun ComparisonDialog(panels: ProfilePanels) {
 }
 
 /** Both routes use the same lazy tab content and local typed projections. */
+@OptIn(ExperimentalMaterial3Api::class)
 internal fun LazyListScope.profileContent(
     profile: ProfileResponse,
     identity: ProfileIdentity?,
@@ -340,12 +368,18 @@ internal fun LazyListScope.profileContent(
         }
         ProfileTab.Notes -> item(key = "profile-notes") { NotesPanel(panels, identity?.personId, actionsBusy) }
         ProfileTab.History -> {
+            val visibleEvents = if (panels.showDescriptionChanges) history
+                else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }
             item(key = "profile-history-head") {
                 Text("Profilverlauf", style = MaterialTheme.typography.titleMedium)
-                if (history.isEmpty()) Text("Keine Änderungen gespeichert.")
-                ComparisonDialog(panels)
+                Text("Bis zu 100 zuletzt gespeicherte Änderungen.", style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(panels.showDescriptionChanges, { panels.showDescriptionChanges = it })
+                    Text("Beschreibungstexte im Verlauf anzeigen")
+                }
+                if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
             }
-            items(history, key = { "event/${it.changeEventId}" }) { event ->
+            items(visibleEvents, key = { "event/${it.changeEventId}" }) { event ->
                 PanelCard(event.fieldKey ?: event.eventType) {
                     Text(event.createdAt, style = MaterialTheme.typography.bodySmall)
                     event.oldJson?.let { SelectionContainer { Text("Vorher: $it") } }
