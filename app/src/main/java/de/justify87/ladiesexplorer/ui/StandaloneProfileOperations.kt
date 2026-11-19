@@ -164,26 +164,43 @@ internal class StandaloneProfileOperations<C : Any>(
                 check(archiveCall == null)
                 archiveCall = call
                 try {
-                    val report = withContext(NonCancellable) {
-                        io.archiveProfileMedia(profile.snapshotId, call.control)
+                    // Archive persistence is incremental. A failed call can have
+                    // committed media, so outcome and local projection are independent.
+                    var archiveWarning: String? = null
+                    val report = try {
+                        withContext(NonCancellable) {
+                            io.archiveProfileMedia(profile.snapshotId, call.control)
+                        }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (failure: Exception) {
+                        archiveWarning = failure.message ?: "Medienarchivierung fehlgeschlagen"
+                        null
                     }
                     coroutineContext.ensureActive()
                     if (profileGeneration.isCurrent(requestId)) {
-                        val updated = project(listingId)
-                        if (profileGeneration.isCurrent(requestId)) {
-                            _searchUiState.update {
-                                it.withProjection(updated).copy(
-                                    mediaArchive = report.takeIf { updated.profile.snapshotId == profile.snapshotId },
-                                )
+                        try {
+                            val updated = project(listingId)
+                            if (profileGeneration.isCurrent(requestId)) {
+                                _searchUiState.update {
+                                    it.withProjection(updated).copy(
+                                        mediaArchive = report?.takeIf { updated.profile.snapshotId == profile.snapshotId },
+                                        mediaWarning = archiveWarning,
+                                    )
+                                }
                             }
-                        }
-                    }
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (failure: Exception) {
-                    if (profileGeneration.isCurrent(requestId)) {
-                        _searchUiState.update {
-                            it.copy(mediaWarning=failure.message ?: "Medienarchivierung fehlgeschlagen")
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Exception) {
+                            if (profileGeneration.isCurrent(requestId)) {
+                                _searchUiState.update {
+                                    // Revoke stale actions and retry the projection, not the archive.
+                                    it.invalidateMergedProfile(listingId).copy(
+                                        mediaWarning = archiveWarning,
+                                        error = "Profilansicht konnte nicht aktualisiert werden.",
+                                    )
+                                }
+                            }
                         }
                     }
                 } finally {

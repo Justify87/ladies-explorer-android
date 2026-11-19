@@ -24,6 +24,7 @@ class StandaloneProfileOperationsTest {
         var source: suspend (Long) -> ProfileResponse = { error("offline") }
         var cached: ProfileResponse? = fixtureProfile()
         var identityError: Exception? = null
+        var archivedMedia: List<ProfileMediaItem>? = null
         var commit: suspend (Long, Long) -> Unit = { _, target -> owner = target }
         var archive: suspend (Long, Control) -> MediaArchiveReport = { snapshot, _ ->
             MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u)
@@ -40,7 +41,7 @@ class StandaloneProfileOperationsTest {
                     identityError?.let { e -> throw e }
                     cached?.let { profile ->
                         NativeProfileProjection(profile, fixtureIdentity(owner), fixturePerson(owner),
-                            fixtureSwipe(snapshot = profile.snapshotId).media, emptyList(),
+                            archivedMedia ?: fixtureSwipe(snapshot = profile.snapshotId).media, emptyList(),
                             listOf(IdentityCandidate(2L, "CANDIDATE", false, true, 0u, 0u, null)))
                     }
                 },
@@ -285,6 +286,52 @@ class StandaloneProfileOperationsTest {
         assertEquals(2, f.profileChanges)
         assertNull(f.search.value.mediaArchive)
         assertFalse(f.search.value.profileOpen)
+    }
+
+    @Test fun partialArchiveFailureStillReprojectsCommittedMediaAndRevokesOldToken() = runBlocking {
+        val f = Fixture(this)
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        f.source = { fixtureProfile() }
+        f.archive = { _, _ ->
+            started.complete(Unit)
+            release.await()
+            f.archivedMedia = listOf(ProfileMediaItem("IMAGE", "https://example.invalid/changed.jpg", "/fixture/partial.jpg", 0u))
+            error("partial archive failure")
+        }
+        f.operations.loadProfile(4L, 1L) {}
+        started.await()
+        val old = requireNotNull(f.search.value.detailIdentityToken())
+        release.complete(Unit)
+        f.idle()
+        assertEquals("/fixture/partial.jpg", f.search.value.profileRead?.media?.single()?.localPath)
+        assertEquals("partial archive failure", f.search.value.mediaWarning)
+        assertNotEquals(old, f.search.value.detailIdentityToken())
+        assertFalse(f.search.value.archiving)
+        assertNull(f.search.value.mediaArchive)
+        assertEquals(1, f.calls.count { it.startsWith("archive:") })
+    }
+
+    @Test fun failedPostArchiveProjectionRevokesActionsAndRetryReadsOnlyLocalState() = runBlocking {
+        val f = Fixture(this)
+        f.source = { fixtureProfile() }
+        f.archive = { snapshot, _ ->
+            f.identityError = IllegalStateException("projection unavailable")
+            MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u)
+        }
+        f.operations.loadProfile(4L, 1L) {}
+        f.idle()
+        assertNull(f.search.value.detailIdentityToken())
+        assertNull(f.search.value.profileRead)
+        assertEquals(4L, f.search.value.retryProfileListingId)
+        assertFalse(f.search.value.archiving)
+        f.identityError = null
+        f.calls.clear()
+        f.operations.retryProfileProjection()
+        f.idle()
+        assertNotNull(f.search.value.detailIdentityToken())
+        assertNull(f.search.value.retryProfileListingId)
+        assertEquals(listOf("profile:4", "discovery"), f.calls)
     }
 
     @Test fun mergeWaitsForCancelledArchiveToActuallyDrainBeforeWrite() = runBlocking {
