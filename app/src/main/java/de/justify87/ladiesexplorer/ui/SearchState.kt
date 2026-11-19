@@ -65,7 +65,8 @@ internal class RequestGeneration {
 }
 
 internal fun SearchUiState.beginRun(): SearchUiState = copy(
-    loading = true, searchCancelling = false, error = null, profile = null, profileOpen = false,
+    loading = true, searchCancelling = false, error = null, profileRead = null, profileOpen = false,
+    profileRetryFromArchive = false, retryProfileListingId = null,
 )
 
 internal fun SearchUiState.endRun(errorMessage: String? = null): SearchUiState =
@@ -162,6 +163,9 @@ internal sealed interface ProfileIdentityToken {
     val listingId: Long
     val ownerId: Long
     val snapshotId: Long
+    val projectionRevision: Long
+    val preference: de.justify87.ladiesexplorer.core.Preference
+    val favorite: Boolean
     val candidates: List<de.justify87.ladiesexplorer.core.IdentityCandidate>
 }
 
@@ -171,14 +175,17 @@ internal data class DetailIdentityToken(
     override val listingId: Long,
     override val ownerId: Long,
     override val snapshotId: Long,
+    override val projectionRevision: Long,
+    override val preference: de.justify87.ladiesexplorer.core.Preference,
+    override val favorite: Boolean,
     override val candidates: List<de.justify87.ladiesexplorer.core.IdentityCandidate>,
 ) : ProfileIdentityToken
 
 internal fun SearchUiState.detailIdentityToken(): DetailIdentityToken? {
     if (!profileOpen || loading) return null
-    val current = profile ?: return null
-    val owner = profileIdentity?.personId ?: return null
-    return DetailIdentityToken(profileSessionId, current.listingId, owner, current.snapshotId, identityCandidates)
+    val current = profileRead ?: return null
+    return DetailIdentityToken(profileSessionId, current.profile.listingId, current.identity.personId,
+        current.profile.snapshotId, current.revision, current.person.preference, current.person.favorite, current.candidates)
 }
 
 internal fun SearchUiState.currentIdentityConfirmationOwner(
@@ -193,7 +200,6 @@ internal fun SearchUiState.currentIdentityConfirmationOwner(
 
 /** A committed merge invalidates every rendered profile capability before local recovery. */
 internal fun SearchUiState.invalidateMergedProfile(listingId: Long): SearchUiState = copy(
-    profile = null, profileIdentity = null, selectedPersonId = null, selectedPerson = null,
-    profileMedia = emptyList(), identityCandidates = emptyList(), changeEvents = emptyList(),
+    profileRead = null, profileRetryFromArchive = profileFromArchive,
     mediaArchive = null, mediaWarning = null, retryProfileListingId = listingId,
 )

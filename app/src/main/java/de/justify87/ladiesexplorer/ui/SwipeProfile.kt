@@ -8,17 +8,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
-internal data class SwipeProfile(
-    val profile: ProfileResponse,
-    val identity: ProfileIdentity,
-    val person: PersonSummary?,
-    val media: List<ProfileMediaItem>,
-    val history: List<ChangeRecord>,
-    val candidates: List<IdentityCandidate>,
-    val fromArchive: Boolean,
-    val warning: String? = null,
-)
-
 /** A committed or cached profile exists; recovery must not repeat the source request. */
 internal class LocalProfileReadFailure(cause: Exception) : IllegalStateException(cause.message, cause)
 
@@ -36,7 +25,7 @@ internal suspend fun CoreStore.readSwipeProfile(
     refresh: Boolean,
     allowNetwork: Boolean = true,
     onSourceRead: () -> Unit = {},
-): SwipeProfile = readSwipeProfile(
+): ProfileReadModel = readSwipeProfile(
     listingId, refresh, allowNetwork, onSourceRead,
     SwipeProfileReads(::cachedProfile, { loadSwipeProfile(it, control) }, ::profileProjection),
 )
@@ -47,7 +36,7 @@ internal suspend fun readSwipeProfile(
     allowNetwork: Boolean,
     onSourceRead: () -> Unit,
     reads: SwipeProfileReads,
-): SwipeProfile {
+): ProfileReadModel {
     var cached = reads.cached(listingId)
     var fromArchive = cached != null
     var warning: String? = null
@@ -76,12 +65,11 @@ internal suspend fun readSwipeProfile(
     } catch (failure: Exception) {
         throw LocalProfileReadFailure(failure)
     }
-    return SwipeProfile(local.profile, local.identity, local.person,
-        local.media, local.history, local.candidates, fromArchive, warning)
+    return ProfileReadModel(local, fromArchive, warning)
 }
 
 /** Only first two images; Coil shares the app's cache/HTTP diagnostics and suspending cancellation. */
-internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: SwipeProfile?) {
+internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?) {
     val models = profile?.media.orEmpty().filter { it.kind == "IMAGE" }
         .mapNotNull { mediaModels(it.localPath, it.url).firstOrNull() }.take(2)
         .ifEmpty { mediaModels(card.localPath, card.thumbnailUrl).take(1) }
@@ -94,14 +82,14 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
 
 /** Bounded composition-owned cache. Every in-flight read owns a per-entry ticket.
  * Prune/reset/owner replacement makes a late delivery ineligible even without cancellation. */
-internal class SwipeProfileWindow(private val entries: MutableMap<Long, SwipeProfile>) {
+internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileReadModel>) {
     private data class Slot(val owner: Long, val ticket: Long)
     private val slots = mutableMapOf<Long, Slot>()
     private var nextTicket = 0L
 
-    operator fun get(card: DiscoveryCard): SwipeProfile? = entries[card.listingId]?.takeIf {
+    operator fun get(card: DiscoveryCard): ProfileReadModel? = entries[card.listingId]?.takeIf {
         it.profile.listingId == card.listingId && it.identity.personId == card.personId &&
-            it.person?.personId == card.personId
+            it.person.personId == card.personId
     }
 
     fun remove(listingId: Long) {
@@ -125,7 +113,7 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, SwipePro
         }
     }
 
-    private suspend fun obtain(card: DiscoveryCard, read: suspend () -> SwipeProfile): SwipeProfile? {
+    private suspend fun obtain(card: DiscoveryCard, read: suspend () -> ProfileReadModel): ProfileReadModel? {
         val slot = slots[card.listingId]?.takeIf { it.owner == card.personId } ?: return null
         val ticket = slot.copy(ticket = ++nextTicket)
         slots[card.listingId] = ticket
@@ -133,14 +121,15 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, SwipePro
         currentCoroutineContext().ensureActive()
         if (slots[card.listingId] != ticket) return null
         check(profile.profile.listingId == card.listingId && profile.identity.personId == card.personId &&
-            profile.person?.personId == card.personId) { "Personenzuordnung geändert; Deck bitte aktualisieren." }
-        entries[card.listingId] = profile
-        return profile
+            profile.person.personId == card.personId) { "Personenzuordnung geändert; Deck bitte aktualisieren." }
+        val published = profile.copy(revision = ticket.ticket)
+        entries[card.listingId] = published
+        return published
     }
 
-    suspend fun readCurrent(card: DiscoveryCard, read: suspend () -> SwipeProfile): SwipeProfile? =
+    suspend fun readCurrent(card: DiscoveryCard, read: suspend () -> ProfileReadModel): ProfileReadModel? =
         obtain(card, read)
 
-    suspend fun prefetch(card: DiscoveryCard, read: suspend () -> SwipeProfile): SwipeProfile? =
+    suspend fun prefetch(card: DiscoveryCard, read: suspend () -> ProfileReadModel): ProfileReadModel? =
         get(card) ?: obtain(card, read)
 }

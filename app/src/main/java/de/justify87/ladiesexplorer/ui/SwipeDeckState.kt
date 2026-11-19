@@ -81,17 +81,19 @@ internal data class SwipeActionToken(
     override val listingId: Long,
     override val ownerId: Long,
     override val snapshotId: Long,
-    val preference: Preference,
+    override val projectionRevision: Long,
+    override val preference: Preference,
+    override val favorite: Boolean,
     override val candidates: List<de.justify87.ladiesexplorer.core.IdentityCandidate>,
 ) : ProfileIdentityToken
 
-internal fun DiscoverUiState.swipeToken(profile: SwipeProfile?): SwipeActionToken? {
+internal fun DiscoverUiState.swipeToken(profile: ProfileReadModel?): SwipeActionToken? {
     val card = cards.firstOrNull() ?: return null
     val local = profile ?: return null
     if (local.profile.listingId != card.listingId || local.identity.personId != card.personId ||
-        local.person?.personId != card.personId) return null
+        local.person.personId != card.personId) return null
     return SwipeActionToken(activeRunId, swipeSessionId, card.listingId, card.personId,
-        local.profile.snapshotId, card.preference, local.candidates)
+        local.profile.snapshotId, local.revision, card.preference, card.favorite, local.candidates)
 }
 
 internal fun currentSwipeActionCard(
@@ -102,6 +104,7 @@ internal fun currentSwipeActionCard(
     if (state.busy || state.loading || searchLoading || token.runId != state.activeRunId ||
         token.session != state.swipeSessionId) return null
     return state.cards.firstOrNull()?.takeIf {
-        it.listingId == token.listingId && it.personId == token.ownerId && it.preference == token.preference
+        it.listingId == token.listingId && it.personId == token.ownerId &&
+            it.preference == token.preference && it.favorite == token.favorite
     }
 }

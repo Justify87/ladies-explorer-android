@@ -345,7 +345,7 @@ class StandaloneProfileOperationsTest {
         val f = Fixture(this)
         val candidate = IdentityCandidate(2L, "CANDIDATE", false, true, 0u, 0u, null)
         f.discovery.value = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
-        val token = requireNotNull(f.discovery.value.swipeToken(fixtureSwipe().copy(candidates = listOf(candidate))))
+        val token = requireNotNull(f.discovery.value.swipeToken(fixtureSwipe().let { it.copy(local = it.local.copy(candidates = listOf(candidate))) }))
         f.renderedSwipe = token
         f.oldNotes()
         f.notes.value = f.notes.value.updateNote(2L) { it.copy(draft = it.draft!!.edit("unsaved")) }

@@ -9,7 +9,7 @@ import org.junit.Test
 
 class SwipeProfileWindowTest {
     @Test fun actualWindowPrunesAndReusesCurrentAndTwoFollowingProfiles() = runBlocking {
-        val entries = mutableMapOf<Long, SwipeProfile>()
+        val entries = mutableMapOf<Long, ProfileReadModel>()
         val cache = SwipeProfileWindow(entries)
         val cards = (1L..250L).map { fixtureCard(it) }
         val window = listOf(cards.first()) + prefetchCards(cards)

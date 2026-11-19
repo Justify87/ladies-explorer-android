@@ -76,7 +76,7 @@ class SwipeProfileReadTest {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         f.beforeProjection = { started.complete(Unit); finish.await() }
-        var projected: SwipeProfile? = null
+        var projected: ProfileReadModel? = null
         val job = launch {
             projected = readSwipeProfile(4L, false, false, {}, f.reads)
         }

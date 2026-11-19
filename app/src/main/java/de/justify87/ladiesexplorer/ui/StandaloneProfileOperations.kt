@@ -50,6 +50,7 @@ internal class StandaloneProfileOperations<C : Any>(
     private val projections: ProfileProjectionCallbacks,
 ) {
     private val profileGeneration = RequestGeneration()
+    private var projectionRevision = 0L
     private class ArchiveCall<C>(val control: C) {
         val drained = CompletableDeferred<Unit>()
         var cancelled = false
@@ -65,11 +66,14 @@ internal class StandaloneProfileOperations<C : Any>(
     private suspend fun project(listingId: Long): NativeProfileProjection =
         checkNotNull(io.profileProjection(listingId)) { "Profil nicht mehr verfügbar" }
 
-    private fun SearchUiState.withProjection(local: NativeProfileProjection) = copy(
-        profile = local.profile, profileIdentity = local.identity,
-        selectedPersonId = local.identity.personId, selectedPerson = local.person,
-        profileMedia = local.media, changeEvents = local.history, identityCandidates = local.candidates,
+    private fun SearchUiState.withProjection(
+        local: NativeProfileProjection,
+        fromArchive: Boolean = profileFromArchive,
+        warning: String? = profileRead?.warning ?: mediaWarning,
+    ) = copy(
+        profileRead = ProfileReadModel(local, fromArchive, warning, ++projectionRevision),
         retryProfileListingId = null,
+        profileRetryFromArchive = false,
     )
 
     fun invalidateProfileRequest() {
@@ -85,10 +89,9 @@ internal class StandaloneProfileOperations<C : Any>(
     fun closeProfile() {
         invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(profileOpen = false, profile = null, profileIdentity = null, profileFromArchive = false, selectedPersonId = null,
-                selectedPerson = null, profileMedia = emptyList(), loading = false,
-                archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
-                actionBusy = false, actionError = null, error = null, retryProfileListingId = null)
+            it.copy(profileOpen = false, profileRead = null, profileRetryFromArchive = false,
+                loading = false, archiving = false, actionBusy = false, actionError = null,
+                error = null, retryProfileListingId = null, mediaArchive = null, mediaWarning = null)
         }
     }
 
@@ -97,9 +100,8 @@ internal class StandaloneProfileOperations<C : Any>(
         beforeOpen()
         val requestId = profileGeneration.value
         _searchUiState.update {
-            it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
-                loading=true,profile=null,profileIdentity=null,profileFromArchive=false,profileMedia=emptyList(),changeEvents=emptyList(),
-                identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
+            it.copy(profileOpen=true,profileSessionId=requestId,loading=true,
+                profileRead=null,profileRetryFromArchive=false,error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false,retryProfileListingId=null)
         }
         scope.launch {
@@ -130,7 +132,7 @@ internal class StandaloneProfileOperations<C : Any>(
                 val local = project(listingId)
                 if (!profileGeneration.isCurrent(requestId)) return@launch
                 _searchUiState.update {
-                    it.withProjection(local).copy(loading=false,profileFromArchive=showingArchive,
+                    it.withProjection(local, showingArchive, refreshError).copy(loading=false,
                         mediaWarning=refreshError,archiving=!showingArchive)
                 }
                 if (showingArchive) return@launch
@@ -180,10 +182,31 @@ internal class StandaloneProfileOperations<C : Any>(
                     _searchUiState.update {
                         it.copy(loading=false,archiving=false,error=failure.message ?: "Profil konnte nicht geladen werden",
                             retryProfileListingId = listingId.takeIf { localReadReady },
-                            profileFromArchive = showingArchive, mediaWarning = refreshError)
+                            profileRetryFromArchive = showingArchive, mediaWarning = refreshError)
                     }
                 }
             }
+        }
+    }
+
+    /** Independent preference/favorite changes must refresh the same coherent detail record. */
+    suspend fun refreshLocalProfileForOwner(personId: Long) {
+        val active = _searchUiState.value
+        val listingId = active.profile?.listingId ?: return
+        if (!active.profileOpen || active.selectedPersonId != personId) return
+        val requestId = profileGeneration.value
+        try {
+            val local = project(listingId)
+            if (profileGeneration.isCurrent(requestId)) {
+                _searchUiState.update { it.withProjection(local) }
+            }
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (failure: Exception) {
+            if (profileGeneration.isCurrent(requestId)) {
+                _searchUiState.update { it.invalidateMergedProfile(listingId) }
+            }
+            throw failure
         }
     }
 

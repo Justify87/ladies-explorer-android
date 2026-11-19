@@ -110,14 +110,8 @@ data class SearchUiState(
     val response: SearchResponse? = null,
     val profileOpen: Boolean = false,
     val profileSessionId: Long = 0L,
-    val profile: ProfileResponse? = null,
-    val profileIdentity: ProfileIdentity? = null,
-    val profileFromArchive: Boolean = false,
-    val selectedPersonId: Long? = null,
-    val selectedPerson: PersonSummary? = null,
-    val profileMedia: List<ProfileMediaItem> = emptyList(),
-    val changeEvents: List<ChangeRecord> = emptyList(),
-    val identityCandidates: List<IdentityCandidate> = emptyList(),
+    val profileRead: ProfileReadModel? = null,
+    val profileRetryFromArchive: Boolean = false,
     val actionBusy: Boolean = false,
     val actionError: String? = null,
     val retryProfileListingId: Long? = null,
@@ -125,7 +119,16 @@ data class SearchUiState(
     val archiving: Boolean = false,
     val mediaWarning: String? = null,
     val error: String? = null,
-)
+) {
+    val profile get() = profileRead?.profile
+    val profileIdentity get() = profileRead?.identity
+    val profileFromArchive get() = profileRead?.fromArchive ?: profileRetryFromArchive
+    val selectedPersonId get() = profileRead?.identity?.personId
+    val selectedPerson get() = profileRead?.person
+    val profileMedia get() = profileRead?.media.orEmpty()
+    val changeEvents get() = profileRead?.history.orEmpty()
+    val identityCandidates get() = profileRead?.candidates.orEmpty()
+}
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val core = (app as LadiesApplication).coreStore
@@ -710,18 +713,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
-    private suspend fun refreshSelectedPerson(personId: Long) {
-        try {
-            val person = core.person(personId)
-            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = person) else it }
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (failure: Exception) {
-            // Do not leave stale actionable detail state after a committed write.
-            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = null) else it }
-            throw failure
-        }
-    }
+    private suspend fun refreshSelectedPerson(personId: Long) =
+        profileOperations.refreshLocalProfileForOwner(personId)
 
     fun checkAllSavedStatus() = checkSavedStatus(null)
 
