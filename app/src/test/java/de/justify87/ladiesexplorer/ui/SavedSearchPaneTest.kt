@@ -14,6 +14,7 @@ class SavedSearchPaneTest {
 
     private class Fake(private val item: SavedSearchInfo) : SavedSearchAccess {
         var list = listOf(item)
+        var cards = emptyList<SavedSearchCard>()
         var loaded = SearchDraft(city = "Dresden", selectedFilters = mapOf("zeiten" to setOf("jetzt geöffnet")))
         var writeError = false
         var windowError = false
@@ -33,9 +34,11 @@ class SavedSearchPaneTest {
         override suspend fun load(id: String) = loaded
         override suspend fun window(id: String, limit: UInt): SavedSearchWindow {
             windows += limit
+            // Capture the DB snapshot before delaying delivery to the UI.
+            val snapshot = SavedSearchWindow(cards, limit < 400u, list)
             onRead()
             if (windowError) error("window failed")
-            return SavedSearchWindow(emptyList(), limit < 400u, list)
+            return snapshot
         }
         override suspend fun create(name: String, draft: SearchDraft) { write() }
         override suspend fun update(id: String, name: String, draft: SearchDraft) { write(); loaded = draft }
@@ -174,30 +177,40 @@ class SavedSearchPaneTest {
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
 
+    private fun fixtureCard() = SavedSearchCard("synthetic", 1L, 2L, "Fixture", "Leipzig",
+        null, "2026-01-01T00:00:00Z", null, null)
+
     @Test fun lateNativeWriteQueuesCoherentResultRefreshWithoutAcknowledging() = runBlocking {
-        val fake = Fake(info())
+        val initial = fixtureCard()
+        val updated = initial.copy(personId = 3L, localPath = "/fixture/image.jpg")
+        val fake = Fake(info()).apply { cards = listOf(initial) }
         val c = controller(this, fake)
         c.open(); settle()
         c.openResults("one"); settle()
         val gate = CompletableDeferred<Unit>()
         fake.onRead = { gate.await() }
         c.more(); settle()
+        assertEquals(listOf(initial), c.state.value.result!!.cards)
+        fake.cards = listOf(updated)
         fake.list = listOf(info(unread = true, revision = 2L))
         c.refreshResultProjection()
         assertEquals(SavedOperation.Results, c.state.value.operation)
         gate.complete(Unit); settle()
         assertEquals(listOf(100u, 200u, 200u), fake.windows)
+        assertEquals(listOf(updated), c.state.value.result!!.cards)
         assertTrue(c.state.value.result!!.ready)
         assertTrue(c.state.value.searches.single().unreadNewResults)
         assertEquals(0, fake.acknowledgements)
     }
 
     @Test fun failedReprojectionInvalidatesActionsAndRetryRetainsWindowCapacity() = runBlocking {
-        val fake = Fake(info())
+        val card = fixtureCard()
+        val fake = Fake(info()).apply { cards = listOf(card) }
         val c = controller(this, fake)
         c.open(); settle()
         c.openResults("one"); settle()
         c.more(); settle()
+        assertEquals(listOf(card), c.state.value.result!!.cards)
         fake.windowError = true
         c.refreshResultProjection(); settle()
         val failed = c.state.value.result!!
@@ -208,6 +221,7 @@ class SavedSearchPaneTest {
         fake.windowError = false
         c.retryResults(); settle()
         assertTrue(c.state.value.result!!.ready)
+        assertEquals(listOf(card), c.state.value.result!!.cards)
         assertNull(c.state.value.error)
         assertEquals(listOf(100u, 200u, 200u, 200u), fake.windows)
     }
