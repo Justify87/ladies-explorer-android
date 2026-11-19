@@ -173,10 +173,14 @@ const PERSON_CARDS: &str = "
         FROM listings
     ), projected AS (
         SELECT l.listing_id,p.person_id,
-               COALESCE(NULLIF(s.name,''),NULLIF(r.name,''),NULLIF(p.display_name,''),
+               COALESCE(NULLIF(s.name,''),NULLIF(r.name,''),
                    (SELECT sr.name FROM search_results sr JOIN listings owner
                     ON owner.listing_id=sr.listing_id WHERE owner.person_id=p.person_id AND sr.name<>''
                     ORDER BY julianday(sr.observed_at) DESC,sr.search_result_id DESC LIMIT 1),
+                   NULLIF(p.display_name,''),
+                   (SELECT ps.name FROM listing_snapshots ps JOIN listings owner
+                    ON owner.listing_id=ps.listing_id WHERE owner.person_id=p.person_id AND ps.name<>''
+                    ORDER BY julianday(ps.captured_at) DESC,ps.snapshot_id DESC LIMIT 1),
                    'Person #' || p.person_id) AS name,
                COALESCE(NULLIF(s.city,''),NULLIF(r.city,''),
                    (SELECT ps.city FROM listing_snapshots ps JOIN listings owner
@@ -209,12 +213,14 @@ const PERSON_CARDS: &str = "
             (SELECT m.snapshot_media_id FROM snapshot_media m
              WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
              ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id LIMIT 1),
+            CASE WHEN NULLIF(r.thumbnail_url,'') IS NULL THEN
             (SELECT m.snapshot_media_id FROM snapshot_media m
              JOIN listing_snapshots ps ON ps.snapshot_id=m.snapshot_id
              JOIN listings owner ON owner.listing_id=ps.listing_id
              WHERE owner.person_id=p.person_id AND m.kind='IMAGE'
              ORDER BY julianday(ps.captured_at) DESC,ps.snapshot_id DESC,
                CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id LIMIT 1)
+            END
         )
         LEFT JOIN media_assets asset ON asset.media_asset_id=image.media_asset_id
     )";
@@ -1066,6 +1072,116 @@ mod tests {
                 .iter()
                 .all(|row| ids[5..].contains(&row.person_id))
         );
+    }
+
+    #[test]
+    fn saved_person_preserves_known_metadata_when_new_listing_is_sparse() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let old = core
+            .add_listing(person, None, "LADIES".into(), "old".into(), None)
+            .unwrap();
+        let new = core
+            .add_listing(person, None, "LADIES".into(), "new".into(), None)
+            .unwrap();
+        core.set_favorite(person, true).unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listings SET last_seen_at='2026-01-01T00:00:00Z' WHERE listing_id=?1",
+                [old],
+            )
+            .unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots(listing_id,fingerprint,name,city)
+                 VALUES (?1,'fixture','Änne','Leipzig')",
+                [old],
+            )
+            .unwrap();
+            let snapshot = db.last_insert_rowid();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![snapshot, old],
+            )
+            .unwrap();
+            db.execute(
+                "INSERT INTO snapshot_media(snapshot_id,position,kind,role,remote_url)
+                 VALUES (?1,1,'IMAGE','PRIMARY','https://bilder1.ladies-cdn.de/fixture.jpg')",
+                [snapshot],
+            )
+            .unwrap();
+        }
+        let window = core
+            .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Name, 50, 50)
+            .unwrap();
+        let row = &window.regular.rows[0];
+        let card = row.card.as_ref().unwrap();
+        assert_eq!(card.listing_id, new);
+        assert_eq!(row.listing_count, 2);
+        assert_eq!(row.name, "Änne");
+        assert_eq!(card.city, "Leipzig");
+        assert_eq!(
+            card.thumbnail_url.as_deref(),
+            Some("https://bilder1.ladies-cdn.de/fixture.jpg")
+        );
+    }
+
+    #[test]
+    fn saved_window_reconciles_changed_membership_and_rejects_old_cursor() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let a = core.create_person(Some("Änne".into())).unwrap();
+        let b = core.create_person(Some("anne".into())).unwrap();
+        let c = core.create_person(Some("Éva".into())).unwrap();
+        let d = core.create_person(Some("Zoe".into())).unwrap();
+        for id in [a, b, c, d] {
+            core.set_favorite(id, true).unwrap();
+        }
+        let window = core
+            .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Name, 50, 50)
+            .unwrap();
+        assert_eq!(
+            window.regular.rows.iter().map(|r| r.person_id).collect::<Vec<_>>(),
+            vec![a, b, c, d]
+        );
+        let first = core
+            .saved_people(
+                SavedPersonKind::Favorite, SavedPersonSort::Name, SavedPersonSection::All,
+                1, None, None,
+            )
+            .unwrap();
+        let cursor = first.next_cursor.unwrap();
+        let initial = core
+            .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Date, 1, 1)
+            .unwrap();
+        assert_eq!(initial.regular.section_total, 4);
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO change_events(person_id,event_type) VALUES (?1,'PROFILE_CREATED')",
+                [a],
+            )
+            .unwrap();
+        }
+        core.set_favorite(b, false).unwrap();
+        assert!(
+            core.saved_people(
+                SavedPersonKind::Favorite, SavedPersonSort::Name, SavedPersonSection::All,
+                1, Some(cursor), None,
+            )
+            .is_err()
+        );
+        let fresh = core
+            .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Date, 50, 50)
+            .unwrap();
+        let recent = fresh.recent.unwrap();
+        assert_eq!(fresh.regular.total, 3);
+        assert_eq!(recent.as_of, fresh.regular.as_of);
+        assert_eq!(recent.section_total, 1);
+        assert_eq!(recent.rows[0].person_id, a);
+        assert_eq!(fresh.regular.section_total, 2);
+        let mut regular = fresh.regular.rows.iter().map(|r| r.person_id).collect::<Vec<_>>();
+        regular.sort_unstable();
+        assert_eq!(regular, vec![c, d]);
     }
 
     #[test]

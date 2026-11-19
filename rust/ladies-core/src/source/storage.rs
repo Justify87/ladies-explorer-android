@@ -789,6 +789,69 @@ mod tests {
         assert_eq!(count, 2);
     }
 
+    #[test]
+    fn status_only_checks_do_not_reorder_and_detail_evidence_is_consistent() {
+        let core = core();
+        let found = save_cards(&core, vec![card("101", "Fixture")]);
+        let listing = found.profiles[0].listing_id;
+        let person = found.profiles[0].person_id;
+        let older = core
+            .add_listing(
+                person, None, "LADIES".into(), "102".into(),
+                Some("https://www.ladies.de/sex-anzeigen/huren-hostessen/102".into()),
+            )
+            .unwrap();
+        core.set_favorite(person, true).unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listings SET last_seen_at='2026-01-01T00:00:00Z' WHERE listing_id=?1",
+                [older],
+            )
+            .unwrap();
+        }
+        let control = RequestControl::default();
+        for _ in 0..2 {
+            for id in saved_status_targets(&core).unwrap() {
+                let target = listing_target(&core, id, true).unwrap();
+                save_status(&core, &target, "ACTIVE", 200, true, Some(&control)).unwrap();
+            }
+            let page = core
+                .saved_people_window(crate::SavedPersonKind::Favorite, crate::SavedPersonSort::Name, 50, 50)
+                .unwrap();
+            assert_eq!(page.regular.rows[0].card.as_ref().unwrap().listing_id, listing);
+        }
+        let stale = listing_target(&core, listing, false).unwrap();
+        save_status(&core, &stale, "UNAVAILABLE", 404, false, None).unwrap();
+        assert!(save_observed_profile(&core, &stale, profile("Fixture"), true, None).is_err());
+        let target = listing_target(&core, listing, false).unwrap();
+        save_observed_profile(&core, &target, profile("Fixture"), false, None).unwrap();
+        {
+            let db = core.connection().unwrap();
+            let state: String = db.query_row(
+                "SELECT current_status FROM listings WHERE listing_id=?1",
+                [listing], |r| r.get(0),
+            ).unwrap();
+            assert_eq!(state, "UNAVAILABLE");
+        }
+        let target = listing_target(&core, listing, false).unwrap();
+        save_observed_profile(&core, &target, profile("Fixture"), true, None).unwrap();
+        {
+            let db = core.connection().unwrap();
+            let state: (String, Option<String>, Option<String>) = db.query_row(
+                "SELECT current_status,status_checked_at,ended_at FROM listings WHERE listing_id=?1",
+                [listing], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+            ).unwrap();
+            assert_eq!(state.0, "ACTIVE");
+            assert!(state.1.is_some() && state.2.is_none());
+            let count: i64 = db.query_row(
+                "SELECT COUNT(*) FROM change_events WHERE listing_id=?1 AND event_type='STATUS_CHANGED'",
+                [listing], |r| r.get(0),
+            ).unwrap();
+            assert_eq!(count, 2);
+        }
+    }
+
     fn profile(name: &str) -> Profile {
         Profile {
             advert_id: "101".into(),
