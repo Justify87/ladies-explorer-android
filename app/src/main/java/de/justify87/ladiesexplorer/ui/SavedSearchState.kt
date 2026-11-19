@@ -40,6 +40,8 @@ internal data class SavedSearchUiState(
 }
 
 // Testable IO seam; CoreStore remains the only Kotlin bridge to Rust.
+internal class SavedCheck(val run: suspend () -> Unit, val cancel: () -> Unit)
+
 internal interface SavedSearchAccess {
     suspend fun list(): List<SavedSearchInfo>
     suspend fun load(id: String): SearchDraft
@@ -49,7 +51,7 @@ internal interface SavedSearchAccess {
     suspend fun rename(id: String, name: String)
     suspend fun delete(id: String)
     suspend fun acknowledge(id: String, revision: Long): Boolean
-    suspend fun check(id: String, control: RequestControl)
+    fun prepareCheck(id: String): SavedCheck
 }
 
 internal class SavedSearchStore(private val core: CoreStore) : SavedSearchAccess {
@@ -64,7 +66,10 @@ internal class SavedSearchStore(private val core: CoreStore) : SavedSearchAccess
     override suspend fun rename(id: String, name: String) { core.renameSavedSearch(id, name) }
     override suspend fun delete(id: String) { core.deleteSavedSearch(id) }
     override suspend fun acknowledge(id: String, revision: Long) = core.acknowledgeSavedSearch(id, revision)
-    override suspend fun check(id: String, control: RequestControl) { core.runSavedSearch(id, control) }
+    override fun prepareCheck(id: String): SavedCheck {
+        val control = RequestControl()
+        return SavedCheck({ core.runSavedSearch(id, control) }, control::cancel)
+    }
 }
 
 /** One main-thread operation owner for saved definitions, reads, acknowledgement and checks.
@@ -81,11 +86,11 @@ internal class SavedSearchController(
     private var refreshPending = false
     private var readTicket = 0L
     private var session = 0L
-    private var control: RequestControl? = null
+    private var control: SavedCheck? = null
     private val limits = mutableMapOf<String, UInt>()
 
     private fun operation(kind: SavedOperation, clearError: Boolean = true, work: suspend () -> Unit) {
-        check(!state.value.busy)
+        kotlin.check(!state.value.busy)
         mutable.update { it.copy(operation = kind, error = if (clearError) null else it.error) }
         scope.launch {
             try {
@@ -285,11 +290,11 @@ internal class SavedSearchController(
     fun check(id: String) {
         val s = state.value
         if (s.busy || !canOperate() || s.searches.none { it.searchId == id && it.definitionSupported }) return
-        val request = RequestControl()
+        val request = store.prepareCheck(id)
         control = request
         operation(SavedOperation.Check) {
             try {
-                store.check(id, request)
+                request.run()
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
@@ -307,7 +312,7 @@ internal class SavedSearchController(
     fun cancelCheck() {
         if (state.value.operation != SavedOperation.Check) return
         mutable.update { it.copy(operation = SavedOperation.Cancelling) }
-        control?.cancel()
+        control?.cancel?.invoke()
     }
 
     fun resetAfterImport() {

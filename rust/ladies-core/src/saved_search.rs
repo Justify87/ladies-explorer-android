@@ -250,34 +250,38 @@ fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreErro
         ));
     }
     let local = local_visibility(definition)?;
-    let number = |camel: &str, snake: &str, default: u32| {
-        legacy
-            .get(camel)
-            .or_else(|| legacy.get(snake))
-            .and_then(|value| {
-                value
-                    .as_u64()
-                    .and_then(|n| u32::try_from(n).ok())
-                    .or_else(|| value.as_str()?.parse().ok())
-            })
-            .unwrap_or(default)
+    let number = |camel: &str, snake: &str, default: u32| -> Result<u32, CoreError> {
+        let parse = |value: &serde_json::Value| {
+            value.as_u64().and_then(|n| u32::try_from(n).ok())
+                .or_else(|| value.as_str()?.parse().ok())
+                .ok_or_else(|| CoreError::InvalidInput(format!("Invalid legacy field: {camel}")))
+        };
+        match (legacy.get(camel), legacy.get(snake)) {
+            (Some(a), Some(b)) => {
+                let a = parse(a)?;
+                if a != parse(b)? {
+                    return Err(CoreError::InvalidInput(format!("Conflicting legacy field: {camel}")));
+                }
+                Ok(a)
+            }
+            (Some(v), None) | (None, Some(v)) => parse(v),
+            (None, None) => Ok(default),
+        }
+    };
+    let string = |key: &str| -> Result<String, CoreError> {
+        match legacy.get(key) {
+            Some(v) => v.as_str().map(str::to_owned).ok_or_else(|| CoreError::InvalidInput(format!("Invalid legacy field: {key}"))),
+            None => Ok(String::new()),
+        }
     };
     let request = SearchRequest {
-        city: legacy
-            .get("city")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_owned(),
-        radius_km: number("radius", "radius_km", 20),
-        category: legacy
-            .get("category")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_owned(),
-        age_min: number("ageMin", "age_min", 18),
-        age_max: number("ageMax", "age_max", 60),
-        height_min: number("heightMin", "height_min", 140),
-        height_max: number("heightMax", "height_max", 200),
+        city: string("city")?,
+        radius_km: number("radius", "radius_km", 20)?,
+        category: string("category")?,
+        age_min: number("ageMin", "age_min", 18)?,
+        age_max: number("ageMax", "age_max", 60)?,
+        height_min: number("heightMin", "height_min", 140)?,
+        height_max: number("heightMax", "height_max", 200)?,
         filters_json: legacy
             .get("selected")
             .filter(|v| v.is_object())
@@ -466,10 +470,14 @@ fn results_using(
          FROM saved_search_results r
          LEFT JOIN listings l ON l.source='LADIES' AND l.external_listing_id=r.result_key
          LEFT JOIN listing_snapshots s ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
-         LEFT JOIN snapshot_media image ON image.snapshot_media_id=(
-             SELECT m.snapshot_media_id FROM snapshot_media m
-             WHERE m.snapshot_id=s.snapshot_id AND m.kind='IMAGE'
-             ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id LIMIT 1)
+         LEFT JOIN snapshot_media image ON image.snapshot_media_id=COALESCE(
+             (SELECT m.snapshot_media_id FROM snapshot_media m
+              WHERE m.snapshot_id=s.snapshot_id AND m.kind='IMAGE'
+              ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id LIMIT 1),
+             (SELECT m.snapshot_media_id FROM snapshot_media m JOIN listing_snapshots old ON old.snapshot_id=m.snapshot_id
+              WHERE old.listing_id=l.listing_id AND m.kind='IMAGE'
+                AND m.remote_url=CASE WHEN json_valid(r.snapshot_json) THEN json_extract(r.snapshot_json,'$.thumbnail_url') ELSE NULL END
+              ORDER BY julianday(old.captured_at) DESC,old.snapshot_id DESC,m.position,m.snapshot_media_id LIMIT 1))
          LEFT JOIN media_assets a ON a.media_asset_id=image.media_asset_id
          WHERE r.saved_search_id=?1 AND r.present=1 AND r.visible=1
            AND (?2 IS NULL OR r.position > ?2
@@ -613,15 +621,6 @@ pub(crate) fn acknowledge_revision(
         "UPDATE saved_searches SET unread_new_results=0 WHERE saved_search_id=?1 AND unread_new_results=1",
         [id],
     )? == 1)
-}
-
-pub(crate) fn acknowledge(core: &LadiesCore, id: String) -> Result<(), CoreError> {
-    let db = core.connection()?;
-    db.execute(
-        "UPDATE saved_searches SET unread_new_results=0 WHERE saved_search_id=?1",
-        [id],
-    )?;
-    Ok(())
 }
 
 #[cfg(test)]
@@ -932,6 +931,8 @@ mod tests {
         value["local"]["future_rule"] = json!(true);
         assert!(decode_definition(&value.to_string()).is_err());
         assert!(decode_definition(r#"{"city":"Leipzig","future_rule":true}"#).is_err());
+        assert!(decode_definition(r#"{"city":"Leipzig","radius":"bad"}"#).is_err());
+        assert!(decode_definition(r#"{"city":"Leipzig","radius":20,"radius_km":30}"#).is_err());
         value["local"]
             .as_object_mut()
             .unwrap()
@@ -1239,7 +1240,8 @@ mod tests {
         );
         drop(db);
         assert!(list(&core).unwrap()[0].unread_new_results);
-        acknowledge(&core, id.clone()).unwrap();
+        let info = list(&core).unwrap().remove(0);
+        assert!(acknowledge_revision(&core, id.clone(), info.revision).unwrap());
         assert!(!list(&core).unwrap()[0].unread_new_results);
         let mut changed = req;
         changed.radius_km = 30;
@@ -1336,6 +1338,41 @@ mod tests {
             )
             .unwrap();
         assert!(!last_run.is_empty());
+    }
+
+    #[test]
+    fn saved_result_image_is_a_coherent_local_remote_pair_with_archived_fallback() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("ladies_data");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("current.jpg"), b"fixture").unwrap();
+        std::fs::write(root.join("archived.jpg"), b"fixture").unwrap();
+        let core = LadiesCore::new(tmp.path().join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
+        let person = core.create_person(Some("Fixture".into())).unwrap();
+        let listing = core.add_listing(person, None, "LADIES".into(), "card".into(), None).unwrap();
+        let id = save(&core, "Saved".into(), SearchRequest::for_test()).unwrap();
+        let db = core.connection().unwrap();
+        for (fingerprint, url, file) in [
+            ("old", "https://bilder1.ladies-cdn.de/old.jpg", "archived.jpg"),
+            ("new", "https://bilder1.ladies-cdn.de/new.jpg", "current.jpg"),
+        ] {
+            db.execute("INSERT INTO listing_snapshots(listing_id,fingerprint,name,city) VALUES (?1,?2,'Fixture','Leipzig')", params![listing, fingerprint]).unwrap();
+            let snapshot = db.last_insert_rowid();
+            db.execute("INSERT INTO media_assets(sha256,kind,local_path) VALUES (?1,'IMAGE',?2)", params![fingerprint, file]).unwrap();
+            let asset = db.last_insert_rowid();
+            db.execute("INSERT INTO snapshot_media(snapshot_id,media_asset_id,position,kind,role,remote_url) VALUES (?1,?2,1,'IMAGE','PRIMARY',?3)", params![snapshot, asset, url]).unwrap();
+            db.execute("UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2", params![snapshot, listing]).unwrap();
+        }
+        db.execute("INSERT INTO saved_search_results(saved_search_id,result_key,snapshot_json,present,visible) VALUES (?1,'card',?2,1,1)",
+            params![id, r#"{"name":"Old","thumbnail_url":"https://bilder1.ladies-cdn.de/old.jpg"}"#]).unwrap();
+        drop(db);
+        let current = window(&core, id.clone(), 100).unwrap().cards.remove(0);
+        assert_eq!(current.thumbnail_url.as_deref(), Some("https://bilder1.ladies-cdn.de/new.jpg"));
+        assert!(current.local_path.unwrap().ends_with("current.jpg"));
+        core.connection().unwrap().execute("DELETE FROM snapshot_media WHERE remote_url LIKE '%/new.jpg'", []).unwrap();
+        let archived = window(&core, id, 100).unwrap().cards.remove(0);
+        assert_eq!(archived.thumbnail_url.as_deref(), Some("https://bilder1.ladies-cdn.de/old.jpg"));
+        assert!(archived.local_path.unwrap().ends_with("archived.jpg"));
     }
 
     #[test]

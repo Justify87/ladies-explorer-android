@@ -604,10 +604,6 @@ impl LadiesCore {
         saved_search::delete(self, id)
     }
 
-    pub fn acknowledge_saved_search(&self, id: String) -> Result<(), CoreError> {
-        saved_search::acknowledge(self, id)
-    }
-
     pub fn run_saved_search(
         &self,
         id: String,

@@ -44,7 +44,9 @@ class SavedSearchPaneTest {
             if (acceptAck) list = list.map { it.copy(unreadNewResults = false) }
             return acceptAck
         }
-        override suspend fun check(id: String, control: RequestControl) { error("not used") }
+        var onCheck: suspend () -> Unit = {}
+        var cancels = 0
+        override fun prepareCheck(id: String) = SavedCheck({ onCheck() }, { cancels++ })
         private suspend fun write() {
             onWrite()
             if (writeError) error("write failed")
@@ -128,6 +130,26 @@ class SavedSearchPaneTest {
         assertEquals(listOf(100u, 100u, 200u, 300u, 300u), fake.windows)
         assertTrue(c.state.value.result!!.ready)
         assertEquals(1, fake.acknowledgements)
+    }
+
+    @Test fun cancellationRetainsOperationUntilNativeCallDrains() = runBlocking {
+        val fake = Fake(info())
+        val gate = CompletableDeferred<Unit>()
+        fake.onCheck = { gate.await() }
+        var finished = 0
+        val c = SavedSearchController(this, fake, { true }, { SearchDraft() }, { finished++ })
+        c.open(); settle()
+        c.check("one"); settle()
+        c.cancelCheck()
+        assertEquals(SavedOperation.Cancelling, c.state.value.operation)
+        assertEquals(1, fake.cancels)
+        c.refresh()
+        c.check("one")
+        assertEquals(0, finished)
+        gate.complete(Unit); settle()
+        assertFalse(c.state.value.busy)
+        assertEquals(1, finished)
+        assertEquals(1, fake.cancels)
     }
 
     @Test fun staleAcknowledgementKeepsUnreadAndDoesNotAutomaticallyRetry() = runBlocking {

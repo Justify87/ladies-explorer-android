@@ -871,7 +871,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadProfile(listingId: Long, personId: Long) {
-        if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.busy) return
+        if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
         cancelPreview()
         invalidateActiveSearch()
         invalidateProfileRequest()
