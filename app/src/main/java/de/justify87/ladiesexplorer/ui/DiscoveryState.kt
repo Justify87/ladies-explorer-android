@@ -4,8 +4,6 @@ import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.DiscoveryCursor
 import de.justify87.ladiesexplorer.core.DiscoveryPage
 import de.justify87.ladiesexplorer.core.Preference
-import de.justify87.ladiesexplorer.core.SavedPersonCursor
-import de.justify87.ladiesexplorer.core.SavedPersonPage
 import kotlinx.coroutines.CancellationException
 
 /** Rust owns membership and filtering. The transient hide is only grid presentation. */
@@ -78,23 +76,3 @@ private suspend fun failureOf(action: suspend () -> Unit): Exception? = try {
     failure
 }
 
-/** Preserve the requested window across mutations without reusing a stale cursor. */
-internal suspend fun readSavedWindow(
-    minimum: Int,
-    read: suspend (SavedPersonCursor?) -> SavedPersonPage,
-): SavedPersonPage {
-    var page = read(null)
-    val cursors = mutableSetOf<SavedPersonCursor>()
-    while (page.rows.size < minimum) {
-        val cursor = page.nextCursor ?: break
-        check(cursors.add(cursor)) { "Saved people cursor repeated" }
-        page = appendSavedPage(page, read(cursor))
-    }
-    return page
-}
-
-internal fun appendSavedPage(previous: SavedPersonPage, next: SavedPersonPage): SavedPersonPage {
-    check(next.nextCursor == null || next.nextCursor != previous.nextCursor) { "Saved people cursor repeated" }
-    val seen = previous.rows.mapTo(mutableSetOf()) { it.personId }
-    return next.copy(rows = previous.rows + next.rows.filter { seen.add(it.personId) })
-}

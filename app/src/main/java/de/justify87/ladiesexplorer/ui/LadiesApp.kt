@@ -92,7 +92,11 @@ fun LadiesApp(
     val listVisible = !search.profileOpen && (route.root == RootDestination.Saved ||
         route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid)
     LaunchedEffect(listVisible) {
-        if (listVisible) viewModel.refreshDiscoveryIfDirty()
+        viewModel.setDiscoveryListVisible(listVisible)
+    }
+    val savedVisible = !search.profileOpen && route.root == RootDestination.Saved
+    LaunchedEffect(savedVisible) {
+        if (!savedVisible) viewModel.cancelSavedStatus()
     }
     val mapVisible = route.mapVisible && !search.profileOpen
     LaunchedEffect(mapVisible) {

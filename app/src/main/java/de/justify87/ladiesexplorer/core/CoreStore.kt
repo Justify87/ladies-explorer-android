@@ -217,14 +217,12 @@ class CoreStore(context: Context) {
         recorded("checkSavedStatus listingId=$listingId") { engine.checkSavedStatus(listingId, control) }
     }
 
-    suspend fun savedPeople(
+    suspend fun savedPeopleWindow(
         kind: SavedPersonKind,
         sort: SavedPersonSort,
-        cursor: SavedPersonCursor? = null,
-        section: SavedPersonSection = SavedPersonSection.ALL,
-        asOf: Long? = null,
-    ): SavedPersonPage = withContext(Dispatchers.IO) {
-        engine.savedPeople(kind, sort, section, 50u, cursor, asOf)
+        limits: Pair<UInt, UInt>,
+    ): SavedPeopleWindow = withContext(Dispatchers.IO) {
+        engine.savedPeopleWindow(kind, sort, limits.first, limits.second)
     }
 
     suspend fun mapOverview(favoritesOnly: Boolean): MapOverview = withContext(Dispatchers.IO) {

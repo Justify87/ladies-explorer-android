@@ -64,7 +64,14 @@ internal fun SavedPeopleScreen(
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             val label = savedKinds.first { it.first == state.savedKind }.second
-            Text(page?.let { "${it.total} $label" } ?: label,
+            Text(page?.let {
+                val singular = when (state.savedKind) {
+                    SavedPersonKind.FAVORITE -> "Favorit"
+                    SavedPersonKind.LIKE -> "Like"
+                    SavedPersonKind.DISLIKE -> "Dislike"
+                }
+                "${it.total} ${if (it.total == 1u) singular else label}"
+            } ?: label,
                 style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             var sortMenu by remember { mutableStateOf(false) }
             Box {
@@ -133,7 +140,7 @@ internal fun SavedPeopleScreen(
                     item(key = "recent-header") {
                         Text("Neu & geändert", style = MaterialTheme.typography.titleMedium)
                     }
-                    items(if (expanded) recent.rows else recent.rows.take(3), key = { "recent-${it.personId}" }) { row ->
+                    items(if (expanded) recent.rows else recent.rows.take(3), key = { it.personId }) { row ->
                         SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference, onCheckSingle, preferChangeTime = true)
                     }
                     if (recent.sectionTotal > 3u) item(key = "recent-toggle") {
@@ -151,7 +158,7 @@ internal fun SavedPeopleScreen(
                         Text("Weitere Favoriten", style = MaterialTheme.typography.titleMedium)
                     }
                 }
-                items(page.rows, key = { "regular-${it.personId}" }) { row ->
+                items(page.rows, key = { it.personId }) { row ->
                     SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference, onCheckSingle)
                 }
                 if (state.savedLoadingMore) item { CircularProgressIndicator() }

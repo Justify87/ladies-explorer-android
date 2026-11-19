@@ -148,10 +148,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var profileRequestId = 0L
     private var discoveryEpoch = 0L
     private var localWindow = 0
-    private val savedWindows = mutableMapOf<Pair<SavedPersonKind, SavedPersonSort>, Int>()
-    private var recentWindow = 0
+    private val savedWindows = SavedWindowMemory()
     private var discoveryRefreshPending = false
     private var swipeSnapshotDirty = false
+    private var discoveryListVisible = false
     private val searchGeneration = RequestGeneration()
     private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
 
@@ -630,21 +630,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return DiscoveryProjection(active.searchRunId, visible, DiscoveryPage(visible, null))
     }
 
-    private data class SavedProjection(val regular: SavedPersonPage, val recent: SavedPersonPage?)
-
-    private suspend fun savedPage(): SavedProjection {
+    private suspend fun savedPage(): SavedPeopleWindow {
         val state = _discoverState.value
-        val key = state.savedKind to state.savedSort
-        val watchlist = key.first == SavedPersonKind.FAVORITE && key.second == SavedPersonSort.DATE
-        val recent = if (watchlist) readSavedWindow(recentWindow) { cursor ->
-            core.savedPeople(key.first, key.second, cursor, SavedPersonSection.RECENT)
-        } else null
-        val regular = readSavedWindow(savedWindows[key] ?: 0) { cursor ->
-            core.savedPeople(key.first, key.second, cursor,
-                if (watchlist) SavedPersonSection.REGULAR else SavedPersonSection.ALL,
-                recent?.asOf)
-        }
-        return SavedProjection(regular, recent)
+        return core.savedPeopleWindow(state.savedKind, state.savedSort,
+            savedWindows.limits(state.savedKind, state.savedSort))
     }
 
     fun selectSavedKind(kind: SavedPersonKind) {
@@ -664,13 +653,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun publishDiscovery(
         epoch: Long,
         projection: DiscoveryProjection,
-        saved: SavedProjection,
+        saved: SavedPeopleWindow,
     ) {
         if (epoch != discoveryEpoch || projection.runId != _searchUiState.value.response?.searchRunId) return
         if (projection.runId == null) localWindow = maxOf(localWindow, projection.page.cards.size)
-        val selection = _discoverState.value.let { it.savedKind to it.savedSort }
-        savedWindows[selection] = maxOf(savedWindows[selection] ?: 0, saved.regular.rows.size)
-        recentWindow = maxOf(recentWindow, saved.recent?.rows?.size ?: 0)
         _searchUiState.update { it.copy(activeCards = projection.visible) }
         _discoverState.update {
             it.copy(
@@ -689,10 +675,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun markSwipeSnapshotChanged() {
         swipeSnapshotDirty = true
+        if (discoveryListVisible) refreshDiscovery()
     }
 
-    fun refreshDiscoveryIfDirty() {
-        if (swipeSnapshotDirty) refreshDiscovery()
+    fun setDiscoveryListVisible(visible: Boolean) {
+        discoveryListVisible = visible
+        if (visible && swipeSnapshotDirty) refreshDiscovery()
     }
 
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
@@ -764,37 +752,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadMoreSaved(recent: Boolean) {
         val state = _discoverState.value
         val page = (if (recent) state.savedRecent else state.savedPage) ?: return
-        val cursor = page.nextCursor ?: return
-        if (state.loading || state.savedLoadingMore || state.savedRecentLoadingMore || state.busy) return
+        if (page.nextCursor == null || state.loading || state.savedLoadingMore ||
+            state.savedRecentLoadingMore || state.busy) return
         val epoch = discoveryEpoch
-        val selection = state.savedKind to state.savedSort
+        savedWindows.requestMore(state.savedKind, state.savedSort, recent, page.rows.size)
         _discoverState.update {
             it.copy(savedLoadingMore = !recent, savedRecentLoadingMore = recent, error = null)
         }
         viewModelScope.launch {
             try {
-                val next = core.savedPeople(selection.first, selection.second, cursor, cursor.section, cursor.asOf)
+                val next = savedPage()
                 if (epoch == discoveryEpoch) {
-                    val merged = appendSavedPage(page, next)
-                    if (recent) {
-                        recentWindow = maxOf(recentWindow, merged.rows.size)
-                        _discoverState.update { it.copy(savedRecent = merged, savedRecentLoadingMore = false) }
-                    } else {
-                        savedWindows[selection] = maxOf(savedWindows[selection] ?: 0, merged.rows.size)
-                        _discoverState.update { it.copy(savedPage = merged, savedLoadingMore = false) }
+                    _discoverState.update {
+                        it.copy(savedPage = next.regular, savedRecent = next.recent,
+                            savedLoadingMore = false, savedRecentLoadingMore = false)
                     }
                 }
-            } catch (cancellation: CancellationException) {
-                if (epoch == discoveryEpoch) _discoverState.update {
-                    it.copy(savedLoadingMore = false, savedRecentLoadingMore = false)
-                }
-                throw cancellation
+            } catch (cancel: CancellationException) {
+                throw cancel
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        it.copy(savedLoadingMore = false, savedRecentLoadingMore = false,
-                            error = failure.message ?: "Weitere Profile konnten nicht geladen werden")
+                        it.copy(error = failure.message ?: "Weitere Profile konnten nicht geladen werden")
                     }
+                }
+            } finally {
+                if (epoch == discoveryEpoch) _discoverState.update {
+                    it.copy(savedLoadingMore = false, savedRecentLoadingMore = false)
                 }
             }
         }
@@ -962,27 +946,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         mutateDiscovery("Statusprüfung fehlgeschlagen", write = {
             try {
                 val targets = if (listingId == null) core.savedStatusTargets() else listOf(listingId)
-                _discoverState.update { current ->
-                    current.copy(savedStatusProgress = current.savedStatusProgress?.copy(total = targets.size))
-                }
-                for ((index, target) in targets.withIndex()) {
-                    if (_discoverState.value.savedStatusProgress?.cancelled == true) break
-                    var failed = false
-                    try {
-                        core.checkSavedStatus(target, control)
-                    } catch (cancel: CancellationException) {
-                        throw cancel
-                    } catch (_: Exception) {
-                        if (_discoverState.value.savedStatusProgress?.cancelled == true) break
-                        failed = true
-                    }
-                    _discoverState.update { current ->
-                        current.copy(savedStatusProgress = current.savedStatusProgress?.let {
-                            it.copy(done = it.done + 1, failed = it.failed + if (failed) 1 else 0)
-                        })
-                    }
-                    if (index < targets.lastIndex && _discoverState.value.savedStatusProgress?.cancelled != true) delay(350)
-                }
+                runSavedStatusBatch(
+                    targets = targets,
+                    cancelled = { _discoverState.value.savedStatusProgress?.cancelled == true },
+                    check = { core.checkSavedStatus(it, control) },
+                    publish = { total, done, failed ->
+                        _discoverState.update { current ->
+                            current.copy(savedStatusProgress = current.savedStatusProgress?.copy(
+                                total = total, done = done, failed = failed))
+                        }
+                    },
+                )
             } finally {
                 savedStatusControl = null
                 _discoverState.update { current ->

@@ -6,37 +6,46 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SavedPeopleStateTest {
-    private fun row(id: Long) = SavedPersonRow(
-        personId = id, name = "Fixture", preference = Preference.LIKE, favorite = true,
-        card = null, listingCount = 0u, updatedAt = "", lastSeenAt = "",
-        status = "UNKNOWN", statusCheckedAt = null, latestChangeAt = null,
-        latestChangeType = null, recent = false,
-    )
-
-    private fun cursor(id: Long) = SavedPersonCursor(
-        SavedPersonKind.LIKE, SavedPersonSort.DATE, SavedPersonSection.ALL, 42L, "", id,
-    )
-
-    @Test fun refreshRebuildsLoadedWindowFromNewCursorsAndDeduplicates() = runBlocking {
-        val calls = mutableListOf<SavedPersonCursor?>()
-        val result = readSavedWindow(3) { after ->
-            calls += after
-            if (after == null) SavedPersonPage(listOf(row(5), row(4)), 3u, 3u, 42L, cursor(4))
-            else SavedPersonPage(listOf(row(4), row(3)), 3u, 3u, 42L, null)
-        }
-        assertEquals(listOf(null, cursor(4)), calls)
-        assertEquals(listOf(5L, 4L, 3L), result.rows.map { it.personId })
-        assertEquals(3u, result.total)
-        assertNull(result.nextCursor)
+    @Test fun independentWindowSizesSurviveTabAndRetry() {
+        val memory = SavedWindowMemory()
+        val favorite = SavedPersonKind.FAVORITE
+        val like = SavedPersonKind.LIKE
+        val date = SavedPersonSort.DATE
+        memory.requestMore(favorite, date, false, 50)
+        memory.requestMore(favorite, date, true, 50)
+        memory.requestMore(favorite, date, false, 50)
+        assertEquals(100u to 100u, memory.limits(favorite, date))
+        assertEquals(50u to 100u, memory.limits(like, date))
+        assertEquals(50u to 100u, memory.limits(favorite, SavedPersonSort.NAME))
     }
 
-    @Test fun projectionFailureDoesNotRepeatPersistedDecision() = runBlocking {
-        var writes = 0
-        val result = writeAndProject(
-            write = { writes++ },
-            project = { error("read failed") },
+    @Test fun partialStatusBatchProjectsCommittedWritesAfterCancelAndReadFailure() = runBlocking {
+        val visited = mutableListOf<Long>()
+        val committed = mutableListOf<Long>()
+        var cancelled = false
+        var projection = 0
+        var progress = Triple(0, 0, 0)
+        val outcome = writeAndProject(
+            write = {
+                runSavedStatusBatch(
+                    targets = listOf(1L, 2L, 3L, 4L),
+                    cancelled = { cancelled },
+                    check = {
+                        visited += it
+                        if (it == 2L) error("timeout")
+                        committed += it
+                        if (it == 3L) cancelled = true
+                    },
+                    publish = { total, done, failed -> progress = Triple(total, done, failed) },
+                    pause = {},
+                )
+            },
+            project = { projection++; error("read failed") },
         )
-        assertEquals(1, writes)
-        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true), result)
+        assertEquals(listOf(1L, 2L, 3L), visited)
+        assertEquals(listOf(1L, 3L), committed)
+        assertEquals(Triple(4, 3, 1), progress)
+        assertEquals(1, projection)
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true), outcome)
     }
 }
