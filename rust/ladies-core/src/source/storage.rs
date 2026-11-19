@@ -151,10 +151,11 @@ fn upsert_listing(db: &Connection, card: &Card) -> Result<(i64, i64), CoreError>
         db.execute(
             "UPDATE listings SET
                  last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-                 current_url=?1, category=?2, current_status='ACTIVE', ended_at=NULL
+                 current_url=?1, category=?2
              WHERE listing_id=?3",
             params![card.profile_url, card.category, listing_id],
         )?;
+        record_status(db, listing_id, person_id, "ACTIVE")?;
         db.execute(
             "UPDATE persons SET display_name=COALESCE(NULLIF(?1,''), display_name),
                  last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
@@ -172,54 +173,23 @@ fn upsert_listing(db: &Connection, card: &Card) -> Result<(i64, i64), CoreError>
         db.execute(
             "INSERT INTO listings
              (person_id, source, external_listing_id, current_url, category,
-              current_status, match_decision)
-             VALUES (?1,'LADIES',?2,?3,?4,'ACTIVE','UNRESOLVED')",
+              current_status, status_checked_at, match_decision)
+             VALUES (?1,'LADIES',?2,?3,?4,'ACTIVE',strftime('%Y-%m-%dT%H:%M:%fZ','now'),'UNRESOLVED')",
             params![person_id, card.advert_id, card.profile_url, card.category],
         )?;
         Ok((db.last_insert_rowid(), person_id))
     }
 }
 
-pub(super) fn listing_target(
-    core: &LadiesCore,
-    listing_id: i64,
-) -> Result<(String, String, String, String, String), CoreError> {
-    let db = core.connection()?;
-    let existing: Option<(Option<String>, String, Option<String>, Option<String>, Option<String>)> = db
-        .query_row(
-            "SELECT l.current_url, l.external_listing_id, p.display_name,
-                 (SELECT city FROM search_results
-                  WHERE listing_id=l.listing_id ORDER BY observed_at DESC, search_result_id DESC LIMIT 1),
-                 l.category
-             FROM listings l JOIN persons p ON p.person_id=l.person_id
-             WHERE l.listing_id=?1 AND l.source='LADIES'",
-            [listing_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
-        )
-        .optional()?;
-    let Some((url, advert_id, name, city, category)) = existing else {
-        return Err(CoreError::ListingNotFound(listing_id));
-    };
-    let url = url
-        .and_then(|url| parse::valid_profile_url(&url))
-        .ok_or_else(|| {
-            CoreError::Source("Stored listing has no recognized source profile URL".into())
-        })?;
-    Ok((
-        url,
-        advert_id,
-        name.unwrap_or_default(),
-        city.unwrap_or_default(),
-        category.unwrap_or_default(),
-    ))
-}
-
-// Status checks deliberately do not run profile ingestion or fetch media.
+// Capture target before I/O; reject outdated observations under the write lock.
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct StatusTarget {
+pub(super) struct ListingTarget {
     pub listing_id: i64,
     pub url: String,
     pub advert_id: String,
+    pub name: String,
+    pub city: String,
+    pub category: String,
     person_id: i64,
     observation_id: i64,
 }
@@ -236,22 +206,34 @@ pub(super) fn saved_status_targets(core: &LadiesCore) -> Result<Vec<i64>, CoreEr
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
-fn status_target_in(db: &Connection, listing_id: i64) -> Result<StatusTarget, CoreError> {
+fn listing_target_in(
+    db: &Connection,
+    listing_id: i64,
+    saved_only: bool,
+) -> Result<ListingTarget, CoreError> {
     let row = db
         .query_row(
             "SELECT l.current_url,l.external_listing_id,l.person_id,
                     COALESCE((SELECT MAX(o.observation_id) FROM listing_observations o
-                              WHERE o.listing_id=l.listing_id),0)
+                              WHERE o.listing_id=l.listing_id),0),
+                    COALESCE(p.display_name,''),
+                    COALESCE((SELECT city FROM search_results WHERE listing_id=l.listing_id
+                              ORDER BY observed_at DESC,search_result_id DESC LIMIT 1),''),
+                    COALESCE(l.category,'')
              FROM listings l JOIN person_user_state u ON u.person_id=l.person_id
+             JOIN persons p ON p.person_id=l.person_id
              WHERE l.listing_id=?1 AND l.source='LADIES'
-               AND (u.favorite=1 OR u.preference!='NONE')",
-            [listing_id],
+               AND (?2=0 OR u.favorite=1 OR u.preference!='NONE')",
+            params![listing_id, saved_only],
             |r| {
                 Ok((
                     r.get::<_, Option<String>>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, i64>(2)?,
                     r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
                 ))
             },
         )
@@ -263,68 +245,98 @@ fn status_target_in(db: &Connection, listing_id: i64) -> Result<StatusTarget, Co
         .ok_or_else(|| {
             CoreError::Source("Stored listing has no recognized source profile URL".into())
         })?;
-    Ok(StatusTarget {
+    Ok(ListingTarget {
         listing_id,
         url,
         advert_id: row.1,
         person_id: row.2,
         observation_id: row.3,
+        name: row.4,
+        city: row.5,
+        category: row.6,
     })
 }
 
-pub(super) fn status_target(core: &LadiesCore, listing_id: i64) -> Result<StatusTarget, CoreError> {
+pub(super) fn listing_target(
+    core: &LadiesCore,
+    listing_id: i64,
+    saved_only: bool,
+) -> Result<ListingTarget, CoreError> {
     let db = core.connection()?;
-    status_target_in(&db, listing_id)
+    listing_target_in(&db, listing_id, saved_only)
+}
+
+fn validate_target(
+    db: &Connection,
+    target: &ListingTarget,
+    saved_only: bool,
+) -> Result<(), CoreError> {
+    let current = listing_target_in(db, target.listing_id, saved_only)?;
+    if current.person_id != target.person_id
+        || current.url != target.url
+        || current.advert_id != target.advert_id
+        || current.observation_id != target.observation_id
+    {
+        return Err(CoreError::Source(
+            "Listing changed during source request".into(),
+        ));
+    }
+    Ok(())
+}
+
+// Status-only observations never change content observation order.
+fn record_status(
+    db: &Connection,
+    listing_id: i64,
+    person_id: i64,
+    status: &str,
+) -> Result<(), CoreError> {
+    let previous: String = db.query_row(
+        "SELECT current_status FROM listings WHERE listing_id=?1",
+        [listing_id],
+        |r| r.get(0),
+    )?;
+    db.execute(
+        "UPDATE listings SET current_status=?1,
+             status_checked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             ended_at=CASE WHEN ?1='ACTIVE' THEN NULL
+                           ELSE COALESCE(ended_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) END
+         WHERE listing_id=?2",
+        params![status, listing_id],
+    )?;
+    if previous != status {
+        db.execute(
+            "INSERT INTO change_events(person_id,listing_id,event_type,field_key,old_json,new_json)
+             VALUES (?1,?2,'STATUS_CHANGED','status',?3,?4)",
+            params![person_id, listing_id, json!(previous).to_string(), json!(status).to_string()],
+        )?;
+    }
+    Ok(())
 }
 
 pub(super) fn save_status(
     core: &LadiesCore,
-    target: &StatusTarget,
+    target: &ListingTarget,
     status: &str,
     http_status: u16,
-    control: &RequestControl,
+    saved_only: bool,
+    control: Option<&RequestControl>,
 ) -> Result<(), CoreError> {
-    control.check()?;
+    if let Some(control) = control {
+        control.check()?;
+    }
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    if status_target_in(&tx, target.listing_id)? != *target {
-        return Err(CoreError::Source(
-            "Listing changed during status check".into(),
-        ));
-    }
-    let previous: String = tx.query_row(
-        "SELECT current_status FROM listings WHERE listing_id=?1",
-        [target.listing_id],
-        |r| r.get(0),
-    )?;
-    tx.execute(
-        "UPDATE listings SET current_status=?1,
-             status_checked_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-             last_seen_at=CASE WHEN ?1='ACTIVE' THEN strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                               ELSE last_seen_at END,
-             ended_at=CASE WHEN ?1='ACTIVE' THEN NULL
-                           ELSE COALESCE(ended_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) END
-         WHERE listing_id=?2",
-        params![status, target.listing_id],
-    )?;
+    validate_target(&tx, target, saved_only)?;
+    record_status(&tx, target.listing_id, target.person_id, status)?;
     tx.execute(
         "INSERT INTO listing_observations(listing_id,source,status,http_status)
-         VALUES (?1,'STATUS',?2,?3)",
-        params![target.listing_id, status, http_status],
+         VALUES (?1,?2,?3,?4)",
+        params![target.listing_id, if saved_only { "STATUS" } else { "PROFILE" }, status, http_status],
     )?;
-    if previous != status {
-        tx.execute(
-            "INSERT INTO change_events(person_id,listing_id,event_type,field_key,old_json,new_json)
-             VALUES (?1,?2,'STATUS_CHANGED','status',?3,?4)",
-            params![
-                target.person_id,
-                target.listing_id,
-                json!(previous).to_string(),
-                json!(status).to_string(),
-            ],
-        )?;
+    if let Some(control) = control {
+        control.check()?;
     }
-    control.check()?;
     tx.commit()?;
     Ok(())
 }
@@ -447,14 +459,32 @@ fn link_source_profile_or_record_conflict(
     Ok(())
 }
 
+#[cfg(test)]
 pub(super) fn save_profile(
     core: &LadiesCore,
     listing_id: i64,
     url: &str,
     profile: Profile,
 ) -> Result<ProfileResponse, CoreError> {
+    let target = listing_target(core, listing_id, false)?;
+    assert_eq!(target.url, url);
+    save_observed_profile(core, &target, profile, None)
+}
+
+pub(super) fn save_observed_profile(
+    core: &LadiesCore,
+    target: &ListingTarget,
+    profile: Profile,
+    control: Option<&RequestControl>,
+) -> Result<ProfileResponse, CoreError> {
+    if let Some(control) = control {
+        control.check()?;
+    }
+    let listing_id = target.listing_id;
+    let url = &target.url;
     let mut db = core.connection()?;
     let tx = db.transaction()?;
+    validate_target(&tx, target, false)?;
     let row: Option<(i64, Option<String>)> = tx
         .query_row(
             "SELECT person_id, category FROM listings WHERE listing_id=?1 AND source='LADIES'
@@ -588,6 +618,7 @@ pub(super) fn save_profile(
         ],
     )?;
     identity::record_phone(&tx, person_id, listing_id, profile.phone_display.as_deref())?;
+    record_status(&tx, listing_id, person_id, "ACTIVE")?;
     history::record_transition(
         &tx,
         person_id,
@@ -597,8 +628,7 @@ pub(super) fn save_profile(
     )?;
     tx.execute(
         "UPDATE listings
-         SET current_snapshot_id=?1, current_url=?2, last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-             current_status='ACTIVE', ended_at=NULL
+         SET current_snapshot_id=?1, current_url=?2, last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
          WHERE listing_id=?3",
         params![snapshot_id, url, listing_id],
     )?;
@@ -625,6 +655,9 @@ pub(super) fn save_profile(
             .to_string()
         ],
     )?;
+    if let Some(control) = control {
+        control.check()?;
+    }
     tx.commit()?;
     Ok(ProfileResponse {
         listing_id,
@@ -701,14 +734,14 @@ mod tests {
         core.set_preference(person, crate::Preference::Like)
             .unwrap();
         assert_eq!(saved_status_targets(&core).unwrap(), vec![listing]);
-        let target = status_target(&core, listing).unwrap();
+        let target = listing_target(&core, listing, true).unwrap();
         let control = RequestControl::default();
-        save_status(&core, &target, "UNAVAILABLE", 404, &control).unwrap();
-        assert!(save_status(&core, &target, "ACTIVE", 200, &control).is_err());
-        let new_target = status_target(&core, listing).unwrap();
+        save_status(&core, &target, "UNAVAILABLE", 404, true, Some(&control)).unwrap();
+        assert!(save_status(&core, &target, "ACTIVE", 200, true, Some(&control)).is_err());
+        let new_target = listing_target(&core, listing, true).unwrap();
         let cancelled = RequestControl::default();
         cancelled.cancel();
-        assert!(save_status(&core, &new_target, "ACTIVE", 200, &cancelled).is_err());
+        assert!(save_status(&core, &new_target, "ACTIVE", 200, true, Some(&cancelled)).is_err());
         {
             let db = core.connection().unwrap();
             let status: (String, Option<String>, Option<String>) = db
@@ -730,7 +763,7 @@ mod tests {
                 .unwrap();
             assert_eq!(observations, 1);
         }
-        save_status(&core, &new_target, "ACTIVE", 200, &control).unwrap();
+        save_status(&core, &new_target, "ACTIVE", 200, true, Some(&control)).unwrap();
         let db = core.connection().unwrap();
         let count: i64 = db
             .query_row(

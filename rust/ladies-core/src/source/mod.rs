@@ -203,17 +203,27 @@ pub(crate) fn load_profile(
     }
     core.diagnostics
         .event("PROFILE", format!("Profile requested listing={listing_id}"));
-    let (url, advert_id, name, city, category) = storage::listing_target(core, listing_id)?;
+    let target = storage::listing_target(core, listing_id, false)?;
     let network_started = Instant::now();
-    let html = core.source_session.0.get_profile(&url, control)?;
+    let observation = core
+        .source_session
+        .0
+        .get_profile(&target.url, &target.advert_id, control)?;
+    let html = match observation {
+        network::ProfileObservation::Active(html) => html,
+        network::ProfileObservation::Unavailable(code) => {
+            storage::save_status(core, &target, "UNAVAILABLE", code, false, control)?;
+            return Err(CoreError::Source(format!("Profile HTTP status {code}")));
+        }
+    };
     core.diagnostics
         .phase("HTTP", "profile_fetch", network_started);
     let fallback = Card {
-        advert_id,
-        name,
-        city,
-        category,
-        profile_url: url.clone(),
+        advert_id: target.advert_id.clone(),
+        name: target.name.clone(),
+        city: target.city.clone(),
+        category: target.category.clone(),
+        profile_url: target.url.clone(),
         thumbnail_url: None,
         has_video: false,
         is_premium: false,
@@ -246,7 +256,7 @@ pub(crate) fn load_profile(
         control.check()?;
     }
     let storage_started = Instant::now();
-    let result = storage::save_profile(core, listing_id, &url, profile);
+    let result = storage::save_observed_profile(core, &target, profile, control);
     core.diagnostics
         .phase("STORAGE", "profile_sqlite_write", storage_started);
     match &result {
@@ -274,12 +284,16 @@ pub(crate) fn check_saved_status(
     control: &RequestControl,
 ) -> Result<String, CoreError> {
     control.check()?;
-    let target = storage::status_target(core, listing_id)?;
-    let (status, http_status) =
-        core.source_session
-            .0
-            .check_profile_status(&target.url, &target.advert_id, control)?;
-    storage::save_status(core, &target, status, http_status, control)?;
+    let target = storage::listing_target(core, listing_id, true)?;
+    let observation = core
+        .source_session
+        .0
+        .get_profile(&target.url, &target.advert_id, Some(control))?;
+    let (status, http_status) = match observation {
+        network::ProfileObservation::Active(_) => ("ACTIVE", 200),
+        network::ProfileObservation::Unavailable(code) => ("UNAVAILABLE", code),
+    };
+    storage::save_status(core, &target, status, http_status, true, Some(control))?;
     core.diagnostics.event(
         "PROFILE",
         format!("Status checked listing={listing_id} status={status} HTTP={http_status}"),

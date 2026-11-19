@@ -91,37 +91,32 @@ impl SourceHttp {
         })
     }
 
+    // Shared evidence contract for detail reads and explicit checks.
     pub(super) fn get_profile(
         &self,
         url: &str,
+        advert_id: &str,
         control: Option<&RequestControl>,
-    ) -> Result<String, CoreError> {
+    ) -> Result<ProfileObservation, CoreError> {
         let url = parse::valid_profile_url(url)
             .ok_or_else(|| CoreError::InvalidInput("Invalid Ladies profile URL".into()))?;
         let response = self.get_cancellable(&url, control)?;
-        if response.status != 200 {
-            return Err(CoreError::Source(format!(
-                "Profile HTTP status {}",
-                response.status
-            )));
-        }
-        Ok(response.body)
-    }
-
-    pub(super) fn check_profile_status(
-        &self,
-        url: &str,
-        advert_id: &str,
-        control: &RequestControl,
-    ) -> Result<(&'static str, u16), CoreError> {
-        let url = parse::valid_profile_url(url)
-            .ok_or_else(|| CoreError::InvalidInput("Invalid Ladies profile URL".into()))?;
-        classify_profile_status(self.get_cancellable(&url, Some(control))?, advert_id)
+        let (status, code) = classify_profile_status(&response, advert_id)?;
+        Ok(if status == "ACTIVE" {
+            ProfileObservation::Active(response.body)
+        } else {
+            ProfileObservation::Unavailable(code)
+        })
     }
 }
 
+pub(super) enum ProfileObservation {
+    Active(String),
+    Unavailable(u16),
+}
+
 fn classify_profile_status(
-    response: Response,
+    response: &Response,
     advert_id: &str,
 ) -> Result<(&'static str, u16), CoreError> {
     match response.status {
@@ -950,7 +945,7 @@ mod tests {
     fn status_requires_exact_profile_or_direct_not_found() {
         let classify = |status, body: &str, same_path| {
             classify_profile_status(
-                Response {
+                &Response {
                     status,
                     body: body.to_owned(),
                     same_path,
