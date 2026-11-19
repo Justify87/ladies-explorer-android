@@ -1,6 +1,5 @@
 package de.justify87.ladiesexplorer.ui
 
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.unit.Dp
@@ -10,8 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -48,6 +45,7 @@ internal fun DiscoverScreen(
     onSnapshotChanged: (Boolean) -> Unit,
     onFavorite: (ProfileIdentityToken) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
+    touchGate: ProfileTouchGate? = null,
     modifier: Modifier = Modifier,
 ) {
     val searchLoading = search.loading
@@ -226,8 +224,6 @@ internal fun DiscoverScreen(
                     }
                 }
             } else {
-                val density = LocalDensity.current.density
-                var drag by remember(token, actions) { mutableFloatStateOf(0f) }
                 val fallback = listOfNotNull(card.thumbnailUrl?.let { ProfileMediaItem("IMAGE", it, card.localPath, 0u) }
                     ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
                 ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
@@ -237,28 +233,16 @@ internal fun DiscoverScreen(
                     item(key = "hero") {
                         ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
-                            modifier = Modifier.graphicsLayer { translationX = drag; rotationZ = drag / (45 * density) }
-                                .pointerInput(token, actions, density) {
-                                    if (actions) detectHorizontalDragGestures(
-                                        onHorizontalDrag = { change, delta ->
-                                            change.consume()
-                                            drag = (drag + delta).coerceIn(-300 * density, 300 * density)
-                                        },
-                                        onDragEnd = {
-                                            val decision = swipePreference(drag / density)
-                                            drag = 0f
-                                            if (token != null && decision != null) onChoose(token, decision)
-                                        },
-                                        onDragCancel = { drag = 0f },
-                                    )
-                                },
+                            onSwipe = if (actions && token != null) ({ decision ->
+                                if (isProfileCurrent(token)) onChoose(token, decision)
+                            }) else null,
                             originalUrl = profile?.identity?.profileUrl, selection = mediaSelection,
                             identity = identity, actionToken = token,
                             projectionAvailable = profile != null, actionsEnabled = actions,
                             isCurrent = { token?.let(isProfileCurrent) == true },
                             compact = presentation.budget.compactGallery,
                             headerOwnsIdentity = presentation.identityInHeader,
-                            onIdentityMeasured = onIdentityMeasured)
+                            onIdentityMeasured = onIdentityMeasured, touchGate = touchGate)
                     }
                     item(key = "header") {
                         Text("Profilinfos", style = MaterialTheme.typography.labelMedium)

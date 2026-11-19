@@ -5,7 +5,11 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -22,9 +26,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -82,6 +83,7 @@ private data class ImageFeedback(val loading: Boolean = false, val failed: Boole
 private fun ProfileImageSurface(
     url: String?, localPath: String?, modifier: Modifier, scale: ContentScale,
     description: String, allowRetry: Boolean,
+    imageModifier: Modifier = Modifier,
     content: @Composable BoxScope.(ImageFeedback) -> Unit,
 ) {
     key(localPath, url) {
@@ -96,7 +98,7 @@ private fun ProfileImageSurface(
                     AsyncImage(model = models[requested], contentDescription = description, contentScale = scale,
                         onSuccess = { loading = false },
                         onError = { if (attempt == requested) attempt = requested + 1 },
-                        modifier = Modifier.fillMaxSize())
+                        modifier = Modifier.fillMaxSize().then(imageModifier))
                 }
             }
             content(ImageFeedback(loading = attempt < models.size && loading, failed = attempt >= models.size,
@@ -126,12 +128,6 @@ internal fun ProfileImage(
     }
 }
 
-@Composable
-private fun GalleryTapZone(label: String, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Box(modifier.semantics { contentDescription = label }
-        .clickable(enabled = enabled, role = Role.Button, onClick = onClick))
-}
-
 /** Normal photo uses a single image surface and a disjoint chrome layout.
  * Compact gallery scrolls with ProfileFlow and does not squeeze controls into a tiny photo. */
 @Composable
@@ -149,6 +145,8 @@ internal fun ProfileMediaHero(
     compact: Boolean,
     headerOwnsIdentity: Boolean,
     onIdentityMeasured: (Int) -> Unit,
+    onSwipe: ((Preference) -> Unit)? = null,
+    touchGate: ProfileTouchGate? = null,
 ) {
     val context = LocalContext.current
     val index = selection.resolve(media, projectionAvailable)
@@ -161,6 +159,26 @@ internal fun ProfileMediaHero(
     val previous = projectionAvailable && index > 0
     val next = projectionAvailable && index < media.lastIndex
     val canMore = actionsEnabled && (item?.kind == "IMAGE" || originalUrl != null)
+    val gestureOwner = Triple(actionToken, media, index)
+    val decision = onSwipe?.takeIf { actionsEnabled && projectionAvailable && !more && !fullscreen }
+    var drag by remember(gestureOwner, decision != null, compact) { mutableFloatStateOf(0f) }
+    val maxOffset = with(LocalDensity.current) { 36.dp.toPx() }
+    // Only image pixels move, never the hit target or the scroll viewport.
+    val imageMotion = key(gestureOwner, compact) {
+        val offset by animateFloatAsState((drag * .15f).coerceIn(-maxOffset, maxOffset),
+            animationSpec = if (drag == 0f) spring() else snap(), label = "photo gesture feedback")
+        Modifier.graphicsLayer { translationX = offset }
+    }
+    val feedbackHint: @Composable BoxScope.() -> Unit = {
+        if (drag != 0f) {
+            Surface(Modifier.align(Alignment.TopCenter).padding(8.dp),
+                color = MaterialTheme.colorScheme.inverseSurface, shape = MaterialTheme.shapes.medium) {
+                Text(if (drag > 0f) "Gefällt" else "Nein",
+                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    color = MaterialTheme.colorScheme.inverseOnSurface)
+            }
+        }
+    }
 
     if (fullscreen && actionsEnabled && item?.kind == "IMAGE") {
         Dialog(onDismissRequest = { fullscreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -188,14 +206,18 @@ internal fun ProfileMediaHero(
             }
             Row(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                if (arrows && media.size > 1) IconButton(onClick = { selection.select(media, index - 1) }, enabled = previous) {
-                    Icon(Icons.Default.ChevronLeft, "Vorheriges Medium", tint = Color.White.copy(alpha = if (previous) 1f else .4f))
+                if (arrows && media.size > 1) key(gestureOwner) {
+                    IconButton(onClick = { selection.select(media, index - 1) }, enabled = previous) {
+                        Icon(Icons.Default.ChevronLeft, "Vorheriges Medium", tint = Color.White.copy(alpha = if (previous) 1f else .4f))
+                    }
                 }
                 Text(if (media.isEmpty()) "–" else "${index + 1} / ${media.size}",
                     color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (arrows && media.size > 1) IconButton(onClick = { selection.select(media, index + 1) }, enabled = next) {
-                    Icon(Icons.Default.ChevronRight, "Nächstes Medium", tint = Color.White.copy(alpha = if (next) 1f else .4f))
+                if (arrows && media.size > 1) key(gestureOwner) {
+                    IconButton(onClick = { selection.select(media, index + 1) }, enabled = next) {
+                        Icon(Icons.Default.ChevronRight, "Nächstes Medium", tint = Color.White.copy(alpha = if (next) 1f else .4f))
+                    }
                 }
                 if (canMore) Box {
                     IconButton(onClick = { if (isCurrent()) more = true }) {
@@ -219,61 +241,65 @@ internal fun ProfileMediaHero(
             Text("Video extern öffnen")
         } else if (item == null) Text("Keine Medien verfügbar")
     }
-    if (compact) {
-        // Controls and feedback are in distinct scrollable rows, even if only a
-        // small part of this item fits above an IME. No overlap or squeezed target.
-        Column(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large)) {
-            controls(true)
-            if (item?.kind == "IMAGE") {
-                ProfileImageSurface(item.url, item.localPath,
-                    modifier.fillMaxWidth().height(maxOf(height, 160.dp)),
-                    ContentScale.Crop, "Profilbild ${index + 1}", true) { feedback -> ImageFeedbackContent(feedback) }
-            } else Box(modifier.fillMaxWidth().heightIn(min = maxOf(height, 96.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { center() }
-        }
-    } else {
-        val chrome: @Composable (ImageFeedback?) -> Unit = { feedback ->
-            Column(Modifier.fillMaxSize()) {
-                controls(item?.kind != "IMAGE")
-                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                    val side = gallerySideFraction(maxWidth.value)
-                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                        if (item?.kind == "IMAGE" && media.size > 1 && side > 0f) {
-                            GalleryTapZone("Vorheriges Medium", previous, Modifier.weight(side).fillMaxHeight()) {
-                                selection.select(media, index - 1)
-                            }
-                            Box(Modifier.weight(1f - side * 2).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                                feedback?.let { ImageFeedbackContent(it) }
-                            }
-                            GalleryTapZone("Nächstes Medium", next, Modifier.weight(side).fillMaxHeight()) {
-                                selection.select(media, index + 1)
-                            }
-                        } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            if (feedback != null) ImageFeedbackContent(feedback) else center()
-                        }
+    val galleryTaps = !compact && projectionAvailable && item?.kind == "IMAGE" && media.size > 1
+    PhotoGestureSurface(owner = Triple(gestureOwner, compact, projectionAvailable),
+        modifier = Modifier.fillMaxWidth(), galleryEnabled = galleryTaps, onSwipe = decision,
+        onDrag = { drag = it }, touchGate = touchGate) { hit ->
+        val photoArea: @Composable (ImageFeedback?, Boolean) -> Unit = { feedback, sideTaps ->
+            BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
+                val side = if (sideTaps && item?.kind == "IMAGE" && media.size > 1)
+                    gallerySideFraction(maxWidth.value) else 0f
+                Row(Modifier.fillMaxSize()) {
+                    if (side > 0f) PhotoTapTarget("Vorheriges Medium", Modifier.weight(side).fillMaxHeight().then(hit.previous), owner = gestureOwner,
+                        onTap = if (previous) ({ selection.select(media, index - 1) }) else null)
+                    Box(Modifier.weight(1f - side * 2).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        if (feedback != null) ImageFeedbackContent(feedback) else center()
                     }
+                    if (side > 0f) PhotoTapTarget("Nächstes Medium", Modifier.weight(side).fillMaxHeight().then(hit.next), owner = gestureOwner,
+                        onTap = if (next) ({ selection.select(media, index + 1) }) else null)
                 }
-                if (identity != null) {
-                    val hidden = if (headerOwnsIdentity) Modifier.alpha(0f).clearAndSetSemantics {} else Modifier
-                    Surface(Modifier.fillMaxWidth().onSizeChanged { onIdentityMeasured(it.height) }.then(hidden),
-                        color = Color.Black.copy(alpha = .82f)) {
-                        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(identity.compactSubtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (identity.decisions.isNotBlank()) Text(identity.decisions, color = Color.White,
-                                style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                feedbackHint()
+            }
+        }
+        if (compact) {
+            Column(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large)) {
+                controls(true)
+                if (item?.kind == "IMAGE") {
+                    ProfileImageSurface(item.url, item.localPath,
+                        modifier.fillMaxWidth().height(maxOf(height, 160.dp)),
+                        ContentScale.Crop, "Profilbild ${index + 1}", true, imageModifier = imageMotion) { feedback ->
+                        photoArea(feedback, false)
+                    }
+                } else Box(modifier.fillMaxWidth().height(maxOf(height, 96.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)) { photoArea(null, false) }
+            }
+        } else {
+            val chrome: @Composable (ImageFeedback?) -> Unit = { feedback ->
+                Column(Modifier.fillMaxSize()) {
+                    controls(item?.kind != "IMAGE")
+                    Box(Modifier.weight(1f).fillMaxWidth()) { photoArea(feedback, true) }
+                    if (identity != null) {
+                        val hidden = if (headerOwnsIdentity) Modifier.alpha(0f).clearAndSetSemantics {} else Modifier
+                        Surface(Modifier.fillMaxWidth().onSizeChanged { onIdentityMeasured(it.height) }.then(hidden),
+                            color = Color.Black.copy(alpha = .82f)) {
+                            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(identity.compactSubtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (identity.decisions.isNotBlank()) Text(identity.decisions, color = Color.White,
+                                    style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 }
             }
+            val surface = Modifier.fillMaxWidth().height(height).clip(MaterialTheme.shapes.large)
+            if (item?.kind == "IMAGE") {
+                ProfileImageSurface(item.url, item.localPath, surface.then(modifier), ContentScale.Crop,
+                    "Profilbild ${index + 1}", true, imageModifier = imageMotion) { feedback -> chrome(feedback) }
+            } else Box(surface.then(modifier).background(MaterialTheme.colorScheme.surfaceVariant)) { chrome(null) }
         }
-        val surface = Modifier.fillMaxWidth().height(height).clip(MaterialTheme.shapes.large)
-        if (item?.kind == "IMAGE") {
-            ProfileImageSurface(item.url, item.localPath, surface.then(modifier), ContentScale.Crop,
-                "Profilbild ${index + 1}", true) { feedback -> chrome(feedback) }
-        } else Box(surface.then(modifier).background(MaterialTheme.colorScheme.surfaceVariant)) { chrome(null) }
     }
 }
 
