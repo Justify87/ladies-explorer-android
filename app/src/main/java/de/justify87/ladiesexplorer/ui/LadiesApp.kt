@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material3.Button
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -133,8 +134,15 @@ fun LadiesApp(
         }
     }
 
-    val savedResultsOpen = route.root == RootDestination.Search && search.showingSavedSearchId != null
+    val pane = search.searchPane()
+    val savedResultsOpen = route.root == RootDestination.Search && pane == SearchPane.SavedResults
+    val savedEditorOpen = route.root == RootDestination.Search && pane == SearchPane.SavedEditor
+    val savedOverviewOpen = route.root == RootDestination.Search && pane == SearchPane.SavedList
     fun back() {
+        if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen)) {
+            if (savedEditorOpen) viewModel.cancelSavedEditor() else viewModel.closeSavedSearches()
+            return
+        }
         when (route.backAction(search.profileOpen, savedResultsOpen)) {
             BackAction.CloseProfile -> viewModel.closeProfile()
             BackAction.CloseSavedResults -> viewModel.closeSavedResults()
@@ -142,14 +150,18 @@ fun LadiesApp(
             BackAction.System -> Unit
         }
     }
-    BackHandler(enabled = route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
+    BackHandler(enabled = savedEditorOpen || savedOverviewOpen || route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
 
     Scaffold(
         topBar = {
             if (!search.profileOpen) TopAppBar(
                 title = {
-                    if (savedResultsOpen) {
-                        Text("Gespeicherte Ergebnisse", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (savedResultsOpen || savedEditorOpen || savedOverviewOpen) {
+                        Text(when {
+                            savedResultsOpen -> search.savedSearches.firstOrNull { it.searchId == search.showingSavedSearchId }?.name ?: "Gespeicherte Ergebnisse"
+                            savedEditorOpen -> "Suche bearbeiten"
+                            else -> "Gespeicherte Suchen"
+                        }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     } else {
                         Text(
                             if (route.root == RootDestination.Discover) "Ladies Explorer" else route.root.title,
@@ -162,7 +174,7 @@ fun LadiesApp(
                     }
                 },
                 navigationIcon = {
-                    if (savedResultsOpen) {
+                    if (savedResultsOpen || savedEditorOpen || savedOverviewOpen) {
                         IconButton(onClick = { back() }) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Zurück")
                         }
@@ -172,6 +184,13 @@ fun LadiesApp(
                     if (route.root == RootDestination.Discover) {
                         IconButton(onClick = { selectRoot(RootDestination.Search) }) {
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
+                        }
+                    } else if (route.root == RootDestination.Search && pane == SearchPane.Filters) {
+                        IconButton(onClick = viewModel::openSavedSearches, enabled = !search.loading && !search.saving) {
+                            BadgedBox(badge = { if (search.savedSearches.any { it.unreadNewResults }) Badge() }) {
+                                Icon(Icons.Default.Bookmarks, contentDescription = if (search.savedSearches.any { it.unreadNewResults })
+                                    "Gespeicherte Suchen, neue Ergebnisse" else "Gespeicherte Suchen")
+                            }
                         }
                     }
                 },
@@ -287,7 +306,19 @@ fun LadiesApp(
                             )
                         }
                     }
-                    RootDestination.Search -> SearchScreen(
+                    RootDestination.Search -> when (pane) {
+                    SearchPane.SavedList -> SavedSearchOverview(search, !home.loading && !discovery.busy,
+                        onRefresh = viewModel::refreshSearchDefinitions, onSave = viewModel::saveCurrentSearch,
+                        onEdit = viewModel::loadSavedSearch, onRun = viewModel::runSavedSearch,
+                        onCancel = viewModel::cancelActiveSearch, onRename = viewModel::renameSavedSearch,
+                        onDelete = viewModel::deleteSavedSearch, onAcknowledge = viewModel::acknowledgeSavedSearch,
+                        onOpen = viewModel::showSavedResults, modifier = modifier)
+                    SearchPane.SavedResults -> key(search.showingSavedSearchId) {
+                        SavedSearchResultsScreen(search, !discovery.busy, viewModel::loadMoreSavedResults,
+                            { search.showingSavedSearchId?.let(viewModel::showSavedResults) },
+                            viewModel::loadProfile, modifier)
+                    }
+                    else -> key(pane, search.editingSavedSearchId) { SearchScreen(
                         state=search,
                         canStartSearch = !home.loading && !discovery.busy,
                         onCity=viewModel::setSearchCity,
@@ -304,16 +335,11 @@ fun LadiesApp(
                         onSearch={viewModel.startSearch()},
                         onCancelSearch=viewModel::cancelActiveSearch,
                         onSave=viewModel::saveCurrentSearch,
-                        onNewPreset=viewModel::createNewSavedSearch,
-                        onLoadSaved=viewModel::loadSavedSearch,
-                        onRunSaved={viewModel.startSearch(it)},
-                        onDeleteSaved=viewModel::deleteSavedSearch,
-                        onAcknowledge=viewModel::acknowledgeSavedSearch,
-                        onShowSavedResults=viewModel::showSavedResults,
-                        onLoadMoreSavedResults=viewModel::loadMoreSavedResults,
+                        onCancelEdit=viewModel::cancelSavedEditor,
                         onProfile=viewModel::loadProfile,
                         modifier=modifier,
-                    )
+                    ) }
+                    }
                     RootDestination.Saved -> SavedPeopleScreen(
                         state = discovery,
                         onKind = viewModel::selectSavedKind,

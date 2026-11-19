@@ -65,6 +65,7 @@ internal class RequestGeneration {
 }
 
 internal fun SearchUiState.beginRun(): SearchUiState = copy(
+    savedOverviewOpen = false,
     loading = true, error = null, profile = null, profileOpen = false,
     showingSavedSearchId = null, savedResultCards = emptyList(),
     savedResultCursor = null, savedResultsLoadingMore = false,
@@ -85,6 +86,26 @@ internal fun SearchUiState.applyDraftChange(next: SearchUiState): SearchUiState 
 
 /** Own the first page before awaiting I/O so the previous cursor cannot be reused. */
 internal fun SearchUiState.beginSavedResults(id: String): SearchUiState = copy(
-    showingSavedSearchId = id, savedResultCards = emptyList(), savedResultCursor = null,
+    savedOverviewOpen = true, showingSavedSearchId = id, savedResultCards = emptyList(), savedResultCursor = null,
     savedResultsLoadingMore = true, error = null,
 )
+
+// Only draft fields are restored; active results, error state and definitions
+// remain owned by the current ViewModel state.
+internal data class SearchDraft(val query: SearchRequest, val local: LocalVisibility) {
+    fun restore(state: SearchUiState): SearchUiState = state.copy(
+        city = query.city, radiusKm = query.radiusKm, category = query.category,
+        ageMin = query.ageMin, ageMax = query.ageMax, heightMin = query.heightMin,
+        heightMax = query.heightMax, maxPages = query.maxPages,
+        selectedFilters = decodeSelectedFilters(query.filtersJson), local = local,
+        preview = null, previewError = null, previewLoading = false,
+    )
+}
+
+internal enum class SearchPane { Filters, SavedList, SavedEditor, SavedResults }
+internal fun SearchUiState.searchPane(): SearchPane = when {
+    showingSavedSearchId != null -> SearchPane.SavedResults
+    editingSavedSearchId != null -> SearchPane.SavedEditor
+    savedOverviewOpen -> SearchPane.SavedList
+    else -> SearchPane.Filters
+}
