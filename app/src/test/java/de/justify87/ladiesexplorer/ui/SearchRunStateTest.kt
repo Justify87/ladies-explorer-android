@@ -270,4 +270,37 @@ class SearchRunStateTest {
         assertTrue(primaryFailed)
         assertEquals(listOf(42L), saved)
     }
+
+    @Test fun committedWriteCanBeFollowedByDetailFailureAndIndependentFeedRecovery() = runBlocking {
+        val calls = mutableListOf<String>()
+        val result = writeAndProject(
+            write = { calls += "commit" },
+            afterWrite = { calls += "detail"; error("stale owner") },
+            project = {
+                check(readIndependentProjections(
+                    first = { listOf(card(7)) },
+                    second = { listOf(card(8)) },
+                    publishFirst = { calls += "grid:${it.getOrThrow().single().listingId}" },
+                    publishSecond = { calls += "saved:${it.getOrThrow().single().listingId}" },
+                ))
+            },
+            onWriteFailure = { calls += "write rollback" },
+        )
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(false, true), result)
+        assertEquals(listOf("commit", "detail", "grid:7", "saved:8"), calls)
+    }
+
+    @Test fun cancellationIsNotConvertedIntoWriteFailureOrReadRetry() = runBlocking {
+        val calls = mutableListOf<String>()
+        val cancellation = kotlinx.coroutines.CancellationException("cancelled")
+        val failure = runCatching {
+            writeAndProject(
+                write = { calls += "write"; throw cancellation },
+                project = { calls += "projection" },
+                onWriteFailure = { calls += "write failure" },
+            )
+        }.exceptionOrNull()
+        assertTrue(failure === cancellation)
+        assertEquals(listOf("write"), calls)
+    }
 }

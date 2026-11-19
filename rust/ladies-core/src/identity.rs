@@ -815,6 +815,34 @@ mod tests {
             Some("Target note\n\nSource note")
         );
         assert!(core.person_note(listing, source).is_err());
+        // The exact same listing survives the merge. Old rendered owner tokens must fail
+        // at the existing native admission boundary, including CAS and note writes.
+        assert!(
+            core.set_swipe_preference(listing, source, None, crate::Preference::Like)
+                .is_err()
+        );
+        assert!(
+            core.set_swipe_preference(
+                listing,
+                source,
+                Some(crate::Preference::None),
+                crate::Preference::Dislike
+            )
+            .is_err()
+        );
+        assert!(
+            core.save_person_note(listing, source, Some("Source note".into()), None)
+                .is_err()
+        );
+        assert!(core.confirm_identity_match(listing, target).is_err());
+        assert_eq!(core.profile_identity(listing).unwrap().person_id, target);
+        let state = core.get_person(target).unwrap().unwrap();
+        assert!(state.favorite);
+        assert_eq!(state.preference, crate::Preference::None);
+        assert_eq!(
+            core.person_note(listing, target).unwrap().as_deref(),
+            Some("Target note\n\nSource note")
+        );
         let db = core.connection().unwrap();
         let owner: (i64, i64) = db
             .query_row(
