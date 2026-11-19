@@ -73,6 +73,7 @@ fun LadiesApp(
 ) {
     val home by viewModel.uiState.collectAsStateWithLifecycle()
     val search by viewModel.searchUiState.collectAsStateWithLifecycle()
+    val saved by viewModel.savedSearch.state.collectAsStateWithLifecycle()
     val discovery by viewModel.discoverState.collectAsStateWithLifecycle()
     val map by viewModel.mapState.collectAsStateWithLifecycle()
     val notes by viewModel.profileNotes.collectAsStateWithLifecycle()
@@ -108,7 +109,10 @@ fun LadiesApp(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) viewModel.cancelSavedStatus()
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.cancelSavedStatus()
+                viewModel.savedSearch.cancelCheck()
+            }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
@@ -117,7 +121,7 @@ fun LadiesApp(
     // Root changes must not reload already paginated lists or discard their scroll state.
     // Explicit refresh and data mutations remain owned by the ViewModel.
     fun selectRoot(destination: RootDestination) {
-        if (route.root == destination) return
+        if (route.root == destination || saved.blockingNavigation) return
         route = route.select(destination)
         when (destination) {
             RootDestination.Search -> viewModel.refreshSearchDefinitions()
@@ -135,23 +139,24 @@ fun LadiesApp(
         }
     }
 
-    val pane = search.searchPane()
+    val pane = saved.pane
     val savedResultsOpen = route.root == RootDestination.Search && pane == SearchPane.SavedResults
     val savedEditorOpen = route.root == RootDestination.Search && pane == SearchPane.SavedEditor
     val savedOverviewOpen = route.root == RootDestination.Search && pane == SearchPane.SavedList
-    LaunchedEffect(search.savedEditorSession, pane) {
-        if (pane != SearchPane.SavedEditor && search.savedEditorSession != 0L) {
-            searchStateHolder.removeState("editor/${search.savedEditorSession}")
-        }
+    var previousEditorSession by rememberSaveable { mutableStateOf<Long?>(null) }
+    LaunchedEffect(saved.editor?.session) {
+        val old = previousEditorSession
+        if (old != null && old != saved.editor?.session) searchStateHolder.removeState("editor/$old")
+        previousEditorSession = saved.editor?.session
     }
     fun back() {
-        if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen)) {
-            if (savedEditorOpen) viewModel.cancelSavedEditor() else viewModel.closeSavedSearches()
+        if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen || savedResultsOpen)) {
+            viewModel.savedSearch.back()
             return
         }
         when (route.backAction(search.profileOpen, savedResultsOpen)) {
             BackAction.CloseProfile -> viewModel.closeProfile()
-            BackAction.CloseSavedResults -> viewModel.closeSavedResults()
+            BackAction.CloseSavedResults -> viewModel.savedSearch.back()
             BackAction.Navigate -> route = route.back()
             BackAction.System -> Unit
         }
@@ -164,7 +169,7 @@ fun LadiesApp(
                 title = {
                     if (savedResultsOpen || savedEditorOpen || savedOverviewOpen) {
                         Text(when {
-                            savedResultsOpen -> search.savedSearches.firstOrNull { it.searchId == search.showingSavedSearchId }?.name ?: "Gespeicherte Ergebnisse"
+                            savedResultsOpen -> saved.searches.firstOrNull { it.searchId == saved.result?.id }?.name ?: "Gespeicherte Ergebnisse"
                             savedEditorOpen -> "Suche bearbeiten"
                             else -> "Gespeicherte Suchen"
                         }, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -192,9 +197,9 @@ fun LadiesApp(
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
                         }
                     } else if (route.root == RootDestination.Search && pane == SearchPane.Filters) {
-                        IconButton(onClick = viewModel::openSavedSearches, enabled = !search.loading && !search.saving) {
-                            BadgedBox(badge = { if (search.savedSearches.any { it.unreadNewResults }) Badge() }) {
-                                Icon(Icons.Default.Bookmarks, contentDescription = if (search.savedSearches.any { it.unreadNewResults })
+                        IconButton(onClick = viewModel.savedSearch::open, enabled = !search.loading && !saved.blockingNavigation && !home.loading && !discovery.busy) {
+                            BadgedBox(badge = { if (saved.searches.any { it.unreadNewResults }) Badge() }) {
+                                Icon(Icons.Default.Bookmarks, contentDescription = if (saved.searches.any { it.unreadNewResults })
                                     "Gespeicherte Suchen, neue Ergebnisse" else "Gespeicherte Suchen")
                             }
                         }
@@ -210,6 +215,7 @@ fun LadiesApp(
                         NavigationBarItem(
                             selected = route.root == destination,
                             onClick = { selectRoot(destination) },
+                            enabled = !saved.blockingNavigation || route.root == destination,
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -221,11 +227,11 @@ fun LadiesApp(
                                 when (destination) {
                                     RootDestination.Discover -> Icon(Icons.Default.FavoriteBorder, contentDescription = null)
                                     RootDestination.Search -> BadgedBox(badge = {
-                                        if (search.savedSearches.any { it.unreadNewResults }) {
+                                        if (saved.searches.any { it.unreadNewResults }) {
                                             Badge() // unread indicator, not a count
                                         }
                                     }) { Icon(Icons.Default.Search, contentDescription =
-                                        if (search.savedSearches.any { it.unreadNewResults }) "Neue gespeicherte Suchergebnisse" else null) }
+                                        if (saved.searches.any { it.unreadNewResults }) "Neue gespeicherte Suchergebnisse" else null) }
                                     RootDestination.Saved -> Icon(Icons.Default.Favorite, contentDescription = null)
                                     RootDestination.Settings -> Icon(Icons.Default.Settings, contentDescription = null)
                                 }
@@ -260,7 +266,7 @@ fun LadiesApp(
                     RootDestination.Discover -> Column(modifier = modifier) {
                         if (route.discovery != DiscoverMode.Map) {
                             Column(Modifier.padding(horizontal = 16.dp)) {
-                                AvailabilitySelector(search.headerAvailability(), !search.loading && !home.loading && !discovery.busy) {
+                                AvailabilitySelector(search.headerAvailability(), !search.loading && !home.loading && !discovery.busy && !saved.busy) {
                                     viewModel.runAvailability(it)
                                 }
                             }
@@ -314,43 +320,33 @@ fun LadiesApp(
                     }
                     RootDestination.Search -> searchStateHolder.SaveableStateProvider(
                         when (pane) {
-                            SearchPane.SavedResults -> "results/${search.showingSavedSearchId}"
-                            SearchPane.SavedEditor -> "editor/${search.savedEditorSession}"
+                            SearchPane.SavedResults -> "results/${saved.result?.id}"
+                            SearchPane.SavedEditor -> "editor/${saved.editor?.session}"
                             else -> pane.name
                         }
                     ) { when (pane) {
-                    SearchPane.SavedList -> SavedSearchOverview(search, !home.loading && !discovery.busy,
-                        onRefresh = viewModel::refreshSearchDefinitions, onSave = viewModel::saveCurrentSearch,
-                        onEdit = viewModel::loadSavedSearch, onRun = viewModel::runSavedSearch,
-                        onCancel = viewModel::cancelActiveSearch, onRename = viewModel::renameSavedSearch,
-                        onDelete = viewModel::deleteSavedSearch, onAcknowledge = viewModel::acknowledgeSavedSearch,
-                        onOpen = viewModel::showSavedResults, modifier = modifier)
-                    SearchPane.SavedResults -> key(search.showingSavedSearchId) {
-                        SavedSearchResultsScreen(search, !discovery.busy, viewModel::loadMoreSavedResults,
-                            { search.showingSavedSearchId?.let(viewModel::showSavedResults) },
-                            viewModel::loadProfile, modifier)
+                    SearchPane.SavedList -> SavedSearchOverview(
+                        state = saved, enabled = !search.loading && !home.loading && !discovery.busy,
+                        controller = viewModel.savedSearch, modifier = modifier)
+                    SearchPane.SavedResults -> key(saved.result?.id) {
+                        SavedSearchResultsScreen(saved, !discovery.busy && !search.loading && !home.loading,
+                            onMore = viewModel.savedSearch::more, onRetry = viewModel.savedSearch::retryResults,
+                            onOpen = viewModel::loadProfile, modifier = modifier)
                     }
-                    else -> key(pane, search.savedEditorSession.takeIf { pane == SearchPane.SavedEditor }) { SearchScreen(
-                        state=search,
+                    else -> SearchScreen(
+                        search = search, saved = saved,
                         canStartSearch = !home.loading && !discovery.busy,
-                        onCity=viewModel::setSearchCity,
-                        onRadius=viewModel::setSearchRadius,
-                        onCategory=viewModel::setCategory,
-                        onAge=viewModel::setAgeRange,
-                        onHeight=viewModel::setHeightRange,
-                        onPages=viewModel::setMaxPages,
-                        onToggleFilter=viewModel::toggleFilter,
-                        onAvailability=viewModel::setAvailability,
-                        onLocalVisibility=viewModel::setLocalVisibility,
-                        onReset=viewModel::resetSearchDraft,
-                        onPreviewVisible=viewModel::setPreviewVisible,
-                        onSearch={viewModel.startSearch()},
-                        onCancelSearch=viewModel::cancelActiveSearch,
-                        onSave=viewModel::saveCurrentSearch,
-                        onCancelEdit=viewModel::cancelSavedEditor,
-                        onProfile=viewModel::loadProfile,
-                        modifier=modifier,
-                    ) }
+                        onDraftChange = if (pane == SearchPane.SavedEditor) viewModel.savedSearch::editDraft else viewModel::editSearchDraft,
+                        onReset = viewModel::resetSearchDraft,
+                        onPreviewVisible = viewModel::setPreviewVisible,
+                        onSearch = { viewModel.startSearch() },
+                        onCancelSearch = viewModel::cancelActiveSearch,
+                        onSave = viewModel.savedSearch::saveEditor,
+                        onName = viewModel.savedSearch::editName,
+                        onCancelEdit = viewModel.savedSearch::back,
+                        onProfile = viewModel::loadProfile,
+                        modifier = modifier,
+                    )
                     } }
                     RootDestination.Saved -> SavedPeopleScreen(
                         state = discovery,

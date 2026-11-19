@@ -148,6 +148,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var discoveryListVisible = false
     private var mapProjectionVisible = false
     private val searchGeneration = RequestGeneration()
+    private val filterGeneration = RequestGeneration()
     private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
 
     internal val savedSearch = SavedSearchController(
@@ -271,8 +272,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun request(input: SearchUiState) = SearchDraft.from(input).request()
-
-    private val filterGeneration = RequestGeneration()
 
     fun refreshSearchDefinitions() {
         savedSearch.refresh()
