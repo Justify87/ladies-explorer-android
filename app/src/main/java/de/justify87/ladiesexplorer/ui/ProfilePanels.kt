@@ -154,25 +154,20 @@ internal fun ProfileFlow(
         if (swipeRestore != null && terminal && !busy && current()) consume(swipeRestore)
     }
     // The same real row manifest declares both viewport and recovery demand.
-    val manifest = rows.map { it.key to it.read }
-    val latestRows by rememberUpdatedState(rows)
-    LaunchedEffect(panels, state, manifest, projection) {
-        if (!available) return@LaunchedEffect
-        snapshotFlow { state.layoutInfo.visibleItemsInfo.map { it.key }.toSet() }.collect { visible ->
-            val reads = visibleProfileReads(latestRows, visible)
-            if (ProfileRowRead.Facts in reads) kotlinx.coroutines.coroutineScope {
-                launch { panels.loadFacts(checkNotNull(model).profile.snapshotId, filters) }
-                if (ProfileRowRead.Detail in reads) launch { panels.loadDetail() }
-            }
-            else if (ProfileRowRead.Detail in reads) panels.loadDetail()
-        }
-    }
     val dependency = if (canRestore) scroll.dependency(rows) else null
-    LaunchedEffect(panels, projection, dependency) {
-        if (available) when (dependency) {
-            ProfileRowRead.Facts -> panels.loadFacts(checkNotNull(model).profile.snapshotId, filters)
-            ProfileRowRead.Detail -> panels.loadDetail()
-            else -> Unit // Notes demand already uses the expanded section and admitted token.
+    val latestRows by rememberUpdatedState(rows)
+    val anchorRead by rememberUpdatedState(dependency)
+    LaunchedEffect(panels, state) {
+        if (model == null) return@LaunchedEffect
+        snapshotFlow {
+            val visible = state.layoutInfo.visibleItemsInfo.map { it.key }.toSet()
+            visibleProfileReads(latestRows, visible) + listOfNotNull(anchorRead)
+        }.collect { reads ->
+            // A demand survives scrolling or a changing row manifest; panels coalesce
+            // it and the immutable projection owns cancellation.
+            if (ProfileRowRead.Facts in reads) launch { panels.loadFacts(model.profile.snapshotId, filters) }
+            if (ProfileRowRead.Detail in reads) launch { panels.loadDetail() }
+            // Notes already use the expanded section and admitted token.
         }
     }
     val noteState = owner?.let(notes::get) ?: NoteEditorState()
@@ -209,6 +204,9 @@ internal fun ProfileFlow(
             val safeOffset = restoredRowOffset(offset, measured)
             if (safeOffset > 0) state.scrollToItem(index, safeOffset)
             scroll.restored()
+            state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == state.firstVisibleItemIndex }?.let { item ->
+                (item.key as? String)?.let { scroll.observe(it, state.firstVisibleItemScrollOffset) }
+            }
             restore.complete(swipeRestore)
         }
         snapshotFlow {

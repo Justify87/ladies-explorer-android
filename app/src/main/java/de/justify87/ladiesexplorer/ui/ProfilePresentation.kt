@@ -66,6 +66,9 @@ internal class ProfileRestoreCoordinator {
         }
         if (receipt == null || projection == null || phase == Phase.Applied || phase == Phase.Invalid) return
         if (!receipt.matches(projection, run)) {
+            media.restore(0, null)
+            sections.restore(emptyList())
+            scroll.restore(null)
             phase = Phase.Invalid
             return
         }

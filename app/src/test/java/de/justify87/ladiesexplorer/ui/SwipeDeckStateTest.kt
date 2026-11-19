@@ -174,7 +174,7 @@ class SwipeDeckStateTest {
         assertNull(session.restoredPresentation(card(4, 1)))
     }
 
-    @Test fun presentationRequiresSameSnapshotOwnerListingAndFiltersButNotTransientRevision() {
+    @Test fun presentationRequiresSameContextAndIndividuallyValidatesSnapshotAndFilters() {
         val saved = SwipePresentation(4, 1, 9, "{}", "IMAGE:fixture", "hero", 8, emptyList(), runId = 3)
         val projection = ProfileProjectionKey(4, 1, 9, 10, "{}")
         assertTrue(saved.matches(projection, 3))

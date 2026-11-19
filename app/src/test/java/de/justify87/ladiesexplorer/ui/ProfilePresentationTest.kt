@@ -106,6 +106,93 @@ class ProfilePresentationTest {
         assertEquals(1 to 0, memory.target(listOf("hero", "profile-services"), readFailed = true))
     }
 
+    @Test fun explicitReceiptWaitsForProjectionAndDoesNotConsumeBeforeActualScroll() {
+        val key = ProfileProjectionKey(4, 1, 11, 1, "{}")
+        val saved = SwipePresentation(4, 1, 11, "{}", "IMAGE:b", "profile-notes", 23,
+            listOf("Notes"), runId = 3, mediaIndex = 2)
+        val media = ProfileMediaSelection()
+        val sections = ProfileSections()
+        val scroll = ProfileScrollMemory()
+        val coordinator = ProfileRestoreCoordinator()
+        coordinator.synchronize(saved, null, 3, media, sections, scroll)
+        assertEquals(ProfileRestoreCoordinator.Phase.Waiting, coordinator.phase)
+        assertFalse(coordinator.terminal(saved))
+        assertFalse(coordinator.canRestore(saved))
+        coordinator.synchronize(saved, key, 3, media, sections, scroll)
+        assertEquals(ProfileRestoreCoordinator.Phase.Restoring, coordinator.phase)
+        assertEquals("IMAGE:b", media.id)
+        assertTrue(sections.expanded(ProfileSection.Notes))
+        assertEquals(ProfileScrollAnchor("profile-notes", 23), scroll.anchor)
+        assertTrue(scroll.recovering)
+        assertFalse(coordinator.terminal(saved))
+        val rows = ProfileFlowRows(media).apply {
+            item("hero") {}
+            item("profile-notes", ProfileRowRead.Note) {}
+        }.build()
+        assertEquals(ProfileRowRead.Note, scroll.dependency(rows))
+        // A projection gap must not consume the receipt or overwrite its anchor.
+        coordinator.synchronize(saved, null, 3, media, sections, scroll)
+        assertFalse(coordinator.terminal(saved))
+        coordinator.synchronize(saved, key.copy(revision = 2), 3, media, sections, scroll)
+        assertEquals(ProfileScrollAnchor("profile-notes", 23), scroll.anchor)
+        scroll.restored()
+        coordinator.complete(saved)
+        assertTrue(coordinator.terminal(saved))
+        media.restore(1, "IMAGE:c")
+        coordinator.synchronize(saved, key, 3, media, sections, scroll)
+        assertEquals("IMAGE:c", media.id)
+        coordinator.synchronize(null, key, 3, media, sections, scroll)
+        assertEquals(ProfileRestoreCoordinator.Phase.Idle, coordinator.phase)
+    }
+
+    @Test fun changedSnapshotKeepsStableKeysButWrongOwnerCannotRestoreAnything() {
+        val saved = SwipePresentation(4, 1, 11, "{}", "IMAGE:b", "event/5", 60,
+            listOf("History", "history-description"), runId = 3, mediaIndex = 2)
+        val projection = ProfileProjectionKey(4, 1, 12, 1, "{}")
+        val media = ProfileMediaSelection()
+        val sections = ProfileSections()
+        val scroll = ProfileScrollMemory()
+        val coordinator = ProfileRestoreCoordinator()
+        coordinator.synchronize(saved, projection, 3, media, sections, scroll)
+        assertEquals(ProfileScrollAnchor("event/5", 0), scroll.anchor)
+        assertEquals("IMAGE:b", media.id)
+        assertTrue(sections.showDescriptionChanges)
+        val rows = ProfileFlowRows(media).apply {
+            item("hero") {}
+            item("profile-history-head", ProfileRowRead.Detail) {}
+        }.build()
+        assertEquals(ProfileRowRead.Detail, scroll.dependency(rows))
+        assertEquals(1 to 0, scroll.target(rows.map { it.key }))
+        coordinator.synchronize(saved, projection.copy(ownerId = 5), 3, media, sections, scroll)
+        assertEquals(ProfileRestoreCoordinator.Phase.Invalid, coordinator.phase)
+        assertNull(media.id)
+        assertTrue(sections.entries.isEmpty())
+        assertEquals(0 to 0, scroll.target(rows.map { it.key }))
+    }
+
+    @Test fun repeatedSkipAndPreferenceDuringRestoreRetainOriginalPosition() = runBlocking {
+        val state = DiscoverUiState(cards = listOf(fixtureCard(4, 1)), activeRunId = 3, loading = false)
+        val card = requireNotNull(state.cardToken())
+        val token = requireNotNull(state.swipeToken(fixtureSwipe(snapshot = 12)))
+        val saved = SwipePresentation(4, 1, 11, "{}", "IMAGE:b", "profile-notes", 20,
+            listOf("Notes"), runId = 3)
+        val transient = saved.copy(mediaId = null, anchorKey = "hero", anchorOffset = 0)
+        assertEquals(saved, presentationForDecision(saved, transient, card))
+        assertEquals(saved, presentationForDecision(saved, null, card))
+        assertEquals(transient, presentationForDecision(saved.copy(runId = 7), transient, card))
+        val deck = SwipeSession()
+        val skip = SwipeStep(4, 1, presentation = presentationForDecision(saved, null, card))
+        deck.visit(skip)
+        undoSwipeStep(skip, { _, _, _, _ -> error("skip must not write") }, { 1 }, deck::undo)
+        assertEquals(saved, deck.restoredPresentation(state.cards.first()))
+        commitProfilePreference(token, Preference.LIKE, { _, _, _, _ -> Preference.NONE },
+            deck::visit, presentationForDecision(saved, transient, card))
+        assertEquals(saved, deck.last?.presentation)
+        val detail = DetailIdentityToken(2, 4, 1, 12, 1, Preference.NONE, false, emptyList())
+        commitProfilePreference(detail, Preference.DISLIKE, { _, _, _, _ -> Preference.NONE },
+            { error("standalone must never visit") }, saved)
+    }
+
     @Test fun openedNoteCoalescesDemandAndRetryDoesNotDependOnLazyItem() = runBlocking {
         val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
         val token = requireNotNull(state.swipeToken(fixtureSwipe()))

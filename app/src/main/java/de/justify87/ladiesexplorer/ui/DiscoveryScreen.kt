@@ -199,13 +199,10 @@ internal fun DiscoverScreen(
             if (state.busy) add(ProfileNotice("Wird gespeichert", "Entscheidung oder Aktualisierung wird verarbeitet."))
         }
         val undo = { onUndo(deckToken) }
-        val skip = { cardToken?.let { onSkip(it, presentationForDecision(state.swipeRestore, capture.read(), it)) }; Unit }
+        val skip = { cardToken?.let { onSkip(it, capture.read()) }; Unit }
         // Hero gestures, rail and menu use exactly this rendered-token dispatch.
         val choose: (Preference) -> Unit = { preference ->
-            token?.takeIf(isProfileCurrent)?.let {
-                val position = cardToken?.let { card -> presentationForDecision(state.swipeRestore, capture.read(), card) }
-                onChoose(it, preference, position)
-            }
+            token?.takeIf(isProfileCurrent)?.let { onChoose(it, preference, capture.read()) }
         }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
             hasRail = card != null || state.canUndoSwipe, notices = notices, noticeOwner = menuContext,
