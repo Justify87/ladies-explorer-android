@@ -133,6 +133,42 @@ fn canonical_label(allowed: &BTreeMap<String, String>, slug: &str) -> Option<Str
         .map(|(label, _)| label.clone())
 }
 
+/// Resolve the same catalog option used by search, retaining all documented aliases.
+pub(crate) struct EvidenceOption {
+    pub group: String,
+    pub label: String,
+    pub aliases: Vec<String>,
+}
+
+pub(crate) fn evidence_option(group: &str, value: &str) -> EvidenceOption {
+    let catalog = catalog();
+    let group = catalog.groups.get(group).map_or(group, String::as_str);
+    let cleaned = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut result = EvidenceOption {
+        group: group.into(),
+        label: cleaned.clone(),
+        aliases: Vec::new(),
+    };
+    let Some(allowed) = catalog.values.get(group) else {
+        return result;
+    };
+    let Some(slug) = allowed
+        .get(&cleaned)
+        .or_else(|| allowed.values().find(|slug| *slug == &cleaned))
+    else {
+        return result;
+    };
+    result.label = canonical_label(allowed, slug).unwrap_or(cleaned);
+    result.aliases.push(slug.clone());
+    result.aliases.extend(
+        allowed
+            .iter()
+            .filter(|(_, value)| *value == slug)
+            .map(|(label, _)| label.clone()),
+    );
+    result
+}
+
 fn skip_frequent(group: &str, slug: &str) -> bool {
     (group == "geschlecht" && slug == "weiblich")
         || (group == "treff"

@@ -172,9 +172,10 @@ G5 technisch abgeschlossen: PR #19 gemergt, main 450966f2, [Full-CI #341](https:
 | Ticket | Ziel | Stand |
 |---|---|---|
 | H01–H03 | Ein personengebundener ViewModel-Entwurf und Mutationsowner; Konflikte explizit | umgesetzt, CI offen |
-| M01/M02 | Legacy-Informationshierarchie und kataloggebundene Belege | IN_PROGRESS |
+| M01/M02 | Legacy-Informationshierarchie und kataloggebundene Belege | umgesetzt, CI offen |
 | M03 | Verständlicher Verlauf statt Roh-JSON | IN_PROGRESS |
 | M04 | Datenbank-/Zustandsregressionen, vollständige CI | IN_PROGRESS |
 | L01/L02 | UI/State/Read-Projektion trennen, keine verdeckten stale Daten | umgesetzt, CI offen |
 
 CI #346 stoppte allein an einer überzähligen Leerzeile Rustfmt; korrigiert. Notizentwürfe über Navigation/Rotation im ViewModel, absichtliche Freigabe bei Konflikt; kein separater Schreib-Scope, keine Speicherung im privaten Prozesszustand außerhalb der DB. Ungespeicherte Entwürfe über Prozessneustart sind nicht garantiert. Identitätsmerge blockiert bei schmutzigen Entwürfen der beteiligten Personen; gespeicherte Notizen bleiben im bestehenden Rust-Vertrag.
+- M01/M02: wichtige Angaben plus explizite Belege im Info-Raster; kompakte Flow-Chips für Merkmale, Zeiten und Dienste, Spaltenzahl abhängig von Breite/Schriftmaß. Rust nutzt dieselbe Katalogauflösung und gruppenbegrenzte Snapshot-Evidenz (Haare/Haarfarbe aus Parserfixture); weder fehlende Angaben noch widersprüchliche Aussagen oder nicht belegte Live-Öffnung als positiv/negativ erfinden. Neue Gruppenkontext-/Alias-/Konflikttests.

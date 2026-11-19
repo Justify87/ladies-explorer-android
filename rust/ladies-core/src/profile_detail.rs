@@ -1,5 +1,5 @@
 //! Local-only typed detail projections. No source requests or schema changes.
-use crate::{CoreError, LadiesCore};
+use crate::{CoreError, LadiesCore, source::filter::{EvidenceOption, evidence_option}};
 use rusqlite::{OptionalExtension, params};
 use serde_json::Value;
 
@@ -18,6 +18,7 @@ pub enum EvidenceStatus {
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FilterEvidence {
+    pub group: String,
     pub label: String,
     pub status: EvidenceStatus,
 }
@@ -28,6 +29,7 @@ pub struct ProfileFacts {
     pub services: Vec<ProfileField>,
     pub opening_times: Vec<ProfileField>,
     pub filters: Vec<FilterEvidence>,
+    pub important: Vec<FilterEvidence>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -94,26 +96,74 @@ fn normalize(s: &str) -> String {
         .to_lowercase()
 }
 
-fn evidence(target: &str, fields: &[ProfileField]) -> EvidenceStatus {
-    let target = normalize(target);
+fn evidence(option: &EvidenceOption, fields: &[&ProfileField]) -> EvidenceStatus {
     let mut yes = false;
     let mut no = false;
-    for field in fields {
-        let label = normalize(&field.label);
-        for raw in &field.values {
-            let value = normalize(raw);
-            yes |= value == target || (label == target && matches!(value.as_str(), "ja" | "yes"));
-            no |= value == format!("{target}: nein")
-                || value == format!("kein {target}")
-                || value == format!("ohne {target}")
-                || value == format!("{target} nein")
-                || (label == target && matches!(value.as_str(), "nein" | "no"));
+    for alias in &option.aliases {
+        let target = normalize(alias);
+        let negative = [
+            format!("{target}: nein"),
+            format!("kein {target}"),
+            format!("ohne {target}"),
+            format!("{target} nein"),
+        ];
+        for field in fields {
+            let label = normalize(&field.label);
+            for raw in &field.values {
+                let value = normalize(raw);
+                yes |= value == target
+                    || (label == target && matches!(value.as_str(), "ja" | "yes"));
+                no |= negative.contains(&value)
+                    || (label == target && matches!(value.as_str(), "nein" | "no"));
+            }
         }
     }
     match (yes, no) {
         (true, false) => EvidenceStatus::Yes,
         (false, true) => EvidenceStatus::No,
         _ => EvidenceStatus::Unknown,
+    }
+}
+
+/// Structural groups come from the parser (trait/standard attributes/opening times).
+/// Unknown headings and unsupported live-time inferences deliberately remain unknown.
+fn in_trait_group(group: &str, label: &str) -> bool {
+    let label = normalize(label);
+    match group {
+        "figur" => matches!(label.as_str(), "figur" | "körperbau"),
+        "busen" => matches!(label.as_str(), "busen" | "oberweite" | "brustgröße" | "brustgroesse" | "brust"),
+        "haarfarbe" => matches!(label.as_str(), "haare" | "haarfarbe"),
+        "haarlaenge" => matches!(label.as_str(), "haarlänge" | "haarlaenge"),
+        "augenfarbe" => matches!(label.as_str(), "augen" | "augenfarbe"),
+        "koerperschmuck" => matches!(label.as_str(), "körperschmuck" | "koerperschmuck"),
+        "typ" | "geschlecht" | "intimbereich" | "hautton" | "sonstiges" => label == group,
+        _ => false,
+    }
+}
+
+fn project_evidence(
+    option: EvidenceOption,
+    traits: &[ProfileField],
+    services: &[ProfileField],
+    times: &[ProfileField],
+) -> FilterEvidence {
+    let scoped: Vec<&ProfileField> = match option.group.as_str() {
+        "service" => services.iter().filter(|field| {
+            !matches!(normalize(&field.label).as_str(), "treffpunkt" | "treff" | "location")
+        }).collect(),
+        "treff" => traits.iter().chain(services).filter(|field| {
+            matches!(normalize(&field.label).as_str(), "treffpunkt" | "treff" | "treffen")
+        }).collect(),
+        "location" => traits.iter().chain(services).filter(|field| {
+            normalize(&field.label) == "location"
+        }).collect(),
+        "zeiten" => times.iter().collect(),
+        group => traits.iter().filter(|field| in_trait_group(group, &field.label)).collect(),
+    };
+    FilterEvidence {
+        status: evidence(&option, &scoped),
+        group: option.group,
+        label: option.label,
     }
 }
 
@@ -130,38 +180,29 @@ pub(crate) fn facts(
     let traits = fields(traits)?;
     let services = fields(services)?;
     let opening_times = fields(times)?;
-    let all: Vec<_> = traits
-        .iter()
-        .chain(&services)
-        .chain(&opening_times)
-        .cloned()
-        .collect();
-    let selected: Value = serde_json::from_str(filters_json)
+    let selected: std::collections::BTreeMap<String, Vec<String>> = serde_json::from_str(filters_json)
         .map_err(|e| CoreError::InvalidInput(format!("Invalid selected filters: {e}")))?;
-    let mut labels = std::collections::BTreeSet::new();
-    if let Some(groups) = selected.as_object() {
-        for values in groups.values().filter_map(Value::as_array) {
-            labels.extend(
-                values
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .filter(|s| !s.trim().is_empty())
-                    .map(str::to_owned),
-            );
+    let mut choices = std::collections::BTreeMap::new();
+    for (group, values) in selected {
+        for value in values {
+            let option = evidence_option(&group, &value);
+            choices.insert((option.group.clone(), option.label.clone()), option);
         }
     }
-    let filters = labels
+    let filters = choices
+        .into_values()
+        .map(|option| project_evidence(option, &traits, &services, &opening_times))
+        .collect();
+    let important = ["GV", "AV", "ZK", "Girlfriend-Sex"]
         .into_iter()
-        .map(|label| FilterEvidence {
-            status: evidence(&label, &all),
-            label,
-        })
+        .map(|value| project_evidence(evidence_option("service", value), &traits, &services, &opening_times))
         .collect();
     Ok(ProfileFacts {
         traits,
         services,
         opening_times,
         filters,
+        important,
     })
 }
 
@@ -277,14 +318,20 @@ mod tests {
     #[test]
     fn explicit_evidence_and_missing_or_conflicting_values() {
         let rows = fields(Some(
-            r#"{"A":["Ja"],"B":["Nein"],"C":["Ja","Nein"],"D":["value"]}"#.into(),
-        ))
-        .unwrap();
-        assert_eq!(evidence("A", &rows), EvidenceStatus::Yes);
-        assert_eq!(evidence("B", &rows), EvidenceStatus::No);
-        assert_eq!(evidence("C", &rows), EvidenceStatus::Unknown);
-        assert_eq!(evidence("missing", &rows), EvidenceStatus::Unknown);
-        assert_eq!(evidence("value", &rows), EvidenceStatus::Yes);
+            r#"{"Haare":["Blond"],"Augenfarbe":["blau","blau: nein"],"Figur":["normal"],"Sonstiges":["kein Nichtraucher"]}"#.into(),
+        )).unwrap();
+        let services = fields(Some(r#"{"Service":["blond"]}"#.into())).unwrap();
+        let status = |group, value| {
+            project_evidence(evidence_option(group, value), &rows, &services, &[]).status
+        };
+        assert_eq!(status("haarfarbe", "blond"), EvidenceStatus::Yes);
+        assert_eq!(status("augenfarbe", "blau"), EvidenceStatus::Unknown);
+        assert_eq!(status("figur", "mittel"), EvidenceStatus::Yes);
+        assert_eq!(status("sonstiges", "Nichtraucher"), EvidenceStatus::No);
+        assert_eq!(status("augenfarbe", "braun"), EvidenceStatus::Unknown);
+        assert_eq!(status("haarfarbe", "schwarz"), EvidenceStatus::Unknown);
+        assert_eq!(status("service", "blond"), EvidenceStatus::Unknown);
+        assert_eq!(status("zeiten", "jetzt geöffnet"), EvidenceStatus::Unknown);
     }
 
     #[test]
@@ -303,14 +350,14 @@ mod tests {
             db.execute(
                 "INSERT INTO listing_snapshots (listing_id,fingerprint,name,city,traits_json)
                  VALUES (?1,'before','Fixture A','City A',?2)",
-                params![listing, r#"{"A":["Ja"],"B":["Nein"]}"#],
+                params![listing, r#"{"Haare":["Blond"],"Augenfarbe":["kein blau"]}"#],
             )
             .unwrap();
             let before = db.last_insert_rowid();
             db.execute(
                 "INSERT INTO listing_snapshots (listing_id,fingerprint,name,city,traits_json)
                  VALUES (?1,'after','Fixture B','City A',?2)",
-                params![listing, r#"{"A":["Ja"],"B":["Nein"]}"#],
+                params![listing, r#"{"Haare":["Blond"],"Augenfarbe":["kein blau"]}"#],
             )
             .unwrap();
             let after = db.last_insert_rowid();
@@ -322,10 +369,14 @@ mod tests {
             .unwrap();
             (before, after, db.last_insert_rowid())
         };
-        let projected = facts(&core, before, r#"{"group":["A","B","missing"]}"#).unwrap();
+        let projected = facts(
+            &core,
+            before,
+            r#"{"haarfarbe":["blond","schwarz"],"augenfarbe":["blau"]}"#,
+        ).unwrap();
         assert_eq!(projected.traits.len(), 2);
-        assert_eq!(projected.filters[0].status, EvidenceStatus::Yes);
-        assert_eq!(projected.filters[1].status, EvidenceStatus::No);
+        assert_eq!(projected.filters[0].status, EvidenceStatus::No);
+        assert_eq!(projected.filters[1].status, EvidenceStatus::Yes);
         assert_eq!(projected.filters[2].status, EvidenceStatus::Unknown);
         assert!(facts(&core, -1, "{}").is_err());
         let details = person_detail(&core, person).unwrap();

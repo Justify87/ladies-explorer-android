@@ -13,6 +13,7 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
@@ -73,7 +74,12 @@ private fun FieldGrid(rows: List<Pair<String, String>>) {
         return
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = if (maxWidth >= 480.dp) 3 else 2
+        val fontScale = LocalDensity.current.fontScale
+        val columns = when {
+            maxWidth < 300.dp || fontScale > 1.5f -> 1
+            maxWidth >= 480.dp && fontScale <= 1.2f -> 3
+            else -> 2
+        }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             rows.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -99,7 +105,34 @@ internal fun evidenceLabel(status: EvidenceStatus): String = when (status) {
     EvidenceStatus.UNKNOWN -> "Unbekannt"
 }
 
-private fun List<ProfileField>.rows() = map { it.label to it.values.joinToString(" · ") }
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FieldChips(rows: List<ProfileField>) {
+    if (rows.isEmpty()) {
+        Text("Keine Angaben gespeichert.")
+        return
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        rows.forEach { field ->
+            field.values.forEach { value ->
+                Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text("${field.label}: $value", Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+private fun ProfileFacts.importantRows(): List<Pair<String, String>> {
+    val trait = traits.firstOrNull {
+        it.label.lowercase() in setOf("busen", "oberweite", "brustgröße", "brustgroesse", "brust")
+    }
+    return listOf("Busen" to (trait?.values?.joinToString(" · ") ?: "Unbekannt")) +
+        important.map { it.label to evidenceLabel(it.status) } +
+        filters.map { "${it.label} (${it.group})" to evidenceLabel(it.status) }
+}
 
 @Composable
 private fun DescriptionCard(profile: ProfileResponse) {
@@ -229,19 +262,20 @@ internal fun LazyListScope.profileContent(
                     FieldGrid(listOf("Alter" to (identity?.age ?: "Unbekannt"),
                         "Ort" to profile.city.ifBlank { "Unbekannt" },
                         "Anzeigen" to (person?.listingCount?.toString() ?: "Unbekannt")) +
-                        panels.facts.orEmptyFilters())
+                        panels.facts?.importantRows().orEmpty())
+                    if (panels.facts == null) FactsContent(panels) { }
                 }
             }
             item(key = "profile-traits") {
-                PanelCard("Merkmale") { FactsContent(panels) { FieldGrid(it.traits.rows()) } }
+                PanelCard("Merkmale") { FactsContent(panels) { FieldChips(it.traits) } }
             }
             item(key = "profile-times") {
-                PanelCard("Öffnungszeiten") { FactsContent(panels) { FieldGrid(it.openingTimes.rows()) } }
+                PanelCard("Öffnungszeiten") { FactsContent(panels) { FieldChips(it.openingTimes) } }
             }
             item(key = "profile-description") { DescriptionCard(profile) }
         }
         ProfileTab.Services -> item(key = "profile-services") {
-            PanelCard("Dienste") { FactsContent(panels) { FieldGrid(it.services.rows()) } }
+            PanelCard("Dienste") { FactsContent(panels) { FieldChips(it.services) } }
         }
         ProfileTab.Analysis -> {
             item(key = "profile-analysis") {
@@ -315,9 +349,6 @@ internal fun LazyListScope.profileContent(
         }
     }
 }
-
-private fun ProfileFacts?.orEmptyFilters(): List<Pair<String, String>> =
-    this?.filters.orEmpty().map { it.label to evidenceLabel(it.status) }
 
 @Composable
 private fun FactsContent(panels: ProfilePanels, content: @Composable (ProfileFacts) -> Unit) {
