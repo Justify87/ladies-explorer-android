@@ -698,7 +698,8 @@ mod tests {
         let listing = found.profiles[0].listing_id;
         let person = found.profiles[0].person_id;
         core.set_favorite(person, true).unwrap();
-        core.set_preference(person, crate::Preference::Like).unwrap();
+        core.set_preference(person, crate::Preference::Like)
+            .unwrap();
         assert_eq!(saved_status_targets(&core).unwrap(), vec![listing]);
         let target = status_target(&core, listing).unwrap();
         let control = RequestControl::default();
