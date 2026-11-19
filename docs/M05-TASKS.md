@@ -46,12 +46,12 @@ Einziger operativer Status-Tracker. Die Tabelle dokumentiert den aktuellen Stand
 | T7.2 | 7.1 | P34 | Tabs, Thumbnail, Metadaten, Menü und favorisieren; List-State je Tab. | Direkte Aktionen, Back, kleine Displays | DONE | PR #21 gemergt, Full-CI #368/#369 erfolgreich; DEVICE_PENDING |
 | T7.3 | 7.1,7.2 | P35 | Watchlist 36h, Top 3 + expand, übrige Favoriten dedupliziert; Changed-/Relisting-Badges. | Grenzzeit, Datumssortierung, mehrere Anzeigen/Änderungen | DONE | PR #21 gemergt, Full-CI #368/#369 erfolgreich; DEVICE_PENDING |
 | T7.4 | 7.2,7.3 | P36 | Einzel-/Batchstatus mit sicherer Quellen-API, Abbruch, begrenzte Parallelität, Progress und Fehler. | Offline/404/Timeout/Prüfseite unterscheiden; keine falsche Inaktivität | DONE | PR #21 gemergt, Full-CI #368/#369 erfolgreich; DEVICE_PENDING |
-| T8.1 | 7.4 | P37 | Gespeicherte-Suchen-Screen und Header-Neuindikator, bestehende CRUD/Run/Delta/Acknowledge. | Neu-/Gelesen, Umbenennen versus Definitionsänderung | REVIEW | PR #22, Full-CI #382 erfolgreich; Folgekorrektur erneut zu prüfen; DEVICE_PENDING |
-| T8.2 | 8.1,2.2,2.6 | P38 | Gemeinsamen Editor für gespeicherte Vorlagen, getrennte Drafts und Unsupported-Regeln. | Import/Save/Rename/Edit/Cancel und Delta-Regression | REVIEW | PR #22, Full-CI #382 erfolgreich; Folgekorrektur erneut zu prüfen; DEVICE_PENDING |
-| T8.3 | 8.1,5.1 | P39 | Gespeicherte Ergebnisse über gemeinsame Grid-Karten, Cursor und Offline-Profilopen. | Stabile Paging-Keys, sichtbare Deltas, keine 1000-Grenze | REVIEW | PR #22, Full-CI #382 erfolgreich; Folgekorrektur erneut zu prüfen; DEVICE_PENDING |
-| T8.4 | 8.2,8.3 | P40 | Konsistenzreview Loading/Empty/Error, Back/Scroll, TalkBack, Font Scale, Rotation/Neustart; nur M05-Defekte beheben. | Synthetische UI-Matrix und Fehlerzustände | REVIEW | PR #22, Full-CI #382 erfolgreich; Folgekorrektur erneut zu prüfen; DEVICE_PENDING |
-| T9.1 | 8.4 | P41 | Gesamtdiff gegen alle P-IDs/X-IDs, Architektur/Scope/Altcode, Full-CI incl. APK und visuelles Testprotokoll. | Alle Gates belegt; offene Abweichungen/Blocker, konkrete APK/CI-Referenz | TODO | — |
-| T9.2 | 9.1 | — | Geräteabnahme der M05-Szenarien und Dokumentationsabgleich; erst bei tatsächlicher Evidenz Roadmap schließen. | G9: kein offener kritischer Befund, Status explizit für nicht ausgeführte Tests | TODO | — |
+| T8.1 | 7.4 | P37 | Gespeicherte-Suchen-Screen und Header-Neuindikator, bestehende CRUD/Run/Delta/Acknowledge. | Neu-/Gelesen, Umbenennen versus Definitionsänderung | DONE | PR #22 integriert (f9991d8f); Full-CI #383 auf 1cafbaf8 erfolgreich; DEVICE_PENDING; G9-Folgeprüfung läuft |
+| T8.2 | 8.1,2.2,2.6 | P38 | Gemeinsamen Editor für gespeicherte Vorlagen, getrennte Drafts und Unsupported-Regeln. | Import/Save/Rename/Edit/Cancel und Delta-Regression | DONE | PR #22 integriert (f9991d8f); Full-CI #383 auf 1cafbaf8 erfolgreich; DEVICE_PENDING; G9-Folgeprüfung läuft |
+| T8.3 | 8.1,5.1 | P39 | Gespeicherte Ergebnisse über gemeinsame Grid-Karten, Cursor und Offline-Profilopen. | Stabile Paging-Keys, sichtbare Deltas, keine 1000-Grenze | DONE | PR #22 integriert (f9991d8f); Full-CI #383 auf 1cafbaf8 erfolgreich; DEVICE_PENDING; G9-Folgeprüfung läuft |
+| T8.4 | 8.2,8.3 | P40 | Konsistenzreview Loading/Empty/Error, Back/Scroll, TalkBack, Font Scale, Rotation/Neustart; nur M05-Defekte beheben. | Synthetische UI-Matrix und Fehlerzustände | DONE | PR #22 integriert (f9991d8f); Full-CI #383 auf 1cafbaf8 erfolgreich; DEVICE_PENDING; G9-Folgeprüfung läuft |
+| T9.1 | 8.4 | P41 | Gesamtdiff gegen alle P-IDs/X-IDs, Architektur/Scope/Altcode, Full-CI incl. APK und visuelles Testprotokoll. | Alle Gates belegt; offene Abweichungen/Blocker, konkrete APK/CI-Referenz | IN_PROGRESS | G9-Folgeprüfung begonnen; neue Regressionen und Full-CI noch offen |
+| T9.2 | 9.1 | — | Geräteabnahme der M05-Szenarien und Dokumentationsabgleich; erst bei tatsächlicher Evidenz Roadmap schließen. | G9: kein offener kritischer Befund, Status explizit für nicht ausgeführte Tests | BLOCKED | DEVICE_PENDING; T9.1 und physisches Gerät erforderlich |
 
 ## Meilenstein-Gates
 
@@ -66,8 +66,8 @@ Einziger operativer Status-Tracker. Die Tabelle dokumentiert den aktuellen Stand
 | G5 | T5.1–T5.3 | G4a | Grid, Ansichtswechsel, ein Ergebniszustand | DONE | PR #19 gemergt; Full-CI #341 grün; DEVICE_PENDING |
 | G6 | T6.1–T6.6 | G5 | Tabs, Notizen, Historie, Identitätsintegrität | DONE | PR #20 gemergt; Full-CI #350 grün; DEVICE_PENDING |
 | G7 | T7.1–T7.4 | G6 | Listen, Status, Sortierung und Watchlist | DONE | PR #21 gemergt, Full-CI #368/#369 erfolgreich; DEVICE_PENDING; Fortsetzung freigegeben |
-| G8 | T8.1–T8.4 | G7 | Gemeinsamer Editor/Grid, Delta, UX-Konsistenz | IN_PROGRESS | PR #22, Full-CI #382 grün; Lifecycle-Folgekorrektur/DEVICE_PENDING |
-| G9 | T9.1–T9.2 | G8 | Komplette Matrix, CI, APK, visuelle/physische Abnahme | TODO | — |
+| G8 | T8.1–T8.4 | G7 | Gemeinsamer Editor/Grid, Delta, UX-Konsistenz | DONE | PR #22 integriert (f9991d8f); Full-CI #383 auf 1cafbaf8 vollständig grün; DEVICE_PENDING; G9-Folgekorrekturen separat |
+| G9 | T9.1–T9.2 | G8 | Komplette Matrix, CI, APK, visuelle/physische Abnahme | IN_PROGRESS | T9.1 begonnen; T9.2 DEVICE_PENDING; keine M06/M07-Freigabe |
 
 Vor Beginn eines Meilensteins muss das Vorgänger-Gate erfüllt bzw. eine ausdrücklich dokumentierte Freigabe für offene Gerätebelege vorhanden sein; Task-Abhängigkeiten allein ersetzen dieses Gate nicht. Für jedes Gate: alle Tasks/Matrix-IDs prüfen; gezielte Tests und Full-CI pro PR; Diff nach redundanter Implementierung, Folgefehlern, Daten-/State-Konsistenz und Scope prüfen. Kritische/hohe Befunde beheben und erneut testen. Offene Geräteprüfungen bezeichnen; echte Geräteabnahme ist G9-Voraussetzung. Bei externem Blocker sachlichen Teil weiterführen soweit Abhängigkeiten zulassen, nicht auf DONE setzen. Kein automatischer Merge.
 
@@ -228,3 +228,31 @@ Bewusste Grenzen: globaler DB-Änderungszähler invalidiert konservativ auch nac
 ### G8 – Vertikale Folgeprüfung nach Full-CI #382
 
 [Full-CI #382](https://github.com/Justify87/ladies-explorer-android/actions/runs/44504740207), Head `33b7c586`: Rustfmt, 163 reguläre Rust-Tests + separater Importtest, Clippy, HTTP-Grenze, Legacy-Roundtrip/Fixture, Android-JVM, Lint und ARM64-APK vollständig grün. Nachprüfung der Reviewkorrekturen von Compose über Controller/FFI bis SQLite: App-Lifecycle muss sichtbare Ergebnispane zusätzlich zur Navigation berücksichtigen. Sichtbarkeitsvertrag startet konservativ false, ON_STOP/Dispose setzt ihn zurück; Hintergrund-Read darf keine automatische Gelesen-Änderung auslösen. Nach Rückkehr bleibt der Stand ungelesen bis zu explizitem sichtbarem Refresh/erneutem Öffnen bzw. Gelesen-Aktion. Neuer Controller-Test mit blockiertem Read und Hintergrundwechsel. Neue Full-CI noch offen; Gerätematrix weiterhin DEVICE_PENDING.
+
+
+### G8 – Integration und G9-Arbeitsbeginn
+
+PR #22 ist mit `f9991d8f636858710acad098fe3a873c4523f902` auf main integriert. [Full-CI #383](https://github.com/Justify87/ladies-explorer-android/actions/runs/44506676909) auf `1cafbaf84aa85e4e1195db023c2d35caaef2eda0`: alle Schritte erfolgreich (HTTP-Grenze, Export/Roundtrip, Fixture, Rust-Tests/Rustfmt, Clippy, JVM, Lint, ARM64-APK). [APK-Artefakt](https://github.com/Justify87/ladies-explorer-android/actions/runs/44506676909/artifacts/14519662596) vorhanden, nicht abgelaufen. G8 administrativ auf integrierten Stand aktualisiert; das ist keine Geräteabnahme oder Fehlerfreiheitsgarantie. G9 prüft die integrierten Funktionsketten.
+
+G9-F01 (P39/P40, auch P16/P17/P23/P30): SavedSearchController besitzt das Ergebnisfenster; Rust liest aktuelle lokale Inserat-/Person-/Snapshot-/Medienzuordnung. Schließen eines Profils allein ist kein Abschluss der Native-I/O-Operation. Späte Snapshot-/Archiv-/Identity-Schreibvorgänge konnten nach Rückkehr veraltete Karten zurücklassen. Gemeinsame lokale Result-Reprojektion über den bestehenden Operation-Owner; Profil-Read und Medienarchiv auch in finally, Swipe über den vorhandenen Completion-Callback, Merge nach Commit. Kein erneuter Quellabruf, keine automatische Acknowledge-Aktion, bestehender Refresh-Queue und Fenstertiefe bleiben erhalten.
+
+G9-F02 (P39/P40): Ein fehlgeschlagenes Wiederlesen ließ vorherige Karten weiterhin als ready/aktionsfähig erscheinen. Das Fenster wird bei akzeptiertem Read-Fehler invalidiert; die angeforderte erfolgreiche Präfixtiefe und der Grid-State bleiben erhalten, Retry liest SQLite neu. Tests `lateNativeWriteQueuesCoherentResultRefreshWithoutAcknowledging` und `failedReprojectionInvalidatesActionsAndRetryRetainsWindowCapacity` in SavedSearchPaneTest.kt neu. Neue CI und vollständiges G9-Review noch offen.
+
+#### G9 – Abnahmeprotokoll (offen)
+
+Synthetische Referenzdaten verwenden; keine realen personenbezogenen Screenshots/HARs in Git. Baseline #383 ist nicht die CI des G9-Branches.
+
+| IDs | Abnahmefall | Erwartung / Nachweis | Stand |
+|---|---|---|---|
+| P01–P04 | Shell, Theme, Insets, Back, Karte | 360/390/430/600 dp, hell/dunkel, korrektes Back, Kartenumfang sichtbar | DEVICE_PENDING |
+| P05–P14 | Suche/Filter/Vorschau/Radius | Entwurf und Run getrennt; 0/1/viele/partial; Cancel/Fehler; kein falscher Count oder Radiuswechsel; P13-Grenzen sichtbar | DEVICE_PENDING |
+| P15–P19, P42–P44 | Galerie, Profil, Anzeige-HTTP | Archiv/Cache/Offline/fehlendes Bild; Reihenfolge und externe Intents; echter HAR nur Rust für Quelle | DEVICE_PENDING |
+| P20–P23 | Swipe/Gesten/Undo/Prefetch | Horizontale Entscheidung, vertikaler Scroll, Tippzonen, Reset/Replay, keine verspäteten Aktionen | DEVICE_PENDING |
+| P24–P26 | Grid/Like/Ansichtswechsel | stabile Karten/Position, sofortiges sichtbares Like-Verhalten, Fehler/Rollback, kein neuer Suchlauf | DEVICE_PENDING |
+| P27–P32 | Profildetails/Notiz/Identität/Verlauf | Tabs, Notizkonflikt, Offline-Snapshot, Besitzerwechsel, Vergleich; keine fremde Notiz überschreiben | DEVICE_PENDING |
+| P33–P36 | Gespeicherte Personen/Status | Counts, 36h-Grenze, Sortierung, Paging, Abbruch, bestätigte vs. unbekannte Statusbeobachtung | DEVICE_PENDING |
+| P37–P40 | Gespeicherte Suchen | getrennte Entwürfe, Delta, Unread/Back/ON_STOP, Paging, spätes Profil/Archiv, Retry; Importdefinitionen unverändert | DEVICE_PENDING |
+| P41 | Gesamt | TalkBack, Font Scale, Rotation/Prozessneustart, Tastatur, schnelle Navigation, echte Fehler-/Offlinefälle; CI/APK des G9-Heads | IN_PROGRESS |
+
+P13 fehlende STUDIO/FACEAPP/Business-Evidenz bleibt explizit nicht unterstützt; X01–X11 als bestehende Scope-Grenzen beibehalten. P11 keine automatische Radiusaufweitung, P16 externer Video-Intent, P04/P26 explizit DB-weite Karte, P37 manuelle Prüfung statt Hintergrundpolling: keine dieser Abweichungen durch G9 verdeckt als identische Legacy-Funktion abnehmen. G9 benötigt noch abschließenden Abgleich der einzelnen P-/X-IDs und Freigabe der verbleibenden Abweichungen sowie physische Belege.
+
