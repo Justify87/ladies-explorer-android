@@ -19,13 +19,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 internal enum class ProfileSection(val label: String) {
-    Analysis("Analyse / Identität"), Notes("Meine Notiz"), History("Verlauf / verknüpfte Anzeigen")
+    Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), History("Verlauf / verknüpfte Anzeigen")
 }
 
 @Stable
@@ -117,17 +118,22 @@ internal fun ProfileFlow(
 }
 
 @Composable
-private fun SectionToggle(section: ProfileSection, sections: ProfileSections, hint: String? = null) {
+private fun SectionToggle(
+    section: ProfileSection, sections: ProfileSections, hint: String? = null, hintError: Boolean = false,
+) {
     val expanded = sections.expanded(section)
-    TextButton(onClick = { sections.toggle(section) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+    TextButton(onClick = { sections.toggle(section) },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+            stateDescription = if (expanded) "Ausgeklappt" else "Eingeklappt"
+        }) {
         Column(Modifier.weight(1f)) {
             Text(section.label, modifier = Modifier.semantics { heading() },
                 style = MaterialTheme.typography.titleMedium)
             hint?.let { Text(it, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                color = if (hintError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-            contentDescription = if (expanded) "Einklappen" else "Ausklappen")
+            contentDescription = null)
     }
 }
 
@@ -144,7 +150,7 @@ internal fun noteSectionHint(note: NoteEditorState): String? = when {
 }
 
 @Composable
-private fun PanelCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+private fun ProfileGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, modifier = Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
         content()
@@ -203,12 +209,26 @@ internal fun ProfileFacts.overviewAndTraits(): Pair<List<Pair<String, String>>, 
     return overview to traits.filterIndexed { index, _ -> index != promoted }
 }
 
+internal data class ProfileServiceRows(
+    val source: List<Pair<String, String>>,
+    val filters: List<Pair<String, String>>,
+) {
+    val count get() = source.size + filters.size
+    fun preview(expanded: Boolean): ProfileServiceRows =
+        if (expanded) this else copy(source = source.take(4), filters = filters.take(4))
+}
+
+internal fun ProfileFacts.serviceRows(): ProfileServiceRows = ProfileServiceRows(
+    source = services.flatMap { field -> field.values.map { field.label to it } },
+    filters = filters.map { "${it.label} (${it.group})" to evidenceLabel(it.status) },
+)
+
 @Composable
-private fun DescriptionCard(profile: ProfileResponse) {
+private fun ProfileDescription(profile: ProfileResponse) {
     var expanded by rememberSaveable(profile.snapshotId) { mutableStateOf(false) }
     var overflow by remember(profile.snapshotId) { mutableStateOf(false) }
     val text = profile.description.ifBlank { "Keine Beschreibung gespeichert." }
-    PanelCard("Über das Profil") {
+    ProfileGroup("Über das Profil") {
         SelectionContainer {
             Text(text, maxLines = if (expanded) Int.MAX_VALUE else 6,
                 overflow = TextOverflow.Ellipsis, onTextLayout = {
@@ -229,7 +249,7 @@ private fun NotesPanel(
     actions: NoteEditorActions,
     busy: Boolean,
 ) {
-    PanelCard("Private Personennotiz") {
+    ProfileGroup("Private Personennotiz") {
         val draft = state.draft
         val scope = rememberCoroutineScope()
         val editable = owner != null && !busy && !state.loading && !state.readError
@@ -321,37 +341,48 @@ private fun LazyListScope.profileContent(
 ) {
     item(key = "profile-facts") {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PanelCard("Übersicht") {
+            ProfileGroup("Übersicht") {
                 FactsContent(panels) { facts ->
                     val (overview, traits) = facts.overviewAndTraits()
-                    if (facts.openingTimes.isNotEmpty()) PanelCard("Öffnungszeiten") { FieldValues(facts.openingTimes) }
+                    if (facts.openingTimes.isNotEmpty()) ProfileGroup("Öffnungszeiten") { FieldValues(facts.openingTimes) }
                     FieldGrid(overview + listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() }))
-                    if (traits.isNotEmpty()) PanelCard("Merkmale") { FieldValues(traits) }
+                    if (traits.isNotEmpty()) ProfileGroup("Merkmale") { FieldValues(traits) }
                 }
             }
         }
     }
-    if (profile.description.isNotBlank()) item(key = "profile-description") { DescriptionCard(profile) }
+    if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile) }
     item(key = "profile-services") {
-        PanelCard("Dienste und Filterbelege") {
+        ProfileGroup("Dienste und Filterbelege") {
             FactsContent(panels) { facts ->
-                if (facts.services.isNotEmpty()) FieldValues(facts.services)
-                if (facts.filters.isNotEmpty()) FieldGrid(facts.filters.map {
-                    "${it.label} (${it.group})" to evidenceLabel(it.status)
-                })
-                if (facts.services.isEmpty() && facts.filters.isEmpty()) Text("Keine Angaben gespeichert.")
+                val all = facts.serviceRows()
+                val expanded = sections.expanded(ProfileSection.Services)
+                val shown = all.preview(expanded)
+                if (shown.source.isNotEmpty()) FieldGrid(shown.source)
+                if (shown.filters.isNotEmpty()) {
+                    Text("Filterbelege", style = MaterialTheme.typography.labelLarge)
+                    FieldGrid(shown.filters)
+                }
+                if (all.count == 0) Text("Keine Angaben gespeichert.")
+                if (expanded || shown.count < all.count) {
+                    TextButton(onClick = { sections.toggle(ProfileSection.Services) }) {
+                        Text(if (expanded) "Weniger anzeigen" else "Alle ${all.count} Angaben anzeigen")
+                    }
+                    if (!expanded) Text("${shown.count} von ${all.count} Angaben sichtbar",
+                        style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
     if (!profile.phoneDisplay.isNullOrBlank()) item(key = "profile-contact") {
-        PanelCard("Kontakt") {
+        ProfileGroup("Kontakt") {
             ProfileContactActions(profile.phoneDisplay, actionsBusy, isCurrent)
         }
     }
     item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections) }
     if (sections.expanded(ProfileSection.Analysis)) {
         item(key = "profile-analysis") {
-            PanelCard("Gespeicherte Evidenz") {
+            ProfileGroup("Gespeicherte Evidenz") {
                 val data = panels.detail
                 FieldGrid(listOf("Bilder im aktuellen Profil" to media.count { it.kind == "IMAGE" }.toString()) +
                     if (data == null) emptyList() else listOf(
@@ -368,7 +399,7 @@ private fun LazyListScope.profileContent(
             Text(if (candidates.isEmpty()) "Keine Kandidaten gespeichert." else "Keine automatische Zusammenführung.")
         }
         items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
-            PanelCard("Person #${candidate.personId} · ${candidate.decision}") {
+            ProfileGroup("Person #${candidate.personId} · ${candidate.decision}") {
                 Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
                     "Quellprofil".takeIf { candidate.sourceProfileMatch },
                     "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
@@ -378,7 +409,10 @@ private fun LazyListScope.profileContent(
             }
         }
     }
-    item(key = "notes-toggle") { SectionToggle(ProfileSection.Notes, sections, noteSectionHint(note)) }
+    item(key = "notes-toggle") {
+        SectionToggle(ProfileSection.Notes, sections, noteSectionHint(note),
+            hintError = note.error != null || note.draft?.conflict == true)
+    }
     if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes") {
         NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy)
     }
@@ -396,7 +430,7 @@ private fun LazyListScope.profileContent(
             if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
         }
         items(visibleEvents, key = { "event/${it.changeEventId}" }) { event ->
-            PanelCard(historyEventLabel(event.eventType, event.fieldKey)) {
+            ProfileGroup(historyEventLabel(event.eventType, event.fieldKey)) {
                 Text(historyDate(event.createdAt), style = MaterialTheme.typography.bodySmall)
                 val listing = panels.detail?.listings?.firstOrNull { it.listingId == event.listingId }
                 listing?.let { Text("Anzeige #${it.externalId}", style = MaterialTheme.typography.labelMedium) }
@@ -414,7 +448,7 @@ private fun LazyListScope.profileContent(
         }
         items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }) { listing ->
             val context = LocalContext.current
-            PanelCard("Anzeige #${listing.externalId}") {
+            ProfileGroup("Anzeige #${listing.externalId}") {
                 Text(statusLabel(listing.status))
                 Text("Zuletzt gesehen: ${historyDate(listing.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
                 listing.url?.let { url -> TextButton(enabled = !actionsBusy, onClick = { if (isCurrent()) openExternal(context, url) }) { Text("Original öffnen") } }

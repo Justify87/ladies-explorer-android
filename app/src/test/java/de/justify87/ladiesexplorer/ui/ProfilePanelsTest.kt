@@ -149,6 +149,19 @@ class ProfilePanelsTest {
         assertEquals(listOf(second, other), traits)
     }
 
+    @Test fun servicePreviewPreservesAllRawValuesAndFilterEvidenceOnExpansion() {
+        val raw = ProfileField("Fixture", (1..10).map { "v$it" })
+        val filters = (1..6).map { FilterEvidence("fixture", "f$it",
+            if (it % 2 == 0) EvidenceStatus.UNKNOWN else EvidenceStatus.NO) }
+        val all = ProfileFacts(emptyList(), listOf(raw), emptyList(), filters, emptyList()).serviceRows()
+        val preview = all.preview(false)
+        assertEquals(16, all.count)
+        assertEquals(8, preview.count)
+        assertEquals(raw.values, all.preview(true).source.map { it.second })
+        assertEquals(listOf("Nein", "Unbekannt", "Nein", "Unbekannt", "Nein", "Unbekannt"),
+            all.preview(true).filters.map { it.second })
+    }
+
     @Test fun demandUsesVisibleLazyItemsNotCollapsedHeaders() {
         assertFalse(factsDemand(setOf("hero", "header")))
         assertFalse(detailDemand(setOf("analysis-toggle", "history-toggle", "notes-toggle")))
