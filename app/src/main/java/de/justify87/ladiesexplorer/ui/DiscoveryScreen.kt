@@ -38,7 +38,8 @@ internal fun DiscoverScreen(
     onRenderedSwipe: (SwipeActionToken?) -> Unit,
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     onSnapshotChanged: () -> Unit,
-    onFavorite: (Long) -> Unit,
+    onFavorite: (ProfileIdentityToken) -> Unit,
+    isProfileCurrent: (ProfileIdentityToken) -> Boolean,
     onProfile: (Long, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -69,8 +70,9 @@ internal fun DiscoverScreen(
     }
     val owner = current?.identity?.personId ?: card?.personId
     val tab = tabs.selected(owner)
-    val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson, current?.media.orEmpty(), tab)
-    rememberProfileNote(current?.profile?.listingId, current?.identity?.personId, noteActions, state.busy, tab == ProfileTab.Notes)
+    val boundNotes = noteActions.boundTo(token, isProfileCurrent)
+    val panels = rememberProfilePanels(current, executedFiltersJson, tab)
+    rememberProfileNote(token, boundNotes, state.busy || token == null, tab == ProfileTab.Notes)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
     val upcoming = prefetchCards(state.cards)
@@ -154,7 +156,7 @@ internal fun DiscoverScreen(
                     OutlinedButton(onClick = onReset, enabled = enabled) { Text("Deck neu beginnen") }
                 }
             }
-        } else key(card.listingId) {
+        } else key(card.listingId, card.personId) {
             val profile = current
             val matchesOwner = profile != null && profile.identity.personId == card.personId
             val actions = enabled && token != null
@@ -193,6 +195,8 @@ internal fun DiscoverScreen(
                                     )
                                 },
                             originalUrl = profile?.identity?.profileUrl,
+                            actionsEnabled = actions,
+                            isCurrent = { token?.let(isProfileCurrent) == true },
                         )
                     }
                     item(key = "header") {
@@ -208,15 +212,14 @@ internal fun DiscoverScreen(
                     }
                     item(key = "actions") {
                         ProfileActionRail(person, profile?.profile?.phoneDisplay, !actions,
-                            onFavorite = onFavorite, onPreference = { _, preference -> token?.let { onChoose(it, preference) } })
-                        if (person == null) TextButton(onClick = { onFavorite(card.personId) }, enabled = actions) {
-                            Text(if (card.favorite) "Favorit entfernen" else "Favorit")
-                        }
+                            onFavorite = { token?.let(onFavorite) },
+                            onPreference = { _, preference -> token?.let { onChoose(it, preference) } },
+                            isCurrent = { token?.let(isProfileCurrent) == true })
                         TextButton(onClick = { onProfile(card.listingId, card.personId) }, enabled = enabled) { Text("Profil öffnen") }
                     }
                     if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
                         panels, tab, selectTab, profile.candidates, profile.history, !actions,
-                        owner?.let(notes::get) ?: NoteEditorState(), noteActions, onConfirm = { target -> if (token != null) confirmation = target })
+                        owner?.let(notes::get) ?: NoteEditorState(), boundNotes, onConfirm = { target -> if (token != null) confirmation = target })
                     else card.description?.let { item { Text(it) } }
                 }
             }

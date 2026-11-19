@@ -53,6 +53,22 @@ internal data class NoteEditorActions(
     val keepDraft: (Long) -> Unit,
 )
 
+/** Every UI callback carries the owner and exact rendered context, not merely the current tab. */
+internal fun NoteEditorActions.boundTo(
+    token: ProfileIdentityToken?,
+    isCurrent: (ProfileIdentityToken) -> Boolean,
+): NoteEditorActions {
+    fun admitted(owner: Long, listing: Long? = null) = token != null &&
+        token.ownerId == owner && (listing == null || token.listingId == listing) && isCurrent(token)
+    return NoteEditorActions(
+        load = { listing, owner -> if (admitted(owner, listing)) load(listing, owner) },
+        edit = { owner, value -> if (admitted(owner)) edit(owner, value) },
+        save = { listing, owner -> if (admitted(owner, listing)) save(listing, owner) },
+        useStored = { owner -> if (admitted(owner)) useStored(owner) },
+        keepDraft = { owner -> if (admitted(owner)) keepDraft(owner) },
+    )
+}
+
 /** Existing per-owner note-read tickets, shared by the editor and merge completion. */
 internal class NoteReadTickets {
     private var next = 0L

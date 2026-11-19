@@ -16,8 +16,9 @@ internal fun ProfileDetailScreen(
     tabs: ProfileTabMemory,
     notes: Map<Long, NoteEditorState>,
     noteActions: NoteEditorActions,
-    onFavorite: (Long) -> Unit,
-    onPreference: (Long, Preference) -> Unit,
+    onFavorite: (ProfileIdentityToken) -> Unit,
+    onPreference: (ProfileIdentityToken, Preference) -> Unit,
+    isProfileCurrent: (ProfileIdentityToken) -> Boolean,
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     onCancelArchive: () -> Unit,
     onRetryProfile: () -> Unit,
@@ -29,12 +30,14 @@ internal fun ProfileDetailScreen(
     val owner = state.profileIdentity?.personId
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
     val tab = tabs.selected(owner)
-    val panels = rememberProfilePanels(profile, owner, filters, state.profileMedia, tab)
-    rememberProfileNote(profile?.listingId, owner, noteActions, actionsBusy || state.actionBusy, tab == ProfileTab.Notes)
+    val renderedToken = state.detailIdentityToken()
+    val busy = actionsBusy || state.actionBusy || renderedToken == null
+    val boundNotes = noteActions.boundTo(renderedToken, isProfileCurrent)
+    val panels = rememberProfilePanels(state.profileRead, filters, tab)
+    rememberProfileNote(renderedToken, boundNotes, busy, tab == ProfileTab.Notes)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
     val detailListState = rememberLazyListState()
-    val renderedToken = state.detailIdentityToken()
     var confirmTarget by remember(renderedToken, state.identityCandidates) { mutableStateOf<Pair<DetailIdentityToken, Long>?>(null) }
 
     confirmTarget?.let { (token, target) ->
@@ -64,7 +67,8 @@ internal fun ProfileDetailScreen(
             if (profile != null) {
                 item(key = "media") {
                     ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
-                        onBack = onBack, originalUrl = state.profileIdentity?.profileUrl)
+                        onBack = onBack, originalUrl = state.profileIdentity?.profileUrl,
+                        actionsEnabled = !busy, isCurrent = { renderedToken?.let(isProfileCurrent) == true })
                 }
                 item(key = "identity") {
                     ProfileHeader(profile, state.profileIdentity, state.selectedPerson,
@@ -77,7 +81,10 @@ internal fun ProfileDetailScreen(
                 }
                 item(key = "actions") {
                     ProfileActionRail(state.selectedPerson, profile.phoneDisplay,
-                        actionsBusy || state.actionBusy, onFavorite, onPreference)
+                        busy,
+                        onFavorite = { renderedToken?.let(onFavorite) },
+                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } },
+                        isCurrent = { renderedToken?.let(isProfileCurrent) == true })
                 }
                 if (state.archiving) {
                     item {
@@ -101,7 +108,7 @@ internal fun ProfileDetailScreen(
                 }
                 profileContent(profile, state.profileIdentity, state.selectedPerson, state.profileMedia,
                     panels, tab, selectTab, state.identityCandidates, state.changeEvents,
-                    actionsBusy || state.actionBusy, owner?.let(notes::get) ?: NoteEditorState(), noteActions,
+                    busy, owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
                     onConfirm = { target -> renderedToken?.let { confirmTarget = it to target } })
             }
         }

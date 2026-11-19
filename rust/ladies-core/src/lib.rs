@@ -930,6 +930,31 @@ impl LadiesCore {
         Ok(before)
     }
 
+    /// Compare and set the displayed favorite value only for the rendered listing owner.
+    pub fn set_listing_favorite(
+        &self,
+        listing_id: i64,
+        expected_person_id: i64,
+        expected_favorite: bool,
+        favorite: bool,
+    ) -> Result<(), CoreError> {
+        let db = self.connection()?;
+        let changed = db.execute(
+            "UPDATE person_user_state SET favorite=?1,
+             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE person_id=?2 AND favorite=?3 AND EXISTS(
+                SELECT 1 FROM listings WHERE listing_id=?4 AND person_id=?2
+             )",
+            params![favorite, expected_person_id, expected_favorite, listing_id],
+        )?;
+        if changed != 1 {
+            return Err(CoreError::IdentityConflict(
+                "Listing owner or favorite changed".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn set_favorite(&self, person_id: i64, favorite: bool) -> Result<(), CoreError> {
         let db = self.connection()?;
         let changed = db.execute(
@@ -1046,6 +1071,31 @@ mod tests {
 
     fn memory_core() -> Arc<LadiesCore> {
         LadiesCore::new(":memory:".into()).unwrap()
+    }
+
+    #[test]
+    fn listing_favorite_checks_owner_and_expected_value_atomically() {
+        let core = memory_core();
+        let owner = core.create_person(None).unwrap();
+        let other = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(owner, None, "LADIES".into(), "favorite".into(), None)
+            .unwrap();
+        core.set_listing_favorite(listing, owner, false, true)
+            .unwrap();
+        assert!(matches!(
+            core.set_listing_favorite(listing, owner, false, false),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert!(matches!(
+            core.set_listing_favorite(listing, other, false, true),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert!(core.get_person(owner).unwrap().unwrap().favorite);
+        assert!(!core.get_person(other).unwrap().unwrap().favorite);
+        core.set_listing_favorite(listing, owner, true, false)
+            .unwrap();
+        assert!(!core.get_person(owner).unwrap().unwrap().favorite);
     }
 
     #[test]

@@ -158,6 +158,8 @@ internal fun ProfileMediaHero(
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
     originalUrl: String? = null,
+    actionsEnabled: Boolean = true,
+    isCurrent: () -> Boolean = { true },
 ) {
     val context = LocalContext.current
     var selected by rememberSaveable { mutableIntStateOf(0) }
@@ -166,7 +168,10 @@ internal fun ProfileMediaHero(
     val item = media.getOrNull(index)
     var more by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
-    LaunchedEffect(item?.kind) { if (item?.kind != "IMAGE") fullscreen = false }
+    LaunchedEffect(item?.kind, actionsEnabled) {
+        if (item?.kind != "IMAGE" || !actionsEnabled) fullscreen = false
+        if (!actionsEnabled) more = false
+    }
     if (fullscreen && item?.kind == "IMAGE") {
         Dialog(onDismissRequest = { fullscreen = false }) {
             ProfileImage(item.url, item.localPath, Modifier.fillMaxWidth().heightIn(min = 240.dp)
@@ -179,7 +184,7 @@ internal fun ProfileMediaHero(
                 Text("Keine Medien verfügbar")
             }
             item.kind == "VIDEO" -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                FilledTonalButton(onClick = { openExternal(context, item.url) }) {
+                FilledTonalButton(enabled = actionsEnabled, onClick = { if (isCurrent()) openExternal(context, item.url) }) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Text("Video extern öffnen")
                 }
@@ -207,14 +212,14 @@ internal fun ProfileMediaHero(
             HeroButton(it, "Zurück", Icons.Default.ArrowBack,
                 Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 30.dp))
         }
-        if (item?.kind == "IMAGE" || originalUrl != null) {
+        if (actionsEnabled && (item?.kind == "IMAGE" || originalUrl != null)) {
             Box(Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 12.dp)) {
-                HeroButton({ more = true }, "Weitere Aktionen", Icons.Default.MoreVert)
+                HeroButton({ if (isCurrent()) more = true }, "Weitere Aktionen", Icons.Default.MoreVert)
                 DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
                     if (item?.kind == "IMAGE") DropdownMenuItem(text = { Text("Bild groß anzeigen") },
-                        onClick = { more = false; fullscreen = true })
+                        onClick = { more = false; if (isCurrent()) fullscreen = true })
                     if (originalUrl != null) DropdownMenuItem(text = { Text("Originalprofil öffnen") },
-                        onClick = { more = false; openExternal(context, originalUrl) })
+                        onClick = { more = false; if (isCurrent()) openExternal(context, originalUrl) })
                 }
             }
         }
@@ -270,6 +275,7 @@ internal fun ProfileActionRail(
     busy: Boolean,
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
+    isCurrent: () -> Boolean = { true },
 ) {
     val context = LocalContext.current
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -285,11 +291,11 @@ internal fun ProfileActionRail(
                 label = { Text("Nein") })
         }
         val normalized = phone?.let(::phoneForWhatsApp)
-        OutlinedButton(enabled = normalized != null, onClick = {
-            normalized?.let { openExternal(context, "https://wa.me/$it") }
+        OutlinedButton(enabled = !busy && normalized != null, onClick = {
+            if (isCurrent()) normalized?.let { openExternal(context, "https://wa.me/$it") }
         }) { Text("WhatsApp") }
-        OutlinedButton(enabled = !phone.isNullOrBlank(), onClick = {
-            phone?.let { openExternal(context, "tel:${Uri.encode(it)}", dial = true) }
+        OutlinedButton(enabled = !busy && !phone.isNullOrBlank(), onClick = {
+            if (isCurrent()) phone?.let { openExternal(context, "tel:${Uri.encode(it)}", dial = true) }
         }) { Text("Kontakt") }
     }
 }

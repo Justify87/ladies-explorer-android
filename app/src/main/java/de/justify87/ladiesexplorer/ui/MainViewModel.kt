@@ -178,6 +178,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!swipeVisible || renderedSwipe != token || _searchUiState.value.profileOpen) null
         else currentSwipeActionCard(_discoverState.value, _searchUiState.value.loading, token)
 
+    internal fun isProfileActionCurrent(token: ProfileIdentityToken): Boolean = when (token) {
+        is SwipeActionToken -> admittedSwipe(token) != null
+        is DetailIdentityToken -> !_discoverState.value.busy && !_searchUiState.value.actionBusy &&
+            _searchUiState.value.detailIdentityToken() == token
+    }
+
+    internal fun chooseDetailPreference(token: ProfileIdentityToken, preference: Preference) {
+        if (token !is DetailIdentityToken || !isProfileActionCurrent(token)) return
+        _searchUiState.update { it.copy(actionError = null) }
+        mutateDiscovery("Entscheidung nicht gespeichert", write = {
+            core.setSwipePreference(token.listingId, token.ownerId, token.preference, preference)
+        }, afterWrite = { refreshSelectedPerson(token.ownerId) }, onFailure = { message ->
+            _searchUiState.update { if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it }
+        })
+    }
+
+    internal fun toggleProfileFavorite(token: ProfileIdentityToken) {
+        if (!isProfileActionCurrent(token)) return
+        _searchUiState.update { it.copy(actionError = null) }
+        mutateDiscovery("Favorit konnte nicht geändert werden", write = {
+            core.setListingFavorite(token.listingId, token.ownerId, token.favorite, !token.favorite)
+        }, afterWrite = {
+            refreshMap()
+            refreshSelectedPerson(token.ownerId)
+        }, onFailure = { message ->
+            if (token is DetailIdentityToken) _searchUiState.update {
+                if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it
+            }
+        })
+    }
+
     private fun invalidateSwipeActions(invalidateProfiles: Boolean = false) {
         renderedSwipe = null
         _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1,
@@ -644,7 +675,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         // A profile-side failure must not keep the discovery feed stale.
                         check(projectDiscovery(epoch)) { "Ansicht konnte nicht vollständig aktualisiert werden." }
                     },
-                    afterWrite = afterWrite,
+                    afterWrite = {
+                        // Revision can change even if membership did not. Existing controller coalesces hidden reads.
+                        savedSearch.refreshResultProjection()
+                        afterWrite()
+                    },
                     onWriteFailure = onWriteFailure,
                 )
                 when (outcome) {
@@ -678,7 +713,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (preference != Preference.NONE) {
                 swipeSession.visit(SwipeStep(card.listingId, card.personId, previous, preference))
             }
-        }, afterWrite = { savedSearch.refreshResultProjection() })
+        })
     }
 
     fun undoSwipe() {

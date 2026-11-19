@@ -137,6 +137,9 @@ class CoreStore(context: Context) {
         recorded("setPreference") { engine.setPreference(personId, preference) }
     }
 
+    suspend fun setListingFavorite(listingId: Long, personId: Long, expected: Boolean, favorite: Boolean) =
+        withContext(Dispatchers.IO) { engine.setListingFavorite(listingId, personId, expected, favorite) }
+
     suspend fun setFavorite(personId: Long, favorite: Boolean) = withContext(Dispatchers.IO) {
         recorded("setFavorite") { engine.setFavorite(personId, favorite) }
     }
