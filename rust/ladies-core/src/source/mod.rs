@@ -285,10 +285,10 @@ pub(crate) fn check_saved_status(
 ) -> Result<String, CoreError> {
     control.check()?;
     let target = storage::listing_target(core, listing_id, true)?;
-    let observation = core
-        .source_session
-        .0
-        .get_profile(&target.url, &target.advert_id, Some(control))?;
+    let observation =
+        core.source_session
+            .0
+            .get_profile(&target.url, &target.advert_id, Some(control))?;
     let (status, http_status) = match observation {
         network::ProfileObservation::Active(_) => ("ACTIVE", 200),
         network::ProfileObservation::Unavailable(code) => ("UNAVAILABLE", code),

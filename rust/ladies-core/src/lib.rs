@@ -142,8 +142,9 @@ pub struct ImportReport {
 }
 
 pub use discovery::{
-    DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPersonCursor,
-    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection, SavedPersonSort, SavedPeopleWindow,
+    DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow,
+    SavedPersonCursor, SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection,
+    SavedPersonSort,
 };
 pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};

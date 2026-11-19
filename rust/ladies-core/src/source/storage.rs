@@ -308,7 +308,12 @@ fn record_status(
         db.execute(
             "INSERT INTO change_events(person_id,listing_id,event_type,field_key,old_json,new_json)
              VALUES (?1,?2,'STATUS_CHANGED','status',?3,?4)",
-            params![person_id, listing_id, json!(previous).to_string(), json!(status).to_string()],
+            params![
+                person_id,
+                listing_id,
+                json!(previous).to_string(),
+                json!(status).to_string()
+            ],
         )?;
     }
     Ok(())
@@ -332,7 +337,12 @@ pub(super) fn save_status(
     tx.execute(
         "INSERT INTO listing_observations(listing_id,source,status,http_status)
          VALUES (?1,?2,?3,?4)",
-        params![target.listing_id, if saved_only { "STATUS" } else { "PROFILE" }, status, http_status],
+        params![
+            target.listing_id,
+            if saved_only { "STATUS" } else { "PROFILE" },
+            status,
+            http_status
+        ],
     )?;
     if let Some(control) = control {
         control.check()?;

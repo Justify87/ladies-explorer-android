@@ -14,7 +14,9 @@ fn saved_name_key(name: &str) -> String {
 }
 
 pub(crate) fn register_saved_name_collation(db: &rusqlite::Connection) -> Result<(), CoreError> {
-    db.create_collation("SAVED_NAME", |a, b| saved_name_key(a).cmp(&saved_name_key(b)))?;
+    db.create_collation("SAVED_NAME", |a, b| {
+        saved_name_key(a).cmp(&saved_name_key(b))
+    })?;
     Ok(())
 }
 
@@ -394,7 +396,9 @@ struct SavedQuery {
 
 fn saved_now(db: &rusqlite::Connection) -> Result<i64, CoreError> {
     Ok(db.query_row(
-        "SELECT CAST(round(unixepoch('now','subsec')*1000) AS INTEGER)", [], |row| row.get(0),
+        "SELECT CAST(round(unixepoch('now','subsec')*1000) AS INTEGER)",
+        [],
+        |row| row.get(0),
     )?)
 }
 
@@ -413,14 +417,29 @@ pub(crate) fn saved_window(
         saved_people_in(
             core,
             &db,
-            SavedQuery { kind, sort, section, limit, cursor: None, as_of },
+            SavedQuery {
+                kind,
+                sort,
+                section,
+                limit,
+                cursor: None,
+                as_of,
+            },
         )
     };
     let regular = read(
-        if watchlist { SavedPersonSection::Regular } else { SavedPersonSection::All },
+        if watchlist {
+            SavedPersonSection::Regular
+        } else {
+            SavedPersonSection::All
+        },
         regular_limit,
     )?;
-    let recent = if watchlist { Some(read(SavedPersonSection::Recent, recent_limit)?) } else { None };
+    let recent = if watchlist {
+        Some(read(SavedPersonSection::Recent, recent_limit)?)
+    } else {
+        None
+    };
     Ok(SavedPeopleWindow { regular, recent })
 }
 
@@ -434,10 +453,23 @@ pub(crate) fn saved_people(
     as_of: Option<i64>,
 ) -> Result<SavedPersonPage, CoreError> {
     if !(1..=100).contains(&limit) {
-        return Err(CoreError::InvalidInput("Invalid saved people page size".into()));
+        return Err(CoreError::InvalidInput(
+            "Invalid saved people page size".into(),
+        ));
     }
     let db = core.connection()?;
-    saved_people_in(core, &db, SavedQuery { kind, sort, section, limit, cursor, as_of })
+    saved_people_in(
+        core,
+        &db,
+        SavedQuery {
+            kind,
+            sort,
+            section,
+            limit,
+            cursor,
+            as_of,
+        },
+    )
 }
 
 fn saved_people_in(
@@ -445,7 +477,14 @@ fn saved_people_in(
     db: &rusqlite::Connection,
     query: SavedQuery,
 ) -> Result<SavedPersonPage, CoreError> {
-    let SavedQuery { kind, sort, section, limit, cursor, as_of } = query;
+    let SavedQuery {
+        kind,
+        sort,
+        section,
+        limit,
+        cursor,
+        as_of,
+    } = query;
     let revision: i64 = db.query_row("SELECT total_changes()", [], |row| row.get(0))?;
     if limit == 0
         || (section != SavedPersonSection::All
@@ -458,7 +497,9 @@ fn saved_people_in(
                 || as_of.is_some_and(|time| time != c.as_of)
         })
     {
-        return Err(CoreError::InvalidInput("Invalid or outdated saved people page".into()));
+        return Err(CoreError::InvalidInput(
+            "Invalid or outdated saved people page".into(),
+        ));
     }
     let predicate = kind.predicate();
     let as_of = match cursor.as_ref().map(|c| c.as_of).or(as_of) {
