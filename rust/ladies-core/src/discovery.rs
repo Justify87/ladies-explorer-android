@@ -144,6 +144,72 @@ pub struct DiscoveryPage {
     pub next_cursor: Option<DiscoveryCursor>,
 }
 
+// One representative listing per canonical person. The saved and neutral feeds
+// share the same card projection, including archive-first image references.
+const PERSON_CARDS: &str = "
+    WITH ranked AS (
+        SELECT listing_id, person_id,
+               ROW_NUMBER() OVER (
+                   PARTITION BY person_id ORDER BY last_seen_at DESC, listing_id DESC
+               ) AS rank
+        FROM listings
+    ), projected AS (
+        SELECT l.listing_id,p.person_id,
+               COALESCE(NULLIF(s.name,''),NULLIF(r.name,''),NULLIF(p.display_name,''),'Inserat') AS name,
+               COALESCE(NULLIF(s.city,''),NULLIF(r.city,''),'') AS city,
+               COALESCE(
+                   (SELECT m.remote_url FROM snapshot_media m
+                    WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
+                    ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id
+                    LIMIT 1),r.thumbnail_url
+               ) AS thumbnail_url,
+               (SELECT a.local_path FROM snapshot_media m
+                JOIN media_assets a ON a.media_asset_id=m.media_asset_id
+                WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
+                ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id
+                LIMIT 1) AS local_path,
+               s.description,u.preference,u.favorite,
+               COALESCE(r.has_video,0) AS has_video,COALESCE(r.has_ai_content,0) AS has_ai_content,
+               l.last_seen_at AS last_seen_at,COALESCE(r.is_premium,0) AS is_premium,s.traits_json,
+               u.updated_at,p.last_seen_at AS person_last_seen_at,
+               COALESCE(l.current_status,'UNKNOWN') AS current_status,l.status_checked_at
+        FROM persons p
+        JOIN person_user_state u ON u.person_id=p.person_id
+        LEFT JOIN ranked k ON k.person_id=p.person_id AND k.rank=1
+        LEFT JOIN listings l ON l.listing_id=k.listing_id
+        LEFT JOIN listing_snapshots s
+          ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
+        LEFT JOIN search_results r ON r.search_result_id=(
+            SELECT sr.search_result_id FROM search_results sr
+            WHERE sr.listing_id=l.listing_id ORDER BY sr.search_run_id DESC,sr.search_result_id DESC LIMIT 1
+        )
+    )";
+
+fn person_card(core: &LadiesCore, row: &rusqlite::Row<'_>) -> Result<DiscoveryCard, CoreError> {
+    let relative: Option<String> = row.get(5)?;
+    let local_path = relative.and_then(|relative| {
+        let path = core.media_root.as_ref()?.join(relative);
+        path.is_file().then(|| path.to_string_lossy().into_owned())
+    });
+    let preference: String = row.get(7)?;
+    let traits: Option<String> = row.get(13)?;
+    Ok(DiscoveryCard {
+        listing_id: row.get(0)?,
+        person_id: row.get(1)?,
+        name: row.get(2)?,
+        city: row.get(3)?,
+        thumbnail_url: row.get(4)?,
+        local_path,
+        description: row.get(6)?,
+        preference: Preference::from_db(&preference)?,
+        favorite: row.get(8)?,
+        has_video: row.get(9)?,
+        has_ai_content: row.get(10)?,
+        is_premium: row.get(12)?,
+        age: known_age(traits.as_deref()),
+    })
+}
+
 pub(crate) fn page(
     core: &LadiesCore,
     favorites_only: bool,
@@ -159,126 +225,32 @@ pub(crate) fn page(
     let excluded =
         serde_json::to_string(excluded_people).map_err(|e| CoreError::Storage(e.to_string()))?;
     let db = core.connection()?;
-    // Stable keyset pagination after selecting the newest listing per person.
-    // Explicit exclusions keep session-skipped people from exhausting the first page.
-    let mut query = db.prepare(
-        "WITH ranked AS (
-           SELECT l.listing_id, l.person_id,
-                  ROW_NUMBER() OVER (
-                      PARTITION BY l.person_id
-                      ORDER BY l.last_seen_at DESC, l.listing_id DESC
-                  ) AS rank
-           FROM listings l
-         )
-         SELECT l.listing_id, l.person_id,
-                COALESCE(NULLIF(s.name,''),NULLIF(r.name,''),NULLIF(p.display_name,''),'Inserat'),
-                COALESCE(NULLIF(s.city,''),NULLIF(r.city,''),''),
-                COALESCE(
-                    (SELECT m.remote_url FROM snapshot_media m
-                     WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
-                     ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position
-                     LIMIT 1),
-                    r.thumbnail_url
-                ) AS thumbnail_url,
-                (SELECT a.local_path FROM snapshot_media m
-                 JOIN media_assets a ON a.media_asset_id=m.media_asset_id
-                 WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
-                 ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position
-                 LIMIT 1) AS local_path,
-                s.description,u.preference,u.favorite,
-                COALESCE(r.has_video,0),COALESCE(r.has_ai_content,0),
-                l.last_seen_at,COALESCE(r.is_premium,0),s.traits_json
-         FROM ranked k
-         JOIN listings l ON l.listing_id=k.listing_id
-         JOIN persons p ON p.person_id=l.person_id
-         JOIN person_user_state u ON u.person_id=p.person_id
-         LEFT JOIN listing_snapshots s ON s.snapshot_id=l.current_snapshot_id
-         LEFT JOIN search_results r ON r.search_result_id=(
-             SELECT sr.search_result_id FROM search_results sr
-             WHERE sr.listing_id=l.listing_id ORDER BY sr.search_run_id DESC LIMIT 1
-         )
-         WHERE k.rank=1 AND (?1=0 OR u.favorite=1)
-           AND (?1=1 OR u.preference='NONE')
-           AND l.person_id NOT IN (SELECT value FROM json_each(?5))
-           AND (?2 IS NULL OR u.favorite < ?2
-                OR (u.favorite=?2 AND l.last_seen_at < ?3)
-                OR (u.favorite=?2 AND l.last_seen_at=?3 AND l.listing_id < ?4))
-         ORDER BY u.favorite DESC,l.last_seen_at DESC,l.listing_id DESC
-         LIMIT ?6",
-    )?;
+    let mut query = db.prepare(&format!(
+        "{PERSON_CARDS}
+         SELECT * FROM projected
+         WHERE listing_id IS NOT NULL AND (?1=0 OR favorite=1)
+           AND (?1=1 OR preference='NONE')
+           AND person_id NOT IN (SELECT value FROM json_each(?5))
+           AND (?2 IS NULL OR favorite < ?2
+                OR (favorite=?2 AND last_seen_at < ?3)
+                OR (favorite=?2 AND last_seen_at=?3 AND listing_id < ?4))
+         ORDER BY favorite DESC,last_seen_at DESC,listing_id DESC LIMIT ?6"
+    ))?;
     let cursor_favorite = cursor.as_ref().map(|c| i64::from(c.favorite));
     let cursor_time = cursor.as_ref().map(|c| c.last_seen_at.as_str());
     let cursor_id = cursor.as_ref().map(|c| c.listing_id);
-    let rows = query.query_map(
-        params![
-            favorites_only,
-            cursor_favorite,
-            cursor_time,
-            cursor_id,
-            excluded,
-            limit + 1
-        ],
-        |r| {
-            Ok((
-                r.get::<_, i64>(0)?,
-                r.get::<_, i64>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, Option<String>>(4)?,
-                r.get::<_, Option<String>>(5)?,
-                r.get::<_, Option<String>>(6)?,
-                r.get::<_, String>(7)?,
-                r.get::<_, i64>(8)?,
-                r.get::<_, i64>(9)?,
-                r.get::<_, i64>(10)?,
-                r.get::<_, String>(11)?,
-                r.get::<_, bool>(12)?,
-                r.get::<_, Option<String>>(13)?,
-            ))
-        },
-    )?;
-    let mut entries = rows
-        .map(|row| {
-            let (
-                listing_id,
-                person_id,
-                name,
-                city,
-                thumbnail_url,
-                relative,
-                description,
-                preference,
-                favorite,
-                video,
-                ai,
-                last_seen_at,
-                is_premium,
-                traits_json,
-            ) = row?;
-            let local_path = relative.and_then(|relative| {
-                let path = core.media_root.as_ref()?.join(relative);
-                path.is_file().then(|| path.to_string_lossy().into_owned())
-            });
-            Ok((
-                DiscoveryCard {
-                    listing_id,
-                    person_id,
-                    name,
-                    city,
-                    thumbnail_url,
-                    local_path,
-                    description,
-                    preference: Preference::from_db(&preference)?,
-                    favorite: favorite != 0,
-                    has_video: video != 0,
-                    has_ai_content: ai != 0,
-                    is_premium,
-                    age: known_age(traits_json.as_deref()),
-                },
-                last_seen_at,
-            ))
-        })
-        .collect::<Result<Vec<_>, CoreError>>()?;
+    let mut rows = query.query(params![
+        favorites_only,
+        cursor_favorite,
+        cursor_time,
+        cursor_id,
+        excluded,
+        limit + 1
+    ])?;
+    let mut entries = Vec::new();
+    while let Some(row) = rows.next()? {
+        entries.push((person_card(core, row)?, row.get::<_, String>(11)?));
+    }
     let has_more = entries.len() > limit as usize;
     entries.truncate(limit as usize);
     let next_cursor = if has_more {
@@ -292,6 +264,164 @@ pub(crate) fn page(
     };
     Ok(DiscoveryPage {
         cards: entries.into_iter().map(|(card, _)| card).collect(),
+        next_cursor,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SavedPersonKind {
+    Favorite,
+    Like,
+    Dislike,
+}
+
+impl SavedPersonKind {
+    fn predicate(self) -> &'static str {
+        match self {
+            Self::Favorite => "favorite=1",
+            Self::Like => "preference='LIKE'",
+            Self::Dislike => "preference='DISLIKE'",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SavedPersonSort {
+    Date,
+    Name,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavedPersonCursor {
+    pub kind: SavedPersonKind,
+    pub sort: SavedPersonSort,
+    pub key: String,
+    pub person_id: i64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavedPersonRow {
+    pub person_id: i64,
+    pub name: String,
+    pub preference: Preference,
+    pub favorite: bool,
+    pub card: Option<DiscoveryCard>,
+    pub listing_count: u32,
+    pub updated_at: String,
+    pub last_seen_at: String,
+    pub status: String,
+    pub status_checked_at: Option<String>,
+    pub latest_change_at: Option<String>,
+    pub latest_change_type: Option<String>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavedPersonPage {
+    pub rows: Vec<SavedPersonRow>,
+    pub total: u32,
+    pub next_cursor: Option<SavedPersonCursor>,
+}
+
+pub(crate) fn saved_people(
+    core: &LadiesCore,
+    kind: SavedPersonKind,
+    sort: SavedPersonSort,
+    limit: u32,
+    cursor: Option<SavedPersonCursor>,
+) -> Result<SavedPersonPage, CoreError> {
+    if !(1..=100).contains(&limit)
+        || cursor
+            .as_ref()
+            .is_some_and(|c| c.kind != kind || c.sort != sort)
+    {
+        return Err(CoreError::InvalidInput("Invalid saved people page".into()));
+    }
+    let db = core.connection()?;
+    let predicate = kind.predicate();
+    // Count people, not listings, including imported people without an advert.
+    // The connection guard spans both reads so a core write cannot split them.
+    let total = db.query_row(
+        &format!("SELECT COUNT(*) FROM person_user_state WHERE {predicate}"),
+        [],
+        |row| row.get(0),
+    )?;
+    let (key, comparison, direction) = match sort {
+        SavedPersonSort::Date => (
+            "COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ',updated_at),'')",
+            "<",
+            "DESC",
+        ),
+        SavedPersonSort::Name => ("name", ">", "ASC"),
+    };
+    // Only enum-selected SQL fragments are interpolated; cursor values are bound.
+    // NOCASE gives stable SQLite ordering (not full German locale collation).
+    let mut query = db.prepare(&format!(
+        "{PERSON_CARDS}, eligible AS (
+            SELECT *, {key} AS sort_key FROM projected WHERE {predicate}
+         ), page_window AS (
+            SELECT * FROM eligible
+            WHERE ?1 IS NULL OR sort_key COLLATE NOCASE {comparison} ?1
+               OR (sort_key COLLATE NOCASE = ?1 AND person_id {comparison} ?2)
+            ORDER BY sort_key COLLATE NOCASE {direction},person_id {direction}
+            LIMIT ?3
+         )
+         SELECT w.*,
+                (SELECT COUNT(*) FROM listings l WHERE l.person_id=w.person_id),
+                e.created_at,e.event_type,w.sort_key
+         FROM page_window w
+         LEFT JOIN change_events e ON e.change_event_id=(
+             SELECT c.change_event_id FROM change_events c
+             WHERE c.person_id=w.person_id
+             ORDER BY c.created_at DESC,c.change_event_id DESC LIMIT 1
+         )
+         ORDER BY w.sort_key COLLATE NOCASE {direction},w.person_id {direction}"
+    ))?;
+    let mut rows = query.query(params![
+        cursor.as_ref().map(|c| c.key.as_str()),
+        cursor.as_ref().map(|c| c.person_id),
+        limit + 1
+    ])?;
+    let mut entries = Vec::new();
+    while let Some(row) = rows.next()? {
+        let card = if row.get::<_, Option<i64>>(0)?.is_some() {
+            Some(person_card(core, row)?)
+        } else {
+            None
+        };
+        let raw: String = row.get(7)?;
+        entries.push((
+            SavedPersonRow {
+                person_id: row.get(1)?,
+                name: row.get(2)?,
+                preference: Preference::from_db(&raw)?,
+                favorite: row.get(8)?,
+                card,
+                listing_count: row.get(19)?,
+                updated_at: row.get(14)?,
+                last_seen_at: row.get(15)?,
+                status: row.get(16)?,
+                status_checked_at: row.get(17)?,
+                latest_change_at: row.get(20)?,
+                latest_change_type: row.get(21)?,
+            },
+            row.get::<_, String>(22)?,
+        ));
+    }
+    let has_more = entries.len() > limit as usize;
+    entries.truncate(limit as usize);
+    let next_cursor = if has_more {
+        entries.last().map(|(row, key)| SavedPersonCursor {
+            kind,
+            sort,
+            key: key.clone(),
+            person_id: row.person_id,
+        })
+    } else {
+        None
+    };
+    Ok(SavedPersonPage {
+        rows: entries.into_iter().map(|(row, _)| row).collect(),
+        total,
         next_cursor,
     })
 }
@@ -606,6 +736,98 @@ mod tests {
         assert_eq!(ids.len(), 213);
         assert!(!ids.contains(&214));
         assert!(!ids.contains(&215));
+    }
+
+    #[test]
+    fn saved_people_pages_count_canonical_people_and_keep_preferences_independent() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let a = core.create_person(Some("Anna".into())).unwrap();
+        let b = core.create_person(Some("anna".into())).unwrap();
+        let c = core.create_person(Some("Zoe".into())).unwrap();
+        let first = core
+            .add_listing(a, None, "LADIES".into(), "saved-1".into(), None)
+            .unwrap();
+        let second = core
+            .add_listing(a, None, "LADIES".into(), "saved-2".into(), None)
+            .unwrap();
+        core.add_listing(b, None, "LADIES".into(), "saved-3".into(), None)
+            .unwrap();
+        core.set_preference(a, Preference::Like).unwrap();
+        core.set_preference(b, Preference::Dislike).unwrap();
+        core.set_preference(c, Preference::Like).unwrap();
+        core.set_favorite(a, true).unwrap();
+        core.set_favorite(b, true).unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listings SET last_seen_at='2026-01-01T00:00:00Z'",
+                [],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE person_user_state SET updated_at='2026-01-01T00:00:00Z'",
+                [],
+            )
+            .unwrap();
+        }
+        let fav = core
+            .saved_people(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, None)
+            .unwrap();
+        assert_eq!(fav.total, 2);
+        assert_eq!(fav.rows[0].person_id, a);
+        assert_eq!(fav.rows[0].listing_count, 2);
+        assert_eq!(fav.rows[0].card.as_ref().unwrap().listing_id, second);
+        let cursor = fav.next_cursor.unwrap();
+        assert!(
+            core.saved_people(
+                SavedPersonKind::Like,
+                SavedPersonSort::Name,
+                1,
+                Some(cursor.clone())
+            )
+            .is_err()
+        );
+        let next = core
+            .saved_people(
+                SavedPersonKind::Favorite,
+                SavedPersonSort::Name,
+                1,
+                Some(cursor),
+            )
+            .unwrap();
+        assert_eq!(next.total, 2);
+        assert_eq!(next.rows[0].person_id, b);
+        assert!(next.next_cursor.is_none());
+
+        let liked = core
+            .saved_people(SavedPersonKind::Like, SavedPersonSort::Date, 1, None)
+            .unwrap();
+        assert_eq!(liked.total, 2);
+        assert_eq!(liked.rows[0].person_id, c);
+        assert!(liked.rows[0].card.is_none());
+        let more = core
+            .saved_people(
+                SavedPersonKind::Like,
+                SavedPersonSort::Date,
+                1,
+                liked.next_cursor,
+            )
+            .unwrap();
+        assert_eq!(more.rows[0].person_id, a);
+        assert!(more.rows[0].favorite);
+        core.set_swipe_preference(first, a, Some(Preference::Like), Preference::Dislike)
+            .unwrap();
+        let dislikes = core
+            .saved_people(SavedPersonKind::Dislike, SavedPersonSort::Date, 100, None)
+            .unwrap();
+        assert_eq!(dislikes.total, 2);
+        assert!(dislikes.rows.iter().all(|row| row.favorite));
+        assert_eq!(
+            core.saved_people(SavedPersonKind::Like, SavedPersonSort::Date, 10, None)
+                .unwrap()
+                .total,
+            1
+        );
     }
 
     #[test]

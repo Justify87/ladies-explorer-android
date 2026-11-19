@@ -209,6 +209,14 @@ class CoreStore(context: Context) {
         engine.discoveryCards(favoritesOnly, 50u, cursor, excludedPeople)
     }
 
+    suspend fun savedPeople(
+        kind: SavedPersonKind,
+        sort: SavedPersonSort,
+        cursor: SavedPersonCursor? = null,
+    ): SavedPersonPage = withContext(Dispatchers.IO) {
+        engine.savedPeople(kind, sort, 50u, cursor)
+    }
+
     suspend fun mapOverview(favoritesOnly: Boolean): MapOverview = withContext(Dispatchers.IO) {
         recorded("mapOverview") { engine.mapOverview(favoritesOnly) }
     }

@@ -141,7 +141,10 @@ pub struct ImportReport {
     pub media_files: u32,
 }
 
-pub use discovery::{DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem};
+pub use discovery::{
+    DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPersonCursor,
+    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSort,
+};
 pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
@@ -451,6 +454,16 @@ impl LadiesCore {
         excluded_person_ids: Vec<i64>,
     ) -> Result<DiscoveryPage, CoreError> {
         discovery::page(self, favorites_only, limit, cursor, &excluded_person_ids)
+    }
+
+    pub fn saved_people(
+        &self,
+        kind: SavedPersonKind,
+        sort: SavedPersonSort,
+        limit: u32,
+        cursor: Option<SavedPersonCursor>,
+    ) -> Result<SavedPersonPage, CoreError> {
+        discovery::saved_people(self, kind, sort, limit, cursor)
     }
 
     pub fn map_overview(&self, favorites_only: bool) -> Result<MapOverview, CoreError> {
