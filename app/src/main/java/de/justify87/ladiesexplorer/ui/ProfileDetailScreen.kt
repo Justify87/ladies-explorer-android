@@ -14,6 +14,8 @@ import de.justify87.ladiesexplorer.core.*
 internal fun ProfileDetailScreen(
     state: SearchUiState,
     tabs: ProfileTabMemory,
+    notes: Map<Long, NoteEditorState>,
+    noteActions: NoteEditorActions,
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
     onConfirmIdentity: (Long,Long) -> Unit,
@@ -26,6 +28,7 @@ internal fun ProfileDetailScreen(
     val owner = state.profileIdentity?.personId
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
     val panels = rememberProfilePanels(profile, owner, filters, state.profileMedia)
+    rememberProfileNote(profile?.listingId, owner, noteActions, actionsBusy || state.actionBusy)
     val tab = tabs.selected(owner)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
@@ -105,7 +108,8 @@ internal fun ProfileDetailScreen(
                 }
                 profileContent(profile, state.profileIdentity, state.selectedPerson, state.profileMedia,
                     panels, tab, selectTab, state.identityCandidates, state.changeEvents,
-                    actionsBusy || state.actionBusy, onConfirm = { confirmTarget = it })
+                    actionsBusy || state.actionBusy, notes[owner] ?: NoteEditorState(), noteActions,
+                    onConfirm = { confirmTarget = it })
             }
         }
     }

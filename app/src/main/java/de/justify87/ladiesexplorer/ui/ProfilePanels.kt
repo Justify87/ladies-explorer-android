@@ -15,10 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.*
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 internal enum class ProfileTab(val label: String) {
@@ -47,173 +44,16 @@ internal fun rememberProfileTabMemory(): ProfileTabMemory = rememberSaveable(
     saver = listSaver<ProfileTabMemory, String>(save = { it.entries }, restore = { ProfileTabMemory(it) })
 ) { ProfileTabMemory() }
 
-/** Carries the original CAS value with the user's draft even through recreation.
- * A refreshed person projection must not silently rebase an unsaved edit. */
-@Stable
-internal class ProfileNoteDraft(
-    val owner: Long?,
-    initial: List<String> = emptyList(),
-) {
-    private var data by mutableStateOf(initial)
-    val expected: String? get() = data.getOrNull(1)?.takeIf { data.firstOrNull() == "value" }
-    val text: String? get() = data.getOrNull(2)
-    val dirty: Boolean get() = text != null && text != expected.orEmpty()
-    val savedState: List<String> get() = data
-
-    fun initialize(note: String?) {
-        if (text == null) accept(note)
-    }
-
-    fun accept(note: String?) {
-        data = listOf(if (note == null) "null" else "value", note.orEmpty(), note.orEmpty())
-    }
-
-    fun edit(value: String) {
-        if (text != null) data = data.take(2) + value
-    }
-
-    fun discard() { data = emptyList() }
-}
-
 @Composable
-private fun rememberNoteDraft(owner: Long?): ProfileNoteDraft = key(owner) {
-    rememberSaveable(
-        saver = listSaver<ProfileNoteDraft, String>(
-            save = { it.savedState },
-            restore = { ProfileNoteDraft(owner, it) },
-        ),
-    ) { ProfileNoteDraft(owner) }
-}
-
-internal class ProfilePanels(
-    private val core: CoreStore,
-    private val scope: CoroutineScope,
-    private val listingId: Long?,
-    private val personId: Long?,
-    val draft: ProfileNoteDraft,
+internal fun rememberProfileNote(
+    listingId: Long?,
+    owner: Long?,
+    actions: NoteEditorActions,
+    busy: Boolean,
 ) {
-    var facts by mutableStateOf<ProfileFacts?>(null)
-        private set
-    var detail by mutableStateOf<PersonDetail?>(null)
-        private set
-    var factsError by mutableStateOf<String?>(null)
-        private set
-    var detailError by mutableStateOf<String?>(null)
-        private set
-    var noteError by mutableStateOf<String?>(null)
-        private set
-    var saving by mutableStateOf(false)
-        private set
-    var showDescriptionChanges by mutableStateOf(false)
-    var comparison by mutableStateOf<List<SnapshotDifference>?>(null)
-        private set
-    var comparisonError by mutableStateOf<String?>(null)
-        private set
-    var comparing by mutableStateOf(false)
-        private set
-    private var comparisonGeneration = 0
-    var revision by mutableIntStateOf(0)
-        private set
-
-    fun reload() {
-        if (!saving) {
-            facts = null
-            detail = null
-            revision++
-        }
+    LaunchedEffect(listingId, owner, busy) {
+        if (listingId != null && owner != null && !busy) actions.load(listingId, owner)
     }
-
-    fun discardNote() {
-        if (!saving) {
-            noteError = null
-            draft.discard()
-            reload()
-        }
-    }
-
-    suspend fun load(snapshot: Long?, filters: String) {
-        if (snapshot == null || personId == null) return
-        factsError = null
-        detailError = null
-        try {
-            facts = core.profileFacts(snapshot, filters)
-        } catch (cancel: CancellationException) { throw cancel }
-        catch (failure: Exception) { factsError = failure.message ?: "Profilfelder nicht verfügbar" }
-        try {
-            val loaded = core.personDetail(personId)
-            detail = loaded
-            draft.initialize(loaded.privateNote)
-        } catch (cancel: CancellationException) { throw cancel }
-        catch (failure: Exception) { detailError = failure.message ?: "Personendaten nicht verfügbar" }
-    }
-
-    fun saveNote() {
-        val text = draft.text ?: return
-        val expected = draft.expected
-        val owner = personId ?: return
-        val listing = listingId ?: return
-        if (saving || detail == null) return
-        saving = true
-        noteError = null
-        scope.launch {
-            try {
-                val note = text.takeUnless { it.isBlank() }
-                core.savePersonNote(listing, owner, expected, note)
-                detail = detail?.copy(privateNote = note)
-                draft.accept(note)
-            } catch (cancel: CancellationException) { throw cancel }
-            catch (failure: Exception) { noteError = failure.message ?: "Notiz konnte nicht gespeichert werden" }
-            finally { saving = false }
-        }
-    }
-
-    fun compare(from: Long, to: Long) {
-        val owner = personId ?: return
-        val generation = ++comparisonGeneration
-        comparing = true
-        comparison = null
-        comparisonError = null
-        scope.launch {
-            try {
-                val result = core.compareSnapshots(owner, from, to)
-                if (generation == comparisonGeneration) comparison = result
-            } catch (cancel: CancellationException) { throw cancel }
-            catch (failure: Exception) {
-                if (generation == comparisonGeneration) comparisonError = failure.message ?: "Snapshots nicht verfügbar"
-            } finally {
-                if (generation == comparisonGeneration) comparing = false
-            }
-        }
-    }
-
-    fun closeComparison() {
-        comparisonGeneration++
-        comparing = false
-        comparison = null
-        comparisonError = null
-    }
-}
-
-@Composable
-internal fun rememberProfilePanels(
-    profile: ProfileResponse?,
-    personId: Long?,
-    filters: String,
-    media: List<ProfileMediaItem>,
-): ProfilePanels {
-    val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
-    // Owner/snapshot keyed holder: late results cannot update a new person's UI.
-    val scope = rememberCoroutineScope()
-    val draft = rememberNoteDraft(personId)
-    val panels = remember(core, scope, profile?.listingId, profile?.snapshotId, personId, draft) {
-        ProfilePanels(core, scope, profile?.listingId, personId, draft)
-    }
-    // Local archive changes can alter counts; refreshing while a note write is pending
-    // would race the write's CAS baseline, so wait for completion via the effect key.
-    LaunchedEffect(panels, filters, panels.revision, media, panels.saving) {
-        if (!panels.saving) panels.load(profile?.snapshotId, filters)
-    }
-    return panels
 }
 
 @Composable
@@ -280,25 +120,45 @@ private fun DescriptionCard(profile: ProfileResponse) {
 }
 
 @Composable
-private fun NotesPanel(panels: ProfilePanels, owner: Long?, busy: Boolean) {
-    val detail = panels.detail
+private fun NotesPanel(
+    listingId: Long,
+    owner: Long?,
+    state: NoteEditorState,
+    actions: NoteEditorActions,
+    busy: Boolean,
+) {
     PanelCard("Private Personennotiz") {
-        if (detail == null || owner == null) {
-            if (panels.detailError == null && owner != null) CircularProgressIndicator(Modifier.size(24.dp))
-            else Text(panels.detailError ?: "Person nicht verfügbar.")
-            TextButton(onClick = panels::reload, enabled = !busy) { Text("Neu laden") }
-        } else {
-            OutlinedTextField(panels.draft.text.orEmpty(), panels.draft::edit, modifier = Modifier.fillMaxWidth(),
-                label = { Text("Notiz") }, minLines = 4, enabled = !busy && !panels.saving)
-            Text("Lokal gespeichert, unabhängig von einzelnen Anzeigen.", style = MaterialTheme.typography.bodySmall)
-            panels.noteError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = panels::saveNote,
-                    enabled = !busy && !panels.saving && panels.draft.dirty) { Text("Speichern") }
-                TextButton(onClick = panels::discardNote,
-                    enabled = !busy && !panels.saving) { Text("Verwerfen / neu laden") }
+        val draft = state.draft
+        val scope = rememberCoroutineScope()
+        val editable = owner != null && !busy && !state.loading && !state.readError
+        if (draft != null && owner != null) {
+            OutlinedTextField(draft.text, { actions.edit(owner, it) },
+                modifier = Modifier.fillMaxWidth(), label = { Text("Notiz") },
+                minLines = 4, enabled = editable)
+            Text("Entwurf bleibt beim Profilwechsel erhalten. Erst Speichern schreibt in die Datenbank.",
+                style = MaterialTheme.typography.bodySmall)
+            if (draft.conflict) {
+                Text("Die gespeicherte Notiz hat sich geändert.", color = MaterialTheme.colorScheme.error)
+                SelectionContainer { Text("Gespeichert: ${draft.observed ?: "Keine Notiz"}") }
+                TextButton(onClick = { actions.useStored(owner) }, enabled = editable) {
+                    Text("Gespeicherten Text übernehmen")
+                }
+                TextButton(onClick = { actions.keepDraft(owner) }, enabled = editable) {
+                    Text("Eigenen Entwurf behalten")
+                }
             }
-            if (panels.saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { actions.save(listingId, owner) },
+                    enabled = editable && draft.dirty && !draft.conflict) { Text("Speichern") }
+                TextButton(onClick = { actions.useStored(owner) },
+                    enabled = editable && draft.dirty) { Text("Verwerfen") }
+            }
+        } else if (owner == null) Text("Person nicht verfügbar.")
+        if (state.loading || busy && draft != null) LinearProgressIndicator(Modifier.fillMaxWidth())
+        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (owner != null && (state.readError || state.error != null || draft == null && !state.loading)) {
+            TextButton(onClick = { scope.launch { actions.load(listingId, owner) } },
+                enabled = !busy && !state.loading) { Text("Neu laden") }
         }
     }
 }
@@ -342,6 +202,8 @@ internal fun LazyListScope.profileContent(
     candidates: List<IdentityCandidate>,
     history: List<ChangeRecord>,
     actionsBusy: Boolean,
+    note: NoteEditorState,
+    noteActions: NoteEditorActions,
     onConfirm: ((Long) -> Unit)?,
     onOpenDetail: (() -> Unit)? = null,
 ) {
@@ -412,7 +274,9 @@ internal fun LazyListScope.profileContent(
                 }
             }
         }
-        ProfileTab.Notes -> item(key = "profile-notes") { NotesPanel(panels, identity?.personId, actionsBusy) }
+        ProfileTab.Notes -> item(key = "profile-notes") {
+            NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy)
+        }
         ProfileTab.History -> {
             val visibleEvents = if (panels.showDescriptionChanges) history
                 else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }

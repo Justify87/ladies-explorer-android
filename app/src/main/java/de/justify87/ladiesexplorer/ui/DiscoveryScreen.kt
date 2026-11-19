@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.first
 internal fun DiscoverScreen(
     state: DiscoverUiState,
     tabs: ProfileTabMemory,
+    notes: Map<Long, NoteEditorState>,
+    noteActions: NoteEditorActions,
     searchLoading: Boolean = false,
     executedFiltersJson: String = "{}",
     onRefresh: () -> Unit,
@@ -53,6 +55,7 @@ internal fun DiscoverScreen(
     val current = card?.let { decks[it.listingId] }
     val owner = current?.identity?.personId ?: card?.personId
     val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson, current?.media.orEmpty())
+    rememberProfileNote(current?.profile?.listingId, current?.identity?.personId, noteActions, state.busy)
     val tab = tabs.selected(owner)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
@@ -190,7 +193,7 @@ internal fun DiscoverScreen(
                     }
                     if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
                         panels, tab, selectTab, profile.candidates, profile.history, !actions,
-                        onConfirm = null, onOpenDetail = { onProfile(card.listingId, card.personId) })
+                        notes[owner] ?: NoteEditorState(), noteActions, onConfirm = null, onOpenDetail = { onProfile(card.listingId, card.personId) })
                     else card.description?.let { item { Text(it) } }
                 }
             }

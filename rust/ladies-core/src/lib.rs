@@ -416,6 +416,10 @@ impl LadiesCore {
         profile_detail::person_detail(self, person_id)
     }
 
+    pub fn person_note(&self, listing_id: i64, person_id: i64) -> Result<Option<String>, CoreError> {
+        profile_detail::person_note(self, listing_id, person_id)
+    }
+
     pub fn save_person_note(
         &self,
         listing_id: i64,

@@ -18,19 +18,24 @@ class ProfileTabsTest {
         assertEquals(ProfileTab.History, ProfileTabMemory(swipe.entries).selected(10L))
     }
 
-    @Test fun restoredNoteDraftRetainsOriginalExpectedValueAfterReload() {
-        val draft = ProfileNoteDraft(1L)
-        draft.initialize("original")
-        draft.edit("new text")
-        val restored = ProfileNoteDraft(1L, draft.savedState)
-        restored.initialize("external change")
-        assertEquals("original", restored.expected)
-        assertEquals("new text", restored.text)
-        assertEquals(true, restored.dirty)
-        restored.discard()
-        restored.initialize("external change")
-        assertEquals(false, restored.dirty)
-        assertEquals("external change", restored.expected)
+    @Test fun dirtyDraftSurvivesRefreshUntilExplicitConflictResolution() {
+        val first = NoteDraft.from("original").copy(text = "mine")
+        val changed = first.reconcile("external")
+        assertEquals("original", changed.expected)
+        assertEquals("mine", changed.text)
+        assertEquals(true, changed.conflict)
+        assertEquals("external", changed.useStored().text)
+        assertEquals(false, changed.keepDraft().conflict)
+        assertEquals("mine", changed.keepDraft().text)
+        assertEquals(false, changed.reconcile("mine").dirty)
+    }
+
+    @Test fun cleanDraftFollowsPersistedValueAndEmptyTextIsARealEdit() {
+        val original = NoteEditorState().loaded("original")
+        assertEquals("external", original.loaded("external").draft?.text)
+        val cleared = original.draft!!.copy(text = "")
+        assertEquals(true, cleared.dirty)
+        assertEquals(false, cleared.reconcile(null).dirty)
     }
 
     @Test fun missingEvidenceIsNotNegativeEvidence() {

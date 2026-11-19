@@ -224,6 +224,9 @@ class CoreStore(context: Context) {
     suspend fun personDetail(personId: Long): PersonDetail =
         withContext(Dispatchers.IO) { engine.personDetail(personId) }
 
+    suspend fun personNote(listingId: Long, personId: Long): String? =
+        withContext(Dispatchers.IO) { engine.personNote(listingId, personId) }
+
     suspend fun savePersonNote(listingId: Long, personId: Long, expected: String?, note: String?) =
         withContext(Dispatchers.IO) { engine.savePersonNote(listingId, personId, expected, note) }
 

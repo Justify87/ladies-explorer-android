@@ -70,6 +70,7 @@ fun LadiesApp(
     val search by viewModel.searchUiState.collectAsStateWithLifecycle()
     val discovery by viewModel.discoverState.collectAsStateWithLifecycle()
     val map by viewModel.mapState.collectAsStateWithLifecycle()
+    val notes by viewModel.profileNotes.collectAsStateWithLifecycle()
     var route by rememberSaveable(stateSaver = listSaver<ShellRoute, String>(
         save = { it.encode() }, restore = { ShellRoute.decode(it) },
     )) { mutableStateOf(ShellRoute()) }
@@ -204,6 +205,8 @@ fun LadiesApp(
                 ProfileDetailScreen(
                     state = search,
                     tabs = detailTabs,
+                    notes = notes,
+                    noteActions = viewModel.noteActions,
                     onFavorite = viewModel::toggleFavorite,
                     onPreference = viewModel::choosePreference,
                     onConfirmIdentity = viewModel::confirmIdentity,
@@ -232,6 +235,8 @@ fun LadiesApp(
                             DiscoverScreen(
                                 state = discovery,
                                 tabs = swipeTabs,
+                                notes = notes,
+                                noteActions = viewModel.noteActions,
                                 searchLoading = search.loading,
                                 executedFiltersJson = search.response?.query?.filtersJson ?: "{}",
                                 onRefresh = viewModel::refreshDiscovery,

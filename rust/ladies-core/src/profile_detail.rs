@@ -217,6 +217,22 @@ pub(crate) fn person_detail(core: &LadiesCore, person_id: i64) -> Result<PersonD
     })
 }
 
+pub(crate) fn person_note(
+    core: &LadiesCore,
+    listing_id: i64,
+    person_id: i64,
+) -> Result<Option<String>, CoreError> {
+    let db = core.connection()?;
+    db.query_row(
+        "SELECT u.private_note FROM person_user_state u JOIN listings l ON l.person_id=u.person_id
+         WHERE l.listing_id=?1 AND u.person_id=?2",
+        params![listing_id, person_id],
+        |r| r.get(0),
+    )
+    .optional()?
+    .ok_or_else(|| CoreError::IdentityConflict("Note owner changed; reopen profile".into()))
+}
+
 pub(crate) fn save_note(
     core: &LadiesCore,
     listing_id: i64,
@@ -270,7 +286,6 @@ mod tests {
         assert_eq!(evidence("missing", &rows), EvidenceStatus::Unknown);
         assert_eq!(evidence("value", &rows), EvidenceStatus::Yes);
     }
-
 
     #[test]
     fn facts_listings_and_snapshot_comparison_use_only_stored_evidence() {

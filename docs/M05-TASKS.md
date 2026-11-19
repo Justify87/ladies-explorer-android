@@ -166,3 +166,15 @@ G5 technisch abgeschlossen: PR #19 gemergt, main 450966f2, [Full-CI #341](https:
 - T6.1–T6.6: gemeinsame LazyListScope-Tabkomponenten in ProfilePanels.kt, per-Person/Route-Tabzustand, Rust-Felder und Filterbelege, Notiz-Editor mit CAS und Fehleranzeige, beweisbare Analyse/Identitätskandidaten, Verlauf und Snapshotvergleich mit verknüpften Anzeigen. Swipe-Bestätigung führt bewusst in bestehende Detailbestätigung; keine zweite Merge-Implementierung. CI und Review offen, DEVICE_PENDING.
 - Erste Full-CI #344: allein Rustfmt fehlgeschlagen; exakte Formatter-Diffs aus dem Workflow-Log übernommen. Review-Folgekorrekturen: App-eigener getrennt gespeicherter Tabzustand pro Route/Person auch bei erneutem Öffnen; Notizentwurf verbleibt im Profilzustand beim Tabwechsel; Compare-Dialog unabhängig vom Lazy-Scroll; explizite Anzeige der begrenzten Historie und optionaler Beschreibungstexte. Keine Geräteabnahme.
 - Zusätzliche Regression: echte SQLite-Snapshots prüfen tri-state Filterprojektion, alle Personenanzeigen/Konsistenzzahlen, Snapshotvergleich mit falschem Besitzer, fremdem Inserat oder fehlender ID. App-Notizentwurf bewahrt erwarteten Originalwert auch bei Rotation und Refetch; separater expliziter Verwerfen-Vorgang, keine stillschweigende Rebase. Lokale Medienänderungen aktualisieren Analyseprojektion; keine weiteren Netzrequests. Erneute Full-CI offen.
+
+### G6 – Review-Korrekturen PR #20
+
+| Ticket | Ziel | Stand |
+|---|---|---|
+| H01–H03 | Ein personengebundener ViewModel-Entwurf und Mutationsowner; Konflikte explizit | umgesetzt, CI offen |
+| M01/M02 | Legacy-Informationshierarchie und kataloggebundene Belege | IN_PROGRESS |
+| M03 | Verständlicher Verlauf statt Roh-JSON | IN_PROGRESS |
+| M04 | Datenbank-/Zustandsregressionen, vollständige CI | IN_PROGRESS |
+| L01/L02 | UI/State/Read-Projektion trennen, keine verdeckten stale Daten | umgesetzt, CI offen |
+
+CI #346 stoppte allein an einer überzähligen Leerzeile Rustfmt; korrigiert. Notizentwürfe über Navigation/Rotation im ViewModel, absichtliche Freigabe bei Konflikt; kein separater Schreib-Scope, keine Speicherung im privaten Prozesszustand außerhalb der DB. Ungespeicherte Entwürfe über Prozessneustart sind nicht garantiert. Identitätsmerge blockiert bei schmutzigen Entwürfen der beteiligten Personen; gespeicherte Notizen bleiben im bestehenden Rust-Vertrag.
