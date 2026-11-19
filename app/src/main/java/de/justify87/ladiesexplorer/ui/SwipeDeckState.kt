@@ -33,17 +33,6 @@ internal class SwipeSession {
         if (preferredListing != null) restoredListingId = preferredListing
     }
 
-    /** Called inside the existing mutation owner. A failed CAS never traverses the deck. */
-    suspend fun commitProfilePreference(
-        token: ProfileIdentityToken,
-        preference: Preference,
-        write: suspend (Long, Long, Preference?, Preference) -> Preference,
-    ) {
-        val previous = write(token.listingId, token.ownerId, token.preference, preference)
-        if (token is SwipeActionToken && preference != Preference.NONE)
-            visit(SwipeStep(token.listingId, token.ownerId, previous, preference))
-    }
-
     fun visit(step: SwipeStep) {
         // Clearing a preference is a local user-state mutation, never deck traversal.
         if (step.after == Preference.NONE) return

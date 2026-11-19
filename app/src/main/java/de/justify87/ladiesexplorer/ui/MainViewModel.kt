@@ -212,7 +212,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
         }
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
-            swipeSession.commitProfilePreference(token, preference, core::setSwipePreference)
+            commitProfilePreference(token, preference, core::setSwipePreference, swipeSession::visit)
         }, afterWrite = { refreshDetail() },
             recoverWriteFailure = { refreshDetail() },
             onFailure = { message ->

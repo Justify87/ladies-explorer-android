@@ -130,8 +130,15 @@ internal fun ProfileFlow(
         if (!available || waitingForAnchor) return@LaunchedEffect
         // Wait for the current manifest to be measured, never resolve against the gap's rows.
         snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
-        scroll.target(keys)?.let { (index, offset) ->
-            state.scrollToItem(index, offset)
+        val readFailed = scroll.needsFacts() && panels.factsError != null ||
+            scroll.needsDetail() && panels.detailError != null
+        scroll.target(keys, readFailed)?.let { (index, offset) ->
+            state.scrollToItem(index)
+            if (offset > 0) {
+                val measured = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == keys[index] }?.size ?: 0
+                val safeOffset = restoredRowOffset(offset, measured)
+                if (safeOffset > 0) state.scrollToItem(index, safeOffset)
+            }
             scroll.restored()
         }
         snapshotFlow {

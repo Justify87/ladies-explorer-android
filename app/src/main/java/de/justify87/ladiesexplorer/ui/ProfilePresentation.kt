@@ -34,16 +34,16 @@ internal class ProfileScrollMemory(
         if (!recovering) anchor = ProfileScrollAnchor(key, offset.coerceAtLeast(0))
     }
     fun gap() { if (anchor != null) recovering = true }
-    fun needsFacts() = recovering && anchor?.key in setOf("profile-facts", "profile-services")
-    fun needsDetail() = recovering && (anchor?.key?.startsWith("listing/") == true ||
-        anchor?.key in setOf("profile-analysis", "profile-listings-head"))
+    fun needsFacts() = recovering && (anchor?.key == "profile-facts" || anchor?.key == "profile-services")
+    fun needsDetail() = needsListings() || recovering &&
+        (anchor?.key == "profile-analysis" || anchor?.key == "profile-listings-head")
     fun needsListings() = recovering && anchor?.key?.startsWith("listing/") == true
 
-    fun target(keys: List<String>): Pair<Int, Int>? {
+    fun target(keys: List<String>, readFailed: Boolean = false): Pair<Int, Int>? {
         if (!recovering || keys.isEmpty()) return null
         val saved = anchor ?: return 0 to 0
         val index = keys.indexOf(saved.key)
-        if (index >= 0) return index to saved.offset
+        if (index >= 0) return index to if (readFailed) 0 else saved.offset
         val fallback = when {
             saved.key.startsWith("listing/") -> "profile-listings-head"
             saved.key.startsWith("event/") -> "profile-history-head"
@@ -54,6 +54,11 @@ internal class ProfileScrollMemory(
     }
     fun restored() { recovering = false }
 }
+
+/** A replacement row may be shorter (new content, empty data, error). Its
+ * previous offset must never skip into a different row. */
+internal fun restoredRowOffset(offset: Int, measuredSize: Int) =
+    offset.coerceIn(0, (measuredSize - 1).coerceAtLeast(0))
 
 @Composable
 internal fun rememberProfileScrollMemory(reset: Boolean): ProfileScrollMemory = rememberSaveable(

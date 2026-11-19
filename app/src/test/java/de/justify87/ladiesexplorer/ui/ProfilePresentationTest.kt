@@ -50,6 +50,10 @@ class ProfilePresentationTest {
         assertTrue(memory.needsFacts())
         assertFalse(memory.needsDetail())
         assertEquals(1 to 60, memory.target(listOf("hero", "profile-services")))
+        assertEquals(1 to 0, memory.target(listOf("hero", "profile-services"), readFailed = true))
+        assertEquals(19, restoredRowOffset(60, 20))
+        assertEquals(0, restoredRowOffset(60, 0))
+        assertEquals(8, restoredRowOffset(8, 100))
     }
 
     @Test fun missingAnchorFallsBackToItsSectionAndListingRequestsDetail() {
@@ -117,21 +121,51 @@ class ProfilePresentationTest {
             writes += target
             Preference.LIKE
         }
-        deck.commitProfilePreference(token, Preference.NONE, write)
+        commitProfilePreference(token, Preference.NONE, write, deck::visit)
         assertNull(deck.last)
         assertEquals(listOf(1L), deck.queue(state.cards, active = true).map { it.personId })
         val detail = DetailIdentityToken(2L, token.listingId, token.ownerId, token.snapshotId,
             token.projectionRevision, token.preference, token.favorite, token.candidates)
-        deck.commitProfilePreference(detail, Preference.DISLIKE, write)
+        commitProfilePreference(detail, Preference.DISLIKE, write, deck::visit)
         assertNull(deck.last)
         try {
-            deck.commitProfilePreference(token, Preference.DISLIKE) { _, _, _, _ -> error("CAS failed") }
+            commitProfilePreference(token, Preference.DISLIKE, { _, _, _, _ -> error("CAS failed") }, deck::visit)
             fail("Expected CAS failure")
         } catch (_: IllegalStateException) { }
         assertNull(deck.last)
-        deck.commitProfilePreference(token, Preference.DISLIKE, write)
+        commitProfilePreference(token, Preference.DISLIKE, write, deck::visit)
         assertEquals(SwipeStep(4L, 1L, Preference.LIKE, Preference.DISLIKE), deck.last)
         assertTrue(deck.queue(state.cards, active = true).isEmpty())
         assertEquals(listOf(Preference.NONE, Preference.DISLIKE, Preference.DISLIKE), writes)
+    }
+
+    @Test fun committedNeutralResetReprojectsWithoutVisitEvenIfFeedReadFails() = runBlocking {
+        val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
+        val token = requireNotNull(state.swipeToken(fixtureSwipe())).copy(preference = Preference.LIKE)
+        val deck = SwipeSession()
+        var native = Preference.LIKE
+        var writes = 0
+        val outcome = writeAndProject(
+            write = {
+                commitProfilePreference(token, Preference.NONE, { listing, owner, expected, target ->
+                    assertEquals(4L, listing)
+                    assertEquals(1L, owner)
+                    assertEquals(native, expected)
+                    val previous = native
+                    native = target
+                    writes++
+                    previous
+                }, deck::visit)
+            },
+            project = { error("feed unavailable") },
+        )
+        assertTrue(outcome is DiscoveryMutationOutcome.ProjectionFailed)
+        assertEquals(Preference.NONE, native)
+        assertEquals(1, writes)
+        assertNull(deck.last)
+        // Read-only recovery uses the native state and the unchanged traversal owner.
+        val projected = state.cards.map { it.copy(preference = native) }
+        assertEquals(projected, deck.queue(projected, active = false))
+        assertEquals(1, writes)
     }
 }
