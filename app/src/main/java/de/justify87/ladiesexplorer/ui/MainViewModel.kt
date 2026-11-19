@@ -157,7 +157,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         store = SavedSearchStore(core),
         canOperate = { !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
         ordinaryDraft = { SearchDraft.from(_searchUiState.value) },
-        onSourceFinished = { refreshDiscovery(); refreshMap(); refresh(); refreshFilterCatalog() },
+        onSourceFinished = ::refreshAfterSourceSearch,
     )
 
     init {
@@ -279,6 +279,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshFilterCatalog()
     }
 
+    // Both ordinary and saved searches can persist before a later projection failure
+    // or generation invalidation. Refresh local projections after the native call
+    // finishes, independently of whether its response became the active UI run.
+    private fun refreshAfterSourceSearch() {
+        refreshDiscovery()
+        refreshMap()
+        refresh()
+        refreshFilterCatalog()
+    }
+
     private fun refreshFilterCatalog() {
         filterGeneration.invalidate()
         val ticket = filterGeneration.value
@@ -323,10 +333,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         savedLoadingMore = false, savedRecentLoadingMore = false, error = null)
                 }
                 _searchUiState.update { it.acceptRun(result, cards) }
-                refreshDiscovery()
-                refreshSearchDefinitions()
-                refreshMap()
-                refresh()
             } catch (cancellation: CancellationException) {
                 if (searchGeneration.isCurrent(epoch)) _searchUiState.update { it.endRun() }
                 throw cancellation
@@ -337,6 +343,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             } finally {
+                // The persisted DB can have changed even when this run was discarded.
+                savedSearch.refresh()
+                refreshAfterSourceSearch()
                 if (searchControl === control) {
                     searchControl = null
                     if (_searchUiState.value.loading.not()) schedulePreview()
