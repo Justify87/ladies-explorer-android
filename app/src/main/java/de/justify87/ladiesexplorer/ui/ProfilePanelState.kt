@@ -35,18 +35,29 @@ internal class ProfilePanels(
 
     fun reload() { revision++ }
 
-    suspend fun load(snapshot: Long?, filters: String) {
+    suspend fun loadFacts(snapshot: Long?, filters: String) {
         facts = null
-        detail = null
         factsError = null
-        detailError = null
-        if (snapshot == null || personId == null) return
+        if (snapshot == null) {
+            factsError = "Kein gespeicherter Snapshot"
+            return
+        }
         try {
             facts = core.profileFacts(snapshot, filters)
         } catch (cancel: CancellationException) { throw cancel }
         catch (failure: Exception) { factsError = failure.message ?: "Profilfelder nicht verfügbar" }
+    }
+
+    suspend fun loadDetail() {
+        detail = null
+        detailError = null
+        val owner = personId
+        if (owner == null) {
+            detailError = "Personenzuordnung nicht verfügbar"
+            return
+        }
         try {
-            detail = core.personDetail(personId)
+            detail = core.personDetail(owner)
         } catch (cancel: CancellationException) { throw cancel }
         catch (failure: Exception) { detailError = failure.message ?: "Personendaten nicht verfügbar" }
     }
@@ -84,12 +95,20 @@ internal fun rememberProfilePanels(
     personId: Long?,
     filters: String,
     media: List<ProfileMediaItem>,
+    tab: ProfileTab,
 ): ProfilePanels {
     val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
     val scope = rememberCoroutineScope()
     val panels = remember(core, scope, profile?.listingId, profile?.snapshotId, personId) {
         ProfilePanels(core, scope, personId)
     }
-    LaunchedEffect(panels, filters, panels.revision, media) { panels.load(profile?.snapshotId, filters) }
+    val factsVisible = tab == ProfileTab.Info || tab == ProfileTab.Services
+    val detailVisible = tab == ProfileTab.Analysis || tab == ProfileTab.History
+    LaunchedEffect(panels, filters, panels.revision, factsVisible) {
+        if (factsVisible) panels.loadFacts(profile?.snapshotId, filters)
+    }
+    LaunchedEffect(panels, panels.revision, media, detailVisible) {
+        if (detailVisible) panels.loadDetail()
+    }
     return panels
 }

@@ -43,7 +43,6 @@ pub struct PersonListing {
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct PersonDetail {
-    pub private_note: Option<String>,
     pub listings: Vec<PersonListing>,
     pub known_names: u32,
     pub known_cities: u32,
@@ -208,14 +207,14 @@ pub(crate) fn facts(
 
 pub(crate) fn person_detail(core: &LadiesCore, person_id: i64) -> Result<PersonDetail, CoreError> {
     let db = core.connection()?;
-    let private_note = db
-        .query_row(
-            "SELECT private_note FROM person_user_state WHERE person_id=?1",
-            [person_id],
-            |r| r.get(0),
-        )
-        .optional()?
-        .ok_or(CoreError::PersonNotFound(person_id))?;
+    let exists: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM persons WHERE person_id=?1)",
+        [person_id],
+        |r| r.get(0),
+    )?;
+    if !exists {
+        return Err(CoreError::PersonNotFound(person_id));
+    }
     let mut query = db.prepare(
         "SELECT listing_id,external_listing_id,current_status,last_seen_at,current_url
          FROM listings WHERE person_id=?1 ORDER BY last_seen_at DESC,listing_id DESC",
@@ -249,7 +248,6 @@ pub(crate) fn person_detail(core: &LadiesCore, person_id: i64) -> Result<PersonD
         [person_id], |r| Ok((r.get(0)?,r.get(1)?)),
     )?;
     Ok(PersonDetail {
-        private_note,
         listings,
         known_names,
         known_cities,
@@ -404,11 +402,9 @@ mod tests {
         save_note(&core, listing, person, None, Some("First".into())).unwrap();
         assert!(save_note(&core, listing, person, None, Some("Stale".into())).is_err());
         assert!(save_note(&core, listing, other, None, Some("Wrong".into())).is_err());
+        assert!(person_note(&core, listing, other).is_err());
         assert_eq!(
-            person_detail(&core, person)
-                .unwrap()
-                .private_note
-                .as_deref(),
+            person_note(&core, listing, person).unwrap().as_deref(),
             Some("First")
         );
         save_note(
@@ -419,7 +415,7 @@ mod tests {
             Some(" ".into()),
         )
         .unwrap();
-        assert!(person_detail(&core, person).unwrap().private_note.is_none());
+        assert!(person_note(&core, listing, person).unwrap().is_none());
         let state = core.get_person(person).unwrap().unwrap();
         assert!(state.favorite);
         assert_eq!(state.preference, Preference::Like);

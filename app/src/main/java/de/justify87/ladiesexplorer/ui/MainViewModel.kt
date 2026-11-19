@@ -966,7 +966,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 throw failure
             }
         }, afterWrite = {
-            updateNote(personId) { it.loaded(note) }
+            updateNote(personId) { it.copy(draft = NoteDraft.from(note), loading = false,
+                error = null, readError = false) }
         }, onFailure = { message ->
             updateNote(personId) { it.copy(error = message) }
         })
@@ -1168,6 +1169,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun importBundle(uri: Uri) {
         if (_uiState.value.loading || _searchUiState.value.loading || _discoverState.value.busy) return
+        if (_profileNotes.value.values.any { it.draft?.dirty == true }) {
+            _uiState.update { it.copy(error = "Ungespeicherte Notizen vor dem Import speichern oder verwerfen.") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(loading=true,error=null) }
             try {
@@ -1183,6 +1188,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         temp.delete()
                     }
                 }
+                noteReadTickets.clear()
+                _profileNotes.value = emptyMap()
                 _uiState.update { it.copy(lastImport=result) }
                 refresh()
                 refreshDiscovery()

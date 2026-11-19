@@ -758,6 +758,13 @@ mod tests {
             .add_listing(source, Some(sid), "LADIES".into(), "1".into(), None)
             .unwrap();
         core.set_favorite(source, true).unwrap();
+        let target_listing = core
+            .add_listing(target, None, "LADIES".into(), "2".into(), None)
+            .unwrap();
+        core.save_person_note(listing, source, None, Some("Source note".into()))
+            .unwrap();
+        core.save_person_note(target_listing, target, None, Some("Target note".into()))
+            .unwrap();
         {
             let db = core.connection().unwrap();
             record_phone(&db, source, listing, Some("0170 1234567")).unwrap();
@@ -780,6 +787,11 @@ mod tests {
         core.confirm_identity_match(listing, target).unwrap();
         assert_eq!(core.status().unwrap().person_count, 1);
         assert!(core.get_person(target).unwrap().unwrap().favorite);
+        assert_eq!(
+            core.person_note(listing, target).unwrap().as_deref(),
+            Some("Target note\n\nSource note")
+        );
+        assert!(core.person_note(listing, source).is_err());
         let db = core.connection().unwrap();
         let owner: (i64, i64) = db
             .query_row(

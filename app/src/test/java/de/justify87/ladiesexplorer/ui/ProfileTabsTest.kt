@@ -38,6 +38,23 @@ class ProfileTabsTest {
         assertEquals(false, cleared.reconcile(null).dirty)
     }
 
+    @Test fun switchingProfilesDoesNotReplaceOtherDraftsAndMergeChecksDirtyOwners() {
+        val original = NoteEditorState().loaded("old")
+        val drafts = mapOf(1L to original.copy(draft = original.draft!!.copy(text = "unsaved")),
+            2L to NoteEditorState().loaded("other"))
+        val reopened = drafts.getValue(1L).loaded("old")
+        assertEquals("unsaved", reopened.draft?.text)
+        assertEquals(true, reopened.draft?.dirty)
+        assertEquals(false, drafts.getValue(2L).draft?.dirty)
+    }
+
+    @Test fun historyLabelsDoNotExposeStorageKeys() {
+        assertEquals("Merkmale geändert", historyEventLabel("FIELD_CHANGED", "traits_json"))
+        assertEquals("Anzeige entdeckt", historyEventLabel("PROFILE_CREATED", null))
+        assertEquals("Medien geändert", historyEventLabel("MEDIA_CHANGED", "media"))
+        assertEquals("Weitere Angabe", historyFieldLabel("unknown_internal_key"))
+    }
+
     @Test fun missingEvidenceIsNotNegativeEvidence() {
         assertEquals("Ja", evidenceLabel(EvidenceStatus.YES))
         assertEquals("Nein", evidenceLabel(EvidenceStatus.NO))

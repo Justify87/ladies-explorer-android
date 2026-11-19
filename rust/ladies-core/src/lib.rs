@@ -416,7 +416,11 @@ impl LadiesCore {
         profile_detail::person_detail(self, person_id)
     }
 
-    pub fn person_note(&self, listing_id: i64, person_id: i64) -> Result<Option<String>, CoreError> {
+    pub fn person_note(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+    ) -> Result<Option<String>, CoreError> {
         profile_detail::person_note(self, listing_id, person_id)
     }
 
@@ -1068,15 +1072,24 @@ mod tests {
             .join("ladies.sqlite")
             .to_string_lossy()
             .to_string();
-        let id;
+        let (id, listing);
         {
             let core = LadiesCore::new(path.clone()).unwrap();
             id = core.create_person(Some("Persisted".into())).unwrap();
+            listing = core
+                .add_listing(id, None, "LADIES".into(), "persisted".into(), None)
+                .unwrap();
             core.set_favorite(id, true).unwrap();
+            core.save_person_note(listing, id, None, Some("Local note".into()))
+                .unwrap();
         }
         let again = LadiesCore::new(path).unwrap();
         assert_eq!(again.status().unwrap().schema_version, schema::VERSION);
         assert_eq!(again.get_person(id).unwrap().unwrap().favorite, true);
+        assert_eq!(
+            again.person_note(listing, id).unwrap().as_deref(),
+            Some("Local note")
+        );
     }
 
     #[test]

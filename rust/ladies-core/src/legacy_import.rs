@@ -526,15 +526,20 @@ mod tests {
         let person = core.get_person(2).unwrap().unwrap();
         assert_eq!(person.preference, crate::Preference::Like);
         assert!(person.favorite);
-        let db = core.connection().unwrap();
-        let note: String = db
-            .query_row(
-                "SELECT private_note FROM person_user_state WHERE person_id=1",
+        let listing_id: i64 = {
+            let db = core.connection().unwrap();
+            db.query_row(
+                "SELECT listing_id FROM listings WHERE person_id=1 LIMIT 1",
                 [],
                 |row| row.get(0),
             )
-            .unwrap();
-        assert_eq!(note, "Synthetische Personennotiz");
+            .unwrap()
+        };
+        assert_eq!(
+            core.person_note(listing_id, 1).unwrap().as_deref(),
+            Some("Synthetische Personennotiz")
+        );
+        let db = core.connection().unwrap();
         let count: i64 = db
             .query_row("SELECT COUNT(*) FROM listing_snapshots", [], |row| {
                 row.get(0)

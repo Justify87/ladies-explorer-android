@@ -27,9 +27,9 @@ internal fun ProfileDetailScreen(
     val profile = state.profile
     val owner = state.profileIdentity?.personId
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
-    val panels = rememberProfilePanels(profile, owner, filters, state.profileMedia)
-    rememberProfileNote(profile?.listingId, owner, noteActions, actionsBusy || state.actionBusy)
     val tab = tabs.selected(owner)
+    val panels = rememberProfilePanels(profile, owner, filters, state.profileMedia, tab)
+    rememberProfileNote(profile?.listingId, owner, noteActions, actionsBusy || state.actionBusy, tab == ProfileTab.Notes)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
     val detailListState = rememberLazyListState()
@@ -108,7 +108,7 @@ internal fun ProfileDetailScreen(
                 }
                 profileContent(profile, state.profileIdentity, state.selectedPerson, state.profileMedia,
                     panels, tab, selectTab, state.identityCandidates, state.changeEvents,
-                    actionsBusy || state.actionBusy, notes[owner] ?: NoteEditorState(), noteActions,
+                    actionsBusy || state.actionBusy, owner?.let(notes::get) ?: NoteEditorState(), noteActions,
                     onConfirm = { confirmTarget = it })
             }
         }

@@ -51,9 +51,10 @@ internal fun rememberProfileNote(
     owner: Long?,
     actions: NoteEditorActions,
     busy: Boolean,
+    visible: Boolean,
 ) {
-    LaunchedEffect(listingId, owner, busy) {
-        if (listingId != null && owner != null && !busy) actions.load(listingId, owner)
+    LaunchedEffect(listingId, owner, busy, visible) {
+        if (listingId != null && owner != null && !busy && visible) actions.load(listingId, owner)
     }
 }
 
@@ -184,7 +185,7 @@ private fun NotesPanel(
                 Button(onClick = { actions.save(listingId, owner) },
                     enabled = editable && draft.dirty && !draft.conflict) { Text("Speichern") }
                 TextButton(onClick = { actions.useStored(owner) },
-                    enabled = editable && draft.dirty) { Text("Verwerfen") }
+                    enabled = !busy && !state.loading && draft.dirty) { Text("Verwerfen") }
             }
         } else if (owner == null) Text("Person nicht verfügbar.")
         if (state.loading || busy && draft != null) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -210,9 +211,8 @@ internal fun ComparisonDialog(panels: ProfilePanels) {
                     if (differences.isEmpty()) item { Text("Keine gespeicherten Unterschiede.") }
                     items(differences) { difference ->
                         Column {
-                            Text(difference.field, style = MaterialTheme.typography.titleSmall)
-                            SelectionContainer { Text("Vorher: ${difference.before ?: "Nicht gespeichert"}") }
-                            SelectionContainer { Text("Nachher: ${difference.after ?: "Nicht gespeichert"}") }
+                            Text(historyFieldLabel(difference.field), style = MaterialTheme.typography.titleSmall)
+                            HistoryValues(difference.before, difference.after)
                         }
                     }
                 }
@@ -220,6 +220,17 @@ internal fun ComparisonDialog(panels: ProfilePanels) {
         },
         confirmButton = { TextButton(onClick = panels::closeComparison) { Text("Schließen") } },
     )
+}
+
+@Composable
+private fun HistoryValues(before: String?, after: String?) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Vorher", style = MaterialTheme.typography.labelMedium)
+        SelectionContainer { Text(before ?: "Nicht gespeichert", style = MaterialTheme.typography.bodyMedium) }
+        HorizontalDivider()
+        Text("Nachher", style = MaterialTheme.typography.labelMedium)
+        SelectionContainer { Text(after ?: "Nicht gespeichert", style = MaterialTheme.typography.bodyMedium) }
+    }
 }
 
 /** Both routes use the same lazy tab content and local typed projections. */
@@ -244,7 +255,8 @@ internal fun LazyListScope.profileContent(
         ScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 0.dp) {
             ProfileTab.entries.forEach { option ->
                 Tab(selected = tab == option, onClick = { selectTab(option) },
-                    text = { Text(option.label, maxLines = 1) },
+                    text = { Text(if (option == ProfileTab.Notes && note.draft?.dirty == true)
+                        "Notizen •" else option.label, maxLines = 1) },
                     icon = { Icon(when (option) {
                         ProfileTab.Info -> Icons.Default.Info
                         ProfileTab.Services -> Icons.Default.List
@@ -283,8 +295,8 @@ internal fun LazyListScope.profileContent(
                     val data = panels.detail
                     FieldGrid(listOf("Bilder im aktuellen Profil" to media.count { it.kind == "IMAGE" }.toString()) +
                         if (data == null) emptyList() else listOf(
-                            "Anzeigen" to data.listings.size.toString(), "Namen" to data.knownNames.toString(),
-                            "Orte" to data.knownCities.toString(), "Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString(),
+                            "Anzeigen" to data.listings.size.toString(), "Bekannte Namen" to data.knownNames.toString(),
+                            "Bekannte Orte" to data.knownCities.toString(), "Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString(),
                             "Mit anderen Personen geteilte Assets" to data.sharedImages.toString()))
                     if (data == null) DetailStatus(panels)
                     Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
@@ -324,10 +336,12 @@ internal fun LazyListScope.profileContent(
                 if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
             }
             items(visibleEvents, key = { "event/${it.changeEventId}" }) { event ->
-                PanelCard(event.fieldKey ?: event.eventType) {
-                    Text(event.createdAt, style = MaterialTheme.typography.bodySmall)
-                    event.oldJson?.let { SelectionContainer { Text("Vorher: $it") } }
-                    event.newJson?.let { SelectionContainer { Text("Nachher: $it") } }
+                PanelCard(historyEventLabel(event.eventType, event.fieldKey)) {
+                    Text(historyDate(event.createdAt), style = MaterialTheme.typography.bodySmall)
+                    val listing = panels.detail?.listings?.firstOrNull { it.listingId == event.listingId }
+                    listing?.let { Text("Anzeige #${it.externalId}", style = MaterialTheme.typography.labelMedium) }
+                    if (event.oldDisplay != null || event.newDisplay != null)
+                        HistoryValues(event.oldDisplay, event.newDisplay)
                     val from = event.fromSnapshotId
                     val to = event.toSnapshotId
                     if (from != null && to != null) TextButton(onClick = { panels.compare(from, to) },
@@ -342,7 +356,7 @@ internal fun LazyListScope.profileContent(
                 val context = LocalContext.current
                 PanelCard("Anzeige #${listing.externalId}") {
                     Text(statusLabel(listing.status))
-                    Text("Zuletzt gesehen: ${listing.lastSeenAt}", style = MaterialTheme.typography.bodySmall)
+                    Text("Zuletzt gesehen: ${historyDate(listing.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
                     listing.url?.let { url -> TextButton(onClick = { openExternal(context, url) }) { Text("Original öffnen") } }
                 }
             }

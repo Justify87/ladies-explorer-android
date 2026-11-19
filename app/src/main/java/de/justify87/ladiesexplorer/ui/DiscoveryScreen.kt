@@ -54,9 +54,9 @@ internal fun DiscoverScreen(
     var readError by remember(card?.listingId) { mutableStateOf<String?>(null) }
     val current = card?.let { decks[it.listingId] }
     val owner = current?.identity?.personId ?: card?.personId
-    val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson, current?.media.orEmpty())
-    rememberProfileNote(current?.profile?.listingId, current?.identity?.personId, noteActions, state.busy)
     val tab = tabs.selected(owner)
+    val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson, current?.media.orEmpty(), tab)
+    rememberProfileNote(current?.profile?.listingId, current?.identity?.personId, noteActions, state.busy, tab == ProfileTab.Notes)
     val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
     ComparisonDialog(panels)
     val upcoming = prefetchCards(state.cards)
@@ -193,7 +193,7 @@ internal fun DiscoverScreen(
                     }
                     if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
                         panels, tab, selectTab, profile.candidates, profile.history, !actions,
-                        notes[owner] ?: NoteEditorState(), noteActions, onConfirm = null, onOpenDetail = { onProfile(card.listingId, card.personId) })
+                        owner?.let(notes::get) ?: NoteEditorState(), noteActions, onConfirm = null, onOpenDetail = { onProfile(card.listingId, card.personId) })
                     else card.description?.let { item { Text(it) } }
                 }
             }

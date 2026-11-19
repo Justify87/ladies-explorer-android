@@ -170,3 +170,5 @@ G5 technisch DONE: PR #19 gemergt, Full-CI #341 auf e8c83e42 erfolgreich; Gerät
 ## M05.6 – Implementierung in Arbeit
 
 P27–P32: ProfilePanels.kt (gemeinsame native Tabs), profile_detail.rs (typisierte Fakten, Filterbelege, Notizen und Analyse), history.rs (Vergleich mit Eigentümerprüfung), CoreStore. Native Gerätebelege/Full-CI offen; Preis-, Begegnungs- und KI-Analysefunktionen nicht im M05-Scope.
+
+Review PR #20: P27–P32 korrigiert (Notiz-Verantwortung im ViewModel, kataloggebundene gruppenbezogene Belege, kompakte responsive Abschnitte, verständlicher Verlauf, gezielte DB-/State-Tests). Technische Abnahme neuer Head und DEVICE_PENDING offen.
