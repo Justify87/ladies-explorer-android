@@ -62,4 +62,4 @@ Rust zeichnet Such-, Profil-, Anzeige-Bild-, Medienarchiv- und Geocoder-Requests
 
 ## M05.7 Statusprüfung
 
-Einzel-/Batchstatus nutzt denselben Rust-HTTP-Recorder wie Profilabrufe; bestätigte Checks erzeugen PROFILE-Ereignis mit Listing-ID, Status und HTTP-Code, Kotlin erfasst den CoreStore-Aufruf. Transport-/Prüfseitenfehler bleiben als einzelne Fehlversuche im UI-Fortschritt sichtbar und überschreiben keinen bestätigten Status. Auf Gerät gezielt prüfen, dass weder Suchrequests noch Medienarchivierung ausgelöst werden; DEVICE_PENDING.
+Einzel- und Batchstatus laufen ausschließlich über bestehenden Rust-HTTP-Recorder. Bestätigte Checks protokollieren Listing-ID, Status und HTTP-Code; Kotlin zeigt Fortschritt, Fehleranzahl und letzten Fehler. Unbestätigte Antworten überschreiben keinen bestätigten Status. Bei Navigation/ON_STOP wird RequestControl abgebrochen, bereits erfolgreich gespeicherte Teilresultate bleiben erhalten und werden lokal neu projiziert. Auf Gerät kontrollieren: keine zusätzlichen Such-/Archivrequests, stabile Reihenfolge bei wiederholter Statusprüfung, Cancel/Timeout und Statusfehler. DEVICE_PENDING.

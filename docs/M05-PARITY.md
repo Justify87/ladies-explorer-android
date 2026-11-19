@@ -173,6 +173,13 @@ P27–P32: ProfilePanels.kt (gemeinsame native Tabs), profile_detail.rs (typisie
 
 Review PR #20: P27–P32 korrigiert (Notiz-Verantwortung im ViewModel, kataloggebundene gruppenbezogene Belege, kompakte responsive Abschnitte, verständlicher Verlauf, gezielte DB-/State-Tests). Technische Abnahme neuer Head und DEVICE_PENDING offen.
 
-### M05.7 – laufender Stand
+### M05.7 – Review-Korrektur PR #21
 
-P33: Rust-Personenseiten mit exakter Tab-Anzahl, unabhängiger Favoriten-/Präferenzmitgliedschaft, stabilen Datum-/Name-Cursorn und gemeinsamer Kartenprojektion; UI-Anbindung an gemeinsame Mutation/Projektion umgesetzt, CI-Nachweis noch offen. Namenssortierung derzeit SQLite NOCASE (keine vollständige deutsche Locale-Kollation). P34 in Arbeit (native Tabs, Count, Metadaten, Direktaktionen, Scrollzustand); P35 in Arbeit (Rust-Partition, feste 36h-Grenze, getrennte Cursor, Compose-Abschnitte); P36 im Review: Einzel-/Batchstatus über Rust, transaktionale Beobachtungen und Statuswechsel, Abbruch/Fortschritt/Teilfehlersignal; Full-CI und DEVICE_PENDING offen.
+| ID | Native Umsetzung | Abnahme |
+|---|---|---|
+| P33 | Rust-Personencounts, Unicode-Basisnamensortierung, revidierte Cursor und atomare erweiterbare Fenster; gespeicherte vs. Präferenzzustände unabhängig. | REVIEW |
+| P34 | Native Tabs und kompakte Karten; Fallbacks vorhandener personenbezogener Metadaten, gemeinsame Aktionen/Read-Reconciliation und Scroll-State. | REVIEW / DEVICE_PENDING |
+| P35 | 36h-Watchlist mit Millisekunden-Grenze; beide Bereiche aus einem DB-Stand, stabile Personenkeys, native Relisting-Klassifikation. | REVIEW |
+| P36 | Ein gemeinsamer Rust-Quellenvertrag; Status-only ohne Umsortierung, eindeutige Evidenz, Teilfortschritt/Fehler und Abbruch bei Navigation/ON_STOP. | REVIEW / DEVICE_PENDING |
+
+Historische Referenzmatrix oben bleibt Inventar des M05-Ausgangsstands. Full-CI des Korrekturstands offen; keine Geräteabnahme.

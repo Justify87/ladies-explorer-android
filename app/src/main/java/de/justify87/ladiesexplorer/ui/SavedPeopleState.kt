@@ -26,24 +26,26 @@ internal suspend fun runSavedStatusBatch(
     targets: List<Long>,
     cancelled: () -> Boolean,
     check: suspend (Long) -> Unit,
-    publish: (total: Int, done: Int, failed: Int) -> Unit,
+    publish: (total: Int, done: Int, failed: Int, lastError: String?) -> Unit,
     pause: suspend () -> Unit = { delay(350) },
 ) {
     var done = 0
     var failed = 0
-    publish(targets.size, done, failed)
+    var lastError: String? = null
+    publish(targets.size, done, failed, lastError)
     for ((index, target) in targets.withIndex()) {
         if (cancelled()) break
         try {
             check(target)
         } catch (cancel: CancellationException) {
             throw cancel
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
             if (cancelled()) break
             failed++
+            lastError = failure.message ?: "Status konnte nicht geprüft werden"
         }
         done++
-        publish(targets.size, done, failed)
+        publish(targets.size, done, failed, lastError)
         if (index < targets.lastIndex && !cancelled()) pause()
     }
 }

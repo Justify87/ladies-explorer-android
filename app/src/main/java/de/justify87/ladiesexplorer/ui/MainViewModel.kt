@@ -42,6 +42,7 @@ data class SavedStatusProgress(
     val failed: Int = 0,
     val running: Boolean = true,
     val cancelled: Boolean = false,
+    val lastError: String? = null,
 )
 
 data class DiscoverUiState(
@@ -152,6 +153,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var discoveryRefreshPending = false
     private var swipeSnapshotDirty = false
     private var discoveryListVisible = false
+    private var mapProjectionVisible = false
     private val searchGeneration = RequestGeneration()
     private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
 
@@ -676,11 +678,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun markSwipeSnapshotChanged() {
         swipeSnapshotDirty = true
         if (discoveryListVisible) refreshDiscovery()
+        if (mapProjectionVisible) refreshMap()
     }
 
-    fun setDiscoveryListVisible(visible: Boolean) {
-        discoveryListVisible = visible
-        if (visible && swipeSnapshotDirty) refreshDiscovery()
+    fun setDiscoveryProjectionVisibility(listVisible: Boolean, mapVisible: Boolean) {
+        val mapEntered = mapVisible && !mapProjectionVisible
+        discoveryListVisible = listVisible
+        mapProjectionVisible = mapVisible
+        if (listVisible && swipeSnapshotDirty) refreshDiscovery()
+        if (mapEntered) refreshMap()
     }
 
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
@@ -707,6 +713,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 throw cancellation
             } catch (failure: Exception) {
                 if (epoch == discoveryEpoch) {
+                    clearDiscoveryProjection()
                     _discoverState.update {
                         it.copy(loading = false, error = message ?: failure.message ?: "Entdecken fehlgeschlagen")
                     }
@@ -950,10 +957,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     targets = targets,
                     cancelled = { _discoverState.value.savedStatusProgress?.cancelled == true },
                     check = { core.checkSavedStatus(it, control) },
-                    publish = { total, done, failed ->
+                    publish = { total, done, failed, lastError ->
                         _discoverState.update { current ->
                             current.copy(savedStatusProgress = current.savedStatusProgress?.copy(
-                                total = total, done = done, failed = failed))
+                                total = total, done = done, failed = failed, lastError = lastError))
                         }
                     },
                 )

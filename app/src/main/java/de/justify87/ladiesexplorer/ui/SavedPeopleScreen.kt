@@ -105,6 +105,11 @@ internal fun SavedPeopleScreen(
             Text("${progress.done}/${progress.total} geprüft · ${progress.failed} fehlgeschlagen" +
                 if (progress.cancelled) " · Abgebrochen" else "",
                 style = MaterialTheme.typography.bodySmall)
+            progress.lastError?.let { error ->
+                Text(error, color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis)
+            }
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         val selection = "${state.savedKind.name}-${state.savedSort.name}"

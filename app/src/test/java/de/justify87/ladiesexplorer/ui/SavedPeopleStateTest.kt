@@ -36,7 +36,7 @@ class SavedPeopleStateTest {
                         committed += it
                         if (it == 3L) cancelled = true
                     },
-                    publish = { total, done, failed -> progress = Triple(total, done, failed) },
+                    publish = { total, done, failed, _ -> progress = Triple(total, done, failed) },
                     pause = {},
                 )
             },
