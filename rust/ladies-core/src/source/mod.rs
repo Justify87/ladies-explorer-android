@@ -275,11 +275,10 @@ pub(crate) fn check_saved_status(
 ) -> Result<String, CoreError> {
     control.check()?;
     let target = storage::status_target(core, listing_id)?;
-    let (status, http_status) = core.source_session.0.check_profile_status(
-        &target.url,
-        &target.advert_id,
-        control,
-    )?;
+    let (status, http_status) =
+        core.source_session
+            .0
+            .check_profile_status(&target.url, &target.advert_id, control)?;
     storage::save_status(core, &target, status, http_status, control)?;
     core.diagnostics.event(
         "PROFILE",

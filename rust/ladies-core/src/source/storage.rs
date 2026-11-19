@@ -260,7 +260,9 @@ fn status_target_in(db: &Connection, listing_id: i64) -> Result<StatusTarget, Co
     let url = row
         .0
         .and_then(|url| parse::valid_profile_url(&url))
-        .ok_or_else(|| CoreError::Source("Stored listing has no recognized source profile URL".into()))?;
+        .ok_or_else(|| {
+            CoreError::Source("Stored listing has no recognized source profile URL".into())
+        })?;
     Ok(StatusTarget {
         listing_id,
         url,
@@ -286,7 +288,9 @@ pub(super) fn save_status(
     let mut db = core.connection()?;
     let tx = db.transaction()?;
     if status_target_in(&tx, target.listing_id)? != *target {
-        return Err(CoreError::Source("Listing changed during status check".into()));
+        return Err(CoreError::Source(
+            "Listing changed during status check".into(),
+        ));
     }
     let previous: String = tx.query_row(
         "SELECT current_status FROM listings WHERE listing_id=?1",
