@@ -442,7 +442,9 @@ pub(crate) fn confirm(
         return Err(CoreError::IdentityConflict("Listing owner changed".into()));
     }
     if snapshot_id != Some(expected_snapshot_id) {
-        return Err(CoreError::IdentityConflict("Listing snapshot changed".into()));
+        return Err(CoreError::IdentityConflict(
+            "Listing snapshot changed".into(),
+        ));
     }
     if source_id == target_id || state == "MANUAL_SPLIT" {
         return Err(CoreError::IdentityConflict("Identity merge refused".into()));
