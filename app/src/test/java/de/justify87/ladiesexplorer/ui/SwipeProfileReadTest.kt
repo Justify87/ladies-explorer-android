@@ -9,21 +9,22 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SwipeProfileReadTest {
-    private class Fixture(val cachedProfile: ProfileResponse?) {
+    private class Fixture(var cachedProfile: ProfileResponse?) {
         val calls = mutableListOf<String>()
         var owner = 1L
         var online: suspend () -> ProfileResponse = { requireNotNull(cachedProfile).copy(snapshotId = 12L) }
-        var onPerson: suspend () -> Unit = {}
+        var beforeProjection: suspend () -> Unit = {}
         val reads = SwipeProfileReads(
             cached = { calls += "cache:$it"; cachedProfile },
-            source = { calls += "source:$it"; online() },
-            identity = { calls += "identity:$it"; ProfileIdentity(owner, "ACTIVE", null, false, false, false, null) },
-            person = { calls += "person:$it"; onPerson(); fixturePerson(it) },
-            media = { calls += "media:$it"; listOf(ProfileMediaItem("IMAGE", "", null, 0u)) },
-            history = { calls += "history:$it"; emptyList() },
-            candidates = {
-                calls += "candidates:$it:owner:$owner"
-                listOf(IdentityCandidate(owner + 10, "CANDIDATE", false, true, 0u, 0u, null))
+            source = { calls += "source:$it"; online().also { cachedProfile = it } },
+            projection = {
+                calls += "profile:$it"
+                beforeProjection()
+                cachedProfile?.let { profile ->
+                    NativeProfileProjection(profile, fixtureIdentity(owner), fixturePerson(owner),
+                        listOf(ProfileMediaItem("IMAGE", "", null, 0u)), emptyList(),
+                        listOf(IdentityCandidate(owner + 10, "CANDIDATE", false, true, 0u, 0u, null)))
+                }
             },
         )
     }
@@ -35,7 +36,7 @@ class SwipeProfileReadTest {
         assertEquals(11L, result.profile.snapshotId)
         assertEquals(fixtureIdentity(1L), result.identity)
         assertEquals(1L, result.person?.personId)
-        assertEquals(listOf("cache:4", "identity:4", "person:1", "media:11", "history:1", "candidates:4:owner:1"), f.calls)
+        assertEquals(listOf("cache:4", "profile:4"), f.calls)
     }
 
     @Test fun failedRefreshFallsBackLocallyAndReportsNativeCompletionExactlyOnce() = runBlocking {
@@ -45,7 +46,7 @@ class SwipeProfileReadTest {
         assertTrue(result.fromArchive)
         assertNotNull(result.warning)
         assertEquals(11L, result.profile.snapshotId)
-        assertEquals(listOf("cache:4", "source:4", "completion", "identity:4", "person:1", "media:11", "history:1", "candidates:4:owner:1"), f.calls)
+        assertEquals(listOf("cache:4", "source:4", "completion", "profile:4"), f.calls)
     }
 
     @Test fun successfulRefreshUsesReturnedSnapshotWithoutExtraSourceRead() = runBlocking {
@@ -54,8 +55,7 @@ class SwipeProfileReadTest {
         assertFalse(result.fromArchive)
         assertNull(result.warning)
         assertEquals(12L, result.profile.snapshotId)
-        assertTrue("media:12" in f.calls)
-        assertFalse("media:11" in f.calls)
+        assertEquals(1, f.calls.count { it == "profile:4" })
         assertEquals(1, f.calls.count { it == "source:4" })
         assertEquals(1, f.calls.count { it == "completion" })
     }
@@ -71,28 +71,27 @@ class SwipeProfileReadTest {
         assertEquals(listOf("cache:4", "source:4", "completion"), f.calls)
     }
 
-    @Test fun knownGapOwnerChangeDuringMultiReadReturnsMixedProjection() = runBlocking {
+    @Test fun projectionUsesOneAuthoritativeLocalReadAfterOwnerAndSnapshotChange() = runBlocking {
         val f = Fixture(fixtureProfile())
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        f.onPerson = { started.complete(Unit); finish.await() }
+        f.beforeProjection = { started.complete(Unit); finish.await() }
         var projected: SwipeProfile? = null
         val job = launch {
             projected = readSwipeProfile(4L, false, false, {}, f.reads)
         }
         started.await()
         f.owner = 2L
+        f.cachedProfile = fixtureProfile(12L)
         finish.complete(Unit)
         job.join()
-        // Existing read sequence does not validate the owner again after the split reads.
-        // T10.2 must replace this characterization with rejection/recovery of stale data.
-        val mixed = requireNotNull(projected)
-        assertEquals(1L, mixed.identity.personId)
-        assertEquals(12L, mixed.candidates.single().personId)
-        assertTrue("history:1" in f.calls)
-        assertEquals(1, f.calls.count { it == "identity:4" })
+        val local = requireNotNull(projected)
+        assertEquals(2L, local.identity.personId)
+        assertEquals(2L, local.person?.personId)
+        assertEquals(12L, local.profile.snapshotId)
+        assertEquals(12L, local.candidates.single().personId)
+        assertEquals(listOf("cache:4", "profile:4"), f.calls)
     }
-
 
     @Test fun offlineWithoutCacheFailsWithoutSourceOrCompletion() = runBlocking {
         val f = Fixture(null)
@@ -113,10 +112,10 @@ class SwipeProfileReadTest {
     @Test fun sourceSuccessThenProjectionFailureDoesNotRetrySource() = runBlocking {
         val f = Fixture(fixtureProfile())
         val failure = IllegalStateException("person projection failed")
-        f.onPerson = { throw failure }
+        f.beforeProjection = { throw failure }
         val error = runCatching { readSwipeProfile(4L, true, true, { f.calls += "completion" }, f.reads) }.exceptionOrNull()
         assertSame(failure, error)
-        assertEquals(listOf("cache:4", "source:4", "completion", "identity:4", "person:1"), f.calls)
+        assertEquals(listOf("cache:4", "source:4", "completion", "profile:4"), f.calls)
     }
 
     @Test fun cachedActiveRunPrefetchStillAvoidsSource() = runBlocking {

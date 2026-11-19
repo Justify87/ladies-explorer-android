@@ -19,16 +19,11 @@ internal data class SwipeProfile(
     val warning: String? = null,
 )
 
-/** Bound native operations, injected only to characterize the real swipe read sequence.
- * No state, cache or replacement transport lives here. */
+/** Source policy is context-specific; the local projection is shared with standalone. */
 internal class SwipeProfileReads(
     val cached: suspend (Long) -> ProfileResponse?,
     val source: suspend (Long) -> ProfileResponse,
-    val identity: suspend (Long) -> ProfileIdentity,
-    val person: suspend (Long) -> PersonSummary?,
-    val media: suspend (Long) -> List<ProfileMediaItem>,
-    val history: suspend (Long) -> List<ChangeRecord>,
-    val candidates: suspend (Long) -> List<IdentityCandidate>,
+    val projection: suspend (Long) -> NativeProfileProjection?,
 )
 
 /** Reuse the existing source/persistence contract, but never archive media for a swipe read. */
@@ -40,8 +35,7 @@ internal suspend fun CoreStore.readSwipeProfile(
     onSourceRead: () -> Unit = {},
 ): SwipeProfile = readSwipeProfile(
     listingId, refresh, allowNetwork, onSourceRead,
-    SwipeProfileReads(::cachedProfile, { loadSwipeProfile(it, control) }, ::profileIdentity,
-        ::person, ::profileMedia, ::changeEvents, ::identityCandidates),
+    SwipeProfileReads(::cachedProfile, { loadSwipeProfile(it, control) }, ::profileProjection),
 )
 
 internal suspend fun readSwipeProfile(
@@ -52,7 +46,7 @@ internal suspend fun readSwipeProfile(
     reads: SwipeProfileReads,
 ): SwipeProfile {
     var cached = reads.cached(listingId)
-    var fromArchive = cached != null && !refresh
+    var fromArchive = cached != null
     var warning: String? = null
     if (allowNetwork && (refresh || cached == null)) {
         // Completion matters even if delivery was cancelled after a native commit.
@@ -70,12 +64,11 @@ internal suspend fun readSwipeProfile(
             onSourceRead()
         }
     }
-    val profile = checkNotNull(cached) { "Kein archiviertes Profil vorhanden" }
+    checkNotNull(cached) { "Kein archiviertes Profil vorhanden" }
     currentCoroutineContext().ensureActive()
-    val identity = reads.identity(listingId)
-    return SwipeProfile(profile, identity, reads.person(identity.personId),
-        reads.media(profile.snapshotId), reads.history(identity.personId),
-        reads.candidates(listingId), fromArchive, warning)
+    val local = checkNotNull(reads.projection(listingId)) { "Profil nicht mehr verfügbar" }
+    return SwipeProfile(local.profile, local.identity, local.person,
+        local.media, local.history, local.candidates, fromArchive, warning)
 }
 
 /** Only first two images; Coil shares the app's cache/HTTP diagnostics and suspending cancellation. */

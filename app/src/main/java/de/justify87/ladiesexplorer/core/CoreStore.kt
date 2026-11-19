@@ -249,6 +249,9 @@ class CoreStore(context: Context) {
     suspend fun compareSnapshots(personId: Long, fromId: Long, toId: Long): List<SnapshotDifference> =
         withContext(Dispatchers.IO) { engine.compareSnapshots(personId, fromId, toId) }
 
+    suspend fun profileProjection(listingId: Long): NativeProfileProjection? =
+        withContext(Dispatchers.IO) { engine.profileProjection(listingId) }
+
     suspend fun profileIdentity(listingId: Long): ProfileIdentity =
         withContext(Dispatchers.IO) { engine.profileIdentity(listingId) }
 
