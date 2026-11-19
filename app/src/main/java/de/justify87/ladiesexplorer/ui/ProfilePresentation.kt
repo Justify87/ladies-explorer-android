@@ -11,20 +11,37 @@ import kotlinx.coroutines.launch
 
 /** No profile payloads or callback closures are retained through a projection gap. */
 internal data class ProfileScrollAnchor(val key: String, val offset: Int)
-internal class ProfileScrollMemory {
-    var anchor: ProfileScrollAnchor? = null
+internal data class ProfileProjectionKey(
+    val listingId: Long, val ownerId: Long, val snapshotId: Long, val revision: Long, val filters: String,
+)
+internal class ProfileScrollMemory(
+    initialAnchor: ProfileScrollAnchor? = null,
+    initialRecovery: Boolean = false,
+) {
+    var anchor: ProfileScrollAnchor? = initialAnchor
         private set
-    var recovering = false
+    var recovering by mutableStateOf(initialRecovery)
         private set
+    private var projection: ProfileProjectionKey? = null
+
+    /** Also detects a direct revision replacement, where model never becomes null. */
+    fun projectionChanged(next: ProfileProjectionKey?) {
+        if (projection != null && projection != next) gap()
+        projection = next
+    }
 
     fun observe(key: String, offset: Int) {
         if (!recovering) anchor = ProfileScrollAnchor(key, offset.coerceAtLeast(0))
     }
     fun gap() { if (anchor != null) recovering = true }
+    fun needsFacts() = recovering && anchor?.key in setOf("profile-facts", "profile-services")
+    fun needsDetail() = recovering && (anchor?.key?.startsWith("listing/") == true ||
+        anchor?.key in setOf("profile-analysis", "profile-listings-head"))
     fun needsListings() = recovering && anchor?.key?.startsWith("listing/") == true
+
     fun target(keys: List<String>): Pair<Int, Int>? {
         if (!recovering || keys.isEmpty()) return null
-        val saved = anchor ?: return null
+        val saved = anchor ?: return 0 to 0
         val index = keys.indexOf(saved.key)
         if (index >= 0) return index to saved.offset
         val fallback = when {
@@ -38,15 +55,27 @@ internal class ProfileScrollMemory {
     fun restored() { recovering = false }
 }
 
+@Composable
+internal fun rememberProfileScrollMemory(reset: Boolean): ProfileScrollMemory = rememberSaveable(
+    saver = listSaver<ProfileScrollMemory, String>(
+        save = { listOf(it.anchor?.key.orEmpty(), (it.anchor?.offset ?: 0).toString(), it.recovering.toString()) },
+        restore = {
+            ProfileScrollMemory(it[0].takeIf(String::isNotEmpty)?.let { key ->
+                ProfileScrollAnchor(key, it[1].toInt())
+            }, it[2].toBoolean())
+        },
+    ),
+) { ProfileScrollMemory(initialRecovery = reset) }
+
 /** The actual lazy row manifest is also the anchor resolver; there is no parallel index table. */
 internal class ProfileFlowRows(val mediaSelection: ProfileMediaSelection) {
-    data class Row(val key: String, val content: @Composable () -> Unit)
-    private val rows = mutableListOf<Row>()
-    fun item(key: String, content: @Composable () -> Unit) { rows.add(Row(key, content)) }
+    data class Entry(val key: String, val content: @Composable () -> Unit)
+    private val rows = mutableListOf<Entry>()
+    fun item(key: String, content: @Composable () -> Unit) { rows.add(Entry(key, content)) }
     fun <T> items(values: List<T>, key: (T) -> String, content: @Composable (T) -> Unit) {
         values.forEach { value -> item(key(value)) { content(value) } }
     }
-    fun build(): List<Row> = rows.toList()
+    fun build(): List<Entry> = rows.toList()
 }
 
 internal class ProfileMediaSelection(initialIndex: Int = 0, initialId: String? = null) {

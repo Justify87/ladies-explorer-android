@@ -7,6 +7,7 @@ import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -49,13 +50,13 @@ internal class ProfilePanels(
         val key = factsKey ?: return
         if (closed || factsError == null) return
         factsKey = null
-        factsRetry = scope.launch { loadFacts(key.snapshot, key.filters) }
+        factsRetry = scope.launch(start = CoroutineStart.UNDISPATCHED) { loadFacts(key.snapshot, key.filters) }
     }
 
     fun retryDetail() {
         if (closed || detailError == null) return
         detailRequested = false
-        detailRetry = scope.launch { loadDetail() }
+        detailRetry = scope.launch(start = CoroutineStart.UNDISPATCHED) { loadDetail() }
     }
 
     suspend fun loadFacts(snapshot: Long?, filters: String) {

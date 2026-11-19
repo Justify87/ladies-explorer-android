@@ -25,6 +25,33 @@ class ProfilePresentationTest {
         assertEquals(ProfileScrollAnchor("profile-facts", 8), memory.anchor)
     }
 
+    @Test fun directRevisionChangeFreezesAnchorJustLikeAGap() {
+        val key = ProfileProjectionKey(4L, 1L, 11L, 2L, "{}")
+        val memory = ProfileScrollMemory()
+        memory.projectionChanged(key)
+        memory.observe("listing/9", 22)
+        memory.projectionChanged(key.copy(revision = 3L))
+        assertTrue(memory.recovering)
+        assertTrue(memory.needsDetail())
+        memory.observe("profile-facts", 0)
+        assertEquals(2 to 22, memory.target(listOf("hero", "profile-listings-head", "listing/9")))
+        memory.restored()
+        memory.projectionChanged(key.copy(revision = 3L))
+        assertFalse(memory.recovering)
+        val newOwner = ProfileScrollMemory(initialRecovery = true)
+        assertEquals(0 to 0, newOwner.target(listOf("hero", "profile-facts")))
+    }
+
+    @Test fun sameOwnerGapWaitsForFactsRatherThanRestoringOffsetIntoSpinner() {
+        val memory = ProfileScrollMemory()
+        memory.projectionChanged(ProfileProjectionKey(4L, 1L, 11L, 2L, "{}"))
+        memory.observe("profile-services", 60)
+        memory.projectionChanged(null)
+        assertTrue(memory.needsFacts())
+        assertFalse(memory.needsDetail())
+        assertEquals(1 to 60, memory.target(listOf("hero", "profile-services")))
+    }
+
     @Test fun missingAnchorFallsBackToItsSectionAndListingRequestsDetail() {
         val memory = ProfileScrollMemory()
         memory.observe("listing/9", 22)

@@ -72,10 +72,13 @@ internal fun ProfileFlow(
     val presentationOwner = owner ?: lastOwner
     val sections = key(presentationOwner) { rememberProfileSections() }
     val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
-    val scroll = remember(presentationOwner) { ProfileScrollMemory() }
+    val scroll = key(presentationOwner) { rememberProfileScrollMemory(ownerChanged) }
+    val projection = model?.let {
+        ProfileProjectionKey(it.profile.listingId, it.identity.personId, it.profile.snapshotId, it.revision, filters)
+    }
     SideEffect {
+        scroll.projectionChanged(projection)
         if (owner != null) lastOwner = owner
-        else scroll.gap()
     }
     val panels = rememberProfilePanels(model, filters, state)
     val busy = actionsBusy || token == null
@@ -112,17 +115,22 @@ internal fun ProfileFlow(
     }.build()
     val keys = rows.map { it.key }
     val available = model != null
-    // An anchor into linked listings itself constitutes demand for the local detail read.
-    LaunchedEffect(panels, scroll, available) {
-        if (available && scroll.needsListings()) panels.loadDetail()
+    // Restoring an anchor is itself demand. Avoid restoring an offset into a
+    // temporarily short loading row or treating a not-yet-loaded listing as absent.
+    val recovering = scroll.recovering
+    LaunchedEffect(panels, scroll, available, recovering) {
+        if (available && recovering) {
+            if (scroll.needsFacts()) panels.loadFacts(checkNotNull(model).profile.snapshotId, filters)
+            if (scroll.needsDetail()) panels.loadDetail()
+        }
     }
-    val waitingForListings = scroll.needsListings() && panels.detail == null && panels.detailError == null
-    LaunchedEffect(state, scroll, available, keys, waitingForListings) {
-        if (!available || waitingForListings) return@LaunchedEffect
-        // Wait for the new manifest to be measured, never resolve against the gap's rows.
+    val waitingForAnchor = scroll.needsFacts() && panels.facts == null && panels.factsError == null ||
+        scroll.needsDetail() && panels.detail == null && panels.detailError == null
+    LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor) {
+        if (!available || waitingForAnchor) return@LaunchedEffect
+        // Wait for the current manifest to be measured, never resolve against the gap's rows.
         snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
-        if (ownerChanged) state.scrollToItem(0)
-        else scroll.target(keys)?.let { (index, offset) ->
+        scroll.target(keys)?.let { (index, offset) ->
             state.scrollToItem(index, offset)
             scroll.restored()
         }
