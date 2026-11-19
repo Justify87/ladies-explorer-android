@@ -19,6 +19,28 @@ pub struct SavedSearchInfo {
     pub unread_new_results: bool,
     pub definition_supported: bool,
     pub local_filter_summary: String,
+    pub delta: Option<SavedSearchDelta>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavedSearchDelta {
+    pub new_count: u32,
+    pub removed_count: u32,
+    pub current_count: u32,
+    pub initial: bool,
+}
+
+fn read_delta(raw: Option<&str>) -> Option<SavedSearchDelta> {
+    let value: serde_json::Value = serde_json::from_str(raw?).ok()?;
+    let count = |native: &str, legacy: &str| {
+        u32::try_from(value.get(native).or_else(|| value.get(legacy))?.as_u64()?).ok()
+    };
+    Some(SavedSearchDelta {
+        new_count: count("new", "new_results_count")?,
+        removed_count: count("removed", "removed_results_count")?,
+        current_count: count("current", "current_result_count")?,
+        initial: value.get("initial").and_then(|v| v.as_bool()).unwrap_or(false),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Record)]
@@ -229,7 +251,7 @@ pub(crate) fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreE
 pub(crate) fn list(core: &LadiesCore) -> Result<Vec<SavedSearchInfo>, CoreError> {
     let db = core.connection()?;
     let mut query = db.prepare(
-        "SELECT saved_search_id,name,filters_json,last_run_at,last_error,unread_new_results
+        "SELECT saved_search_id,name,filters_json,last_run_at,last_error,unread_new_results,last_delta_json
          FROM saved_searches ORDER BY updated_at DESC,saved_search_id DESC",
     )?;
     let rows = query.query_map([], |r| {
@@ -240,10 +262,11 @@ pub(crate) fn list(core: &LadiesCore) -> Result<Vec<SavedSearchInfo>, CoreError>
             r.get::<_, Option<String>>(3)?,
             r.get::<_, Option<String>>(4)?,
             r.get::<_, i64>(5)?,
+            r.get::<_, Option<String>>(6)?,
         ))
     })?;
     rows.map(|row| {
-        let (search_id, name, definition, last_run_at, last_error, unread) = row?;
+        let (search_id, name, definition, last_run_at, last_error, unread, delta) = row?;
         let parsed = decode_definition(&definition).ok();
         Ok(SavedSearchInfo {
             search_id,
@@ -257,6 +280,7 @@ pub(crate) fn list(core: &LadiesCore) -> Result<Vec<SavedSearchInfo>, CoreError>
             unread_new_results: unread != 0,
             definition_supported: parsed.is_some(),
             local_filter_summary: parsed.as_ref().map_or(String::new(), |r| r.local.summary()),
+            delta: read_delta(delta.as_deref()),
         })
     })
     .collect()
@@ -271,6 +295,8 @@ pub struct SavedSearchCard {
     pub city: String,
     pub thumbnail_url: Option<String>,
     pub first_seen_at: String,
+    pub local_path: Option<String>,
+    pub age: Option<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -307,9 +333,13 @@ pub(crate) fn results(
     }
     let mut query = db.prepare(
         "SELECT r.position,r.result_key,r.snapshot_json,r.first_seen_at,
-                l.listing_id,l.person_id
+                l.listing_id,l.person_id,s.traits_json,
+                (SELECT a.local_path FROM snapshot_media m JOIN media_assets a ON a.media_asset_id=m.media_asset_id
+                 WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
+                 ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id LIMIT 1)
          FROM saved_search_results r
          LEFT JOIN listings l ON l.source='LADIES' AND l.external_listing_id=r.result_key
+         LEFT JOIN listing_snapshots s ON s.snapshot_id=l.current_snapshot_id
          WHERE r.saved_search_id=?1 AND r.present=1 AND r.visible=1
            AND (?2 IS NULL OR r.position > ?2
                 OR (r.position=?2 AND r.result_key > ?3))
@@ -326,11 +356,13 @@ pub(crate) fn results(
             row.get::<_, String>(3)?,
             row.get::<_, Option<i64>>(4)?,
             row.get::<_, Option<i64>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
         ))
     })?;
     let mut records = rows
         .map(|row| {
-            let (position, result_key, snapshot, first_seen_at, listing_id, person_id) = row?;
+            let (position, result_key, snapshot, first_seen_at, listing_id, person_id, traits, relative) = row?;
             let value = serde_json::from_str::<serde_json::Value>(&snapshot).unwrap_or_default();
             Ok((
                 SavedSearchCard {
@@ -352,6 +384,11 @@ pub(crate) fn results(
                     listing_id,
                     person_id,
                     first_seen_at,
+                    age: source::known_age(traits.as_deref()),
+                    local_path: relative.and_then(|relative| {
+                        let path = core.media_root.as_ref()?.join(relative);
+                        path.is_file().then(|| path.to_string_lossy().into_owned())
+                    }),
                 },
                 position,
             ))
@@ -371,6 +408,26 @@ pub(crate) fn results(
         cards: records.into_iter().map(|(card, _)| card).collect(),
         next_cursor,
     })
+}
+
+// Rename is deliberately independent of decoding or canonicalizing an imported
+// definition. Unsupported rules and its result baseline remain byte-identical.
+pub(crate) fn rename(core: &LadiesCore, id: String, name: String) -> Result<(), CoreError> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > 100 {
+        return Err(CoreError::InvalidInput(
+            "Search name must have 1–100 characters".into(),
+        ));
+    }
+    let db = core.connection()?;
+    if db.execute(
+        "UPDATE saved_searches SET name=?2,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE saved_search_id=?1",
+        params![id, name],
+    )? != 1 {
+        return Err(CoreError::InvalidInput("Saved search not found".into()));
+    }
+    Ok(())
 }
 
 pub(crate) fn delete(core: &LadiesCore, id: String) -> Result<(), CoreError> {
@@ -489,7 +546,7 @@ fn persist_results_with_control(
          unread_new_results=CASE WHEN ?3>0 THEN 1 ELSE unread_new_results END,
          new_results_at=CASE WHEN ?3>0 THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE new_results_at END
          WHERE saved_search_id=?1",
-        params![id,json!({"new":newly_seen,"removed":removed,"current":result.profiles.len()}).to_string(),newly_seen],
+        params![id,json!({"new":newly_seen,"removed":removed,"current":result.profiles.len(),"initial":existing.is_none()}).to_string(),newly_seen],
     )?;
     if let Some(control) = control {
         control.check()?;
@@ -687,6 +744,27 @@ pub(crate) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rename_unsupported_preserves_raw_definition_and_imported_delta() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let raw = r#"{"city":"Leipzig","local":{"imageMode":"STUDIO"}}"#;
+        let delta = r#"{"new_results_count":2,"removed_results_count":1,"current_result_count":7}"#;
+        core.connection().unwrap().execute(
+            "INSERT INTO saved_searches(saved_search_id,name,filters_json,last_delta_json,unread_new_results)
+             VALUES ('legacy','Old',?1,?2,1)",
+            params![raw, delta],
+        ).unwrap();
+        let before = definition(&core, "legacy").unwrap();
+        rename(&core, "legacy".into(), "New".into()).unwrap();
+        assert_eq!(definition(&core, "legacy").unwrap(), before);
+        let info = list(&core).unwrap().remove(0);
+        assert_eq!(info.name, "New");
+        assert!(!info.definition_supported);
+        assert!(info.unread_new_results);
+        let delta = info.delta.unwrap();
+        assert_eq!((delta.new_count, delta.removed_count, delta.current_count), (2, 1, 7));
+    }
+
     #[test]
     fn native_saved_searches_roundtrip_and_legacy_defs_are_non_destructive() {
         let core = LadiesCore::new(":memory:".into()).unwrap();

@@ -290,6 +290,9 @@ class CoreStore(context: Context) {
     suspend fun runSavedSearch(id: String, control: RequestControl): SearchResponse =
         withContext(Dispatchers.IO) { recorded("runSavedSearch") { engine.runSavedSearch(id, control) } }
 
+    suspend fun renameSavedSearch(id: String, name: String) =
+        withContext(Dispatchers.IO) { engine.renameSavedSearch(id, name) }
+
     suspend fun deleteSavedSearch(id: String) =
         withContext(Dispatchers.IO) { engine.deleteSavedSearch(id) }
 

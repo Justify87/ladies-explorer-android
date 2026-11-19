@@ -580,6 +580,10 @@ impl LadiesCore {
         saved_search::load(self, id)
     }
 
+    pub fn rename_saved_search(&self, id: String, name: String) -> Result<(), CoreError> {
+        saved_search::rename(self, id, name)
+    }
+
     pub fn delete_saved_search(&self, id: String) -> Result<(), CoreError> {
         saved_search::delete(self, id)
     }
