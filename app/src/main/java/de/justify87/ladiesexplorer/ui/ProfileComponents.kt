@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -133,21 +134,11 @@ private fun HeroButton(
 
 @Composable
 private fun MediaTapZone(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    enabled: Boolean,
-    modifier: Modifier,
-    onClick: () -> Unit,
+    label: String, enabled: Boolean, modifier: Modifier, onClick: () -> Unit,
 ) {
-    Box(modifier.fillMaxWidth(.25f).fillMaxHeight(.65f)
+    Box(modifier.fillMaxWidth(.30f).fillMaxHeight(.65f)
         .semantics { contentDescription = label }
-        .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center) {
-        Surface(shape = MaterialTheme.shapes.extraLarge, color = Color.Black.copy(alpha = .65f)) {
-            Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = if (enabled) 1f else .4f),
-                modifier = Modifier.padding(10.dp).size(28.dp))
-        }
-    }
+        .clickable(enabled = enabled, role = Role.Button, onClick = onClick))
 }
 
 /** Shared media hero; deck navigation is added by M05.4, not by this component. */
@@ -161,6 +152,8 @@ internal fun ProfileMediaHero(
     isCurrent: () -> Boolean = { true },
     selection: ProfileMediaSelection,
     projectionAvailable: Boolean = true,
+    identity: HeroIdentity? = null,
+    actionToken: ProfileIdentityToken? = null,
 ) {
     val context = LocalContext.current
     val index = selection.resolve(media, projectionAvailable)
@@ -168,8 +161,8 @@ internal fun ProfileMediaHero(
         if (projectionAvailable) selection.select(media, index)
     }
     val item = media.getOrNull(index)
-    var more by remember { mutableStateOf(false) }
-    var fullscreen by remember { mutableStateOf(false) }
+    var more by remember(actionToken, item?.url, item?.localPath, originalUrl) { mutableStateOf(false) }
+    var fullscreen by remember(actionToken, item?.url, item?.localPath) { mutableStateOf(false) }
     LaunchedEffect(item?.kind, actionsEnabled) {
         if (item?.kind != "IMAGE" || !actionsEnabled) fullscreen = false
         if (!actionsEnabled) more = false
@@ -205,9 +198,9 @@ internal fun ProfileMediaHero(
                     }
                 }
             }
-            MediaTapZone("Vorheriges Medium", Icons.Default.ChevronLeft, index > 0,
+            MediaTapZone("Vorheriges Medium", projectionAvailable && index > 0,
                 Modifier.align(Alignment.CenterStart)) { if (projectionAvailable) selection.select(media, index - 1) }
-            MediaTapZone("Nächstes Medium", Icons.Default.ChevronRight, index < media.lastIndex,
+            MediaTapZone("Nächstes Medium", projectionAvailable && index < media.lastIndex,
                 Modifier.align(Alignment.CenterEnd)) { if (projectionAvailable) selection.select(media, index + 1) }
         }
         onBack?.let {
@@ -225,10 +218,19 @@ internal fun ProfileMediaHero(
                 }
             }
         }
-        Surface(Modifier.align(Alignment.BottomEnd).padding(12.dp), shape = MaterialTheme.shapes.small,
+        Surface(Modifier.align(Alignment.TopCenter).padding(top = 26.dp), shape = MaterialTheme.shapes.small,
             color = Color.Black.copy(alpha = .7f)) {
             Text(if (media.isEmpty()) "–" else "${index + 1} / ${media.size}",
                 Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = Color.White)
+        }
+        if (identity != null) Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            color = Color.Black.copy(alpha = .82f)) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(identity.subtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -242,13 +244,16 @@ internal fun ProfileIdentityHeader(
     person: PersonSummary? = null,
     hasVideo: Boolean = false,
     fromArchive: Boolean = false,
+    showIdentity: Boolean = true,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(listOfNotNull(name.ifBlank { "Unbekannt" }, age).joinToString(", "),
-            style = MaterialTheme.typography.headlineMedium)
-        Text(place.ifBlank { "Ort unbekannt" }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (showIdentity) {
+            Text(listOfNotNull(name.ifBlank { "Unbekannt" }, age).joinToString(", "),
+                style = MaterialTheme.typography.headlineMedium)
+            Text(place.ifBlank { "Ort unbekannt" }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         val badges = listOfNotNull(
-            statusLabel(identity?.status).takeIf { identity != null }
+            statusLabel(identity?.status).takeIf { showIdentity && identity != null }
                 ?.let { if (fromArchive) "Zuletzt bekannt: $it" else it },
             "Archivierte Daten".takeIf { fromArchive },
             when {

@@ -1,6 +1,14 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
@@ -26,8 +34,13 @@ internal fun DiscoverScreen(
     state: DiscoverUiState,
     notes: Map<Long, NoteEditorState>,
     noteActions: NoteEditorActions,
-    searchLoading: Boolean = false,
-    executedFiltersJson: String = "{}",
+    search: SearchUiState,
+    rootBarHeight: Dp,
+    onOpenSearch: () -> Unit,
+    onSelectMode: (DiscoverMode) -> Unit,
+    availabilityEnabled: Boolean,
+    onAvailability: (AvailabilityMode) -> Unit,
+    onCancelSearch: () -> Unit,
     onRefresh: (SwipeDeckToken) -> Unit,
     onReset: (SwipeDeckToken) -> Unit,
     onUndo: (SwipeDeckToken) -> Unit,
@@ -43,6 +56,9 @@ internal fun DiscoverScreen(
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val searchLoading = search.loading
+    val active = search.response?.takeIf { it.searchRunId == state.activeRunId }
+    val executedFiltersJson = active?.query?.filtersJson ?: "{}"
     val card = state.cards.firstOrNull()
     val deckToken = state.deckToken()
     val cardToken = state.cardToken()
@@ -145,114 +161,132 @@ internal fun DiscoverScreen(
         }
     }
 
-    Column(
-        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                if (state.activeRunId == null) "Lokaler Bestand · neutrale Profile"
-                else "Aktive Suche · ${state.activeVisibleCount} sichtbar · ${state.cards.size} im Deck",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = { onRefresh(deckToken) }, enabled = enabled) { Text("Aktualisieren") }
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (state.activeRunId != null) FilterChip(
-                selected = state.replayLikes, enabled = enabled, onClick = { onReplayLikes(deckToken, !state.replayLikes) },
-                label = { Text("Likes erneut zeigen") },
-            )
-            TextButton(onClick = { onUndo(deckToken) }, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
-            TextButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Reset") }
-        }
-        state.mergeNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-        state.mutationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (state.loading && card == null) {
-            CircularProgressIndicator()
-        } else if (card == null) {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
-                    Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
-                    OutlinedButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Deck neu beginnen") }
-                }
-            }
-        } else key(state.activeRunId, card.listingId, card.personId) {
-            val profile = current
-            val matchesOwner = profile != null && profile.identity.personId == card.personId
-            val actions = enabled && token != null
-            val density = LocalDensity.current.density
-            var drag by remember { mutableFloatStateOf(0f) }
+    BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        // Scaffold supplies the actual root-bar height without its system inset.
+        // Column measures the fixed controls before the weighted profile viewport.
+        val usableHeight = maxHeight + rootBarHeight
+        val windowWidth = maxWidth
+        key(state.activeRunId, card?.listingId, card?.personId) {
             val listState = rememberLazyListState()
-            val person = profile?.person?.takeIf { matchesOwner }
-            val fallback = listOfNotNull(card.thumbnailUrl?.let {
-                ProfileMediaItem("IMAGE", it, card.localPath, 0u)
-            } ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val heroHeight = (maxHeight * .88f).coerceIn(200.dp, 720.dp)
-                ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
-                    token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
-                    isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
-                    modifier = Modifier.fillMaxSize()) {
-                    item(key = "hero") {
-                        // Only the image surface owns horizontal decisions. Vertical drags
-                        // remain with LazyColumn; tap zones keep their click semantics.
-                        ProfileMediaHero(
-                            media = profile?.media?.ifEmpty { fallback } ?: fallback,
-                            modifier = Modifier.fillMaxWidth().height(heroHeight)
-                                .graphicsLayer { translationX = drag; rotationZ = drag / (45 * density) }
-                                .pointerInput(token, actions, density) {
-                                    if (actions) detectHorizontalDragGestures(
-                                        onHorizontalDrag = { change, delta ->
-                                            change.consume()
-                                            drag = (drag + delta).coerceIn(-300 * density, 300 * density)
-                                        },
-                                        onDragEnd = {
-                                            val decision = swipePreference(drag / density)
-                                            drag = 0f
-                                            if (token != null && decision != null) onChoose(token, decision)
-                                        },
-                                        onDragCancel = { drag = 0f },
-                                    )
-                                },
-                            originalUrl = profile?.identity?.profileUrl,
-                            selection = mediaSelection,
-                            projectionAvailable = profile != null,
-                            actionsEnabled = actions,
-                            isCurrent = { token?.let(isProfileCurrent) == true },
-                        )
+            val scope = rememberCoroutineScope()
+            val profile = current
+            val person = profile?.person
+            val identity = profile?.let { heroIdentity(it.profile, it.identity, it.fromArchive) }
+                ?: card?.let { HeroIdentity(it.name, place = it.city) }
+            val actions = enabled && token != null
+            // Read layout, never infer scroll position from a second presentation state.
+            val details by remember(listState) { derivedStateOf { listState.heroHasLeft("hero") } }
+            val summary = if (state.activeRunId == null) "Lokaler Bestand · neutral"
+                else active?.let { "${it.city} · ${it.requestedRadiusKm} km" } ?: "Aktive Suche"
+            val counts = if (state.activeRunId == null) "${state.cards.size} im Deck"
+                else "Quelle: ${active?.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"} · ${state.activeVisibleCount} sichtbar · ${state.cards.size} im Deck"
+            Column(Modifier.widthIn(max = 600.dp).fillMaxSize()) {
+                SwipeShellHeader(
+                    identity = identity.takeIf { details }, summary = summary, counts = counts,
+                    availability = search.headerAvailability(), executed = active != null,
+                    availabilityEnabled = availabilityEnabled, deckEnabled = enabled,
+                    replay = state.replayLikes, hasRun = state.activeRunId != null,
+                    person = person, profileActions = actions,
+                    onPhoto = { scope.launch { listState.scrollToItem(0) } },
+                    onSearch = onOpenSearch, onMode = onSelectMode, onAvailability = onAvailability,
+                    onRefresh = { onRefresh(deckToken) }, onReset = { onReset(deckToken) },
+                    onReplay = { onReplayLikes(deckToken, !state.replayLikes) },
+                    onFavorite = { token?.let(onFavorite) },
+                    onClearPreference = { token?.let { onChoose(it, Preference.NONE) } },
+                )
+                SearchRunStatus(search, onCancelSearch, includeSummary = false)
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                    state.mergeNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    state.mutationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    profile?.warning?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    if (visible && projectedToken != null && token == null) {
+                        Text("Profil- und Deckzustand unterscheiden sich. Bitte Ansicht aktualisieren.",
+                            color = MaterialTheme.colorScheme.error)
                     }
-                    item(key = "header") {
-                        if (profile == null) ProfileIdentityHeader(card.name, card.city, hasVideo = card.hasVideo)
-                        else ProfileHeader(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
-                        
-                        profile?.warning?.let { Text(it) }
-                        if (visible && projectedToken != null && token == null) {
-                            Text("Profil- und Deckzustand unterscheiden sich. Bitte Ansicht aktualisieren.",
-                                color = MaterialTheme.colorScheme.error)
+                    readError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = { card?.let { decks.remove(it.listingId); retry++ } }, enabled = enabled) {
+                            Text("Profil erneut laden")
                         }
-                        readError?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = { decks.remove(card.listingId); retry++ }, enabled = enabled) { Text("Profil erneut laden") }
-                        }
-                        if (profile == null && readError == null && visible) CircularProgressIndicator(Modifier.size(24.dp))
                     }
-                    item(key = "actions") {
-                        ProfileActionRail(person, !actions,
-                            onFavorite = { token?.let(onFavorite) },
-                            onPreference = { _, preference -> token?.let { onChoose(it, preference) } })
+                    if (card != null && profile == null && readError == null && visible) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
-                    if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                 }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(onClick = { token?.let { onChoose(it, Preference.DISLIKE) } },
-                    enabled = actions, modifier = Modifier.weight(1f)) { Text("Nein") }
-                OutlinedButton(onClick = { cardToken?.let(onSkip) },
-                    enabled = enabled && cardToken != null, modifier = Modifier.weight(1f)) { Text("Später") }
-                Button(onClick = { token?.let { onChoose(it, Preference.LIKE) } },
-                    enabled = actions, modifier = Modifier.weight(1f)) { Text("Gefällt") }
+                if (card == null) {
+                    Column(Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (state.loading) CircularProgressIndicator()
+                        else {
+                            Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
+                            Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
+                            OutlinedButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Deck neu beginnen") }
+                        }
+                        TextButton(onClick = { onUndo(deckToken) }, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
+                    }
+                } else {
+                    val density = LocalDensity.current.density
+                    var drag by remember(token, actions) { mutableFloatStateOf(0f) }
+                    val fallback = listOfNotNull(card.thumbnailUrl?.let {
+                        ProfileMediaItem("IMAGE", it, card.localPath, 0u)
+                    } ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                        val heroHeight = profileHeroHeight(windowWidth.value, usableHeight.value, maxHeight.value).dp
+                        ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
+                            token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
+                            isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
+                            modifier = Modifier.fillMaxSize(), paddedDetails = true) {
+                            item(key = "hero") {
+                                ProfileMediaHero(
+                                    media = profile?.media?.ifEmpty { fallback } ?: fallback,
+                                    modifier = Modifier.fillMaxWidth().height(heroHeight)
+                                        .graphicsLayer { translationX = drag; rotationZ = drag / (45 * density) }
+                                        .pointerInput(token, actions, density) {
+                                            if (actions) detectHorizontalDragGestures(
+                                                onHorizontalDrag = { change, delta ->
+                                                    change.consume()
+                                                    drag = (drag + delta).coerceIn(-300 * density, 300 * density)
+                                                },
+                                                onDragEnd = {
+                                                    val decision = swipePreference(drag / density)
+                                                    drag = 0f
+                                                    if (token != null && decision != null) onChoose(token, decision)
+                                                },
+                                                onDragCancel = { drag = 0f },
+                                            )
+                                        },
+                                    originalUrl = profile?.identity?.profileUrl,
+                                    selection = mediaSelection,
+                                    identity = identity,
+                                    actionToken = token,
+                                    projectionAvailable = profile != null,
+                                    actionsEnabled = actions,
+                                    isCurrent = { token?.let(isProfileCurrent) == true },
+                                )
+                            }
+                            item(key = "header") {
+                                Text("Profilinfos", style = MaterialTheme.typography.labelMedium)
+                                if (profile != null) ProfileHeader(profile.profile, profile.identity, person, profile.media,
+                                    profile.fromArchive, showIdentity = false)
+                            }
+                            if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
+                        }
+                    }
+                    // Existing explicit action dispatch is retained. Final rail/Undo presentation ownership is T10.6.
+                    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly) {
+                        TextButton(onClick = { onUndo(deckToken) }, enabled = enabled && state.canUndoSwipe,
+                            modifier = Modifier.heightIn(min = 48.dp)) { Text("Undo") }
+                        OutlinedButton(onClick = { token?.let { onChoose(it, Preference.DISLIKE) } },
+                            enabled = actions, modifier = Modifier.heightIn(min = 48.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Nein") }
+                        TextButton(onClick = { cardToken?.let(onSkip) },
+                            enabled = enabled && cardToken != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Später") }
+                        Button(onClick = { token?.let { onChoose(it, Preference.LIKE) } },
+                            enabled = actions, modifier = Modifier.heightIn(min = 48.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Gefällt") }
+                    }
+                }
             }
         }
     }
@@ -261,4 +295,70 @@ internal fun DiscoverScreen(
 @Composable
 fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: String? = null) {
     ProfileImage(url = url, localPath = localPath, modifier = modifier)
+}
+
+/** A and B share the same reserved header; scrolling does not change the viewport budget. */
+@Composable
+private fun SwipeShellHeader(
+    identity: HeroIdentity?, summary: String, counts: String,
+    availability: AvailabilityMode, executed: Boolean, availabilityEnabled: Boolean,
+    deckEnabled: Boolean, replay: Boolean, hasRun: Boolean,
+    person: PersonSummary?, profileActions: Boolean,
+    onPhoto: () -> Unit, onSearch: () -> Unit, onMode: (DiscoverMode) -> Unit,
+    onAvailability: (AvailabilityMode) -> Unit, onRefresh: () -> Unit, onReset: () -> Unit,
+    onReplay: () -> Unit, onFavorite: () -> Unit, onClearPreference: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 12.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(identity?.title ?: "Ladies Explorer", style = MaterialTheme.typography.titleMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(identity?.subtitle ?: "$summary · Swipe · ${availability.label}",
+                style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (identity != null) IconButton(onClick = onPhoto) {
+            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
+        } else IconButton(onClick = onSearch) {
+            Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
+        }
+        Box {
+            IconButton(onClick = { menu = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = "Filter, Modus und Deckaktionen")
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                Text(summary, Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.titleSmall)
+                Text(counts, Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall)
+                DropdownMenuItem(text = { Text("Suche und Filter öffnen") }, onClick = { menu = false; onSearch() })
+                HorizontalDivider()
+                Text(if (executed) "Ausgeführte Verfügbarkeit" else "Verfügbarkeit (Suchentwurf)",
+                    Modifier.padding(horizontal = 12.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
+                AvailabilityMode.entries.forEach { mode ->
+                    DropdownMenuItem(text = { Text(if (availability == mode) "✓ ${mode.label}" else mode.label) },
+                        enabled = availabilityEnabled, onClick = { menu = false; onAvailability(mode) })
+                }
+                HorizontalDivider()
+                DiscoverMode.entries.forEach { mode ->
+                    DropdownMenuItem(text = { Text(if (mode == DiscoverMode.Swipe) "✓ ${mode.title}" else mode.title) },
+                        onClick = { menu = false; onMode(mode) })
+                }
+                HorizontalDivider()
+                DropdownMenuItem(text = { Text("Aktualisieren") }, enabled = deckEnabled,
+                    onClick = { menu = false; onRefresh() })
+                DropdownMenuItem(text = { Text("Deck zurücksetzen") }, enabled = deckEnabled,
+                    onClick = { menu = false; onReset() })
+                if (hasRun) DropdownMenuItem(text = { Text(if (replay) "Likes nicht erneut zeigen" else "Likes erneut zeigen") },
+                    enabled = deckEnabled, onClick = { menu = false; onReplay() })
+                if (person != null) {
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text(if (person.favorite) "Favorit entfernen" else "Als Favorit speichern") },
+                        enabled = profileActions, onClick = { menu = false; onFavorite() })
+                    if (person.preference != Preference.NONE) DropdownMenuItem(text = { Text("Präferenz zurücksetzen") },
+                        enabled = profileActions, onClick = { menu = false; onClearPreference() })
+                }
+            }
+        }
+    }
 }

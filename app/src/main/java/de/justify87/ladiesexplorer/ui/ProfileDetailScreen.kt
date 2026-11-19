@@ -2,6 +2,11 @@ package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,67 +34,74 @@ internal fun ProfileDetailScreen(
     val renderedToken = state.detailIdentityToken()
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val detailListState = rememberLazyListState()
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        val heroHeight = (maxHeight * .84f).coerceIn(220.dp, 720.dp)
-        ProfileFlow(
-            state = detailListState,
-            model = state.profileRead,
-            filters = filters,
-            token = renderedToken,
-            actionsBusy = busy,
-            notes = notes,
-            noteActions = noteActions,
-            isProfileCurrent = isProfileCurrent,
-            onConfirmIdentity = onConfirmIdentity,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            if (profile == null) item(key = "detail-back") {
-                TextButton(onClick = onBack) { Text("Zurück") }
-            }
-            if (state.loading) item(key = "detail-loading") { CircularProgressIndicator() }
-            state.error?.let { item(key = "detail-error") { Text(it,color=MaterialTheme.colorScheme.error) } }
-            state.actionError?.let { item(key = "detail-action-error") { Text(it,color=MaterialTheme.colorScheme.error) } }
-            if (state.retryProfileListingId != null) item(key = "detail-retry") {
-                TextButton(onClick = onRetryProfile, enabled = !state.actionBusy && !actionsBusy) {
-                    Text(if (state.profileSourceRetryAllowed) "Profil online abrufen" else "Profil erneut laden")
+    val scope = rememberCoroutineScope()
+    val identity = profile?.let { heroIdentity(it, state.profileIdentity, state.profileFromArchive) }
+    val details by remember(detailListState) { derivedStateOf { detailListState.heroHasLeft("media") } }
+    BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        val usableHeight = maxHeight
+        val windowWidth = maxWidth
+        Column(Modifier.widthIn(max = 600.dp).fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Zurück") }
+                Column(Modifier.weight(1f)) {
+                    Text(if (details) identity?.title ?: "Profil" else "Profil", style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // Reserve the same two-line layout in A and B.
+                    Text(if (details) identity?.subtitle.orEmpty() else "",
+                        style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (details && profile != null) IconButton(onClick = { scope.launch { detailListState.scrollToItem(0) } }) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
                 }
             }
-            if (profile != null) {
-                item(key = "media") {
-                    ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
-                        onBack = onBack, originalUrl = state.profileIdentity?.profileUrl,
-                        selection = mediaSelection,
-                        actionsEnabled = !busy, isCurrent = { renderedToken?.let(isProfileCurrent) == true })
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (state.retryProfileListingId != null) {
+                    TextButton(onClick = onRetryProfile, enabled = !state.actionBusy && !actionsBusy) {
+                        Text(if (state.profileSourceRetryAllowed) "Profil online abrufen" else "Profil erneut laden")
+                    }
                 }
-                item(key = "identity") {
-                    ProfileHeader(profile, state.profileIdentity, state.selectedPerson,
-                        state.profileMedia, state.profileFromArchive)
+                if (state.archiving) Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(28.dp))
+                    Text("  Medien werden lokal archiviert", modifier = Modifier.weight(1f))
+                    TextButton(onClick = onCancelArchive) { Text("Stoppen") }
                 }
-                item(key = "actions") {
-                    ProfileActionRail(state.selectedPerson, busy,
-                        onFavorite = { renderedToken?.let(onFavorite) },
-                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
-                }
-                if (state.archiving) {
-                    item(key = "archive-progress") {
-                        Row(verticalAlignment=Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier=Modifier.width(28.dp).height(28.dp))
-                            Text("  Medien werden lokal archiviert",modifier=Modifier.weight(1f))
-                            TextButton(onClick=onCancelArchive) { Text("Stoppen") }
+                state.mediaWarning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val heroHeight = profileHeroHeight(windowWidth.value, usableHeight.value, maxHeight.value).dp
+                ProfileFlow(
+                    state = detailListState, model = state.profileRead, filters = filters,
+                    token = renderedToken, actionsBusy = busy, notes = notes, noteActions = noteActions,
+                    isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
+                    modifier = Modifier.fillMaxSize(), paddedDetails = true,
+                ) {
+                    if (profile != null) {
+                        item(key = "media") {
+                            ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
+                                originalUrl = state.profileIdentity?.profileUrl, selection = mediaSelection,
+                                identity = identity, actionToken = renderedToken,
+                                actionsEnabled = !busy, isCurrent = { renderedToken?.let(isProfileCurrent) == true })
+                        }
+                        item(key = "identity") {
+                            Text("Profilinfos", style = MaterialTheme.typography.labelMedium)
+                            ProfileHeader(profile, state.profileIdentity, state.selectedPerson,
+                                state.profileMedia, state.profileFromArchive, showIdentity = false)
+                        }
+                        item(key = "actions") {
+                            ProfileActionRail(state.selectedPerson, busy,
+                                onFavorite = { renderedToken?.let(onFavorite) },
+                                onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
+                        }
+                        state.mediaArchive?.let { report ->
+                            item(key = "archive-report") {
+                                Text("Archiv: ${report.downloaded} geladen · ${report.reused} wiederverwendet · ${report.failed} fehlgeschlagen · ${report.deferred} zurückgestellt",
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
-                }
-                state.mediaArchive?.let { report ->
-                    item(key = "archive-report") {
-                        Text(
-                            "Archiv: ${report.downloaded} geladen · ${report.reused} wiederverwendet · ${report.failed} fehlgeschlagen · ${report.deferred} zurückgestellt",
-                            style=MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-                state.mediaWarning?.let {
-                    item(key = "archive-warning") { Text(it,color=MaterialTheme.colorScheme.error) }
                 }
             }
         }
@@ -103,12 +115,13 @@ internal fun ProfileHeader(
     person: PersonSummary?,
     media: List<ProfileMediaItem>,
     fromArchive: Boolean,
+    showIdentity: Boolean = true,
 ) {
     ProfileIdentityHeader(
         name = profile.name,
         place = listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
         age = identity?.age, identity = identity, person = person,
-        hasVideo = media.any { it.kind == "VIDEO" }, fromArchive = fromArchive,
+        hasVideo = media.any { it.kind == "VIDEO" }, fromArchive = fromArchive, showIdentity = showIdentity,
     )
     profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 }

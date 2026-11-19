@@ -64,6 +64,7 @@ internal fun ProfileFlow(
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    paddedDetails: Boolean = false,
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -151,7 +152,11 @@ internal fun ProfileFlow(
     }
     LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(rows, key = { it.key }) { row -> row.content() }
+        items(rows, key = { it.key }) { row ->
+            if (paddedDetails && row.key != "hero" && row.key != "media") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { row.content() }
+            } else row.content()
+        }
     }
 }
 

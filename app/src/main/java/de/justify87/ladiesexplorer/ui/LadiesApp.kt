@@ -2,6 +2,9 @@ package de.justify87.ladiesexplorer.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -184,9 +187,10 @@ fun LadiesApp(
     }
     BackHandler(enabled = home.importing || savedEditorOpen || savedOverviewOpen || route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
 
+    val swipeShell = !search.profileOpen && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe
     Scaffold(
         topBar = {
-            if (!search.profileOpen) TopAppBar(
+            if (!search.profileOpen && !swipeShell) TopAppBar(
                 title = {
                     if (savedResultsOpen || savedEditorOpen || savedOverviewOpen) {
                         Text(when {
@@ -286,24 +290,30 @@ fun LadiesApp(
             stateHolder.SaveableStateProvider(route.stateKey) {
                 when (route.root) {
                     RootDestination.Discover -> Column(modifier = modifier) {
-                        if (route.discovery != DiscoverMode.Map) {
+                        if (route.discovery == DiscoverMode.Grid) {
                             Column(Modifier.padding(horizontal = 16.dp)) {
                                 AvailabilitySelector(search.headerAvailability(), !search.loading && !home.loading && !discovery.busy && !saved.busy) {
                                     viewModel.runAvailability(it)
                                 }
                             }
                         }
-                        if (route.discovery != DiscoverMode.Map) {
+                        if (route.discovery == DiscoverMode.Grid) {
                             SearchRunStatus(search, viewModel::cancelActiveSearch)
                         }
-                        DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
+                        if (route.discovery != DiscoverMode.Swipe) DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
                         if (route.discovery == DiscoverMode.Swipe) {
                             DiscoverScreen(
                                 state = discovery,
                                 notes = notes,
                                 noteActions = viewModel.noteActions,
-                                searchLoading = search.loading,
-                                executedFiltersJson = search.response?.query?.filtersJson ?: "{}",
+                                search = search,
+                                rootBarHeight = (padding.calculateBottomPadding() -
+                                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()).coerceAtLeast(0.dp),
+                                onOpenSearch = { selectRoot(RootDestination.Search) },
+                                onSelectMode = { route = route.select(it) },
+                                availabilityEnabled = !search.loading && !home.loading && !discovery.busy && !saved.busy,
+                                onAvailability = viewModel::runAvailability,
+                                onCancelSearch = viewModel::cancelActiveSearch,
                                 onRefresh = viewModel::refreshSwipe,
                                 onReset = viewModel::resetSwipe,
                                 onUndo = viewModel::undoSwipe,
@@ -409,11 +419,11 @@ fun LadiesApp(
 }
 
 @Composable
-private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
+internal fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit, includeSummary: Boolean = true) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         val active = state.response
         if (active != null) {
-            Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
+            if (includeSummary) Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
                 style = MaterialTheme.typography.labelMedium)
             if (active.partial || !active.radiusVerified) {
                 Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,
