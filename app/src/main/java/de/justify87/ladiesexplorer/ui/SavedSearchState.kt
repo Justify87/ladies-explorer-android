@@ -134,6 +134,12 @@ internal class SavedSearchController(
         } else operation(SavedOperation.Refresh, clearError) { reload() }
     }
 
+    /** Native profile/identity/media writes can complete after the results pane is reopened.
+     * Re-read the owned window, never acknowledge as a side effect of reprojection. */
+    fun refreshResultProjection() {
+        if (state.value.result != null) refresh(clearError = false)
+    }
+
     fun setVisible(value: Boolean) {
         visible = value
     }
@@ -273,7 +279,7 @@ internal class SavedSearchController(
                 throw cancel
             } catch (failure: Exception) {
                 if (ticket == readTicket && state.value.result?.id == id) mutable.update {
-                    it.copy(error = failure.message ?: "Ergebnisse konnten nicht geladen werden")
+                    it.copy(result = SavedResultWindow(id), error = failure.message ?: "Ergebnisse konnten nicht geladen werden")
                 }
                 return@operation
             }
