@@ -111,7 +111,8 @@ internal fun SavedPeopleScreen(
                     overflow = TextOverflow.Ellipsis)
             }
         }
-        (state.savedError ?: state.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.mutationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.savedError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         val selection = "${state.savedKind.name}-${state.savedSort.name}"
         if (page == null) {
             if (state.loading) CircularProgressIndicator()

@@ -138,7 +138,7 @@ fun LadiesApp(
         viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         when (destination) {
-            RootDestination.Search -> viewModel.refreshSearchDefinitions()
+            RootDestination.Search -> if (saved.result == null) viewModel.refreshSearchDefinitions()
             RootDestination.Settings -> viewModel.refresh()
             else -> Unit
         }

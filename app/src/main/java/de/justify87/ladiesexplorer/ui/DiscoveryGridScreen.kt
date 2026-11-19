@@ -70,6 +70,11 @@ internal fun DiscoveryGridScreen(
                 TextButton(onClick = onRefresh, enabled = enabled) { Text("Aktualisieren") }
             }
         }
+        discovery.mutationError?.let { message ->
+            item(key = "mutation-error", span = { GridItemSpan(maxLineSpan) }) {
+                Text(message, color = MaterialTheme.colorScheme.error)
+            }
+        }
         discovery.error?.let { message ->
             item(key = "error", span = { GridItemSpan(maxLineSpan) }) {
                 Text(message, color = MaterialTheme.colorScheme.error)

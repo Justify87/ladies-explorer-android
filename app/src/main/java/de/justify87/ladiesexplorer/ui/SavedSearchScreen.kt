@@ -131,8 +131,8 @@ internal fun SavedSearchResultsScreen(
         return
     }
     val canPage = enabled && !state.busy && result.hasMore
-    LaunchedEffect(grid, result.cards.size, canPage, state.error) {
-        if (canPage && state.error == null) {
+    LaunchedEffect(grid, result.cards.size, canPage, state.windowError) {
+        if (canPage && state.windowError == null) {
             snapshotFlow {
                 val layout = grid.layoutInfo
                 nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)

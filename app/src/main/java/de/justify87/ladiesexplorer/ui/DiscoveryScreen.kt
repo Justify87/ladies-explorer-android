@@ -116,6 +116,7 @@ internal fun DiscoverScreen(
             TextButton(onClick = onUndo, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
             TextButton(onClick = { decks.clear(); onReset() }, enabled = enabled) { Text("Reset") }
         }
+        state.mutationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (state.loading && card == null) {
             CircularProgressIndicator()

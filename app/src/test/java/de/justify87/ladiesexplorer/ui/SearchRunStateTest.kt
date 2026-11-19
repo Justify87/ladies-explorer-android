@@ -211,7 +211,7 @@ class SearchRunStateTest {
     @Test fun secondaryReadFailureDoesNotEraseSuccessfulActiveRun() = runBlocking {
         var active = listOf(card(1))
         var savedFailed = false
-        val complete = readIndependentProjections(
+        val complete = readIndependentProjections<List<DiscoveryCard>, Unit>(
             first = { listOf(card(1), card(2)) },
             second = { error("saved read failed") },
             publishFirst = { active = it.getOrThrow() },

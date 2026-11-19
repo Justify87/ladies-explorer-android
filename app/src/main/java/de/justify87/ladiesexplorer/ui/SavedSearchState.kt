@@ -18,6 +18,7 @@ internal data class SavedResultWindow(
     val cards: List<SavedSearchCard> = emptyList(),
     val hasMore: Boolean = false,
     val ready: Boolean = false,
+    val revision: Long? = null,
 )
 internal data class SavedSearchUiState(
     val overview: Boolean = false,
@@ -265,11 +266,13 @@ internal class SavedSearchController(
         if (s.result != null && (s.result.id != id || !s.result.ready || s.resultDirty)) return
         // Explicit user intent is the linearization point for presentation.
         // The native revision CAS still prevents acknowledging a newer baseline.
+        val revision = if (s.result != null) s.result.revision ?: return else info.revision
         operation(SavedOperation.Write) {
-            val accepted = store.acknowledge(id, info.revision)
+            val accepted = store.acknowledge(id, revision)
             reload(committed = accepted)
-            if (!accepted && state.value.listAvailable) mutable.update {
-                it.copy(actionError = "Ergebnisse haben sich geändert. Bitte erneut als gelesen markieren.")
+            if (!accepted) {
+                markResultDirty()
+                mutable.update { it.copy(actionError = "Ergebnisse haben sich geändert. Bitte erneut als gelesen markieren.") }
             }
         }
     }
@@ -309,7 +312,8 @@ internal class SavedSearchController(
             }
             if (ticket != readTicket || state.value.result?.id != id) return@operation
             limits[id] = limit
-            mutable.update { it.copy(result = SavedResultWindow(id, window.cards, window.hasMore, true),
+            mutable.update { it.copy(result = SavedResultWindow(id, window.cards, window.hasMore, true,
+                    window.searches.firstOrNull { info -> info.searchId == id }?.revision),
                 searches = window.searches, listAvailable = true, windowError = null, listError = null) }
         }
     }
@@ -326,7 +330,7 @@ internal class SavedSearchController(
                 throw cancel
             } catch (failure: Exception) {
                 if (state.value.operation != SavedOperation.Cancelling) mutable.update {
-                    it.copy(error = failure.message ?: "Prüfung fehlgeschlagen")
+                    it.copy(actionError = failure.message ?: "Prüfung fehlgeschlagen")
                 }
             } finally {
                 control = null

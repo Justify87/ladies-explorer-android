@@ -52,6 +52,7 @@ data class DiscoverUiState(
     val savedPage: SavedPersonPage? = null,
     val savedRecent: SavedPersonPage? = null,
     val savedError: String? = null,
+    val mutationError: String? = null,
     val nextCursor: DiscoveryCursor? = null,
     val activeRunId: Long? = null,
     val activeVisibleCount: Int = 0,
@@ -544,7 +545,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 projectDiscovery(epoch)
-                if (epoch == discoveryEpoch && message != null) _discoverState.update { it.copy(error = message) }
+                if (epoch == discoveryEpoch && message != null) _discoverState.update { it.copy(mutationError = message) }
             } finally {
                 if (epoch == discoveryEpoch) _discoverState.update { it.copy(loading = false) }
             }
@@ -656,7 +657,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onFailure: (String) -> Unit = {},
     ) {
         val epoch = ++discoveryEpoch
-        _discoverState.update { it.copy(busy = true, loading = false, error = null,
+        _discoverState.update { it.copy(busy = true, loading = false, mutationError = null,
             loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false) }
         viewModelScope.launch {
             var message: String? = null
@@ -684,7 +685,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } finally {
                 if (epoch == discoveryEpoch) {
-                    _discoverState.update { it.copy(busy = false, error = message ?: it.error,
+                    _discoverState.update { it.copy(busy = false, mutationError = message,
                         canUndoSwipe = swipeSession.last != null) }
                     message?.let(onFailure)
                     if (retryProjection || discoveryRefreshPending) refreshDiscoveryAfter(message)
@@ -783,6 +784,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             } finally {
                 savedStatusControl = null
+                savedSearch.refreshResultProjection()
                 _discoverState.update { current ->
                     current.copy(savedStatusProgress = current.savedStatusProgress?.copy(running = false))
                 }
@@ -886,6 +888,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         cancelPreview()
         invalidateActiveSearch()
         invalidateProfileRequest()
+        savedSearch.setVisible(false)
         val requestId = profileRequestId
         _searchUiState.update {
             it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
@@ -980,7 +983,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // The mutation outlives the detail screen. Keep the shared write guard until
         // it finishes even if Back clears the screen's own actionBusy flag.
         _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
-            savedLoadingMore = false, savedRecentLoadingMore = false, error = null) }
+            savedLoadingMore = false, savedRecentLoadingMore = false, mutationError = null) }
         _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
         viewModelScope.launch {
             var committed = false
@@ -1021,7 +1024,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         else it.copy(actionError = message)
                     }
                 } else {
-                    _discoverState.update { it.copy(error = message) }
+                    _discoverState.update { it.copy(mutationError = message) }
                 }
             } finally {
                 if (requestId == profileRequestId) _searchUiState.update { it.copy(actionBusy = false) }
