@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -85,7 +87,7 @@ class ProfileGestureDeviceTest {
                     Column(Modifier.fillMaxSize()) {
                         Box(Modifier.fillMaxWidth().height(48.dp).testTag("chrome"))
                         Row(Modifier.fillMaxWidth().weight(1f).then(hit.photo), verticalAlignment = Alignment.CenterVertically) {
-                            PhotoTapTarget("Medium", Modifier.weight(.3f).fillMaxHeight().then(hit.previous)) { taps++ }
+                            PhotoTapTarget("Medium", Modifier.weight(.3f).fillMaxHeight().then(hit.previous), owner = enabled) { taps++ }
                             Box(Modifier.weight(.7f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                                 TextButton(onClick = { buttons++ }, modifier = Modifier.testTag("control")) { Text("Retry") }
                             }
@@ -197,5 +199,34 @@ class ProfileGestureDeviceTest {
         drag()
         root.performTouchInput { up() }
         rule.runOnIdle { assertEquals(1, decisions) }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun nativeGalleryPressDoesNotRebindAndKeyboardRemainsNative() {
+        var owner by mutableStateOf(1)
+        val taps = mutableListOf<Int>()
+        rule.setContent {
+            MaterialTheme {
+                val rendered = owner
+                PhotoGestureSurface(owner = rendered, modifier = Modifier.size(280.dp, 240.dp).testTag("photo"),
+                    galleryEnabled = true) { hit ->
+                    Box(Modifier.fillMaxSize().then(hit.photo)) {
+                        PhotoTapTarget("Medium", Modifier.fillMaxSize().then(hit.next), owner = rendered) {
+                            taps.add(rendered)
+                        }
+                    }
+                }
+            }
+        }
+        val photo = rule.onNodeWithTag("photo")
+        photo.performTouchInput { down(center) }
+        rule.runOnIdle { owner = 2 }
+        photo.performTouchInput { up() }
+        rule.runOnIdle { assertTrue(taps.isEmpty()) }
+        val target = rule.onNodeWithContentDescription("Medium")
+        target.performSemanticsAction(SemanticsActions.RequestFocus)
+        target.assertIsFocused()
+        target.performKeyInput { pressKey(Key.Enter) }
+        rule.runOnIdle { assertEquals(listOf(2), taps) }
     }
 }

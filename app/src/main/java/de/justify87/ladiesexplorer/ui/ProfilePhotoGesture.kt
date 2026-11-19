@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -100,13 +101,16 @@ internal class ProfileTouchGate {
     var revision by mutableLongStateOf(0L)
         private set
     private var blocked = false
+    private var stream = 0L
 
     fun observe(previous: Int, pressed: Int, eligible: Boolean): Boolean {
         if (previous == 0 && pressed > 0) {
+            stream++
             active = true
             blocked = false
         } else if (!active && previous > 0) {
             // A replaced observer cannot admit the tail of an old stream.
+            stream++
             active = true
             invalidate()
         }
@@ -119,8 +123,11 @@ internal class ProfileTouchGate {
         return consume
     }
 
-    fun capture(): Long? = revision.takeIf { active && !blocked }
-    fun current(stamp: Long?): Boolean = stamp != null && stamp == revision && !blocked
+    data class Stamp(val stream: Long, val revision: Long)
+
+    fun capture(): Stamp? = if (active && !blocked) Stamp(stream, revision) else null
+    fun current(stamp: Stamp?): Boolean = stamp != null && stamp.stream == stream &&
+        stamp.revision == revision && !blocked
 
     fun invalidate() {
         if (active && !blocked) {
@@ -270,7 +277,11 @@ internal fun PhotoGestureSurface(
 }
 
 @Composable
-internal fun PhotoTapTarget(label: String, modifier: Modifier, onTap: (() -> Unit)?) {
-    Box(modifier.semantics { contentDescription = label }
-        .clickable(enabled = onTap != null, role = Role.Button) { onTap?.invoke() })
+internal fun PhotoTapTarget(label: String, modifier: Modifier, owner: Any? = null, onTap: (() -> Unit)?) {
+    // Native press/keyboard state is disposed with the very target it
+    // originated on. No click may be rebound to the next image.
+    key(owner) {
+        Box(modifier.semantics { contentDescription = label }
+            .clickable(enabled = onTap != null, role = Role.Button) { onTap?.invoke() })
+    }
 }

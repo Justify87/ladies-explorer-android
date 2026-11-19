@@ -86,6 +86,9 @@ class ProfilePhotoGestureTest {
         val next = gate.capture()
         assertFalse(gate.observe(1, 0, true))
         assertTrue(gate.current(next)) // normal release stays admitted
+        assertFalse(gate.observe(0, 1, true))
+        assertFalse(gate.current(next)) // even an ordinary old stream is not a new one
+        assertTrue(gate.current(gate.capture()))
     }
 
     @Test fun actualMeasuredGalleryAndRootOriginArePartOfTheDownGeometry() {

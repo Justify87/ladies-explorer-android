@@ -206,14 +206,18 @@ internal fun ProfileMediaHero(
             }
             Row(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                if (arrows && media.size > 1) IconButton(onClick = { selection.select(media, index - 1) }, enabled = previous) {
-                    Icon(Icons.Default.ChevronLeft, "Vorheriges Medium", tint = Color.White.copy(alpha = if (previous) 1f else .4f))
+                if (arrows && media.size > 1) key(gestureOwner) {
+                    IconButton(onClick = { selection.select(media, index - 1) }, enabled = previous) {
+                        Icon(Icons.Default.ChevronLeft, "Vorheriges Medium", tint = Color.White.copy(alpha = if (previous) 1f else .4f))
+                    }
                 }
                 Text(if (media.isEmpty()) "–" else "${index + 1} / ${media.size}",
                     color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (arrows && media.size > 1) IconButton(onClick = { selection.select(media, index + 1) }, enabled = next) {
-                    Icon(Icons.Default.ChevronRight, "Nächstes Medium", tint = Color.White.copy(alpha = if (next) 1f else .4f))
+                if (arrows && media.size > 1) key(gestureOwner) {
+                    IconButton(onClick = { selection.select(media, index + 1) }, enabled = next) {
+                        Icon(Icons.Default.ChevronRight, "Nächstes Medium", tint = Color.White.copy(alpha = if (next) 1f else .4f))
+                    }
                 }
                 if (canMore) Box {
                     IconButton(onClick = { if (isCurrent()) more = true }) {
@@ -246,13 +250,13 @@ internal fun ProfileMediaHero(
                 val side = if (sideTaps && item?.kind == "IMAGE" && media.size > 1)
                     gallerySideFraction(maxWidth.value) else 0f
                 Row(Modifier.fillMaxSize()) {
-                    if (side > 0f) PhotoTapTarget("Vorheriges Medium", Modifier.weight(side).fillMaxHeight().then(hit.previous),
-                        if (previous) ({ selection.select(media, index - 1) }) else null)
+                    if (side > 0f) PhotoTapTarget("Vorheriges Medium", Modifier.weight(side).fillMaxHeight().then(hit.previous), owner = gestureOwner,
+                        onTap = if (previous) ({ selection.select(media, index - 1) }) else null)
                     Box(Modifier.weight(1f - side * 2).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         if (feedback != null) ImageFeedbackContent(feedback) else center()
                     }
-                    if (side > 0f) PhotoTapTarget("Nächstes Medium", Modifier.weight(side).fillMaxHeight().then(hit.next),
-                        if (next) ({ selection.select(media, index + 1) }) else null)
+                    if (side > 0f) PhotoTapTarget("Nächstes Medium", Modifier.weight(side).fillMaxHeight().then(hit.next), owner = gestureOwner,
+                        onTap = if (next) ({ selection.select(media, index + 1) }) else null)
                 }
                 feedbackHint()
             }
