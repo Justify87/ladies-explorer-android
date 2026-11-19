@@ -58,6 +58,49 @@ class SwipeProfileWindowTest {
         assertEquals(12L, cache[card]?.profile?.snapshotId)
     }
 
+    @Test fun sourceCompletionRevokesOtherProfilesEvenWithSameOwnerAndSnapshot() = runBlocking {
+        val entries = mutableMapOf<Long, ProfileReadModel>()
+        val cache = SwipeProfileWindow(entries)
+        val current = fixtureCard(1L)
+        val next = fixtureCard(2L)
+        cache.retain(listOf(current, next))
+        val initial = requireNotNull(cache.readCurrent(current) {
+            fixtureSwipe(1L, 1L, 11L).copy(fromArchive = false)
+        })
+        val oldInvalidation = cache.invalidation(current)
+        cache.prefetch(next) { sourceCompleted ->
+            sourceCompleted()
+            assertNull(cache[current])
+            assertTrue(cache.requiresLocal(current))
+            fixtureSwipe(2L, 2L, 12L)
+        }
+        assertTrue(cache.invalidation(current) > oldInvalidation)
+        assertNotNull(cache[next])
+        val refreshed = requireNotNull(cache.readCurrent(current) { fixtureSwipe(1L, 1L, 11L) })
+        assertEquals(initial.profile.snapshotId, refreshed.profile.snapshotId)
+        assertNotEquals(initial.revision, refreshed.revision)
+        assertFalse(refreshed.fromArchive)
+        assertFalse(cache.requiresLocal(current))
+    }
+
+    @Test fun sourceCompletionRejectsAnotherInFlightLocalRead() = runBlocking {
+        val cache = SwipeProfileWindow(mutableMapOf())
+        val a = fixtureCard(1L)
+        val b = fixtureCard(2L)
+        cache.retain(listOf(a, b))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val late = launch {
+            assertNull(cache.readCurrent(a) { started.complete(Unit); release.await(); fixtureSwipe(1L) })
+        }
+        started.await()
+        cache.prefetch(b) { sourceCompleted -> sourceCompleted(); fixtureSwipe(2L) }
+        release.complete(Unit)
+        late.join()
+        assertNull(cache[a])
+        assertNotNull(cache[b])
+    }
+
     @Test fun cancelledSuspendingReadCannotWriteIntoCache() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
         val card = fixtureCard(4L, 1L)

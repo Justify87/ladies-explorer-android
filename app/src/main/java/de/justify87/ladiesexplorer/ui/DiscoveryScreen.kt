@@ -19,6 +19,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 
 @Composable
 internal fun DiscoverScreen(
@@ -37,7 +39,7 @@ internal fun DiscoverScreen(
     onSwipeVisibility: (Boolean) -> Unit,
     onRenderedSwipe: (SwipeActionToken?) -> Unit,
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
-    onSnapshotChanged: () -> Unit,
+    onSnapshotChanged: (Boolean) -> Unit,
     onFavorite: (ProfileIdentityToken) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
     onProfile: (SwipeCardToken) -> Unit,
@@ -57,7 +59,7 @@ internal fun DiscoverScreen(
     val visible = started && !searchLoading && !state.loading && !state.busy
     val enabled = visible
     val decks = remember(state.activeRunId, state.swipeProfileRevision, started) { SwipeProfileWindow(mutableStateMapOf()) }
-    DisposableEffect(decks) { onDispose { decks.clear() } }
+    DisposableEffect(decks) { onDispose { decks.close() } }
     var retry by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableIntStateOf(0) }
     var readError by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf<String?>(null) }
     var retryLocally by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf(false) }
@@ -80,18 +82,21 @@ internal fun DiscoverScreen(
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
     SideEffect { decks.retain(window) }
-    val control = remember(decks, card?.listingId, card?.personId, retry, visible) { RequestControl() }
+    val control = remember(decks, card?.listingId, card?.personId, decks.invalidation(card), retry, visible) { RequestControl() }
     DisposableEffect(control) { onDispose { control.cancel() } }
     LaunchedEffect(control) {
-        if (!visible || card == null || current != null && retry == 0) return@LaunchedEffect
+        if (!visible || card == null || decks[card] != null && retry == 0) return@LaunchedEffect
         readError = null
         try {
             decks.retain(window)
-            decks.readCurrent(card) {
-                val localOnly = retryLocally || card.listingId in state.localProfileStrictIds
+            decks.readCurrent(card) { invalidateOtherProfiles ->
+                val localOnly = retryLocally || decks.requiresLocal(card) || card.listingId in state.localProfileStrictIds
                 val preferLocal = localOnly || card.listingId in state.localProfileReloadIds
                 core.readSwipeProfile(card.listingId, control, refresh = !preferLocal,
-                    allowNetwork = !localOnly, onSourceRead = onSnapshotChanged)
+                    allowNetwork = !localOnly, onSourceRead = {
+                        invalidateOtherProfiles()
+                        onSnapshotChanged(decks.closed)
+                    })
             }
             retry = 0
             retryLocally = false
@@ -102,19 +107,26 @@ internal fun DiscoverScreen(
             readError = failure.message ?: "Profil konnte nicht geladen werden"
         }
     }
-    val prefetchControl = remember(decks, window.map { it.listingId to it.personId }, visible, current != null, state.busy) {
+    val prefetchControl = remember(decks, window.map { it.listingId to it.personId }, visible, state.busy) {
         RequestControl()
     }
     DisposableEffect(prefetchControl) { onDispose { prefetchControl.cancel() } }
     LaunchedEffect(prefetchControl) {
         decks.retain(window)
-        if (!visible || state.busy || current == null) return@LaunchedEffect
+        if (!visible || state.busy || card == null) return@LaunchedEffect
+        // Wait for the first current projection, not for every subsequent refresh.
+        // Prefetch may itself invalidate the current entry; do not cancel its own control.
+        snapshotFlow { decks[card] }.filterNotNull().first()
         for (next in upcoming) {
             try {
-                val profile = decks.prefetch(next) {
+                val profile = decks.prefetch(next) { invalidateOtherProfiles ->
                     core.readSwipeProfile(next.listingId, prefetchControl,
-                        refresh = false, allowNetwork = state.activeRunId != null && next.listingId !in state.localProfileStrictIds,
-                        onSourceRead = onSnapshotChanged)
+                        refresh = false, allowNetwork = state.activeRunId != null && !decks.requiresLocal(next) &&
+                            next.listingId !in state.localProfileStrictIds,
+                        onSourceRead = {
+                            invalidateOtherProfiles()
+                            onSnapshotChanged(decks.closed)
+                        })
                 }
                 if (profile != null) warmSwipeImages(context, next, profile)
             } catch (cancel: CancellationException) {

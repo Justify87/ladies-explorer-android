@@ -39,6 +39,7 @@ internal class ProfileProjectionCallbacks(
     val admitSwipe: (SwipeActionToken) -> Boolean = { false },
     val beginMerge: () -> Unit = {},
     val mergeCommitted: (ProfileIdentityToken, Long) -> Unit = { _, _ -> },
+    val profileChanged: () -> Unit = {},
 )
 
 /** Standalone read/archive lifecycle and the shared, context-neutral identity operation.
@@ -133,6 +134,7 @@ internal class StandaloneProfileOperations<C : Any>(
                         if (sourceCall === call) sourceCall = null
                         // A source read can persist before a later failure or invalidation.
                         try {
+                            projections.profileChanged()
                             projections.savedSearch()
                             projections.discovery()
                             projections.map()
@@ -189,6 +191,7 @@ internal class StandaloneProfileOperations<C : Any>(
                     if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(archiving=false) }
                     // Even a cancelled archive may already have committed individual media.
                     try {
+                        projections.profileChanged()
                         projections.savedSearch()
                         projections.discovery()
                     } finally {

@@ -289,6 +289,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 admitSwipe = { admittedSwipe(it) != null },
                 beginMerge = { invalidateSwipeActions() },
                 mergeCommitted = ::onIdentityMergeCommitted,
+                profileChanged = { invalidateSwipeProfilesLocally() },
             ),
         )
     }
@@ -403,6 +404,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // or generation invalidation. Refresh local projections after the native call
     // finishes, independently of whether its response became the active UI run.
     private fun refreshAfterSourceSearch() {
+        if (swipeVisible) invalidateSwipeProfilesLocally()
         refreshDiscovery()
         refreshMap()
         refresh()
@@ -566,7 +568,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun projectDiscovery(epoch: Long): Boolean = discoveryPublisher.project(epoch)
 
-    fun markSwipeSnapshotChanged() = swipeInvalidation.sourceCompleted()
+    fun markSwipeSnapshotChanged(oldWindow: Boolean) {
+        // The active window invalidates all other tickets synchronously. A late
+        // completion from a disposed window must also revoke its replacement.
+        if (oldWindow) invalidateSwipeProfilesLocally()
+        else {
+            renderedSwipe = null
+            _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1) }
+        }
+        swipeInvalidation.sourceCompleted()
+    }
 
     fun setDiscoveryProjectionVisibility(listVisible: Boolean, mapVisible: Boolean) =
         swipeInvalidation.setVisibility(listVisible, mapVisible)

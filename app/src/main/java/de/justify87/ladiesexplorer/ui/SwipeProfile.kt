@@ -1,6 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
 import android.content.Context
+import androidx.compose.runtime.mutableStateMapOf
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import de.justify87.ladiesexplorer.core.*
@@ -86,6 +87,14 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileR
     private data class Slot(val owner: Long, val ticket: Long)
     private val slots = mutableMapOf<Long, Slot>()
     private var nextTicket = 0L
+    private val invalidations = mutableStateMapOf<Long, Long>()
+    private val staleProvenance = mutableMapOf<Long, Pair<Boolean, String?>>()
+    var closed = false
+        private set
+
+    fun invalidation(card: DiscoveryCard?): Long = invalidations[card?.listingId] ?: 0L
+
+    fun requiresLocal(card: DiscoveryCard): Boolean = card.listingId in staleProvenance
 
     operator fun get(card: DiscoveryCard): ProfileReadModel? = entries[card.listingId]?.takeIf {
         it.profile.listingId == card.listingId && it.identity.personId == card.personId &&
@@ -100,36 +109,61 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileR
     fun clear() {
         entries.clear()
         slots.clear()
+        invalidations.clear()
+        staleProvenance.clear()
+    }
+
+    fun close() {
+        closed = true
+        clear()
+    }
+
+    /** Source persistence can change every candidate/person projection, even with
+     * the same snapshot ID. Only the read currently returning from that source
+     * may publish without a new local read. No extra network refresh is needed. */
+    private fun sourceCompleted(listingId: Long, ticket: Slot) {
+        for ((id, slot) in slots.toMap()) {
+            if (id == listingId && slot == ticket) continue
+            entries.remove(id)?.let { staleProvenance[id] = it.fromArchive to it.warning }
+            val next = ++nextTicket
+            slots[id] = slot.copy(ticket = next)
+            invalidations[id] = next
+        }
     }
 
     fun retain(cards: List<DiscoveryCard>) {
+        if (closed) return
         val desired = cards.associate { it.listingId to it.personId }
         slots.keys.toList().filter { desired[it] != slots[it]?.owner }.forEach {
             slots.remove(it)
             entries.remove(it)
+            invalidations.remove(it)
+            staleProvenance.remove(it)
         }
         for (card in cards) {
             if (card.listingId !in slots) slots[card.listingId] = Slot(card.personId, ++nextTicket)
         }
     }
 
-    private suspend fun obtain(card: DiscoveryCard, read: suspend () -> ProfileReadModel): ProfileReadModel? {
+    private suspend fun obtain(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? {
         val slot = slots[card.listingId]?.takeIf { it.owner == card.personId } ?: return null
         val ticket = slot.copy(ticket = ++nextTicket)
         slots[card.listingId] = ticket
-        val profile = read()
+        val profile = read { sourceCompleted(card.listingId, ticket) }
         currentCoroutineContext().ensureActive()
         if (slots[card.listingId] != ticket) return null
         check(profile.profile.listingId == card.listingId && profile.identity.personId == card.personId &&
             profile.person.personId == card.personId) { "Personenzuordnung geändert; Deck bitte aktualisieren." }
-        val published = profile.copy(revision = ticket.ticket)
+        val provenance = staleProvenance.remove(card.listingId)
+        val published = if (provenance == null) profile.copy(revision = ticket.ticket)
+            else profile.copy(revision = ticket.ticket, fromArchive = provenance.first, warning = provenance.second)
         entries[card.listingId] = published
         return published
     }
 
-    suspend fun readCurrent(card: DiscoveryCard, read: suspend () -> ProfileReadModel): ProfileReadModel? =
+    suspend fun readCurrent(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? =
         obtain(card, read)
 
-    suspend fun prefetch(card: DiscoveryCard, read: suspend () -> ProfileReadModel): ProfileReadModel? =
+    suspend fun prefetch(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? =
         get(card) ?: obtain(card, read)
 }
