@@ -91,7 +91,7 @@ internal fun DiscoverScreen(
             decks.retain(window)
             decks.readCurrent(card) { invalidateOtherProfiles ->
                 val localOnly = retryLocally || decks.requiresLocal(card) || card.listingId in state.localProfileStrictIds
-                val preferLocal = localOnly || card.listingId in state.localProfileReloadIds
+                val preferLocal = localOnly || decks.invalidation(card) != 0L || card.listingId in state.localProfileReloadIds
                 core.readSwipeProfile(card.listingId, control, refresh = !preferLocal,
                     allowNetwork = !localOnly, onSourceRead = {
                         invalidateOtherProfiles()

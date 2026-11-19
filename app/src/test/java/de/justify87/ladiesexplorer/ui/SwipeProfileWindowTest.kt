@@ -94,11 +94,35 @@ class SwipeProfileWindowTest {
             assertNull(cache.readCurrent(a) { started.complete(Unit); release.await(); fixtureSwipe(1L) })
         }
         started.await()
-        cache.prefetch(b) { sourceCompleted -> sourceCompleted(); fixtureSwipe(2L) }
+        cache.prefetch(b) { sourceCompleted -> sourceCompleted(); fixtureSwipe(2L, 2L) }
         release.complete(Unit)
         late.join()
         assertNull(cache[a])
         assertNotNull(cache[b])
+    }
+
+    @Test fun laterSourceCompletionFromReplacedSlotRevokesItsNewProjection() = runBlocking {
+        val cache = SwipeProfileWindow(mutableMapOf())
+        val card = fixtureCard(4L, 1L)
+        cache.retain(listOf(card))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val old = launch {
+            assertNull(cache.readCurrent(card) { sourceCompleted ->
+                started.complete(Unit)
+                release.await()
+                sourceCompleted()
+                fixtureSwipe(4L)
+            })
+        }
+        started.await()
+        cache.remove(card.listingId)
+        cache.readCurrent(card) { fixtureSwipe(4L) }
+        assertNotNull(cache[card])
+        release.complete(Unit)
+        old.join()
+        assertNull(cache[card])
+        assertTrue(cache.requiresLocal(card))
     }
 
     @Test fun cancelledSuspendingReadCannotWriteIntoCache() = runBlocking {

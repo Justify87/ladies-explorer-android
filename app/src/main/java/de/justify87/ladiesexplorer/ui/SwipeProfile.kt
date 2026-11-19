@@ -92,7 +92,7 @@ internal class SwipeProfileWindow(private val entries: MutableMap<Long, ProfileR
     var closed = false
         private set
 
-    fun invalidation(card: DiscoveryCard?): Long = invalidations[card?.listingId] ?: 0L
+    fun invalidation(card: DiscoveryCard?): Long = card?.let { invalidations[it.listingId] } ?: 0L
 
     fun requiresLocal(card: DiscoveryCard): Boolean = card.listingId in staleProvenance
 
