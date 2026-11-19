@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -37,7 +38,10 @@ internal fun videoDemuxer(header: ByteArray): String? = when {
 
 private fun localVideo(file: File): LocalGalleryVideo? {
     if (!file.isFile || file.length() <= 0 || file.length() > 48L * 1024L * 1024L) return null
-    val demuxer = file.inputStream().use { videoDemuxer(it.readNBytes(16)) } ?: return null
+    val demuxer = file.inputStream().use { input ->
+        val buffer = ByteArray(16)
+        videoDemuxer(buffer.copyOf(input.read(buffer).coerceAtLeast(0)))
+    } ?: return null
     return LocalGalleryVideo(file.canonicalFile, demuxer)
 }
 
@@ -50,13 +54,16 @@ private data class LocalGalleryVideo(val file: File, val demuxer: String)
 internal fun GalleryVideo(
     item: ProfileMediaItem,
     active: Boolean,
+    mediaVisible: Boolean,
+    canInteract: () -> Boolean,
     modifier: Modifier,
     controlsModifier: Modifier,
     onTargets: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
-    val visible = active && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
+    val visible = mediaVisible && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
+    val playing = visible && active
     var retry by remember(item) { mutableIntStateOf(0) }
     var paused by remember(item) { mutableStateOf(false) }
     var file by remember(item, retry, visible) { mutableStateOf<LocalGalleryVideo?>(null) }
@@ -64,6 +71,8 @@ internal fun GalleryVideo(
     var ready by remember(item, retry, visible) { mutableStateOf(false) }
     LaunchedEffect(item, retry, visible) {
         if (!visible) return@LaunchedEffect
+        // A transient action lock must not redownload a selected medium.
+        // The file remains owned only while the media is actually visible.
         var temporary: File? = null
         try {
             val archived = withContext(Dispatchers.IO) {
@@ -93,18 +102,20 @@ internal fun GalleryVideo(
         }
     }
     val video = file
-    if (visible && video != null && !failure) {
+    if (playing && video != null && !failure) {
         key(video, retry) {
             LocalMpvPlayer(video, paused, modifier, onReady = { ready = true }, onFailure = { failure = true })
         }
     } else Box(modifier)
     onTargets()
-    Box(controlsModifier, contentAlignment = Alignment.Center) {
+    Box(controlsModifier.testTag("gallery-video-control"), contentAlignment = Alignment.Center) {
         when {
-            !visible -> IconButton(onClick = {}, enabled = false) { Icon(Icons.Default.PlayArrow, "Video abspielen") }
-            failure -> TextButton(onClick = { paused = false; retry++ }) { Text("Video erneut laden") }
+            !playing -> IconButton(onClick = {}, enabled = false) { Icon(Icons.Default.PlayArrow, "Video abspielen") }
+            failure -> IconButton(onClick = { if (canInteract()) { paused = false; retry++ } }) {
+                Icon(Icons.Default.PlayArrow, "Video erneut laden")
+            }
             !ready -> CircularProgressIndicator(Modifier.size(28.dp))
-            else -> FilledIconButton(onClick = { paused = !paused }) {
+            else -> FilledIconButton(onClick = { if (canInteract()) paused = !paused }) {
                 Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
                     if (paused) "Video abspielen" else "Video pausieren")
             }
@@ -162,7 +173,6 @@ private class MpvSurfaceOwner(
     private val player = checkNotNull(MPVLib.create(context)) { "libmpv unavailable" }
     private var closed = false
     private var surface: Surface? = null
-    private var loaded = false
     private var desiredPause = false
 
     init {
@@ -242,8 +252,8 @@ private class MpvSurfaceOwner(
         main.post {
             if (closed || surface == null) return@post
             when (eventId) {
-                MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> { loaded = true; onReady() }
-                MPVLib.MpvEvent.MPV_EVENT_END_FILE -> if (!loaded) onFailure()
+                MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> onReady()
+                MPVLib.MpvEvent.MPV_EVENT_END_FILE -> onFailure()
             }
         }
     }

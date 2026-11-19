@@ -36,6 +36,7 @@ internal fun ProfileDetailScreen(
     val renderedToken = state.detailIdentityToken()
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val detailListState = rememberLazyListState()
+    val heroVisible by remember(detailListState) { derivedStateOf { profileHeroVisible(detailListState, "media") } }
     var photoRequest by remember { mutableIntStateOf(0) }
     val identity = profile?.let { heroIdentity(it, state.profileIdentity, state.profileFromArchive,
         state.profileMedia.any { medium -> medium.kind == "VIDEO" } || state.profileIdentity?.hasVideo == true,
@@ -102,7 +103,8 @@ internal fun ProfileDetailScreen(
                         isCurrent = { renderedToken?.let(isProfileCurrent) == true },
                         compact = presentation.budget.compactGallery,
                         headerOwnsIdentity = presentation.identityInHeader,
-                        onIdentityMeasured = onIdentityMeasured, touchGate = touchGate)
+                        onIdentityMeasured = onIdentityMeasured, touchGate = touchGate,
+                        playbackVisible = heroVisible)
                 }
                 item(key = "identity") {
                     Text("Profilinfos", style = MaterialTheme.typography.labelMedium)

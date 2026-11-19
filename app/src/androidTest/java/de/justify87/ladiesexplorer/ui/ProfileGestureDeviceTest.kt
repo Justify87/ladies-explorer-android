@@ -134,7 +134,7 @@ class ProfileGestureDeviceTest {
         rule.runOnIdle { assertEquals(listOf(Preference.DISLIKE), decisions) }
         rule.onNodeWithContentDescription("Nächstes Medium").performTouchInput { click(center) }
         rule.onNodeWithText("2 / 2").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Video abspielen").assertExists()
+        rule.onNodeWithTag("gallery-video-control").assertExists()
         rule.runOnIdle { assertEquals(1, decisions.size) }
     }
 

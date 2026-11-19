@@ -149,6 +149,10 @@ internal fun ProfileMediaHero(
     onIdentityMeasured: (Int) -> Unit,
     onSwipe: ((Preference) -> Unit)? = null,
     touchGate: ProfileTouchGate? = null,
+    heldDrag: Float? = null,
+    onSwipeDrag: (Float) -> Unit = {},
+    playbackVisible: Boolean = true,
+    onMediaSettled: (Boolean) -> Unit = {},
 ) {
     val index = selection.resolve(media, projectionAvailable)
     LaunchedEffect(media, index, projectionAvailable) {
@@ -162,7 +166,8 @@ internal fun ProfileMediaHero(
     val galleryTaps = projectionAvailable && media.size > 1
     var drag by remember(gestureOwner) { mutableFloatStateOf(0f) }
     // Gesture hit geometry stays stationary; only the drawn media moves.
-    val offset by animateFloatAsState(drag, animationSpec = if (drag == 0f) spring() else snap(),
+    val displayedDrag = heldDrag ?: drag
+    val offset by animateFloatAsState(displayedDrag, animationSpec = if (displayedDrag == 0f) spring() else snap(),
         label = "swipe follows finger")
     val imageMotion = Modifier.graphicsLayer {
         translationX = offset
@@ -170,20 +175,22 @@ internal fun ProfileMediaHero(
     }
     PhotoGestureSurface(owner = Triple(gestureOwner, compact, projectionAvailable),
         modifier = Modifier.fillMaxWidth(), galleryEnabled = galleryTaps, onSwipe = decision,
-        onDrag = { drag = it }, touchGate = touchGate) { hit ->
+        onDrag = { drag = it; onSwipeDrag(it) }, touchGate = touchGate) { hit ->
         val photoHeight = maxOf(height, 0.dp)
         val surface = modifier.fillMaxWidth().height(photoHeight).clip(MaterialTheme.shapes.large)
         Box(surface.background(MaterialTheme.colorScheme.surfaceVariant)) {
             when (item?.kind) {
                 "IMAGE" -> ProfileImageSurface(item.url, item.localPath, Modifier.fillMaxSize(),
                     ContentScale.Crop, "Profilbild ${index + 1}", true, imageModifier = imageMotion) { feedback ->
+                    SideEffect { onMediaSettled(!feedback.loading) }
                     BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                         // Full halves when a photo is available. A failed image reserves
                         // its native retry control in the middle, just like a video.
                         val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed) else 0f
                         GalleryTargets(side, hit, gestureOwner, previous, next,
                             { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
-                        if (feedback.failed || feedback.loading) Box(Modifier.align(Alignment.Center)) {
+                        if (feedback.failed || feedback.loading) Box(Modifier.align(Alignment.Center)
+                            .fillMaxWidth(if (side < .5f) 1f - side * 2 else .5f), contentAlignment = Alignment.Center) {
                             ImageFeedbackContent(feedback)
                         }
                     }
@@ -192,7 +199,9 @@ internal fun ProfileMediaHero(
                     val side = if (galleryTaps) gallerySideFraction(maxWidth.value, true) else 0f
                     // Player is below the native side targets, with one independent
                     // center control. It receives only validated local files.
-                    GalleryVideo(item, active = actionsEnabled && projectionAvailable && isCurrent(),
+                    SideEffect { onMediaSettled(true) } // playback has its own stable loading surface
+                    GalleryVideo(item, active = actionsEnabled && projectionAvailable,
+                        mediaVisible = playbackVisible, canInteract = isCurrent,
                         modifier = Modifier.fillMaxSize().then(imageMotion),
                         controlsModifier = Modifier.align(Alignment.Center),
                         onTargets = {
@@ -201,29 +210,34 @@ internal fun ProfileMediaHero(
                         })
                 }
                 else -> Box(Modifier.fillMaxSize().then(hit.photo), contentAlignment = Alignment.Center) {
+                    SideEffect { onMediaSettled(true) }
                     Text("Keine Medien verfügbar")
                 }
             }
-            if (drag != 0f) Surface(Modifier.align(Alignment.TopCenter).padding(8.dp),
+            if (displayedDrag != 0f) Surface(Modifier.align(Alignment.TopCenter).padding(8.dp),
                 color = MaterialTheme.colorScheme.inverseSurface, shape = MaterialTheme.shapes.medium) {
-                Text(if (drag > 0f) "Gefällt" else "Nein", Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                Text(if (displayedDrag > 0f) "Gefällt" else "Nein", Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     color = MaterialTheme.colorScheme.inverseOnSurface)
             }
             if (identity != null && !compact) {
                 val hidden = if (headerOwnsIdentity) Modifier.alpha(0f).clearAndSetSemantics {} else Modifier
-                Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                    .onSizeChanged { onIdentityMeasured(it.height) }.then(hidden),
-                    color = Color.Black.copy(alpha = .82f)) {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(identity.compactSubtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (identity.decisions.isNotBlank()) Text(identity.decisions, color = Color.White,
-                            style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+                HeroIdentityOverlay(identity, Modifier.align(Alignment.BottomCenter)
+                    .onSizeChanged { onIdentityMeasured(it.height) }.then(hidden))
             }
+        }
+    }
+}
+
+@Composable
+internal fun HeroIdentityOverlay(identity: HeroIdentity, modifier: Modifier = Modifier) {
+    Surface(modifier.fillMaxWidth(), color = Color.Black.copy(alpha = .82f)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(identity.compactSubtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (identity.decisions.isNotBlank()) Text(identity.decisions, color = Color.White,
+                style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

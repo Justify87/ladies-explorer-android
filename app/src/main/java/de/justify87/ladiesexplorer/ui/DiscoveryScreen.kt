@@ -28,6 +28,10 @@ import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.graphics.Color
+import kotlin.math.roundToInt
 
 @Composable
 internal fun DiscoverScreen(
@@ -139,7 +143,7 @@ internal fun DiscoverScreen(
     DisposableEffect(prefetchControl) { onDispose { prefetchControl.cancel() } }
     LaunchedEffect(prefetchControl) {
         decks.retain(window)
-        if (!visible || state.busy || card == null) return@LaunchedEffect
+        if (!visible || state.busy || card == null || heroSize.width <= 0 || heroSize.height <= 0) return@LaunchedEffect
         // Wait for the first current projection, not for every subsequent refresh.
         // Prefetch may itself invalidate the current entry; do not cancel its own control.
         snapshotFlow { decks[card] }.filterNotNull().first()
@@ -166,20 +170,38 @@ internal fun DiscoverScreen(
     }
 
     val matchingRun = search.response?.searchRunId == state.activeRunId
-    // Presentation-only entry motion begins after the authoritative deck changes.
-    // No old profile subtree/callbacks are kept alive.
-    val entryMotion = remember { Animatable(0f) }
-    var previousCard by remember { mutableStateOf<Pair<Long, Long>?>(null) }
-    var outgoingDirection by remember(state.activeRunId, state.swipePresentationGeneration) { mutableFloatStateOf(0f) }
+    // Flight owns only inert visual data. Authority stays with the existing VM
+    // and its CAS/queue read; no speculative promotion of an upcoming card.
     val cardIdentity = card?.let { it.listingId to it.personId }
-    LaunchedEffect(cardIdentity, state.activeRunId, state.swipePresentationGeneration) {
-        if (cardIdentity != previousCard && previousCard != null && outgoingDirection != 0f && cardIdentity != null) {
-            entryMotion.snapTo(-outgoingDirection * .12f)
-            entryMotion.animateTo(0f, tween(180))
-        } else entryMotion.snapTo(0f)
-        previousCard = cardIdentity
-        outgoingDirection = 0f
+    var flight by remember(state.activeRunId, state.swipePresentationGeneration, started) { mutableStateOf<SwipeFlight?>(null) }
+    var liveDrag by remember(cardIdentity) { mutableFloatStateOf(0f) }
+    var settledMedia by remember(cardIdentity) { mutableStateOf(false) }
+    val motion = remember(flight) { Animatable(flight?.offset ?: 0f) }
+    val latestState by rememberUpdatedState(state)
+    val latestIdentity by rememberUpdatedState(cardIdentity)
+    val latestReady by rememberUpdatedState(current != null && settledMedia || readError != null || card == null)
+    LaunchedEffect(flight) {
+        val outgoing = flight ?: return@LaunchedEffect
+        // A rejected callback cannot strand an animation. Once the mutation
+        // owns the deck, wait for authoritative completion, not a fixed timer.
+        val admitted = withTimeoutOrNull(350) {
+            snapshotFlow {
+                latestState.busy || latestState.swipeSessionId != outgoing.session ||
+                    latestIdentity != outgoing.card
+            }.first { it }
+        } == true
+        if (admitted) {
+            snapshotFlow { latestState.busy }.first { !it }
+            if (latestIdentity != outgoing.card && latestState.mutationError == null) {
+                // A bounded visual handoff accommodates a cold decode; a real
+                // error still exposes the next card's honest fallback and retry.
+                withTimeoutOrNull(220) { snapshotFlow { latestReady }.first { it } }
+                motion.animateTo(outgoing.destination, tween(200))
+            }
+        }
+        flight = null
     }
+    val transitioning = flight != null
     key(state.activeRunId, state.swipePresentationGeneration, card?.listingId, card?.personId) {
         val listState = rememberLazyListState()
         val capture = remember { SwipePresentationCapture() }
@@ -194,9 +216,12 @@ internal fun DiscoverScreen(
             it.person.preference, it.person.favorite) }
             ?: card?.let { HeroIdentity(it.name, place = it.city, hasVideo = it.hasVideo,
                 preference = it.preference, favorite = it.favorite) }
-        val actions = enabled && token != null
+        val actions = enabled && token != null && !transitioning
+        val heroVisible by remember(listState) {
+            derivedStateOf { profileHeroVisible(listState, "hero") }
+        }
         val availability = search.headerAvailability()
-        val menuContext = SwipeMenuContext(deckToken, cardToken, token, enabled,
+        val menuContext = SwipeMenuContext(deckToken, cardToken, token.takeIf { !transitioning }, enabled && !transitioning,
             availabilityEnabled && matchingRun && started, matchingRun, availability, state.replayLikes, state.canUndoSwipe)
         val summary = if (state.activeRunId == null) "Lokaler Bestand · neutral"
             else active?.let { "${it.city} · ${it.requestedRadiusKm} km" } ?: "Aktive Suche"
@@ -223,12 +248,27 @@ internal fun DiscoverScreen(
                 add(ProfileNotice("Profil wird geladen", "Profil wird geladen …"))
             if (state.busy) add(ProfileNotice("Wird gespeichert", "Entscheidung oder Aktualisierung wird verarbeitet."))
         }
-        val undo = { onUndo(deckToken) }
-        val skip = { cardToken?.let { outgoingDirection = -1f; onSkip(it, capture.read()) }; Unit }
+        fun beginFlight(direction: Float) {
+            val id = cardIdentity ?: return
+            val layout = listState.layoutInfo
+            val hero = layout.visibleItemsInfo.firstOrNull { it.key == "hero" }
+            val selected = selectedMedia?.takeIf { it.kind == "IMAGE" }
+                ?: card?.takeIf { selectedMedia?.kind != "VIDEO" }?.let { row ->
+                    row.thumbnailUrl?.let { ProfileMediaItem("IMAGE", it, row.localPath, 0u) }
+                }
+            flight = SwipeFlight(id, deckToken.session, direction, liveDrag, heroSize,
+                (hero?.offset ?: 0) - layout.viewportStartOffset,
+                selected.takeIf { heroVisible && hero != null }, identity.takeIf { heroVisible })
+        }
+        val undo = { if (!transitioning) onUndo(deckToken) }
+        val skip = {
+            if (!transitioning) cardToken?.let { beginFlight(-1f); onSkip(it, capture.read()) }
+            Unit
+        }
         // Hero gestures, rail and menu use exactly this rendered-token dispatch.
         val choose: (Preference) -> Unit = { preference ->
-            token?.takeIf(isProfileCurrent)?.let {
-                if (preference != Preference.NONE) outgoingDirection = if (preference == Preference.LIKE) 1f else -1f
+            if (!transitioning) token?.takeIf(isProfileCurrent)?.let {
+                if (preference != Preference.NONE) beginFlight(if (preference == Preference.LIKE) 1f else -1f)
                 onChoose(it, preference, capture.read())
             }
         }
@@ -252,6 +292,7 @@ internal fun DiscoverScreen(
             },
             rail = { SwipeDecisionControls(menuContext, identity?.title, undo, skip, choose) },
         ) { presentation, onIdentityMeasured ->
+            Box(Modifier.fillMaxSize().clipToBounds()) {
             if (card == null) {
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -267,11 +308,10 @@ internal fun DiscoverScreen(
             } else {
                 val fallback = listOfNotNull(card.thumbnailUrl?.let { ProfileMediaItem("IMAGE", it, card.localPath, 0u) }
                     ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
-                Box(Modifier.fillMaxSize().clipToBounds()) {
                 ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
                     token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
                     isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
-                    modifier = Modifier.fillMaxSize().graphicsLayer { translationX = size.width * entryMotion.value },
+                    modifier = Modifier.fillMaxSize(),
                     paddedDetails = true, photoRequest = photoRequest, onGallerySelection = { selectedMedia = it },
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }) {
@@ -282,6 +322,10 @@ internal fun DiscoverScreen(
                                 choose(decision)
                             }) else null,
                             modifier = Modifier.onSizeChanged { heroSize = it }, selection = mediaSelection,
+                            heldDrag = flight?.takeIf { it.card == cardIdentity }?.offset,
+                            onSwipeDrag = { liveDrag = it },
+                            playbackVisible = heroVisible,
+                            onMediaSettled = { settledMedia = it },
                             identity = identity, actionToken = token,
                             projectionAvailable = profile != null, actionsEnabled = actions,
                             isCurrent = { token?.let(isProfileCurrent) == true },
@@ -295,7 +339,22 @@ internal fun DiscoverScreen(
                     }
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                 }
+            }
+            val old = flight?.takeIf { it.card != cardIdentity }
+            val oldMedia = old?.media
+            if (old != null && oldMedia != null && old.size.width > 0 && old.size.height > 0) {
+                val density = LocalDensity.current
+                Box(Modifier.offset { IntOffset(0, old.top) }
+                    .size(with(density) { old.size.width.toDp() }, with(density) { old.size.height.toDp() })
+                    .graphicsLayer {
+                        translationX = motion.value
+                        rotationZ = (motion.value / size.width.coerceAtLeast(1f) * 12f).coerceIn(-12f, 12f)
+                        alpha = 1f - (kotlin.math.abs(motion.value) / kotlin.math.abs(old.destination)).coerceIn(0f, 1f) * .2f
+                    }.clearAndSetSemantics {}) {
+                    ProfileImage(oldMedia.url, oldMedia.localPath, Modifier.fillMaxSize(), allowRetry = false)
+                    old.identity?.let { HeroIdentityOverlay(it, Modifier.align(Alignment.BottomCenter)) }
                 }
+            }
             }
         }
     }
