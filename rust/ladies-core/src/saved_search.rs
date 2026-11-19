@@ -20,6 +20,7 @@ pub struct SavedSearchInfo {
     pub definition_supported: bool,
     pub local_filter_summary: String,
     pub delta: Option<SavedSearchDelta>,
+    pub revision: i64,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -27,7 +28,7 @@ pub struct SavedSearchDelta {
     pub new_count: u32,
     pub removed_count: u32,
     pub current_count: u32,
-    pub initial: bool,
+    pub initial: Option<bool>,
 }
 
 fn read_delta(raw: Option<&str>) -> Option<SavedSearchDelta> {
@@ -39,10 +40,7 @@ fn read_delta(raw: Option<&str>) -> Option<SavedSearchDelta> {
         new_count: count("new", "new_results_count")?,
         removed_count: count("removed", "removed_results_count")?,
         current_count: count("current", "current_result_count")?,
-        initial: value
-            .get("initial")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
+        initial: value.get("initial").and_then(|v| v.as_bool()),
     })
 }
 
@@ -157,32 +155,55 @@ pub(crate) fn update_with_local(
         )?;
     } else {
         tx.execute(
-            "UPDATE saved_searches SET name=?2,filters_json=?3,
+            "UPDATE saved_searches SET name=?2,
              updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
              WHERE saved_search_id=?1",
-            params![id, name, definition],
+            params![id, name],
         )?;
     }
     tx.commit()?;
     Ok(())
 }
 
+fn require_keys(value: &serde_json::Value, allowed: &[&str]) -> Result<(), CoreError> {
+    let object = value.as_object().ok_or_else(|| CoreError::InvalidInput("Invalid saved-search object".into()))?;
+    if let Some(key) = object.keys().find(|key| !allowed.contains(&key.as_str())) {
+        return Err(CoreError::InvalidInput(format!("Unsupported saved-search field: {key}")));
+    }
+    Ok(())
+}
+
 fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreError> {
-    if let Ok(mut parsed) = serde_json::from_str::<SavedSearchDefinition>(definition) {
+    let legacy: serde_json::Value = serde_json::from_str(definition)
+        .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
+    const QUERY_KEYS: &[&str] = &[
+        "city", "radius_km", "category", "age_min", "age_max", "height_min", "height_max", "filters_json", "max_pages",
+    ];
+    // Exclusive shape dispatch: malformed native definitions cannot silently
+    // fall back to legacy defaults or discard unknown rules during serde.
+    if legacy.get("query").is_some() {
+        require_keys(&legacy, &["query", "local"])?;
+        require_keys(&legacy["query"], QUERY_KEYS)?;
+        require_keys(&legacy["local"], &["video_only", "photos_only", "hide_dislikes", "hide_likes", "image_mode"])?;
+        let mut parsed: SavedSearchDefinition = serde_json::from_value(legacy)
+            .map_err(|_| CoreError::InvalidInput("Malformed native saved-search definition".into()))?;
         parsed.query = source::filter::canonicalize_request(parsed.query)?;
         validate_local(&parsed.local)?;
         return Ok(parsed);
     }
-    if let Ok(request) = serde_json::from_str::<SearchRequest>(definition) {
+    if legacy.get("filters_json").is_some() {
+        require_keys(&legacy, QUERY_KEYS)?;
+        let request: SearchRequest = serde_json::from_value(legacy)
+            .map_err(|_| CoreError::InvalidInput("Malformed native search request".into()))?;
         return Ok(SavedSearchDefinition {
             query: source::filter::canonicalize_request(request)?,
             local: LocalVisibility::default(),
         });
     }
-    // Imported definitions use camelCase ranges and a nested selected filter map.
-    // Translate the intent into the native request rather than preserving a Python pipeline.
-    let legacy: serde_json::Value = serde_json::from_str(definition)
-        .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
+    require_keys(&legacy, &["city","radius","radius_km","category","ageMin","age_min","ageMax","age_max","heightMin","height_min","heightMax","height_max","selected","local"])?;
+    if legacy.get("selected").is_some_and(|value| !value.is_object()) {
+        return Err(CoreError::InvalidInput("Invalid legacy selected filters".into()));
+    }
     let local = local_visibility(definition)?;
     let number = |camel: &str, snake: &str, default: u32| {
         legacy
@@ -251,8 +272,17 @@ pub(crate) fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreE
     request(core, &id)
 }
 
+fn revision(db: &rusqlite::Connection) -> Result<i64, CoreError> {
+    Ok(db.query_row("SELECT total_changes()", [], |r| r.get(0))?)
+}
+
 pub(crate) fn list(core: &LadiesCore) -> Result<Vec<SavedSearchInfo>, CoreError> {
     let db = core.connection()?;
+    list_using(&db)
+}
+
+fn list_using(db: &rusqlite::Connection) -> Result<Vec<SavedSearchInfo>, CoreError> {
+    let revision = revision(db)?;
     let mut query = db.prepare(
         "SELECT saved_search_id,name,filters_json,last_run_at,last_error,unread_new_results,last_delta_json
          FROM saved_searches ORDER BY updated_at DESC,saved_search_id DESC",
@@ -284,6 +314,7 @@ pub(crate) fn list(core: &LadiesCore) -> Result<Vec<SavedSearchInfo>, CoreError>
             definition_supported: parsed.is_some(),
             local_filter_summary: parsed.as_ref().map_or(String::new(), |r| r.local.summary()),
             delta: read_delta(delta.as_deref()),
+            revision,
         })
     })
     .collect()
@@ -306,6 +337,8 @@ pub struct SavedSearchCard {
 pub struct SavedResultCursor {
     pub position: i64,
     pub result_key: String,
+    pub search_id: String,
+    pub revision: i64,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -326,6 +359,42 @@ pub(crate) fn results(
         ));
     }
     let db = core.connection()?;
+    results_using(core, &db, &id, limit, cursor)
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavedSearchWindow {
+    pub cards: Vec<SavedSearchCard>,
+    pub has_more: bool,
+    pub searches: Vec<SavedSearchInfo>,
+}
+
+// Read an expanded prefix in one SQLite snapshot. Acknowledgement is a separate
+// revision-checked action after the UI accepts the result, not an async side effect.
+pub(crate) fn window(core: &LadiesCore, id: String, limit: u32) -> Result<SavedSearchWindow, CoreError> {
+    if limit == 0 {
+        return Err(CoreError::InvalidInput("Saved window must not be empty".into()));
+    }
+    let db = core.connection()?;
+    let page = results_using(core, &db, &id, limit, None)?;
+    Ok(SavedSearchWindow {
+        cards: page.cards,
+        has_more: page.next_cursor.is_some(),
+        searches: list_using(&db)?,
+    })
+}
+
+fn results_using(
+    core: &LadiesCore,
+    db: &rusqlite::Connection,
+    id: &str,
+    limit: u32,
+    cursor: Option<SavedResultCursor>,
+) -> Result<SavedSearchResultPage, CoreError> {
+    let revision = revision(db)?;
+    if cursor.as_ref().is_some_and(|c| c.search_id != id || c.revision != revision) {
+        return Err(CoreError::InvalidInput("Saved result cursor expired; reload the window".into()));
+    }
     let exists: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM saved_searches WHERE saved_search_id=?1)",
         [&id],
@@ -336,13 +405,16 @@ pub(crate) fn results(
     }
     let mut query = db.prepare(
         "SELECT r.position,r.result_key,r.snapshot_json,r.first_seen_at,
-                l.listing_id,l.person_id,s.traits_json,
-                (SELECT a.local_path FROM snapshot_media m JOIN media_assets a ON a.media_asset_id=m.media_asset_id
-                 WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
-                 ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id LIMIT 1)
+                l.listing_id,l.person_id,s.traits_json,s.name,s.city,
+                image.remote_url,a.local_path,image.snapshot_media_id
          FROM saved_search_results r
          LEFT JOIN listings l ON l.source='LADIES' AND l.external_listing_id=r.result_key
-         LEFT JOIN listing_snapshots s ON s.snapshot_id=l.current_snapshot_id
+         LEFT JOIN listing_snapshots s ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
+         LEFT JOIN snapshot_media image ON image.snapshot_media_id=(
+             SELECT m.snapshot_media_id FROM snapshot_media m
+             WHERE m.snapshot_id=s.snapshot_id AND m.kind='IMAGE'
+             ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position,m.snapshot_media_id LIMIT 1)
+         LEFT JOIN media_assets a ON a.media_asset_id=image.media_asset_id
          WHERE r.saved_search_id=?1 AND r.present=1 AND r.visible=1
            AND (?2 IS NULL OR r.position > ?2
                 OR (r.position=?2 AND r.result_key > ?3))
@@ -351,7 +423,7 @@ pub(crate) fn results(
     )?;
     let cursor_position = cursor.as_ref().map(|c| c.position);
     let cursor_key = cursor.as_ref().map(|c| c.result_key.as_str());
-    let rows = query.query_map(params![id, cursor_position, cursor_key, limit + 1], |row| {
+    let rows = query.query_map(params![id, cursor_position, cursor_key, i64::from(limit) + 1], |row| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, String>(1)?,
@@ -361,6 +433,10 @@ pub(crate) fn results(
             row.get::<_, Option<i64>>(5)?,
             row.get::<_, Option<String>>(6)?,
             row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<String>>(8)?,
+            row.get::<_, Option<String>>(9)?,
+            row.get::<_, Option<String>>(10)?,
+            row.get::<_, Option<i64>>(11)?,
         ))
     })?;
     let mut records = rows
@@ -373,25 +449,23 @@ pub(crate) fn results(
                 listing_id,
                 person_id,
                 traits,
+                current_name,
+                current_city,
+                remote,
                 relative,
+                media_id,
             ) = row?;
             let value = serde_json::from_str::<serde_json::Value>(&snapshot).unwrap_or_default();
             Ok((
                 SavedSearchCard {
-                    name: value
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(&result_key)
-                        .to_owned(),
-                    city: value
-                        .get("city")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_owned(),
-                    thumbnail_url: value
-                        .get("thumbnail_url")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_owned),
+                    name: current_name.filter(|v| !v.is_empty()).unwrap_or_else(|| value
+                        .get("name").and_then(|v| v.as_str()).unwrap_or(&result_key).to_owned()),
+                    city: current_city.filter(|v| !v.is_empty()).unwrap_or_else(|| value
+                        .get("city").and_then(|v| v.as_str()).unwrap_or_default().to_owned()),
+                    // A selected image owns both URLs; never pair a historical
+                    // search thumbnail with a different current local image.
+                    thumbnail_url: if media_id.is_some() { remote.filter(|v| !v.is_empty()) }
+                        else { value.get("thumbnail_url").and_then(|v| v.as_str()).map(str::to_owned) },
                     result_key,
                     listing_id,
                     person_id,
@@ -412,6 +486,8 @@ pub(crate) fn results(
         records.last().map(|(card, position)| SavedResultCursor {
             position: *position,
             result_key: card.result_key.clone(),
+            search_id: id.to_owned(),
+            revision,
         })
     } else {
         None
@@ -447,6 +523,17 @@ pub(crate) fn delete(core: &LadiesCore, id: String) -> Result<(), CoreError> {
     let db = core.connection()?;
     db.execute("DELETE FROM saved_searches WHERE saved_search_id=?1", [id])?;
     Ok(())
+}
+
+pub(crate) fn acknowledge_revision(core: &LadiesCore, id: String, expected: i64) -> Result<bool, CoreError> {
+    let db = core.connection()?;
+    if revision(&db)? != expected {
+        return Ok(false);
+    }
+    Ok(db.execute(
+        "UPDATE saved_searches SET unread_new_results=0 WHERE saved_search_id=?1 AND unread_new_results=1",
+        [id],
+    )? == 1)
 }
 
 pub(crate) fn acknowledge(core: &LadiesCore, id: String) -> Result<(), CoreError> {
@@ -757,6 +844,49 @@ pub(crate) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn strict_native_shape_and_unknown_legacy_fields_are_not_rewritten() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let id = save(&core, "Native".into(), SearchRequest::for_test()).unwrap();
+        let (raw, _) = definition(&core, &id).unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        value["local"]["future_rule"] = json!(true);
+        assert!(decode_definition(&value.to_string()).is_err());
+        assert!(decode_definition(r#"{"city":"Leipzig","future_rule":true}"#).is_err());
+        value["local"].as_object_mut().unwrap().remove("future_rule");
+        value["query"]["future_rule"] = json!(true);
+        assert!(decode_definition(&value.to_string()).is_err());
+    }
+
+    #[test]
+    fn changed_baseline_rejects_cursor_and_stale_acknowledgement() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let id = save(&core, "Window".into(), SearchRequest::for_test()).unwrap();
+        let other = save(&core, "Other".into(), SearchRequest::for_test()).unwrap();
+        {
+            let db = core.connection().unwrap();
+            for (position, key) in ["a", "b", "c", "d"].iter().enumerate() {
+                db.execute("INSERT INTO saved_search_results(saved_search_id,result_key,snapshot_json,position,present,visible) VALUES (?1,?2,'{}',?3,1,1)",
+                    params![id, key, position as i64]).unwrap();
+            }
+            db.execute("UPDATE saved_searches SET unread_new_results=1 WHERE saved_search_id=?1", [&id]).unwrap();
+        }
+        let page = results(&core, id.clone(), 2, None).unwrap();
+        let cursor = page.next_cursor.unwrap();
+        assert!(results(&core, other, 2, Some(cursor.clone())).is_err());
+        let window_before = window(&core, id.clone(), 2).unwrap();
+        let version = window_before.searches.iter().find(|s| s.search_id == id).unwrap().revision;
+        core.connection().unwrap().execute("UPDATE saved_search_results SET position=3-position WHERE saved_search_id=?1", [&id]).unwrap();
+        assert!(results(&core, id.clone(), 2, Some(cursor)).is_err());
+        assert!(!acknowledge_revision(&core, id.clone(), version).unwrap());
+        let fresh = window(&core, id.clone(), 4).unwrap();
+        assert_eq!(fresh.cards.iter().map(|c| c.result_key.as_str()).collect::<Vec<_>>(), vec!["d", "c", "b", "a"]);
+        let info = fresh.searches.iter().find(|s| s.search_id == id).unwrap();
+        assert!(info.unread_new_results);
+        assert!(acknowledge_revision(&core, id.clone(), info.revision).unwrap());
+        assert!(!list(&core).unwrap().iter().find(|s| s.search_id == id).unwrap().unread_new_results);
+    }
+
     #[test]
     fn rename_unsupported_preserves_raw_definition_and_imported_delta() {
         let core = LadiesCore::new(":memory:".into()).unwrap();

@@ -280,12 +280,8 @@ class CoreStore(context: Context) {
     suspend fun loadSavedSearch(id: String): SavedSearchDefinition =
         withContext(Dispatchers.IO) { engine.loadSearchDefinition(id) }
 
-    suspend fun savedSearchResults(
-        id: String,
-        cursor: SavedResultCursor? = null,
-    ): SavedSearchResultPage = withContext(Dispatchers.IO) {
-        engine.savedSearchResults(id, 100u, cursor)
-    }
+    suspend fun savedSearchWindow(id: String, limit: UInt): SavedSearchWindow =
+        withContext(Dispatchers.IO) { engine.savedSearchWindow(id, limit) }
 
     suspend fun runSavedSearch(id: String, control: RequestControl): SearchResponse =
         withContext(Dispatchers.IO) { recorded("runSavedSearch") { engine.runSavedSearch(id, control) } }
@@ -296,6 +292,6 @@ class CoreStore(context: Context) {
     suspend fun deleteSavedSearch(id: String) =
         withContext(Dispatchers.IO) { engine.deleteSavedSearch(id) }
 
-    suspend fun acknowledgeSavedSearch(id: String) =
-        withContext(Dispatchers.IO) { engine.acknowledgeSavedSearch(id) }
+    suspend fun acknowledgeSavedSearch(id: String, revision: Long): Boolean =
+        withContext(Dispatchers.IO) { engine.acknowledgeSavedSearchRevision(id, revision) }
 }

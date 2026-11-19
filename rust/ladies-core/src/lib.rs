@@ -158,7 +158,7 @@ pub use profile_detail::{
 };
 pub use saved_search::{
     LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchDelta,
-    SavedSearchInfo, SavedSearchResultPage,
+    SavedSearchInfo, SavedSearchResultPage, SavedSearchWindow,
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
 pub use source::{
@@ -574,6 +574,14 @@ impl LadiesCore {
         cursor: Option<SavedResultCursor>,
     ) -> Result<SavedSearchResultPage, CoreError> {
         saved_search::results(self, id, limit, cursor)
+    }
+
+    pub fn saved_search_window(&self, id: String, limit: u32) -> Result<SavedSearchWindow, CoreError> {
+        saved_search::window(self, id, limit)
+    }
+
+    pub fn acknowledge_saved_search_revision(&self, id: String, revision: i64) -> Result<bool, CoreError> {
+        saved_search::acknowledge_revision(self, id, revision)
     }
 
     pub fn load_saved_search(&self, id: String) -> Result<SearchRequest, CoreError> {
