@@ -52,19 +52,49 @@ class ProfilePhotoGestureTest {
         assertEquals(PhotoGestureResult.Cancel, blocked.step(-120f, 0f, false, 50, true))
     }
 
-    @Test fun secondFingerOutsideHeroRevokesExistingAndNewGesturesUntilAllSeparate() {
-        val fence = PhotoPointerFence()
-        fence.observe(1)
-        val original = fence.capture()
-        assertTrue(fence.current(original))
-        fence.observe(2)
-        assertFalse(fence.current(original))
-        assertNull(fence.capture())
-        fence.observe(1)
-        assertFalse(fence.current(original))
-        val next = fence.capture()
-        assertTrue(fence.current(next))
-        fence.invalidate()
-        assertFalse(fence.current(next))
+    @Test fun multiTouchRevokesBothNativeAndPhotoUntilLastUp() {
+        val gate = ProfileTouchGate()
+        assertFalse(gate.observe(0, 1, true))
+        val original = gate.capture()
+        assertTrue(gate.current(original))
+        assertTrue(gate.observe(1, 2, true))
+        assertNull(gate.capture())
+        assertFalse(gate.current(original))
+        assertTrue(gate.observe(2, 1, true))
+        assertTrue(gate.observe(1, 0, true))
+        assertFalse(gate.active)
+        assertFalse(gate.observe(0, 1, true))
+        assertTrue(gate.current(gate.capture()))
+        assertFalse(gate.current(original))
+        assertFalse(gate.observe(1, 0, true))
+    }
+
+    @Test fun backFocusAndObserverReplacementCannotReadmitOldRelease() {
+        val gate = ProfileTouchGate()
+        gate.observe(0, 1, true)
+        val original = gate.capture()
+        gate.invalidate()
+        assertTrue(gate.observe(1, 0, true))
+        assertFalse(gate.current(original))
+        assertFalse(gate.observe(0, 1, true))
+        val resumed = gate.capture()
+        assertTrue(gate.observe(1, 0, false))
+        assertFalse(gate.current(resumed))
+        assertTrue(gate.observe(1, 1, true)) // no fresh down
+        assertTrue(gate.observe(1, 0, true))
+        assertFalse(gate.observe(0, 1, true))
+        val next = gate.capture()
+        assertFalse(gate.observe(1, 0, true))
+        assertTrue(gate.current(next)) // normal release stays admitted
+    }
+
+    @Test fun actualMeasuredGalleryAndRootOriginArePartOfTheDownGeometry() {
+        val photo = androidx.compose.ui.geometry.Rect(0f, 48f, 400f, 300f)
+        val left = androidx.compose.ui.geometry.Rect(0f, 48f, 96f, 300f)
+        val geometry = PhotoHitGeometry(photo, androidx.compose.ui.geometry.Offset.Zero, listOf(left))
+        assertTrue(geometry.galleryAt(androidx.compose.ui.geometry.Offset(40f, 100f)))
+        assertFalse(geometry.galleryAt(androidx.compose.ui.geometry.Offset(200f, 100f)))
+        assertNotEquals(geometry, geometry.copy(rootOrigin = androidx.compose.ui.geometry.Offset(0f, 1f)))
+        assertNotEquals(geometry, geometry.copy(gallery = emptyList()))
     }
 }

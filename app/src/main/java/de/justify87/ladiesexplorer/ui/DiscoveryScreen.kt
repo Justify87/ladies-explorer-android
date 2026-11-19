@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -44,7 +45,7 @@ internal fun DiscoverScreen(
     onSnapshotChanged: (Boolean) -> Unit,
     onFavorite: (ProfileIdentityToken) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
-    pointerFence: PhotoPointerFence? = null,
+    touchGate: ProfileTouchGate? = null,
     modifier: Modifier = Modifier,
 ) {
     val searchLoading = search.loading
@@ -241,7 +242,7 @@ internal fun DiscoverScreen(
                             isCurrent = { token?.let(isProfileCurrent) == true },
                             compact = presentation.budget.compactGallery,
                             headerOwnsIdentity = presentation.identityInHeader,
-                            onIdentityMeasured = onIdentityMeasured, pointerFence = pointerFence)
+                            onIdentityMeasured = onIdentityMeasured, touchGate = touchGate)
                     }
                     item(key = "header") {
                         Text("Profilinfos", style = MaterialTheme.typography.labelMedium)

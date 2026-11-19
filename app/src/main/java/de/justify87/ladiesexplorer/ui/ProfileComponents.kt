@@ -146,7 +146,7 @@ internal fun ProfileMediaHero(
     headerOwnsIdentity: Boolean,
     onIdentityMeasured: (Int) -> Unit,
     onSwipe: ((Preference) -> Unit)? = null,
-    pointerFence: PhotoPointerFence? = null,
+    touchGate: ProfileTouchGate? = null,
 ) {
     val context = LocalContext.current
     val index = selection.resolve(media, projectionAvailable)
@@ -238,28 +238,20 @@ internal fun ProfileMediaHero(
         } else if (item == null) Text("Keine Medien verfügbar")
     }
     val galleryTaps = !compact && projectionAvailable && item?.kind == "IMAGE" && media.size > 1
-    val tapPhoto: ((Float, Float) -> Boolean)? = if (galleryTaps) ({ fraction, width ->
-        val side = gallerySideFraction(width)
-        when {
-            side > 0f && fraction <= side && previous -> { selection.select(media, index - 1); true }
-            side > 0f && fraction >= 1f - side && next -> { selection.select(media, index + 1); true }
-            else -> false
-        }
-    }) else null
     PhotoGestureSurface(owner = Triple(gestureOwner, compact, projectionAvailable),
-        modifier = Modifier.fillMaxWidth(), onTap = tapPhoto, onSwipe = decision,
-        onDrag = { drag = it }, pointerFence = pointerFence) { photoRegion ->
+        modifier = Modifier.fillMaxWidth(), galleryEnabled = galleryTaps, onSwipe = decision,
+        onDrag = { drag = it }, touchGate = touchGate) { hit ->
         val photoArea: @Composable (ImageFeedback?, Boolean) -> Unit = { feedback, sideTaps ->
-            BoxWithConstraints(Modifier.fillMaxSize().then(photoRegion)) {
+            BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                 val side = if (sideTaps && item?.kind == "IMAGE" && media.size > 1)
                     gallerySideFraction(maxWidth.value) else 0f
                 Row(Modifier.fillMaxSize()) {
-                    if (side > 0f) PhotoTapTarget("Vorheriges Medium", Modifier.weight(side).fillMaxHeight(),
+                    if (side > 0f) PhotoTapTarget("Vorheriges Medium", Modifier.weight(side).fillMaxHeight().then(hit.previous),
                         if (previous) ({ selection.select(media, index - 1) }) else null)
                     Box(Modifier.weight(1f - side * 2).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         if (feedback != null) ImageFeedbackContent(feedback) else center()
                     }
-                    if (side > 0f) PhotoTapTarget("Nächstes Medium", Modifier.weight(side).fillMaxHeight(),
+                    if (side > 0f) PhotoTapTarget("Nächstes Medium", Modifier.weight(side).fillMaxHeight().then(hit.next),
                         if (next) ({ selection.select(media, index + 1) }) else null)
                 }
                 feedbackHint()

@@ -1,7 +1,9 @@
 package de.justify87.ladiesexplorer.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -12,31 +14,34 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Preference
+import de.justify87.ladiesexplorer.core.ProfileMediaItem
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 
-/** Actual Compose hit paths, no source traffic or database writes. */
+/** Synthetic, real Compose events; no source, database write or external intent. */
 class ProfileGestureDeviceTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
 
-    @Test fun tapHorizontalVerticalDiagonalAndCancelledGesturesAreExclusive() {
+    @Test fun nativeGalleryClickHorizontalVerticalDiagonalAndCancelAreExclusive() {
         val decisions = mutableListOf<Preference>()
         var taps = 0
-        var scroll = 0
+        lateinit var list: LazyListState
         var feedback = 0f
         rule.setContent {
             MaterialTheme {
-                val list = rememberLazyListState()
-                SideEffect { scroll = list.firstVisibleItemScrollOffset + list.firstVisibleItemIndex * 10000 }
-                LazyColumn(Modifier.size(280.dp, 320.dp), state = list) {
+                list = rememberLazyListState()
+                val gate = remember { ProfileTouchGate() }
+                LazyColumn(Modifier.size(280.dp, 320.dp).admitProfileTouches(gate) { true }, state = list) {
                     item {
                         PhotoGestureSurface(owner = "first", modifier = Modifier.fillMaxWidth().height(240.dp).testTag("photo"),
-                            onTap = { _, _ -> taps++; true }, onSwipe = { decisions.add(it) }, onDrag = { feedback = it }) { region ->
-                            Box(Modifier.fillMaxSize().then(region))
+                            galleryEnabled = true, onSwipe = { decisions.add(it) }, onDrag = { feedback = it }, touchGate = gate) { hit ->
+                            Box(Modifier.fillMaxSize().then(hit.photo)) {
+                                PhotoTapTarget("Medium", Modifier.fillMaxSize().then(hit.next)) { taps++ }
+                            }
                         }
                     }
                     items(20) { Text("Detail", Modifier.height(60.dp)) }
@@ -44,7 +49,7 @@ class ProfileGestureDeviceTest {
             }
         }
         val photo = rule.onNodeWithTag("photo")
-        photo.performTouchInput { click(center) }
+        rule.onNodeWithContentDescription("Medium").performTouchInput { click(center) }
         photo.performTouchInput { swipe(Offset(width * .2f, center.y), Offset(width * .8f, center.y)) }
         photo.performTouchInput { swipe(Offset(width * .8f, center.y), Offset(width * .2f, center.y)) }
         photo.performTouchInput { down(center); moveTo(center + Offset(width * .18f, 0f)); up() }
@@ -59,25 +64,31 @@ class ProfileGestureDeviceTest {
         }
         photo.performTouchInput { swipe(Offset(center.x, height * .8f), Offset(center.x, height * .15f)) }
         rule.runOnIdle {
-            assertTrue(scroll > 0)
+            assertTrue(list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0)
             assertEquals(2, decisions.size)
             assertEquals(1, taps)
         }
     }
 
-    @Test fun nativeChildButtonWinsHitTestingAndStandaloneNeverDecides() {
+    @Test fun nativeControlWinsAndStandaloneHorizontalDoesNotClickGallery() {
         var decisions = 0
         var buttons = 0
         var taps = 0
         var enabled by mutableStateOf(true)
         rule.setContent {
             MaterialTheme {
-                PhotoGestureSurface(owner = enabled, modifier = Modifier.size(280.dp, 240.dp).testTag("photo"),
-                    onTap = { _, _ -> taps++; true }, onSwipe = if (enabled) ({ decisions++ }) else null) { region ->
+                val gate = remember { ProfileTouchGate() }
+                PhotoGestureSurface(owner = enabled, modifier = Modifier.size(280.dp, 240.dp)
+                    .testTag("photo").admitProfileTouches(gate) { true },
+                    galleryEnabled = true, onSwipe = if (enabled) ({ decisions++ }) else null,
+                    touchGate = gate) { hit ->
                     Column(Modifier.fillMaxSize()) {
                         Box(Modifier.fillMaxWidth().height(48.dp).testTag("chrome"))
-                        Box(Modifier.fillMaxWidth().weight(1f).then(region), contentAlignment = Alignment.Center) {
-                            TextButton(onClick = { buttons++ }, modifier = Modifier.testTag("control")) { Text("Retry") }
+                        Row(Modifier.fillMaxWidth().weight(1f).then(hit.photo), verticalAlignment = Alignment.CenterVertically) {
+                            PhotoTapTarget("Medium", Modifier.weight(.3f).fillMaxHeight().then(hit.previous)) { taps++ }
+                            Box(Modifier.weight(.7f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                                TextButton(onClick = { buttons++ }, modifier = Modifier.testTag("control")) { Text("Retry") }
+                            }
                         }
                     }
                 }
@@ -88,34 +99,31 @@ class ProfileGestureDeviceTest {
         control.performTouchInput { click(center) }
         control.performTouchInput { down(center); moveTo(center + Offset(400f, 0f)); up() }
         val photo = rule.onNodeWithTag("photo")
-        // Second finger on chrome (a different child hit path) cancels the drag.
-        photo.performTouchInput {
-            down(0, Offset(width * .2f, height * .7f))
-            moveTo(0, Offset(width * .55f, height * .7f))
-            down(1, Offset(width * .8f, 10f))
-            up(1); up(0)
-        }
-        rule.runOnIdle { assertEquals(1, buttons); assertEquals(0, decisions); assertEquals(0, taps) }
-        // Owner/enable change while a native pointer is still down.
-        photo.performTouchInput { down(Offset(width * .2f, height * .7f)); moveTo(Offset(width * .7f, height * .7f)) }
+        photo.performTouchInput { down(Offset(width * .1f, height * .7f)); moveTo(Offset(width * .8f, height * .7f)) }
         rule.runOnIdle { enabled = false }
         photo.performTouchInput { up() }
-        rule.runOnIdle { assertEquals(0, decisions) }
-        photo.performTouchInput { swipe(Offset(width * .2f, height * .7f), Offset(width * .8f, height * .7f)) }
-        photo.performTouchInput { click(Offset(width * .2f, height * .7f)) }
-        rule.runOnIdle { assertEquals(0, decisions); assertEquals(1, taps) }
+        rule.runOnIdle { assertEquals(1, buttons); assertEquals(0, decisions); assertEquals(0, taps) }
+        photo.performTouchInput { swipe(Offset(width * .1f, height * .7f), Offset(width * .8f, height * .7f)) }
+        rule.onNodeWithContentDescription("Medium").performTouchInput { click(center) }
+        rule.onNodeWithContentDescription("Medium").performClick() // semantic action, not touch
+        rule.runOnIdle { assertEquals(0, decisions); assertEquals(2, taps) }
     }
+
     @Test fun actualHeroSideTapAndSwipeDoNotInvokeEachOther() {
         val decisions = mutableListOf<Preference>()
         rule.setContent {
             MaterialTheme {
-                ProfileMediaHero(
-                    media = listOf(de.justify87.ladiesexplorer.core.ProfileMediaItem("IMAGE", "", null, 0u),
-                        de.justify87.ladiesexplorer.core.ProfileMediaItem("VIDEO", "", null, 1u)),
-                    height = 400.dp, modifier = Modifier.testTag("hero"), originalUrl = null,
-                    actionsEnabled = true, isCurrent = { true }, selection = remember { ProfileMediaSelection() },
-                    identity = null, actionToken = null, compact = false, headerOwnsIdentity = false,
-                    onIdentityMeasured = {}, onSwipe = { decisions.add(it) })
+                // Use the real geometry policy at a deterministic dp width.
+                // The test environment needs at least 320dp of usable width.
+                Box(Modifier.requiredWidth(320.dp)) {
+                    ProfileMediaHero(
+                        media = listOf(ProfileMediaItem("IMAGE", "", null, 0u),
+                            ProfileMediaItem("VIDEO", "", null, 1u)),
+                        height = 360.dp, modifier = Modifier.testTag("hero"), originalUrl = null,
+                        actionsEnabled = true, isCurrent = { true }, selection = remember { ProfileMediaSelection() },
+                        identity = null, actionToken = null, compact = false, headerOwnsIdentity = false,
+                        onIdentityMeasured = {}, onSwipe = { decisions.add(it) })
+                }
             }
         }
         val hero = rule.onNodeWithTag("hero")
@@ -127,30 +135,67 @@ class ProfileGestureDeviceTest {
         rule.runOnIdle { assertEquals(1, decisions.size) }
     }
 
-    @Test fun secondFingerOutsideHeroCancelsWithoutTakingOverNativeControls() {
+    @Test fun realRailTargetCannotCommitFromSecondFingerInEitherOrder() {
         var decisions = 0
         var railClicks = 0
         rule.setContent {
             MaterialTheme {
-                val fence = remember { PhotoPointerFence() }
-                Column(Modifier.size(280.dp, 320.dp).testTag("root").observePhotoPointers(fence)) {
-                    PhotoGestureSurface(owner = "fixture", modifier = Modifier.fillMaxWidth().height(240.dp),
-                        onSwipe = { decisions++ }, pointerFence = fence) { region ->
-                        Box(Modifier.fillMaxSize().then(region))
+                val gate = remember { ProfileTouchGate() }
+                Column(Modifier.size(280.dp, 320.dp).testTag("root").admitProfileTouches(gate) { true }) {
+                    PhotoGestureSurface(owner = "fixture", modifier = Modifier.fillMaxWidth().height(240.dp).testTag("photo"),
+                        onSwipe = { decisions++ }, touchGate = gate) { hit ->
+                        Box(Modifier.fillMaxSize().then(hit.photo))
                     }
                     TextButton(onClick = { railClicks++ }, modifier = Modifier.height(64.dp).testTag("rail")) { Text("Like") }
                 }
             }
         }
         val root = rule.onNodeWithTag("root")
-        root.performTouchInput {
-            down(0, Offset(width * .15f, height * .3f))
-            moveTo(0, Offset(width * .75f, height * .3f))
-            down(1, Offset(width * .9f, height * .86f))
-            up(1); up(0)
-        }
-        rule.runOnIdle { assertEquals(0, decisions) }
+        val origin = root.fetchSemanticsNode().boundsInRoot.topLeft
+        val button = rule.onNodeWithTag("rail").fetchSemanticsNode().boundsInRoot.center - origin
+        val photo = rule.onNodeWithTag("photo").fetchSemanticsNode().boundsInRoot
+        val first = photo.topLeft - origin + Offset(photo.width * .15f, photo.height * .5f)
+        val last = first + Offset(photo.width * .6f, 0f)
+        root.performTouchInput { down(0, first); moveTo(0, last); down(1, button); up(0); up(1) }
+        root.performTouchInput { down(0, button); down(1, first); moveTo(1, last); up(1); up(0) }
+        rule.runOnIdle { assertEquals(0, railClicks); assertEquals(0, decisions) }
         rule.onNodeWithTag("rail").performTouchInput { click(center) }
-        rule.runOnIdle { assertEquals(1, railClicks); assertEquals(0, decisions) }
+        rule.onNodeWithTag("rail").performClick()
+        rule.runOnIdle { assertEquals(2, railClicks); assertEquals(0, decisions) }
+    }
+
+    @Test fun backFocusAdmissionAndChangedGeometryRevokePendingRelease() {
+        var decisions = 0
+        var width by mutableStateOf(280.dp)
+        var eligible by mutableStateOf(true)
+        rule.setContent {
+            MaterialTheme {
+                val gate = remember { ProfileTouchGate() }
+                BackHandler(enabled = gate.active) { gate.invalidate() }
+                Box(Modifier.size(300.dp, 260.dp).testTag("root").admitProfileTouches(gate) { eligible }) {
+                    PhotoGestureSurface(owner = "fixture", modifier = Modifier.width(width).height(240.dp),
+                        onSwipe = { decisions++ }, touchGate = gate) { hit ->
+                        Box(Modifier.fillMaxSize().then(hit.photo))
+                    }
+                }
+            }
+        }
+        val root = rule.onNodeWithTag("root")
+        fun drag() = root.performTouchInput { down(Offset(this.width * .15f, center.y)); moveTo(Offset(this.width * .7f, center.y)) }
+        drag()
+        rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        root.performTouchInput { up() }
+        drag()
+        rule.runOnIdle { eligible = false }
+        root.performTouchInput { up() }
+        rule.runOnIdle { eligible = true }
+        drag()
+        rule.runOnIdle { width = 240.dp }
+        rule.waitForIdle()
+        root.performTouchInput { up() }
+        rule.runOnIdle { assertEquals(0, decisions) }
+        drag()
+        root.performTouchInput { up() }
+        rule.runOnIdle { assertEquals(1, decisions) }
     }
 }

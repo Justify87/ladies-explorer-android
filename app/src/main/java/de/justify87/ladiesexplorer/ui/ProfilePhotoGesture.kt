@@ -1,29 +1,25 @@
 package de.justify87.ladiesexplorer.ui
 
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.disabled
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Preference
@@ -93,149 +89,188 @@ internal class PhotoGestureResolver(
     }
 }
 
-/** Passive root-level cancellation fence. Unlike the recognizer, this never
- * consumes an event, resolves an axis, dispatches an action or drives UI.
- * A second finger can target the rail, details or root navigation instead of
- * the hero. Read the fence synchronously, without waiting for recomposition. */
-internal class PhotoPointerFence {
-    private var epoch = 0L
-    private var multiple = false
+/**
+ * Admission of a single native touch stream, shared by the entire profile
+ * screen. Cancellation is sticky until the last pointer lifts. No gesture,
+ * button callback, domain operation or axis decision lives here.
+ */
+internal class ProfileTouchGate {
+    var active by mutableStateOf(false)
+        private set
+    var revision by mutableLongStateOf(0L)
+        private set
+    private var blocked = false
 
-    fun observe(count: Int) {
-        multiple = count > 1
-        if (multiple) epoch++
-    }
-    fun capture(): Long? = epoch.takeUnless { multiple }
-    fun current(stamp: Long?): Boolean = stamp != null && !multiple && stamp == epoch
-    fun invalidate() { epoch++; multiple = false }
-}
-
-internal fun Modifier.observePhotoPointers(fence: PhotoPointerFence): Modifier = pointerInput(fence) {
-    try {
-        awaitPointerEventScope {
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                fence.observe(event.changes.count { it.pressed || it.previousPressed })
-            }
+    fun observe(previous: Int, pressed: Int, eligible: Boolean): Boolean {
+        if (previous == 0 && pressed > 0) {
+            active = true
+            blocked = false
+        } else if (!active && previous > 0) {
+            // A replaced observer cannot admit the tail of an old stream.
+            active = true
+            invalidate()
         }
-    } finally {
-        fence.invalidate()
+        if (active && (!eligible || previous > 1 || pressed > 1)) invalidate()
+        val consume = active && blocked
+        if (pressed == 0) {
+            active = false
+            blocked = false
+        }
+        return consume
+    }
+
+    fun capture(): Long? = revision.takeIf { active && !blocked }
+    fun current(stamp: Long?): Boolean = stamp != null && stamp == revision && !blocked
+
+    fun invalidate() {
+        if (active && !blocked) {
+            blocked = true
+            revision++
+        }
     }
 }
 
-/** Coordinates are layout-owned, not a second gesture state machine. */
+/** Initial pass is before any native clickable/scrollable. Consume only a
+ * revoked stream, including its last Up, so the rail cannot independently
+ * commit after a second finger has cancelled the photo. */
+internal fun Modifier.admitProfileTouches(gate: ProfileTouchGate, eligible: () -> Boolean): Modifier =
+    pointerInput(gate) {
+        try {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (gate.observe(event.changes.count { it.previousPressed },
+                            event.changes.count { it.pressed }, eligible())) {
+                        event.changes.forEach { it.consume() }
+                    }
+                }
+            }
+        } finally {
+            gate.invalidate()
+        }
+    }
+
+/** Existing Compose coordinates own the hit regions. Each start captures
+ * actual bounds, including the native gallery targets and root position. */
+internal data class PhotoHitGeometry(val photo: Rect, val rootOrigin: Offset, val gallery: List<Rect>) {
+    fun galleryAt(position: Offset): Boolean = gallery.any { it.contains(position) }
+}
+
+internal data class PhotoHitModifiers(val photo: Modifier, val previous: Modifier, val next: Modifier)
+
 private class PhotoHitRegion {
     var host: LayoutCoordinates? = null
     var photo: LayoutCoordinates? = null
+    var previous: LayoutCoordinates? = null
+    var next: LayoutCoordinates? = null
 
-    fun bounds(): Rect? {
+    fun geometry(): PhotoHitGeometry? {
         val parent = host?.takeIf { it.isAttached } ?: return null
-        val child = photo?.takeIf { it.isAttached } ?: return null
-        return parent.localBoundingBoxOf(child, clipBounds = false)
+        fun bounds(child: LayoutCoordinates?): Rect? = child?.takeIf { it.isAttached }
+            ?.let { parent.localBoundingBoxOf(it, clipBounds = false) }
+        return PhotoHitGeometry(bounds(photo) ?: return null, parent.localToRoot(Offset.Zero),
+            listOfNotNull(bounds(previous), bounds(next)))
     }
 }
 
 /**
- * One recognizer for the common hero hit path: a second finger on a different
- * gallery zone or on chrome is visible to the same coroutine. The measured
- * photo region is the only eligible start target; native child clickables
- * (including retry/video) get Main-pass priority and consume their own down.
- * Vertical gestures remain unconsumed for the enclosing LazyColumn.
+ * Native gallery clickables own taps (including TalkBack/DPAD, focus and
+ * indication). This single ancestor recognizer owns horizontal drag only.
+ * Initial allows it to cancel a gallery click upon horizontal lock; Main
+ * identifies other native child controls; Final lets LazyColumn have the
+ * first opportunity to consume vertical/ambiguous motion.
  */
 @Composable
 internal fun PhotoGestureSurface(
     owner: Any?,
     modifier: Modifier = Modifier,
-    onTap: ((fraction: Float, widthDp: Float) -> Boolean)? = null,
+    galleryEnabled: Boolean = false,
     onSwipe: ((Preference) -> Unit)? = null,
     onDrag: (Float) -> Unit = {},
-    pointerFence: PhotoPointerFence? = null,
-    content: @Composable (photoRegion: Modifier) -> Unit,
+    touchGate: ProfileTouchGate? = null,
+    content: @Composable (PhotoHitModifiers) -> Unit,
 ) {
     val region = remember { PhotoHitRegion() }
-    val tap by rememberUpdatedState(onTap)
     val swipe by rememberUpdatedState(onSwipe)
     val drag by rememberUpdatedState(onDrag)
-    val canTap = onTap != null
     val canSwipe = onSwipe != null
-    val gesture = if (!canTap && !canSwipe) Modifier else Modifier.pointerInput(owner, canTap, canSwipe, pointerFence) {
-        awaitEachGesture {
-            // Receive even a consumed down, so a second finger cannot acquire
-            // the gesture after the first started on a native button.
-            val down = awaitFirstDown(requireUnconsumed = false)
-            val bounds = region.bounds()
-            if (down.isConsumed || bounds == null || bounds.width <= 0f || !bounds.contains(down.position))
-                return@awaitEachGesture
-            val stamp = pointerFence?.capture()
-            if (pointerFence != null && stamp == null) return@awaitEachGesture
-            // Freeze the actual rendered callbacks at down. A newer callback
-            // must never inherit an in-flight old-profile decision.
-            val tapOnDown = tap
-            val swipeOnDown = swipe
-            val dragOnDown = drag
-            val initial = awaitPointerEvent(PointerEventPass.Final)
-            if (initial.changes.count { it.pressed } != 1 ||
-                initial.changes.firstOrNull { it.id == down.id }?.isConsumed != false) return@awaitEachGesture
-            val resolver = PhotoGestureResolver(viewConfiguration.touchSlop, bounds.width, 72.dp.toPx(),
-                viewConfiguration.longPressTimeoutMillis, canSwipe)
-            try {
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Main)
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    val delta = change.position - down.position
-                    val blocked = change.isConsumed || event.changes.any {
-                        it.id != down.id && (it.pressed || it.previousPressed)
-                    } || (pointerFence != null && !pointerFence.current(stamp))
-                    when (val result = resolver.step(delta.x, delta.y, change.pressed,
-                        change.uptimeMillis - down.uptimeMillis, blocked)) {
-                        PhotoGestureResult.Cancel -> break
-                        PhotoGestureResult.Pending -> {
-                            // Parent LazyColumn consumption after the child's Main pass.
-                            val final = awaitPointerEvent(PointerEventPass.Final)
-                            if (final.changes.firstOrNull { it.id == down.id }?.isConsumed != false) break
-                        }
-                        PhotoGestureResult.Tap -> {
-                            if (canTap && bounds.contains(change.position) &&
-                                tapOnDown?.invoke((down.position.x - bounds.left) / bounds.width, bounds.width.toDp().value) == true)
+    val revision = touchGate?.revision
+    val gesture = if (!galleryEnabled && !canSwipe) Modifier else
+        Modifier.pointerInput(owner, galleryEnabled, canSwipe, touchGate, revision) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                val geometry = region.geometry()
+                if (down.isConsumed || geometry == null || geometry.photo.width <= 0f ||
+                    !geometry.photo.contains(down.position)) return@awaitEachGesture
+                val gallery = galleryEnabled && geometry.galleryAt(down.position)
+                if (!gallery && !canSwipe) return@awaitEachGesture
+                val stamp = touchGate?.capture()
+                if (touchGate != null && stamp == null) return@awaitEachGesture
+                val swipeOnDown = swipe
+                val dragOnDown = drag
+                // A consumed down is allowed only on the measured native
+                // gallery targets; retry/video/menu remain exclusive.
+                val main = awaitPointerEvent(PointerEventPass.Main)
+                if (main.changes.count { it.pressed } != 1 ||
+                    (!gallery && main.changes.firstOrNull { it.id == down.id }?.isConsumed != false))
+                    return@awaitEachGesture
+                val finalDown = awaitPointerEvent(PointerEventPass.Final)
+                if (!gallery && finalDown.changes.firstOrNull { it.id == down.id }?.isConsumed != false)
+                    return@awaitEachGesture
+                val resolver = PhotoGestureResolver(viewConfiguration.touchSlop, geometry.photo.width,
+                    72.dp.toPx(), viewConfiguration.longPressTimeoutMillis, canSwipe)
+                try {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        val delta = change.position - down.position
+                        val blocked = change.isConsumed || region.geometry() != geometry ||
+                            event.changes.any { it.id != down.id && (it.pressed || it.previousPressed) } ||
+                            (touchGate != null && !touchGate.current(stamp))
+                        when (val result = resolver.step(delta.x, delta.y, change.pressed,
+                            change.uptimeMillis - down.uptimeMillis, blocked)) {
+                            PhotoGestureResult.Cancel -> {
+                                if (gallery) {
+                                    // Up must be consumed before the native click.
+                                    // Motion may be used by the parent scroll first.
+                                    if (!change.pressed || blocked) change.consume()
+                                    else awaitPointerEvent(PointerEventPass.Final).changes
+                                        .firstOrNull { it.id == down.id }?.consume()
+                                }
+                                break
+                            }
+                            PhotoGestureResult.Tap -> break // native clickable
+                            PhotoGestureResult.Pending -> {
+                                val final = awaitPointerEvent(PointerEventPass.Final)
+                                if (final.changes.firstOrNull { it.id == down.id }?.isConsumed != false) break
+                            }
+                            is PhotoGestureResult.Drag -> {
                                 change.consume()
-                            break
-                        }
-                        is PhotoGestureResult.Drag -> {
-                            change.consume()
-                            dragOnDown(result.distance)
-                        }
-                        is PhotoGestureResult.Release -> {
-                            change.consume()
-                            result.decision?.let { swipeOnDown?.invoke(it) }
-                            break
+                                dragOnDown(result.distance)
+                            }
+                            is PhotoGestureResult.Release -> {
+                                change.consume()
+                                result.decision?.let { swipeOnDown?.invoke(it) }
+                                break
+                            }
                         }
                     }
+                } finally {
+                    dragOnDown(0f)
                 }
-            } finally {
-                dragOnDown(0f)
             }
         }
-    }
     Box(modifier.onGloballyPositioned { region.host = it }.then(gesture)) {
-        content(Modifier.onGloballyPositioned { region.photo = it })
+        content(PhotoHitModifiers(
+            Modifier.onGloballyPositioned { region.photo = it },
+            Modifier.onGloballyPositioned { region.previous = it },
+            Modifier.onGloballyPositioned { region.next = it },
+        ))
     }
 }
 
-/** Accessibility/keyboard targets have no independent touch recognizer. */
 @Composable
 internal fun PhotoTapTarget(label: String, modifier: Modifier, onTap: (() -> Unit)?) {
-    val tap by rememberUpdatedState(onTap)
-    val semantics = Modifier.semantics {
-        contentDescription = label
-        role = Role.Button
-        if (onTap != null) onClick { tap?.invoke(); true } else disabled()
-    }
-    val keyboard = if (onTap == null) Modifier else Modifier.onKeyEvent {
-        if (it.key != Key.Enter && it.key != Key.DirectionCenter && it.key != Key.Spacebar) false
-        else {
-            if (it.type == KeyEventType.KeyUp) tap?.invoke()
-            true
-        }
-    }.focusable()
-    Box(modifier.then(semantics).then(keyboard))
+    Box(modifier.semantics { contentDescription = label }
+        .clickable(enabled = onTap != null, role = Role.Button) { onTap?.invoke() })
 }

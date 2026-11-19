@@ -50,6 +50,8 @@ import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.listSaver
@@ -111,6 +113,19 @@ fun LadiesApp(
         if (!savedVisible) viewModel.cancelSavedStatus()
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val profileTouchGate = remember { ProfileTouchGate() }
+    val windowInfo = LocalWindowInfo.current
+    val swipeShell = !search.profileOpen && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe
+    val profileTouchEnabled = swipeShell || search.profileOpen
+    // Revoke a still-down stream on route/session replacement and focus loss.
+    DisposableEffect(route, search.profileOpen, search.profileSessionId, discovery.swipeSessionId) {
+        onDispose { profileTouchGate.invalidate() }
+    }
+    LaunchedEffect(windowInfo) {
+        snapshotFlow { windowInfo.isWindowFocused }.collect { focused ->
+            if (!focused) profileTouchGate.invalidate()
+        }
+    }
     val savedSearchRouteVisible = route.root == RootDestination.Search && !search.profileOpen
     val currentSavedSearchRouteVisible by rememberUpdatedState(savedSearchRouteVisible)
     DisposableEffect(lifecycle, viewModel) {
@@ -120,6 +135,7 @@ fun LadiesApp(
         }
         val observer = LifecycleEventObserver { _, event ->
             publishVisibility()
+            if (event == Lifecycle.Event.ON_PAUSE) profileTouchGate.invalidate()
             if (event == Lifecycle.Event.ON_START) viewModel.setProfilePresentationVisible(true)
             if (event == Lifecycle.Event.ON_STOP) {
                 viewModel.setProfilePresentationVisible(false)
@@ -132,6 +148,7 @@ fun LadiesApp(
         viewModel.setProfilePresentationVisible(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         onDispose {
             lifecycle.removeObserver(observer)
+            profileTouchGate.invalidate()
             viewModel.setProfilePresentationVisible(false)
             viewModel.savedSearch.setVisible(false)
         }
@@ -141,6 +158,7 @@ fun LadiesApp(
     // Explicit refresh and data mutations remain owned by the ViewModel.
     fun selectRoot(destination: RootDestination) {
         if (route.root == destination || saved.blockingNavigation || home.importing) return
+        profileTouchGate.invalidate()
         route = route.select(destination)
         viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -175,6 +193,7 @@ fun LadiesApp(
         previousEditorSession = saved.editor?.session
     }
     fun back() {
+        profileTouchGate.invalidate()
         if (home.importing) return
         if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen || savedResultsOpen)) {
             viewModel.savedSearch.back()
@@ -187,12 +206,16 @@ fun LadiesApp(
             BackAction.System -> Unit
         }
     }
-    BackHandler(enabled = home.importing || savedEditorOpen || savedOverviewOpen || route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
+    // Preserve the existing Back owner. On the default swipe route Back
+    // cancels an active touch first; without one it is delegated to Android.
+    BackHandler(enabled = home.importing || savedEditorOpen || savedOverviewOpen ||
+        route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System ||
+        (profileTouchEnabled && profileTouchGate.active)) { back() }
 
-    val swipeShell = !search.profileOpen && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe
-    val photoFence = remember { PhotoPointerFence() }
     Scaffold(
-        modifier = if (swipeShell || search.profileOpen) Modifier.observePhotoPointers(photoFence) else Modifier,
+        modifier = if (profileTouchEnabled) Modifier.admitProfileTouches(profileTouchGate) {
+            windowInfo.isWindowFocused && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        } else Modifier,
         topBar = {
             if (!search.profileOpen && !swipeShell) TopAppBar(
                 title = {
@@ -288,7 +311,7 @@ fun LadiesApp(
                     onRetryProfile = viewModel::retryProfileProjection,
                     onBack = viewModel::closeProfile,
                     actionsBusy = discovery.busy,
-                    pointerFence = photoFence,
+                    touchGate = profileTouchGate,
                     modifier = modifier,
                 )
             }
@@ -316,7 +339,7 @@ fun LadiesApp(
                                 rootBarHeight = (padding.calculateBottomPadding() -
                                     WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()).coerceAtLeast(0.dp),
                                 onOpenSearch = { selectRoot(RootDestination.Search) },
-                                onSelectMode = { route = route.select(it) },
+                                onSelectMode = { profileTouchGate.invalidate(); route = route.select(it) },
                                 availabilityEnabled = !search.loading && !home.loading && !discovery.busy && !saved.busy,
                                 onAvailability = viewModel::runSwipeAvailability,
                                 onCancelSearch = viewModel::cancelActiveSearch,
@@ -333,7 +356,7 @@ fun LadiesApp(
                                 onSnapshotChanged = viewModel::markSwipeSnapshotChanged,
                                 onFavorite = viewModel::toggleProfileFavorite,
                                 isProfileCurrent = viewModel::isProfileActionCurrent,
-                                pointerFence = photoFence,
+                                touchGate = profileTouchGate,
                                 modifier = Modifier.weight(1f),
                             )
                         } else if (route.discovery == DiscoverMode.Grid) {

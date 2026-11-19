@@ -26,7 +26,7 @@ internal fun ProfileDetailScreen(
     onRetryProfile: () -> Unit,
     onBack: () -> Unit,
     actionsBusy: Boolean,
-    pointerFence: PhotoPointerFence? = null,
+    touchGate: ProfileTouchGate? = null,
     modifier: Modifier = Modifier,
 ) {
     val profile = state.profile
@@ -81,7 +81,7 @@ internal fun ProfileDetailScreen(
                         isCurrent = { renderedToken?.let(isProfileCurrent) == true },
                         compact = presentation.budget.compactGallery,
                         headerOwnsIdentity = presentation.identityInHeader,
-                        onIdentityMeasured = onIdentityMeasured, pointerFence = pointerFence)
+                        onIdentityMeasured = onIdentityMeasured, touchGate = touchGate)
                 }
                 item(key = "identity") {
                     Text("Profilinfos", style = MaterialTheme.typography.labelMedium)
