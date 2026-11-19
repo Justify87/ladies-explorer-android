@@ -301,13 +301,16 @@ fun LadiesApp(
                         onProfile=viewModel::loadProfile,
                         modifier=modifier,
                     )
-                    RootDestination.Saved -> FavoritesScreen(
-                        state=discovery,
-                        onRefresh=viewModel::refreshDiscovery,
-                        onProfile=viewModel::loadProfile,
-                        onFavorite=viewModel::toggleFavorite,
-                        onLoadMore=viewModel::loadMoreFavorites,
-                        modifier=modifier,
+                    RootDestination.Saved -> SavedPeopleScreen(
+                        state = discovery,
+                        onKind = viewModel::selectSavedKind,
+                        onSort = viewModel::selectSavedSort,
+                        onRefresh = viewModel::refreshDiscovery,
+                        onProfile = viewModel::loadProfile,
+                        onFavorite = viewModel::toggleFavorite,
+                        onPreference = viewModel::choosePreference,
+                        onLoadMore = viewModel::loadMoreSavedPeople,
+                        modifier = modifier,
                     )
                     RootDestination.Settings -> SettingsScreen(
                         state=home,

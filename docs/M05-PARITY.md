@@ -175,4 +175,4 @@ Review PR #20: P27–P32 korrigiert (Notiz-Verantwortung im ViewModel, katalogge
 
 ### M05.7 – laufender Stand
 
-P33: Rust-Personenseiten mit exakter Tab-Anzahl, unabhängiger Favoriten-/Präferenzmitgliedschaft, stabilen Datum-/Name-Cursorn und gemeinsamer Kartenprojektion; UI-Anbindung und CI-Nachweis noch offen. Namenssortierung derzeit SQLite NOCASE (keine vollständige deutsche Locale-Kollation). P34–P36 noch nicht abgeschlossen; DEVICE_PENDING.
+P33: Rust-Personenseiten mit exakter Tab-Anzahl, unabhängiger Favoriten-/Präferenzmitgliedschaft, stabilen Datum-/Name-Cursorn und gemeinsamer Kartenprojektion; UI-Anbindung an gemeinsame Mutation/Projektion umgesetzt, CI-Nachweis noch offen. Namenssortierung derzeit SQLite NOCASE (keine vollständige deutsche Locale-Kollation). P34 in Arbeit (native Tabs, Count, Metadaten, Direktaktionen, Scrollzustand); P35–P36 noch nicht abgeschlossen; DEVICE_PENDING.
