@@ -243,11 +243,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!admittedDeck(token.deck)) null
         else currentSwipeTraversalCard(_discoverState.value, _searchUiState.value.loading, token)
 
-    internal fun openSwipeProfile(token: SwipeCardToken) {
-        val card = admittedTraversal(token) ?: return
-        loadProfile(card.listingId, card.personId)
-    }
-
     private fun invalidateSwipeProfilesLocally(strictListing: Long? = null) {
         renderedSwipe = null
         _discoverState.update {

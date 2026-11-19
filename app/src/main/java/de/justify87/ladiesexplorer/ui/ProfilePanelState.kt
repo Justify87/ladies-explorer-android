@@ -1,14 +1,17 @@
 package de.justify87.ladiesexplorer.ui
 
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-/** Composition owns cancellable, local read projections only. No writes. */
+/** Local reads are keyed by the immutable rendered projection. Scrolling away does
+ * not cancel a demanded read; a new projection disposes the old reader. */
 internal class ProfilePanels(
     private val scope: CoroutineScope,
     private val personId: Long?,
@@ -16,6 +19,12 @@ internal class ProfilePanels(
     private val readDetail: suspend (Long) -> PersonDetail,
     private val readComparison: suspend (Long, Long, Long) -> List<SnapshotDifference>,
 ) {
+    private data class FactsKey(val snapshot: Long?, val filters: String)
+    private var factsKey: FactsKey? = null
+    private var factsGeneration = 0L
+    private var detailRequested = false
+    private var detailGeneration = 0L
+    private var closed = false
     var facts by mutableStateOf<ProfileFacts?>(null)
         private set
     var detail by mutableStateOf<PersonDetail?>(null)
@@ -32,39 +41,60 @@ internal class ProfilePanels(
     var comparing by mutableStateOf(false)
         private set
     private var comparisonGeneration = 0
-    var revision by mutableIntStateOf(0)
-        private set
 
-    fun reload() { revision++ }
+    fun retryFacts() {
+        val key = factsKey ?: return
+        if (closed || factsError == null) return
+        factsKey = null
+        scope.launch { loadFacts(key.snapshot, key.filters) }
+    }
+
+    fun retryDetail() {
+        if (closed || detailError == null) return
+        detailRequested = false
+        scope.launch { loadDetail() }
+    }
 
     suspend fun loadFacts(snapshot: Long?, filters: String) {
+        val key = FactsKey(snapshot, filters)
+        if (closed || factsKey == key) return
+        factsKey = key
+        val generation = ++factsGeneration
         facts = null
         factsError = null
-        if (snapshot == null) {
-            factsError = "Kein gespeicherter Snapshot"
-            return
-        }
         try {
-            facts = readFacts(snapshot, filters)
-        } catch (cancel: CancellationException) { throw cancel }
-        catch (failure: Exception) { factsError = failure.message ?: "Profilfelder nicht verfügbar" }
+            val result = if (snapshot != null) readFacts(snapshot, filters)
+                else error("Kein gespeicherter Snapshot")
+            if (!closed && generation == factsGeneration) facts = result
+        } catch (cancel: CancellationException) {
+            if (generation == factsGeneration) factsKey = null
+            throw cancel
+        } catch (failure: Exception) {
+            if (!closed && generation == factsGeneration)
+                factsError = failure.message ?: "Profilfelder nicht verfügbar"
+        }
     }
 
     suspend fun loadDetail() {
+        if (closed || detailRequested) return
+        detailRequested = true
+        val generation = ++detailGeneration
         detail = null
         detailError = null
-        val owner = personId
-        if (owner == null) {
-            detailError = "Personenzuordnung nicht verfügbar"
-            return
-        }
         try {
-            detail = readDetail(owner)
-        } catch (cancel: CancellationException) { throw cancel }
-        catch (failure: Exception) { detailError = failure.message ?: "Personendaten nicht verfügbar" }
+            val result = readDetail(personId ?: error("Personenzuordnung nicht verfügbar"))
+            if (!closed && generation == detailGeneration) detail = result
+        } catch (cancel: CancellationException) {
+            if (generation == detailGeneration) detailRequested = false
+            throw cancel
+        } catch (failure: Exception) {
+            if (!closed && generation == detailGeneration)
+                detailError = failure.message ?: "Personendaten nicht verfügbar"
+        }
     }
 
     fun compare(from: Long, to: Long) {
+        if (closed) return
         val owner = personId ?: return
         val generation = ++comparisonGeneration
         comparing = true
@@ -89,28 +119,42 @@ internal class ProfilePanels(
         comparison = null
         comparisonError = null
     }
+
+    fun close() {
+        closed = true
+        factsGeneration++
+        detailGeneration++
+        closeComparison()
+    }
 }
+
+internal fun factsDemand(keys: Set<Any>) =
+    "profile-facts" in keys || "profile-services" in keys
+
+internal fun detailDemand(keys: Set<Any>) =
+    "profile-analysis" in keys || "profile-history-head" in keys ||
+        "profile-listings-head" in keys ||
+        keys.any { it is String && (it.startsWith("event/") || it.startsWith("listing/")) }
 
 @Composable
 internal fun rememberProfilePanels(
     model: ProfileReadModel?,
     filters: String,
-    tab: ProfileTab,
+    listState: LazyListState,
 ): ProfilePanels {
     val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
     val scope = rememberCoroutineScope()
     val panels = remember(core, scope, model?.profile?.listingId, model?.profile?.snapshotId,
-        model?.identity?.personId, model?.revision) {
+        model?.identity?.personId, model?.revision, filters) {
         ProfilePanels(scope, model?.identity?.personId, core::profileFacts, core::personDetail, core::compareSnapshots)
     }
-    DisposableEffect(panels) { onDispose { panels.closeComparison() } }
-    val factsVisible = tab == ProfileTab.Info || tab == ProfileTab.Services
-    val detailVisible = tab == ProfileTab.Analysis || tab == ProfileTab.History
-    LaunchedEffect(panels, filters, panels.revision, factsVisible) {
-        if (factsVisible) panels.loadFacts(model?.profile?.snapshotId, filters)
-    }
-    LaunchedEffect(panels, panels.revision, detailVisible) {
-        if (detailVisible) panels.loadDetail()
+    DisposableEffect(panels) { onDispose { panels.close() } }
+    LaunchedEffect(panels, listState) {
+        if (model == null) return@LaunchedEffect
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.key }.toSet() }.collect { keys ->
+            if (factsDemand(keys)) launch { panels.loadFacts(model.profile.snapshotId, filters) }
+            if (detailDemand(keys)) launch { panels.loadDetail() }
+        }
     }
     return panels
 }

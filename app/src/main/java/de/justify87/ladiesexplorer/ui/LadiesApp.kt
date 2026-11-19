@@ -83,8 +83,6 @@ fun LadiesApp(
     )) { mutableStateOf(ShellRoute()) }
     val stateHolder = rememberSaveableStateHolder()
     val searchStateHolder = rememberSaveableStateHolder()
-    val detailTabs = rememberProfileTabMemory()
-    val swipeTabs = rememberProfileTabMemory()
     var lastPresentedRun by rememberSaveable { mutableStateOf(search.response?.searchRunId) }
     LaunchedEffect(search.response?.searchRunId) {
         val run = search.response?.searchRunId
@@ -271,7 +269,6 @@ fun LadiesApp(
             key(search.profileSessionId) {
                 ProfileDetailScreen(
                     state = search,
-                    tabs = detailTabs,
                     notes = notes,
                     noteActions = viewModel.noteActions,
                     onFavorite = viewModel::toggleProfileFavorite,
@@ -303,7 +300,6 @@ fun LadiesApp(
                         if (route.discovery == DiscoverMode.Swipe) {
                             DiscoverScreen(
                                 state = discovery,
-                                tabs = swipeTabs,
                                 notes = notes,
                                 noteActions = viewModel.noteActions,
                                 searchLoading = search.loading,
@@ -321,7 +317,6 @@ fun LadiesApp(
                                 onSnapshotChanged = viewModel::markSwipeSnapshotChanged,
                                 onFavorite = viewModel::toggleProfileFavorite,
                                 isProfileCurrent = viewModel::isProfileActionCurrent,
-                                onProfile = viewModel::openSwipeProfile,
                                 modifier = Modifier.weight(1f),
                             )
                         } else if (route.discovery == DiscoverMode.Grid) {

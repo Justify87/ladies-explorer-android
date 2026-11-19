@@ -1,7 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,7 +12,6 @@ import de.justify87.ladiesexplorer.core.*
 @Composable
 internal fun ProfileDetailScreen(
     state: SearchUiState,
-    tabs: ProfileTabMemory,
     notes: Map<Long, NoteEditorState>,
     noteActions: NoteEditorActions,
     onFavorite: (ProfileIdentityToken) -> Unit,
@@ -29,15 +27,14 @@ internal fun ProfileDetailScreen(
     val profile = state.profile
     val owner = state.profileIdentity?.personId
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
-    val tab = tabs.selected(owner)
     val renderedToken = state.detailIdentityToken()
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val boundNotes = noteActions.boundTo(renderedToken, isProfileCurrent)
-    val panels = rememberProfilePanels(state.profileRead, filters, tab)
-    rememberProfileNote(renderedToken, boundNotes, busy, tab == ProfileTab.Notes)
-    val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
-    ComparisonDialog(panels)
     val detailListState = rememberLazyListState()
+    val sections = key(owner) { rememberProfileSections() }
+    val panels = rememberProfilePanels(state.profileRead, filters, detailListState)
+    rememberProfileNote(renderedToken, boundNotes, busy, sections.expanded(ProfileSection.Notes))
+    ComparisonDialog(panels)
     var confirmTarget by remember(renderedToken, state.identityCandidates) { mutableStateOf<Pair<DetailIdentityToken, Long>?>(null) }
 
     confirmTarget?.let { (token, target) ->
@@ -47,11 +44,10 @@ internal fun ProfileDetailScreen(
     }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val heroHeight = (maxHeight * .84f).coerceIn(220.dp, 720.dp)
-        LazyColumn(
+        ProfileFlow(
             state = detailListState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (profile == null) item {
                 TextButton(onClick = onBack) { Text("Zurück") }
@@ -73,11 +69,6 @@ internal fun ProfileDetailScreen(
                 item(key = "identity") {
                     ProfileHeader(profile, state.profileIdentity, state.selectedPerson,
                         state.profileMedia, state.profileFromArchive)
-                }
-                if (state.profileFromArchive) {
-                    state.mediaWarning?.let { item(key = "archive-warning") {
-                        Text(it, color = MaterialTheme.colorScheme.error)
-                    } }
                 }
                 item(key = "actions") {
                     ProfileActionRail(state.selectedPerson, profile.phoneDisplay,
@@ -107,9 +98,10 @@ internal fun ProfileDetailScreen(
                     item { Text(it,color=MaterialTheme.colorScheme.error) }
                 }
                 profileContent(profile, state.profileIdentity, state.selectedPerson, state.profileMedia,
-                    panels, tab, selectTab, state.identityCandidates, state.changeEvents,
+                    panels, sections, state.identityCandidates, state.changeEvents,
                     busy, owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
-                    onConfirm = { target -> renderedToken?.let { confirmTarget = it to target } })
+                    isCurrent = { renderedToken?.let(isProfileCurrent) == true },
+                    onConfirm = { target -> renderedToken?.takeIf(isProfileCurrent)?.let { confirmTarget = it to target } })
             }
         }
     }

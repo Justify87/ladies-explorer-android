@@ -8,17 +8,25 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 class ProfileTabsTest {
-    @Test fun routeAndPersonSelectionsDoNotLeak() {
-        val swipe = ProfileTabMemory()
-        val detail = ProfileTabMemory()
-        swipe.select(10L, ProfileTab.History)
-        swipe.select(11L, ProfileTab.Services)
-        detail.select(10L, ProfileTab.Notes)
-        assertEquals(ProfileTab.Info, swipe.selected(99L))
-        assertEquals(ProfileTab.History, swipe.selected(10L))
-        assertEquals(ProfileTab.Services, swipe.selected(11L))
-        assertEquals(ProfileTab.Notes, detail.selected(10L))
-        assertEquals(ProfileTab.History, ProfileTabMemory(swipe.entries).selected(10L))
+    @Test fun sectionsExpandIndependentlyAndStayContextLocal() {
+        val swipe = ProfileSections()
+        val detail = ProfileSections()
+        swipe.toggle(ProfileSection.History)
+        swipe.toggle(ProfileSection.Notes)
+        detail.toggle(ProfileSection.Analysis)
+        assertEquals(true, swipe.expanded(ProfileSection.History))
+        assertEquals(true, swipe.expanded(ProfileSection.Notes))
+        assertEquals(false, swipe.expanded(ProfileSection.Analysis))
+        assertEquals(false, detail.expanded(ProfileSection.Notes))
+        swipe.toggle(ProfileSection.Notes)
+        assertEquals(true, swipe.expanded(ProfileSection.History))
+        assertEquals(true, ProfileSections(swipe.entries).expanded(ProfileSection.History))
+    }
+
+    @Test fun collapsedNoteShowsConflictBeforeDraft() {
+        val dirty = NoteDraft.from("original").copy(text = "mine")
+        assertEquals("Ungespeicherter Entwurf", noteSectionHint(NoteEditorState(draft = dirty)))
+        assertEquals("Notizkonflikt", noteSectionHint(NoteEditorState(draft = dirty.reconcile("external"))))
     }
 
     @Test fun dirtyDraftSurvivesRefreshUntilExplicitConflictResolution() {

@@ -2,7 +2,6 @@ package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,7 +24,6 @@ import kotlinx.coroutines.flow.first
 @Composable
 internal fun DiscoverScreen(
     state: DiscoverUiState,
-    tabs: ProfileTabMemory,
     notes: Map<Long, NoteEditorState>,
     noteActions: NoteEditorActions,
     searchLoading: Boolean = false,
@@ -43,7 +41,6 @@ internal fun DiscoverScreen(
     onSnapshotChanged: (Boolean) -> Unit,
     onFavorite: (ProfileIdentityToken) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
-    onProfile: (SwipeCardToken) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val card = state.cards.firstOrNull()
@@ -92,12 +89,7 @@ internal fun DiscoverScreen(
             onDismiss = { confirmation = null })
     }
     val owner = current?.identity?.personId ?: card?.personId
-    val tab = tabs.selected(owner)
     val boundNotes = noteActions.boundTo(token, isProfileCurrent)
-    val panels = rememberProfilePanels(current, executedFiltersJson, tab)
-    rememberProfileNote(token, boundNotes, state.busy || token == null, tab == ProfileTab.Notes)
-    val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
-    ComparisonDialog(panels)
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
     SideEffect {
@@ -201,14 +193,17 @@ internal fun DiscoverScreen(
             val density = LocalDensity.current.density
             var drag by remember { mutableFloatStateOf(0f) }
             val listState = rememberLazyListState()
+            val sections = rememberProfileSections()
+            val panels = rememberProfilePanels(current, executedFiltersJson, listState)
+            rememberProfileNote(token, boundNotes, state.busy || token == null, sections.expanded(ProfileSection.Notes))
+            ComparisonDialog(panels)
             val person = profile?.person?.takeIf { matchesOwner }
             val fallback = listOfNotNull(card.thumbnailUrl?.let {
                 ProfileMediaItem("IMAGE", it, card.localPath, 0u)
             } ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val heroHeight = (maxHeight * .88f).coerceIn(200.dp, 720.dp)
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileFlow(state = listState, modifier = Modifier.fillMaxSize()) {
                     item(key = "hero") {
                         // Only the image surface owns horizontal decisions. Vertical drags
                         // remain with LazyColumn; tap zones keep their click semantics.
@@ -255,11 +250,12 @@ internal fun DiscoverScreen(
                             onFavorite = { token?.let(onFavorite) },
                             onPreference = { _, preference -> token?.let { onChoose(it, preference) } },
                             isCurrent = { token?.let(isProfileCurrent) == true })
-                        TextButton(onClick = { cardToken?.let(onProfile) }, enabled = enabled && cardToken != null) { Text("Profil öffnen") }
                     }
                     if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
-                        panels, tab, selectTab, profile.candidates, profile.history, !actions,
-                        owner?.let(notes::get) ?: NoteEditorState(), boundNotes, onConfirm = { target -> if (token != null) confirmation = target })
+                        panels, sections, profile.candidates, profile.history, !actions,
+                        owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
+                        isCurrent = { token?.let(isProfileCurrent) == true },
+                        onConfirm = { target -> if (token?.let(isProfileCurrent) == true) confirmation = target })
                     else card.description?.let { item { Text(it) } }
                 }
             }
