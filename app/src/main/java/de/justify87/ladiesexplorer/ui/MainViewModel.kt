@@ -865,14 +865,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
+    private suspend fun refreshSelectedPerson(personId: Long) {
+        try {
+            val person = core.person(personId)
+            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = person) else it }
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (failure: Exception) {
+            // Do not leave stale actionable detail state after a committed write.
+            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = null) else it }
+            throw failure
+        }
+    }
+
     fun choosePreference(personId: Long, preference: Preference) {
         if (_discoverState.value.busy || _searchUiState.value.actionBusy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
         _searchUiState.update { it.copy(actionError = null) }
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
             core.setPreference(personId, preference)
         }, afterWrite = {
-            val person = core.person(personId)
-            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = person) else it }
+            refreshSelectedPerson(personId)
         }, onFailure = { message ->
             _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
         })
@@ -885,9 +897,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val person = core.person(personId) ?: error("Person nicht gefunden")
             core.setFavorite(personId, !person.favorite)
         }, afterWrite = {
-            val person = core.person(personId)
-            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(selectedPerson = person) else it }
             refreshMap()
+            refreshSelectedPerson(personId)
         }, onFailure = { message ->
             _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
         })

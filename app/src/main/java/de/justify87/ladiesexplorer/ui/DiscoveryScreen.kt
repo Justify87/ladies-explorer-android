@@ -57,9 +57,8 @@ fun DiscoverScreen(
         if (!visible || card == null || current != null && retry == 0) return@LaunchedEffect
         readError = null
         try {
-            val loaded = core.readSwipeProfile(card.listingId, control, refresh = true)
-            decks[card.listingId] = loaded
-            if (!loaded.fromArchive) onSnapshotChanged()
+            decks[card.listingId] = core.readSwipeProfile(card.listingId, control,
+                refresh = true, onSourceRead = onSnapshotChanged)
             retry = 0
         } catch (cancel: CancellationException) {
             throw cancel
@@ -77,9 +76,8 @@ fun DiscoverScreen(
         for (next in upcoming) {
             try {
                 val profile = decks[next.listingId] ?: core.readSwipeProfile(next.listingId, prefetchControl,
-                    refresh = false, allowNetwork = state.activeRunId != null).also {
-                    if (!it.fromArchive) onSnapshotChanged()
-                }
+                    refresh = false, allowNetwork = state.activeRunId != null,
+                    onSourceRead = onSnapshotChanged)
                 decks[next.listingId] = profile
                 warmSwipeImages(context, next, profile)
             } catch (cancel: CancellationException) {

@@ -116,6 +116,39 @@ class SearchRunStateTest {
         assertTrue(result.cards.last().favorite)
     }
 
+    @Test fun successfulGridWriteKeepsFavoriteAndSwipeHistoryInSharedProjection() = runBlocking {
+        val old = card(2).copy(favorite = true)
+        var stored = old
+        val swipe = SwipeSession().apply { visit(SwipeStep(1, 1)) }
+        val step = swipe.last
+        var search = SearchUiState().acceptRun(response(1), listOf(card(1), old)).hideGridLike(2)
+        var discovery = DiscoverUiState(cards = swipe.queue(search.activeCards, true))
+        val result = writeAndProject(
+            write = { stored = stored.copy(preference = gridLikeTarget(stored.preference)) },
+            project = {
+                search = search.copy(activeCards = listOf(card(1), stored))
+                discovery = discovery.copy(cards = swipe.queue(search.activeCards, true))
+            },
+            onWriteFailure = { search = search.restoreGridLike(2) },
+        )
+        assertEquals(DiscoveryMutationOutcome.Success, result)
+        assertEquals(Preference.LIKE, discovery.cards.single().preference)
+        assertTrue(discovery.cards.single().favorite)
+        assertEquals(step, swipe.last)
+        assertEquals(listOf(1L), gridCards(discovery, search).map { it.listingId })
+    }
+
+    @Test fun reprojectStopsAtEndEvenWhenRequestedWindowIsLarger() = runBlocking {
+        var calls = 0
+        val result = readDiscoveryWindow(500) {
+            calls++
+            DiscoveryPage(listOf(card(1)), null)
+        }
+        assertEquals(1, calls)
+        assertEquals(null, result.nextCursor)
+        assertEquals(1, result.cards.size)
+    }
+
     @Test fun mutationFailureRestoresGridAndReprojectsWithoutRepeatingWrite() = runBlocking {
         val events = mutableListOf<String>()
         val result = writeAndProject(
