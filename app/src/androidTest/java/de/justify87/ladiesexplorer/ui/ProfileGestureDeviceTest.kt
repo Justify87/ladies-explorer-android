@@ -34,9 +34,10 @@ class ProfileGestureDeviceTest {
                 SideEffect { scroll = list.firstVisibleItemScrollOffset + list.firstVisibleItemIndex * 10000 }
                 LazyColumn(Modifier.size(280.dp, 320.dp), state = list) {
                     item {
-                        PhotoGestureZone(Modifier.fillMaxWidth().height(240.dp).testTag("photo"),
-                            owner = "first", cardWidth = 280.dp, label = "Medium",
-                            onTap = { taps++ }, onSwipe = { decisions.add(it) }, onDrag = { feedback = it })
+                        PhotoGestureSurface(owner = "first", modifier = Modifier.fillMaxWidth().height(240.dp).testTag("photo"),
+                            onTap = { _, _ -> taps++; true }, onSwipe = { decisions.add(it) }, onDrag = { feedback = it }) { region ->
+                            Box(Modifier.fillMaxSize().then(region))
+                        }
                     }
                     items(20) { Text("Detail", Modifier.height(60.dp)) }
                 }
@@ -71,23 +72,58 @@ class ProfileGestureDeviceTest {
         var enabled by mutableStateOf(true)
         rule.setContent {
             MaterialTheme {
-                Box(Modifier.size(280.dp, 240.dp)) {
-                    PhotoGestureZone(Modifier.fillMaxSize().testTag("photo"), owner = enabled,
-                        cardWidth = 280.dp, label = "Medium", onTap = { taps++ },
-                        onSwipe = if (enabled) ({ decisions++ }) else null)
-                    TextButton(onClick = { buttons++ }, modifier = Modifier.align(Alignment.Center).testTag("control")) {
-                        Text("Retry")
+                PhotoGestureSurface(owner = enabled, modifier = Modifier.size(280.dp, 240.dp).testTag("photo"),
+                    onTap = { _, _ -> taps++; true }, onSwipe = if (enabled) ({ decisions++ }) else null) { region ->
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.fillMaxWidth().height(48.dp).testTag("chrome"))
+                        Box(Modifier.fillMaxWidth().weight(1f).then(region), contentAlignment = Alignment.Center) {
+                            TextButton(onClick = { buttons++ }, modifier = Modifier.testTag("control")) { Text("Retry") }
+                        }
                     }
                 }
             }
         }
+        rule.onNodeWithTag("chrome").performTouchInput { swipe(Offset(width * .1f, center.y), Offset(width * .9f, center.y)) }
         val control = rule.onNodeWithTag("control")
         control.performTouchInput { click(center) }
         control.performTouchInput { down(center); moveTo(center + Offset(400f, 0f)); up() }
-        rule.runOnIdle { assertEquals(1, buttons); assertEquals(0, decisions); assertEquals(0, taps); enabled = false }
         val photo = rule.onNodeWithTag("photo")
-        photo.performTouchInput { swipe(Offset(width * .2f, height * .2f), Offset(width * .8f, height * .2f)) }
-        photo.performTouchInput { click(Offset(width * .2f, height * .2f)) }
+        // Second finger on chrome (a different child hit path) cancels the drag.
+        photo.performTouchInput {
+            down(0, Offset(width * .2f, height * .7f))
+            moveTo(0, Offset(width * .55f, height * .7f))
+            down(1, Offset(width * .8f, 10f))
+            up(1); up(0)
+        }
+        rule.runOnIdle { assertEquals(1, buttons); assertEquals(0, decisions); assertEquals(0, taps) }
+        // Owner/enable change while a native pointer is still down.
+        photo.performTouchInput { down(Offset(width * .2f, height * .7f)); moveTo(Offset(width * .7f, height * .7f)) }
+        rule.runOnIdle { enabled = false }
+        photo.performTouchInput { up() }
+        rule.runOnIdle { assertEquals(0, decisions) }
+        photo.performTouchInput { swipe(Offset(width * .2f, height * .7f), Offset(width * .8f, height * .7f)) }
+        photo.performTouchInput { click(Offset(width * .2f, height * .7f)) }
         rule.runOnIdle { assertEquals(0, decisions); assertEquals(1, taps) }
+    }
+    @Test fun actualHeroSideTapAndSwipeDoNotInvokeEachOther() {
+        val decisions = mutableListOf<Preference>()
+        rule.setContent {
+            MaterialTheme {
+                ProfileMediaHero(
+                    media = listOf(de.justify87.ladiesexplorer.core.ProfileMediaItem("IMAGE", "", null, 0u),
+                        de.justify87.ladiesexplorer.core.ProfileMediaItem("IMAGE", "", null, 1u)),
+                    height = 400.dp, modifier = Modifier.testTag("hero"), originalUrl = null,
+                    actionsEnabled = true, isCurrent = { true }, selection = remember { ProfileMediaSelection() },
+                    identity = null, actionToken = null, compact = false, headerOwnsIdentity = false,
+                    onIdentityMeasured = {}, onSwipe = { decisions.add(it) })
+            }
+        }
+        val hero = rule.onNodeWithTag("hero")
+        hero.performTouchInput { swipe(Offset(width * .85f, height * .6f), Offset(width * .15f, height * .6f)) }
+        rule.onNodeWithText("1 / 2").assertExists()
+        rule.runOnIdle { assertEquals(listOf(Preference.DISLIKE), decisions) }
+        rule.onNodeWithContentDescription("Nächstes Medium").performTouchInput { click(center) }
+        rule.onNodeWithText("2 / 2").assertExists()
+        rule.runOnIdle { assertEquals(1, decisions.size) }
     }
 }
