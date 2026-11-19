@@ -146,6 +146,7 @@ internal fun ProfileMediaHero(
     headerOwnsIdentity: Boolean,
     onIdentityMeasured: (Int) -> Unit,
     onSwipe: ((Preference) -> Unit)? = null,
+    pointerFence: PhotoPointerFence? = null,
 ) {
     val context = LocalContext.current
     val index = selection.resolve(media, projectionAvailable)
@@ -247,7 +248,7 @@ internal fun ProfileMediaHero(
     }) else null
     PhotoGestureSurface(owner = Triple(gestureOwner, compact, projectionAvailable),
         modifier = Modifier.fillMaxWidth(), onTap = tapPhoto, onSwipe = decision,
-        onDrag = { drag = it }) { photoRegion ->
+        onDrag = { drag = it }, pointerFence = pointerFence) { photoRegion ->
         val photoArea: @Composable (ImageFeedback?, Boolean) -> Unit = { feedback, sideTaps ->
             BoxWithConstraints(Modifier.fillMaxSize().then(photoRegion)) {
                 val side = if (sideTaps && item?.kind == "IMAGE" && media.size > 1)

@@ -44,6 +44,7 @@ internal fun DiscoverScreen(
     onSnapshotChanged: (Boolean) -> Unit,
     onFavorite: (ProfileIdentityToken) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
+    pointerFence: PhotoPointerFence? = null,
     modifier: Modifier = Modifier,
 ) {
     val searchLoading = search.loading
@@ -240,7 +241,7 @@ internal fun DiscoverScreen(
                             isCurrent = { token?.let(isProfileCurrent) == true },
                             compact = presentation.budget.compactGallery,
                             headerOwnsIdentity = presentation.identityInHeader,
-                            onIdentityMeasured = onIdentityMeasured)
+                            onIdentityMeasured = onIdentityMeasured, pointerFence = pointerFence)
                     }
                     item(key = "header") {
                         Text("Profilinfos", style = MaterialTheme.typography.labelMedium)

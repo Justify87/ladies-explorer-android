@@ -50,6 +50,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -189,7 +190,9 @@ fun LadiesApp(
     BackHandler(enabled = home.importing || savedEditorOpen || savedOverviewOpen || route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
 
     val swipeShell = !search.profileOpen && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe
+    val photoFence = remember { PhotoPointerFence() }
     Scaffold(
+        modifier = if (swipeShell || search.profileOpen) Modifier.observePhotoPointers(photoFence) else Modifier,
         topBar = {
             if (!search.profileOpen && !swipeShell) TopAppBar(
                 title = {
@@ -285,6 +288,7 @@ fun LadiesApp(
                     onRetryProfile = viewModel::retryProfileProjection,
                     onBack = viewModel::closeProfile,
                     actionsBusy = discovery.busy,
+                    pointerFence = photoFence,
                     modifier = modifier,
                 )
             }
@@ -329,6 +333,7 @@ fun LadiesApp(
                                 onSnapshotChanged = viewModel::markSwipeSnapshotChanged,
                                 onFavorite = viewModel::toggleProfileFavorite,
                                 isProfileCurrent = viewModel::isProfileActionCurrent,
+                                pointerFence = photoFence,
                                 modifier = Modifier.weight(1f),
                             )
                         } else if (route.discovery == DiscoverMode.Grid) {

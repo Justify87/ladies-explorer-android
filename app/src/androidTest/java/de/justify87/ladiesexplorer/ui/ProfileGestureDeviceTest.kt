@@ -111,7 +111,7 @@ class ProfileGestureDeviceTest {
             MaterialTheme {
                 ProfileMediaHero(
                     media = listOf(de.justify87.ladiesexplorer.core.ProfileMediaItem("IMAGE", "", null, 0u),
-                        de.justify87.ladiesexplorer.core.ProfileMediaItem("IMAGE", "", null, 1u)),
+                        de.justify87.ladiesexplorer.core.ProfileMediaItem("VIDEO", "", null, 1u)),
                     height = 400.dp, modifier = Modifier.testTag("hero"), originalUrl = null,
                     actionsEnabled = true, isCurrent = { true }, selection = remember { ProfileMediaSelection() },
                     identity = null, actionToken = null, compact = false, headerOwnsIdentity = false,
@@ -125,5 +125,32 @@ class ProfileGestureDeviceTest {
         rule.onNodeWithContentDescription("Nächstes Medium").performTouchInput { click(center) }
         rule.onNodeWithText("2 / 2").assertExists()
         rule.runOnIdle { assertEquals(1, decisions.size) }
+    }
+
+    @Test fun secondFingerOutsideHeroCancelsWithoutTakingOverNativeControls() {
+        var decisions = 0
+        var railClicks = 0
+        rule.setContent {
+            MaterialTheme {
+                val fence = remember { PhotoPointerFence() }
+                Column(Modifier.size(280.dp, 320.dp).testTag("root").observePhotoPointers(fence)) {
+                    PhotoGestureSurface(owner = "fixture", modifier = Modifier.fillMaxWidth().height(240.dp),
+                        onSwipe = { decisions++ }, pointerFence = fence) { region ->
+                        Box(Modifier.fillMaxSize().then(region))
+                    }
+                    TextButton(onClick = { railClicks++ }, modifier = Modifier.height(64.dp).testTag("rail")) { Text("Like") }
+                }
+            }
+        }
+        val root = rule.onNodeWithTag("root")
+        root.performTouchInput {
+            down(0, Offset(width * .15f, height * .3f))
+            moveTo(0, Offset(width * .75f, height * .3f))
+            down(1, Offset(width * .9f, height * .86f))
+            up(1); up(0)
+        }
+        rule.runOnIdle { assertEquals(0, decisions) }
+        rule.onNodeWithTag("rail").performTouchInput { click(center) }
+        rule.runOnIdle { assertEquals(1, railClicks); assertEquals(0, decisions) }
     }
 }
