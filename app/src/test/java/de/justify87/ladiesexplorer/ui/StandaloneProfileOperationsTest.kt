@@ -25,6 +25,8 @@ class StandaloneProfileOperationsTest {
         var cached: ProfileResponse? = fixtureProfile()
         var identityError: Exception? = null
         var archivedMedia: List<ProfileMediaItem>? = null
+        var preference = Preference.NONE
+        var afterProjection: suspend (NativeProfileProjection?) -> NativeProfileProjection? = { it }
         var commit: suspend (Long, Long) -> Unit = { _, target -> owner = target }
         var archive: suspend (Long, Control) -> MediaArchiveReport = { snapshot, _ ->
             MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u)
@@ -39,11 +41,11 @@ class StandaloneProfileOperationsTest {
                 profileProjection = {
                     calls += "profile:$it"
                     identityError?.let { e -> throw e }
-                    cached?.let { profile ->
-                        NativeProfileProjection(profile, fixtureIdentity(owner), fixturePerson(owner),
+                    afterProjection(cached?.let { profile ->
+                        NativeProfileProjection(profile, fixtureIdentity(owner), fixturePerson(owner).copy(preference = preference),
                             archivedMedia ?: fixtureSwipe(snapshot = profile.snapshotId).media, emptyList(),
                             listOf(IdentityCandidate(2L, "CANDIDATE", false, true, 0u, 0u, null)))
-                    }
+                    })
                 },
                 archiveProfileMedia = { snapshot, control -> calls += "archive:$snapshot"; archive(snapshot, control) },
                 newArchiveControl = { Control().also(controls::add) },
@@ -146,7 +148,7 @@ class StandaloneProfileOperationsTest {
         assertNull(f.search.value.profile)
         assertFalse(f.search.value.profileOpen)
         assertFalse(f.discovery.value.busy)
-        assertEquals(listOf("confirm:4:2", "profile:4", "project:1",
+        assertEquals(listOf("confirm:4:2", "project:1",
             "discovery", "saved", "map", "home"), f.calls)
     }
 
@@ -179,7 +181,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.discovery.value.busy)
     }
 
-    @Test fun failedMergeWriteLeavesAllNotesAndProjectionUntouched() = runBlocking {
+    @Test fun failedMergeWriteReprojectsButPreservesNotesAndDoesNotReplayWrite() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
@@ -187,12 +189,96 @@ class StandaloneProfileOperationsTest {
         f.commit = { _, _ -> error("write failed") }
         f.confirmCurrent()
         f.idle()
-        assertEquals(listOf("confirm:4:2"), f.calls)
+        assertEquals(listOf("confirm:4:2", "profile:4", "project:1", "saved", "map"), f.calls)
         assertEquals("write failed", f.search.value.actionError)
         assertEquals(1L, f.search.value.profileIdentity?.personId)
         assertTrue(f.tickets.isCurrent(1L, ticket))
         assertEquals(setOf(1L, 2L, 3L), f.notes.value.keys)
         assertFalse(f.discovery.value.busy)
+    }
+
+    @Test fun rejectedMergeWithChangedOwnerUsesNewLocalProjectionWithoutTouchingNotes() = runBlocking {
+        val f = Fixture(this)
+        f.openOffline()
+        f.oldNotes()
+        val old = requireNotNull(f.search.value.detailIdentityToken())
+        val ticket = f.tickets.invalidate(1L)
+        f.owner = 7L
+        f.cached = fixtureProfile(12L)
+        f.operations.confirmIdentity(old, 2L)
+        f.idle()
+        assertEquals(7L, f.search.value.profileIdentity?.personId)
+        assertEquals(12L, f.search.value.profile?.snapshotId)
+        assertNotEquals(old, f.search.value.detailIdentityToken())
+        assertTrue(f.tickets.isCurrent(1L, ticket))
+        assertEquals(setOf(1L, 2L, 3L), f.notes.value.keys)
+        assertEquals(listOf("profile:4", "project:1", "saved", "map"), f.calls)
+        assertFalse(f.discovery.value.busy)
+        assertNotNull(f.search.value.actionError)
+    }
+
+    @Test fun lateDetailSuccessAndFailureCannotReplaceNewerProjection() = runBlocking {
+        val f = Fixture(this)
+        f.openOffline()
+        val session = f.search.value.profileSessionId
+        for (failLate in listOf(false, true)) {
+            val started = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            f.afterProjection = { old ->
+                started.complete(Unit)
+                release.await()
+                if (failLate) error("late read failed")
+                old
+            }
+            val late = launch { f.operations.refreshLocalProfile(session, 4L) }
+            started.await()
+            f.preference = if (failLate) Preference.DISLIKE else Preference.LIKE
+            f.afterProjection = { it }
+            f.operations.refreshLocalProfile(session, 4L)
+            val current = requireNotNull(f.search.value.detailIdentityToken())
+            assertEquals(f.preference, current.preference)
+            release.complete(Unit)
+            late.join()
+            assertEquals(current, f.search.value.detailIdentityToken())
+            assertNull(f.search.value.retryProfileListingId)
+        }
+    }
+
+    @Test fun stopBeforeFirstCommitOffersExplicitSourceRetryOnlyAfterLocalAbsence() = runBlocking {
+        val f = Fixture(this)
+        f.cached = null
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        f.source = { started.complete(Unit); release.await(); error("cancelled before commit") }
+        f.operations.loadProfile(4L, 1L) {}
+        started.await()
+        f.operations.setPresentationVisible(false)
+        f.operations.setPresentationVisible(true)
+        release.complete(Unit)
+        f.idle()
+        assertTrue(f.search.value.profileSourceRetryAllowed)
+        assertNull(f.search.value.profile)
+        assertEquals(1, f.calls.count { it.startsWith("source:") })
+        f.source = { fixtureProfile(12L) }
+        f.operations.retryProfileProjection()
+        f.idle()
+        assertEquals(12L, f.search.value.profile?.snapshotId)
+        assertFalse(f.search.value.profileSourceRetryAllowed)
+        assertEquals(2, f.calls.count { it.startsWith("source:") })
+    }
+
+    @Test fun knownLocalProfileCannotTriggerOnlineRetryEvenWhenProjectionMissing() = runBlocking {
+        val f = Fixture(this)
+        f.openOffline()
+        val session = f.search.value.profileSessionId
+        f.cached = null
+        try { f.operations.refreshLocalProfile(session, 4L); fail("expected missing projection") }
+        catch (_: IllegalStateException) { }
+        f.operations.retryProfileProjection()
+        f.idle()
+        assertFalse(f.search.value.profileSourceRetryAllowed)
+        assertNull(f.search.value.detailIdentityToken())
+        assertFalse(f.calls.any { it.startsWith("source:") })
     }
 
     @Test fun reopenedListingWaitsForOldSourceDrainAndBothCompletionsRefreshMap() = runBlocking {

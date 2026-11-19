@@ -99,6 +99,21 @@ class SwipeDeckStateTest {
         assertNull(currentSwipeActionCard(state, true, token))
         assertNull(state.swipeToken(fixtureSwipe(4L, 7L)))
     }
+    @Test fun nativePersonStateOwnsActionTokenAndMismatchBlocksAdmission() {
+        val row = card(4, 1)
+        val state = DiscoverUiState(cards = listOf(row), loading = false)
+        val native = fixtureSwipe()
+        val profile = native.copy(local = native.local.copy(
+            person = native.person.copy(preference = Preference.LIKE, favorite = true),
+        ))
+        val token = requireNotNull(state.swipeToken(profile))
+        assertEquals(Preference.LIKE, token.preference)
+        assertTrue(token.favorite)
+        assertNull(currentSwipeActionCard(state, false, token))
+        val reconciled = row.copy(preference = Preference.LIKE, favorite = true)
+        assertEquals(reconciled, currentSwipeActionCard(state.copy(cards = listOf(reconciled)), false, token))
+    }
+
     @Test fun mergeReconcilesVisitedAliasesWithoutCreatingVisitOrRetargetingUndo() {
         val session = SwipeSession()
         session.visit(SwipeStep(1, 1, Preference.NONE, Preference.LIKE))

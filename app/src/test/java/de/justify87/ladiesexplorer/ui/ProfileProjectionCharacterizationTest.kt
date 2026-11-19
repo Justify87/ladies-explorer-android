@@ -9,6 +9,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProfileProjectionCharacterizationTest {
+    @Test fun rejectedConditionalWriteRecoversDetailAndFeedIndependentlyWithoutReplay() = runBlocking {
+        val calls = mutableListOf<String>()
+        val original = IllegalStateException("CAS rejected")
+        val result = writeAndProject(
+            write = { calls += "write"; throw original },
+            recoverWriteFailure = { calls += "detail"; error("local read failed") },
+            project = { calls += "feed" },
+            afterWrite = { calls += "unexpected success" },
+        ) as DiscoveryMutationOutcome.WriteFailed
+        assertSame(original, result.failure)
+        assertNotNull(result.projectionFailure)
+        assertEquals(listOf("write", "detail", "feed"), calls)
+    }
+
     @Test fun hiddenSwipeCompletionsCoalesceDiscoveryButAlwaysInvalidateSavedSearch() {
         val calls = mutableListOf<String>()
         lateinit var policy: SwipeProjectionInvalidation
