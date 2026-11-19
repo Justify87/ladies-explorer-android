@@ -371,7 +371,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun mutateSavedDefinition(message: String, write: suspend () -> Unit, after: () -> Unit = {}) {
         val state = _searchUiState.value
-        if (state.loading || state.saving || state.savedEditorLoading) return
+        if (state.loading || state.saving || state.savedEditorLoading || state.savedResultsLoadingMore) return
         savedListGeneration.invalidate()
         invalidateActiveSearch()
         _searchUiState.update { it.copy(saving = true, savedListLoading = false, error = null) }
@@ -446,7 +446,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun showSavedResults(id: String) {
-        if (_searchUiState.value.loading || _searchUiState.value.saving) return
+        if (_searchUiState.value.loading || _searchUiState.value.saving || _searchUiState.value.savedEditorLoading) return
         invalidateActiveSearch()
         // Bind the pending load to the new list immediately. Never page the previous cursor
         // under the new generation; Back can invalidate the pending first page as well.
@@ -1128,7 +1128,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadProfile(listingId: Long, personId: Long) {
-        if (_discoverState.value.busy) return
+        if (_discoverState.value.busy || _searchUiState.value.loading || _searchUiState.value.saving) return
         cancelPreview()
         invalidateActiveSearch()
         invalidateProfileRequest()

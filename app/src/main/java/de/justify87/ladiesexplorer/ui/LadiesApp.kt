@@ -80,6 +80,7 @@ fun LadiesApp(
         save = { it.encode() }, restore = { ShellRoute.decode(it) },
     )) { mutableStateOf(ShellRoute()) }
     val stateHolder = rememberSaveableStateHolder()
+    val searchStateHolder = rememberSaveableStateHolder()
     val detailTabs = rememberProfileTabMemory()
     val swipeTabs = rememberProfileTabMemory()
     var lastPresentedRun by rememberSaveable { mutableStateOf(search.response?.searchRunId) }
@@ -306,7 +307,13 @@ fun LadiesApp(
                             )
                         }
                     }
-                    RootDestination.Search -> when (pane) {
+                    RootDestination.Search -> searchStateHolder.SaveableStateProvider(
+                        when (pane) {
+                            SearchPane.SavedResults -> "results/${search.showingSavedSearchId}"
+                            SearchPane.SavedEditor -> "editor/${search.editingSavedSearchId}"
+                            else -> pane.name
+                        }
+                    ) { when (pane) {
                     SearchPane.SavedList -> SavedSearchOverview(search, !home.loading && !discovery.busy,
                         onRefresh = viewModel::refreshSearchDefinitions, onSave = viewModel::saveCurrentSearch,
                         onEdit = viewModel::loadSavedSearch, onRun = viewModel::runSavedSearch,
@@ -339,7 +346,7 @@ fun LadiesApp(
                         onProfile=viewModel::loadProfile,
                         modifier=modifier,
                     ) }
-                    }
+                    } }
                     RootDestination.Saved -> SavedPeopleScreen(
                         state = discovery,
                         onKind = viewModel::selectSavedKind,
