@@ -108,7 +108,8 @@ internal fun DiscoverScreen(
             decks.retain(window)
             decks.readCurrent(card) { invalidateOtherProfiles ->
                 val localOnly = retryLocally || decks.requiresLocal(card) || card.listingId in state.localProfileStrictIds
-                val preferLocal = localOnly || decks.invalidation(card) != 0L || card.listingId in state.localProfileReloadIds
+                val preferLocal = localOnly || decks.invalidation(card) != 0L || card.listingId in state.localProfileReloadIds ||
+                    cardToken?.let { state.swipeRestore?.matches(it) } == true
                 core.readSwipeProfile(card.listingId, control, refresh = !preferLocal,
                     allowNetwork = !localOnly, onSourceRead = {
                         invalidateOtherProfiles()
@@ -198,10 +199,13 @@ internal fun DiscoverScreen(
             if (state.busy) add(ProfileNotice("Wird gespeichert", "Entscheidung oder Aktualisierung wird verarbeitet."))
         }
         val undo = { onUndo(deckToken) }
-        val skip = { cardToken?.let { onSkip(it, capture.read()) }; Unit }
+        val skip = { cardToken?.let { onSkip(it, presentationForDecision(state.swipeRestore, capture.read(), it)) }; Unit }
         // Hero gestures, rail and menu use exactly this rendered-token dispatch.
         val choose: (Preference) -> Unit = { preference ->
-            token?.takeIf(isProfileCurrent)?.let { onChoose(it, preference, capture.read()) }
+            token?.takeIf(isProfileCurrent)?.let {
+                val position = cardToken?.let { card -> presentationForDecision(state.swipeRestore, capture.read(), card) }
+                onChoose(it, preference, position)
+            }
         }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
             hasRail = card != null || state.canUndoSwipe, notices = notices, noticeOwner = menuContext,

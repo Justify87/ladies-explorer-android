@@ -32,7 +32,10 @@ class ProfilePresentationTest {
         memory.observe("listing/9", 22)
         memory.projectionChanged(key.copy(revision = 3L))
         assertTrue(memory.recovering)
-        assertTrue(memory.needsDetail())
+        assertEquals(ProfileRowRead.Detail, memory.dependency(ProfileFlowRows(ProfileMediaSelection()).apply {
+            item("hero") {}
+            item("profile-listings-head", ProfileRowRead.Detail) {}
+        }.build()))
         memory.observe("profile-facts", 0)
         assertEquals(2 to 22, memory.target(listOf("hero", "profile-listings-head", "listing/9")))
         memory.restored()
@@ -47,8 +50,9 @@ class ProfilePresentationTest {
         memory.projectionChanged(ProfileProjectionKey(4L, 1L, 11L, 2L, "{}"))
         memory.observe("profile-services", 60)
         memory.projectionChanged(null)
-        assertTrue(memory.needsFacts())
-        assertFalse(memory.needsDetail())
+        assertEquals(ProfileRowRead.Facts, memory.dependency(ProfileFlowRows(ProfileMediaSelection()).apply {
+            item("profile-services", ProfileRowRead.Facts) {}
+        }.build()))
         assertEquals(1 to 60, memory.target(listOf("hero", "profile-services")))
         assertEquals(1 to 0, memory.target(listOf("hero", "profile-services"), readFailed = true))
         assertEquals(19, restoredRowOffset(60, 20))
@@ -60,11 +64,15 @@ class ProfilePresentationTest {
         val memory = ProfileScrollMemory()
         memory.observe("listing/9", 22)
         memory.gap()
-        assertTrue(memory.needsListings())
+        val rows = ProfileFlowRows(ProfileMediaSelection()).apply {
+            item("hero") {}
+            item("profile-listings-head", ProfileRowRead.Detail) {}
+        }.build()
+        assertEquals(ProfileRowRead.Detail, memory.dependency(rows))
         assertEquals(1 to 0, memory.target(listOf("hero", "profile-listings-head")))
         assertEquals(2 to 22, memory.target(listOf("hero", "profile-listings-head", "listing/9")))
         memory.restored()
-        assertFalse(memory.needsListings())
+        assertNull(memory.dependency(rows))
     }
 
     @Test fun mediaSelectionSurvivesMissingProjectionAndReordering() {
@@ -90,7 +98,9 @@ class ProfilePresentationTest {
         assertTrue(ProfileSections(position.sections).expanded(ProfileSection.Services))
         val memory = ProfileScrollMemory(ProfileScrollAnchor(requireNotNull(position.anchorKey), position.anchorOffset),
             initialRecovery = true)
-        assertTrue(memory.needsFacts())
+        assertEquals(ProfileRowRead.Facts, memory.dependency(ProfileFlowRows(ProfileMediaSelection()).apply {
+            item("profile-services", ProfileRowRead.Facts) {}
+        }.build()))
         assertEquals(1 to 60, memory.target(listOf("hero", "profile-services")))
         assertEquals(19, restoredRowOffset(position.anchorOffset, 20))
         assertEquals(1 to 0, memory.target(listOf("hero", "profile-services"), readFailed = true))

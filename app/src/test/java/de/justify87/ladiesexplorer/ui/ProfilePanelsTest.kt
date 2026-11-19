@@ -197,12 +197,18 @@ class ProfilePanelsTest {
     }
 
     @Test fun demandUsesVisibleLazyItemsNotCollapsedHeaders() {
-        assertFalse(factsDemand(setOf("hero", "header")))
-        assertFalse(detailDemand(setOf("analysis-toggle", "history-toggle", "notes-toggle")))
-        assertTrue(factsDemand(setOf("profile-services")))
-        assertTrue(factsDemand(setOf("profile-facts")))
-        assertTrue(detailDemand(setOf("profile-analysis")))
-        assertTrue(detailDemand(setOf("event/1")))
+        val rows = ProfileFlowRows(ProfileMediaSelection()).apply {
+            item("hero") {}
+            item("analysis-toggle") {}
+            item("notes-toggle") {}
+            item("profile-services", ProfileRowRead.Facts) {}
+            item("profile-analysis", ProfileRowRead.Detail) {}
+            item("event/1", ProfileRowRead.Detail) {}
+            item("profile-notes", ProfileRowRead.Note) {}
+        }.build()
+        assertTrue(visibleProfileReads(rows, setOf("hero", "analysis-toggle", "notes-toggle")).isEmpty())
+        assertEquals(setOf(ProfileRowRead.Facts, ProfileRowRead.Detail, ProfileRowRead.Note),
+            visibleProfileReads(rows, setOf("profile-services", "event/1", "profile-notes")))
     }
 
     @Test fun disposedProjectionCannotPublishLateRead() = runBlocking {

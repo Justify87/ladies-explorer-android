@@ -210,8 +210,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference) =
         chooseProfilePreference(token, preference, null)
 
-    internal fun chooseSwipePreference(token: SwipeActionToken, preference: Preference, presentation: SwipePresentation?) =
-        chooseProfilePreference(token, preference, presentation)
+    internal fun chooseSwipePreference(token: SwipeActionToken, preference: Preference, presentation: SwipePresentation?) {
+        val card = SwipeCardToken(SwipeDeckToken(token.runId, token.session), token.listingId, token.ownerId)
+        chooseProfilePreference(token, preference,
+            presentationForDecision(_discoverState.value.swipeRestore, presentation, card))
+    }
 
     private fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference, presentation: SwipePresentation?) {
         if (!isProfileActionCurrent(token)) return
@@ -736,8 +739,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     internal fun skipCard(token: SwipeCardToken, presentation: SwipePresentation?) {
         val card = admittedTraversal(token) ?: return
+        val position = presentationForDecision(_discoverState.value.swipeRestore, presentation, token)
         invalidateSwipeActions()
-        swipeSession.visit(SwipeStep(card.listingId, card.personId, presentation = presentation?.takeIf { it.matches(token) }))
+        swipeSession.visit(SwipeStep(card.listingId, card.personId, presentation = position))
         _discoverState.update {
             it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true, swipeRestore = null)
         }
@@ -811,6 +815,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val step = swipeSession.last ?: return
         mutateDiscovery("Undo fehlgeschlagen", write = {
             undoSwipeStep(step, core::setSwipePreference, { core.profileIdentity(it).personId }, swipeSession::undo)
+        }, afterWrite = {
+            // The restored listing may be outside the previous three-card window.
+            // Prefer its existing local projection; a never-loaded skip may still need source data.
+            _discoverState.update { it.copy(localProfileReloadIds = it.localProfileReloadIds + step.listingId) }
         })
     }
 

@@ -151,7 +151,7 @@ internal fun ProfileMediaHero(
     val context = LocalContext.current
     val index = selection.resolve(media, projectionAvailable)
     LaunchedEffect(media, index, projectionAvailable) {
-        if (projectionAvailable) selection.select(media, index)
+        if (projectionAvailable) selection.select(media, selection.resolve(media, true))
     }
     val item = media.getOrNull(index)
     var more by remember(actionToken, item?.url, item?.localPath, originalUrl, actionsEnabled) { mutableStateOf(false) }

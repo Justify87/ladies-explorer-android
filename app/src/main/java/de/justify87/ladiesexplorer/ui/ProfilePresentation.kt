@@ -20,11 +20,16 @@ data class SwipePresentation(
     val mediaIndex: Int = 0,
 ) {
     internal fun matches(projection: ProfileProjectionKey?, run: Long?) = projection != null &&
-        runId == run && listingId == projection.listingId && ownerId == projection.ownerId &&
-        snapshotId == projection.snapshotId && filters == projection.filters
+        runId == run && listingId == projection.listingId && ownerId == projection.ownerId
 
     internal fun matches(token: SwipeActionToken) = runId == token.runId &&
-        listingId == token.listingId && ownerId == token.ownerId && snapshotId == token.snapshotId
+        listingId == token.listingId && ownerId == token.ownerId
+
+    // Stable keys survive a changed snapshot; pixel offsets do not necessarily do so.
+    internal fun anchorFor(projection: ProfileProjectionKey) = anchorKey?.let {
+        ProfileScrollAnchor(it, if (snapshotId == projection.snapshotId && filters == projection.filters)
+            anchorOffset.coerceAtLeast(0) else 0)
+    }
 
     internal fun matches(token: SwipeCardToken) = runId == token.deck.runId &&
         listingId == token.listingId && ownerId == token.ownerId
@@ -33,6 +38,56 @@ data class SwipePresentation(
 /** The flow owns actual presentation state; the deck captures it synchronously at admission. */
 internal class SwipePresentationCapture {
     var read: () -> SwipePresentation? = { null }
+}
+
+/** Pending receipt is authoritative until the entire presentation has been applied.
+ * A newer live capture must not overwrite it during a projection/layout gap. */
+internal fun presentationForDecision(
+    pending: SwipePresentation?, captured: SwipePresentation?, card: SwipeCardToken,
+): SwipePresentation? = pending?.takeIf { it.matches(card) } ?: captured?.takeIf { it.matches(card) }
+
+/** Coordinates existing presentation owners; no copied media, section or scroll state.
+ * A composition replacement deliberately starts a pending receipt again against its own layout. */
+internal class ProfileRestoreCoordinator {
+    enum class Phase { Idle, Waiting, Restoring, Applied, Invalid }
+    var phase by mutableStateOf(Phase.Idle)
+        private set
+    private var request: SwipePresentation? = null
+    private var prepared: ProfileProjectionKey? = null
+
+    fun synchronize(
+        receipt: SwipePresentation?, projection: ProfileProjectionKey?, run: Long?,
+        media: ProfileMediaSelection, sections: ProfileSections, scroll: ProfileScrollMemory,
+    ) {
+        if (request != receipt) {
+            request = receipt
+            prepared = null
+            phase = if (receipt == null) Phase.Idle else Phase.Waiting
+        }
+        if (receipt == null || projection == null || phase == Phase.Applied || phase == Phase.Invalid) return
+        if (!receipt.matches(projection, run)) {
+            phase = Phase.Invalid
+            return
+        }
+        if (phase != Phase.Restoring || prepared?.snapshotId != projection.snapshotId ||
+            prepared?.filters != projection.filters) {
+            media.restore(receipt.mediaIndex, receipt.mediaId)
+            sections.restore(receipt.sections)
+            scroll.restore(receipt.anchorFor(projection))
+        }
+        prepared = projection
+        phase = Phase.Restoring
+    }
+
+    fun canRestore(receipt: SwipePresentation?) =
+        receipt == null || request == receipt && phase == Phase.Restoring
+
+    fun complete(receipt: SwipePresentation?) {
+        if (receipt != null && request == receipt && phase == Phase.Restoring) phase = Phase.Applied
+    }
+
+    fun terminal(receipt: SwipePresentation?) = receipt != null && request == receipt &&
+        (phase == Phase.Applied || phase == Phase.Invalid)
 }
 internal data class ProfileProjectionKey(
     val listingId: Long, val ownerId: Long, val snapshotId: Long, val revision: Long, val filters: String,
@@ -49,7 +104,7 @@ internal class ProfileScrollMemory(
 
     /** Also detects a direct revision replacement, where model never becomes null. */
     fun projectionChanged(next: ProfileProjectionKey?) {
-        if (projection != null && projection != next) gap()
+        if (projection != next && (projection != null || next == null)) gap()
         projection = next
     }
 
@@ -57,10 +112,13 @@ internal class ProfileScrollMemory(
         if (!recovering) anchor = ProfileScrollAnchor(key, offset.coerceAtLeast(0))
     }
     fun gap() { if (anchor != null) recovering = true }
-    fun needsFacts() = recovering && (anchor?.key == "profile-facts" || anchor?.key == "profile-services")
-    fun needsDetail() = needsListings() || recovering &&
-        (anchor?.key == "profile-analysis" || anchor?.key == "profile-listings-head")
-    fun needsListings() = recovering && anchor?.key?.startsWith("listing/") == true
+    fun restore(value: ProfileScrollAnchor?) {
+        anchor = value
+        recovering = true
+    }
+
+    fun dependency(rows: List<ProfileFlowRows.Entry>): ProfileRowRead? =
+        target(rows.map { it.key })?.let { (index, _) -> rows[index].read }
 
     fun target(keys: List<String>, readFailed: Boolean = false): Pair<Int, Int>? {
         if (!recovering || keys.isEmpty()) return null
@@ -88,33 +146,45 @@ internal fun restoredRowOffset(offset: Int, measuredSize: Int) =
     offset.coerceIn(0, (measuredSize - 1).coerceAtLeast(0))
 
 @Composable
-internal fun rememberProfileScrollMemory(reset: Boolean, initial: ProfileScrollAnchor? = null): ProfileScrollMemory = rememberSaveable(
+internal fun rememberProfileScrollMemory(reset: Boolean): ProfileScrollMemory = rememberSaveable(
     saver = listSaver<ProfileScrollMemory, String>(
-        save = { listOf(it.anchor?.key.orEmpty(), (it.anchor?.offset ?: 0).toString(), it.recovering.toString()) },
+        save = { listOf(it.anchor?.key.orEmpty(), (it.anchor?.offset ?: 0).toString()) },
         restore = {
-            ProfileScrollMemory(it[0].takeIf(String::isNotEmpty)?.let { key ->
-                ProfileScrollAnchor(key, it[1].toInt())
-            }, it[2].toBoolean())
+            val anchor = it[0].takeIf(String::isNotEmpty)?.let { key -> ProfileScrollAnchor(key, it[1].toInt()) }
+            // The old LazyColumn indices and projection are not transferable to a new layout.
+            ProfileScrollMemory(anchor, initialRecovery = anchor != null || reset)
         },
     ),
-) { ProfileScrollMemory(initialAnchor = initial, initialRecovery = reset || initial != null) }
+) { ProfileScrollMemory(initialRecovery = reset) }
 
 /** The actual lazy row manifest is also the anchor resolver; there is no parallel index table. */
+internal enum class ProfileRowRead { Facts, Detail, Note }
+
 internal class ProfileFlowRows(val mediaSelection: ProfileMediaSelection) {
-    data class Entry(val key: String, val content: @Composable () -> Unit)
+    data class Entry(val key: String, val read: ProfileRowRead?, val content: @Composable () -> Unit)
     private val rows = mutableListOf<Entry>()
-    fun item(key: String, content: @Composable () -> Unit) { rows.add(Entry(key, content)) }
-    fun <T> items(values: List<T>, key: (T) -> String, content: @Composable (T) -> Unit) {
-        values.forEach { value -> item(key(value)) { content(value) } }
+    fun item(key: String, read: ProfileRowRead? = null, content: @Composable () -> Unit) {
+        rows.add(Entry(key, read, content))
+    }
+    fun <T> items(values: List<T>, key: (T) -> String, read: ProfileRowRead? = null, content: @Composable (T) -> Unit) {
+        values.forEach { value -> item(key(value), read) { content(value) } }
     }
     fun build(): List<Entry> = rows.toList()
 }
+
+internal fun visibleProfileReads(rows: List<ProfileFlowRows.Entry>, keys: Set<Any>): Set<ProfileRowRead> =
+    rows.filter { it.key in keys }.mapNotNull { it.read }.toSet()
 
 internal class ProfileMediaSelection(initialIndex: Int = 0, initialId: String? = null) {
     var index by mutableIntStateOf(initialIndex)
         private set
     var id by mutableStateOf(initialId)
         private set
+
+    fun restore(position: Int, mediaId: String?) {
+        index = position.coerceAtLeast(0)
+        id = mediaId
+    }
 
     private fun ProfileMediaItem.key() = "${kind}:${url.ifBlank { localPath.orEmpty() }}"
     fun resolve(media: List<ProfileMediaItem>, available: Boolean): Int {
@@ -128,12 +198,12 @@ internal class ProfileMediaSelection(initialIndex: Int = 0, initialId: String? =
 }
 
 @Composable
-internal fun rememberProfileMediaSelection(initialIndex: Int = 0, initialId: String? = null): ProfileMediaSelection = rememberSaveable(
+internal fun rememberProfileMediaSelection(): ProfileMediaSelection = rememberSaveable(
     saver = listSaver<ProfileMediaSelection, String>(
         save = { listOf(it.index.toString(), it.id.orEmpty()) },
         restore = { ProfileMediaSelection(it[0].toInt(), it[1].ifEmpty { null }) },
     ),
-) { ProfileMediaSelection(initialIndex = initialIndex, initialId = initialId) }
+) { ProfileMediaSelection() }
 
 /** Owns only demand for one immutable local projection, never the draft or its write.
  * Both automatic demand and explicit retry live outside lazy items. */

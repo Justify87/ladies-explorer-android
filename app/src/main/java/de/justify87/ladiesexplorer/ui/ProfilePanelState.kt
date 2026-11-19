@@ -1,6 +1,5 @@
 package de.justify87.ladiesexplorer.ui
 
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import de.justify87.ladiesexplorer.LadiesApplication
@@ -9,7 +8,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /** Local reads are keyed by the immutable rendered projection. Scrolling away does
@@ -137,33 +135,26 @@ internal class ProfilePanels(
     }
 }
 
-internal fun factsDemand(keys: Set<Any>) =
-    "profile-facts" in keys || "profile-services" in keys
-
-internal fun detailDemand(keys: Set<Any>) =
-    "profile-analysis" in keys || "profile-history-head" in keys ||
-        "profile-listings-head" in keys ||
-        keys.any { it is String && (it.startsWith("event/") || it.startsWith("listing/")) }
+/** Injection seam for synthetic profile-flow tests; production still uses only CoreStore. */
+internal class ProfilePanelReads(
+    val facts: suspend (Long, String) -> ProfileFacts,
+    val detail: suspend (Long) -> PersonDetail,
+    val comparison: suspend (Long, Long, Long) -> List<SnapshotDifference>,
+)
 
 @Composable
 internal fun rememberProfilePanels(
-    model: ProfileReadModel?,
-    filters: String,
-    listState: LazyListState,
+    model: ProfileReadModel?, filters: String, injected: ProfilePanelReads? = null,
 ): ProfilePanels {
-    val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
+    val reads = injected ?: run {
+        val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
+        remember(core) { ProfilePanelReads(core::profileFacts, core::personDetail, core::compareSnapshots) }
+    }
     val scope = rememberCoroutineScope()
-    val panels = remember(core, scope, model?.profile?.listingId, model?.profile?.snapshotId,
+    val panels = remember(reads, scope, model?.profile?.listingId, model?.profile?.snapshotId,
         model?.identity?.personId, model?.revision, filters) {
-        ProfilePanels(scope, model?.identity?.personId, core::profileFacts, core::personDetail, core::compareSnapshots)
+        ProfilePanels(scope, model?.identity?.personId, reads.facts, reads.detail, reads.comparison)
     }
     DisposableEffect(panels) { onDispose { panels.close() } }
-    LaunchedEffect(panels, listState) {
-        if (model == null) return@LaunchedEffect
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.key }.toSet() }.collect { keys ->
-            if (factsDemand(keys)) launch { panels.loadFacts(model.profile.snapshotId, filters) }
-            if (detailDemand(keys)) launch { panels.loadDetail() }
-        }
-    }
     return panels
 }
