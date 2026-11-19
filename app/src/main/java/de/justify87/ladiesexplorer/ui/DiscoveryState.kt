@@ -4,6 +4,10 @@ import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.DiscoveryCursor
 import de.justify87.ladiesexplorer.core.DiscoveryPage
 import de.justify87.ladiesexplorer.core.Preference
+import de.justify87.ladiesexplorer.core.SavedPeopleWindow
+import de.justify87.ladiesexplorer.core.MapOverview
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 
 /** Rust owns membership and filtering. The transient hide is only grid presentation. */
@@ -97,4 +101,83 @@ private suspend fun <T> projectionResult(read: suspend () -> T): Result<T> = try
     throw cancel
 } catch (failure: Exception) {
     Result.failure(failure)
+}
+
+internal data class DiscoveryProjection(
+    val runId: Long?,
+    val visible: List<DiscoveryCard>,
+    val page: DiscoveryPage,
+)
+
+/** Existing independent StateFlow publication; the ViewModel retains epoch and read ownership. */
+internal class DiscoveryProjectionPublisher(
+    private val _searchUiState: MutableStateFlow<SearchUiState>,
+    private val _discoverState: MutableStateFlow<DiscoverUiState>,
+    private val swipeSession: SwipeSession,
+    private val currentEpoch: () -> Long,
+    private val onLocalWindow: (Int) -> Unit,
+    private val discoveryPage: suspend () -> DiscoveryProjection,
+    private val savedPage: suspend () -> SavedPeopleWindow,
+) {
+    private fun publishDiscovery(epoch: Long, projection: DiscoveryProjection) {
+        if (epoch != currentEpoch() || projection.runId != _searchUiState.value.response?.searchRunId) return
+        if (projection.runId == null) onLocalWindow(projection.page.cards.size)
+        _searchUiState.update { it.copy(activeCards = projection.visible) }
+        _discoverState.update {
+            it.copy(
+                cards = swipeSession.queue(projection.page.cards, active = projection.runId != null),
+                replayLikes = swipeSession.replayLikes,
+                canUndoSwipe = swipeSession.last != null,
+                activeRunId = projection.runId,
+                activeVisibleCount = projection.visible.size,
+                nextCursor = projection.page.nextCursor,
+                loadingMore = false, error = null,
+            )
+        }
+    }
+
+    // The reads share an epoch but not validity or failure. Mutation ownership
+    // is released only by its caller, never by publication of a partial view.
+    suspend fun project(epoch: Long): Boolean = readIndependentProjections(
+        first = discoveryPage,
+        second = savedPage,
+        publishFirst = { result ->
+            if (epoch == currentEpoch()) result.fold(
+                onSuccess = { publishDiscovery(epoch, it) },
+                onFailure = { failure ->
+                    _searchUiState.update { it.copy(activeCards = emptyList()) }
+                    _discoverState.update { it.copy(cards = emptyList(), nextCursor = null,
+                        activeVisibleCount = 0, error = failure.message ?: "Entdecken fehlgeschlagen") }
+                },
+            )
+        },
+        publishSecond = { result ->
+            if (epoch == currentEpoch()) result.fold(
+                onSuccess = { page -> _discoverState.update { it.copy(savedPage = page.regular,
+                    savedRecent = page.recent, savedError = null) } },
+                onFailure = { failure -> _discoverState.update { it.copy(savedPage = null, savedRecent = null,
+                    savedError = failure.message ?: "Gespeicherte Personen konnten nicht geladen werden") } },
+            )
+        },
+    )
+}
+
+/** Existing map read and epoch guard shared by refresh and resolver completion. */
+internal suspend fun projectMapOverview(
+    state: MutableStateFlow<MapUiState>,
+    current: () -> Boolean,
+    read: suspend () -> MapOverview,
+    accept: (MapUiState, MapOverview) -> MapUiState,
+) {
+    try {
+        val overview = read()
+        if (current()) state.update { accept(it, overview) }
+    } catch (cancelled: CancellationException) {
+        if (current()) state.update { it.copy(loading = false) }
+        throw cancelled
+    } catch (failure: Exception) {
+        if (current()) state.update {
+            it.copy(loading = false, error = failure.message ?: "Karte konnte nicht geladen werden")
+        }
+    }
 }

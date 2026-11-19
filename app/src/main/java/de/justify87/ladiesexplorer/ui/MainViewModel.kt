@@ -165,6 +165,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     )
 
 
+    private val discoveryPublisher by lazy {
+        DiscoveryProjectionPublisher(
+            _searchUiState, _discoverState, swipeSession, { discoveryEpoch },
+            { localWindow = maxOf(localWindow, it) }, ::discoveryPage, ::savedPage,
+        )
+    }
+
     private val swipeInvalidation by lazy {
         SwipeProjectionInvalidation(savedSearch::refreshResultProjection, ::refreshDiscovery, ::refreshMap)
     }
@@ -367,18 +374,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val favoritesOnly = _mapState.value.favoritesOnly
         _mapState.update { it.copy(loading = true, error = null, failedLookups = 0u) }
         viewModelScope.launch {
-            try {
-                val overview = core.mapOverview(favoritesOnly)
-                if (epoch == mapEpoch) _mapState.update {
-                    it.copy(overview = overview, loading = false)
-                }
-            } catch (cancelled: CancellationException) {
-                if (epoch == mapEpoch) _mapState.update { it.copy(loading = false) }
-                throw cancelled
-            } catch (failure: Exception) {
-                if (epoch == mapEpoch) _mapState.update {
-                    it.copy(loading = false, error = failure.message ?: "Karte konnte nicht geladen werden")
-                }
+            projectMapOverview(_mapState, { epoch == mapEpoch }, { core.mapOverview(favoritesOnly) }) { state, overview ->
+                state.copy(overview = overview, loading = false)
             }
         }
     }
@@ -424,28 +421,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // intervening search/favorite changes must be visible.
             val epoch = ++mapEpoch
             _mapState.update { it.copy(loading = true) }
-            try {
-                val latest = core.mapOverview(_mapState.value.favoritesOnly)
-                if (epoch == mapEpoch) _mapState.update {
-                    it.copy(overview = latest, failedLookups = failedLookups,
-                        loading = false, error = failureMessage)
-                }
-            } catch (cancelled: CancellationException) {
-                if (epoch == mapEpoch) _mapState.update { it.copy(loading = false) }
-                throw cancelled
-            } catch (failure: Exception) {
-                if (epoch == mapEpoch) _mapState.update {
-                    it.copy(loading = false, error = failure.message ?: "Karte konnte nicht geladen werden")
-                }
+            projectMapOverview(_mapState, { epoch == mapEpoch }, { core.mapOverview(_mapState.value.favoritesOnly) }) { state, latest ->
+                state.copy(overview = latest, failedLookups = failedLookups, loading = false, error = failureMessage)
             }
         }
     }
-
-    private data class DiscoveryProjection(
-        val runId: Long?,
-        val visible: List<DiscoveryCard>,
-        val page: DiscoveryPage,
-    )
 
     private suspend fun discoveryPage(): DiscoveryProjection {
         val active = _searchUiState.value.response
@@ -478,47 +458,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshDiscovery()
     }
 
-    private fun publishDiscovery(epoch: Long, projection: DiscoveryProjection) {
-        if (epoch != discoveryEpoch || projection.runId != _searchUiState.value.response?.searchRunId) return
-        if (projection.runId == null) localWindow = maxOf(localWindow, projection.page.cards.size)
-        _searchUiState.update { it.copy(activeCards = projection.visible) }
-        _discoverState.update {
-            it.copy(
-                cards = swipeSession.queue(projection.page.cards, active = projection.runId != null),
-                replayLikes = swipeSession.replayLikes,
-                canUndoSwipe = swipeSession.last != null,
-                activeRunId = projection.runId,
-                activeVisibleCount = projection.visible.size,
-                nextCursor = projection.page.nextCursor,
-                loadingMore = false, error = null,
-            )
-        }
-    }
-
-    // The reads share an epoch but not validity or failure. Mutation ownership
-    // is released only by its caller, never by publication of a partial view.
-    private suspend fun projectDiscovery(epoch: Long): Boolean = readIndependentProjections(
-        first = ::discoveryPage,
-        second = ::savedPage,
-        publishFirst = { result ->
-            if (epoch == discoveryEpoch) result.fold(
-                onSuccess = { publishDiscovery(epoch, it) },
-                onFailure = { failure ->
-                    _searchUiState.update { it.copy(activeCards = emptyList()) }
-                    _discoverState.update { it.copy(cards = emptyList(), nextCursor = null,
-                        activeVisibleCount = 0, error = failure.message ?: "Entdecken fehlgeschlagen") }
-                },
-            )
-        },
-        publishSecond = { result ->
-            if (epoch == discoveryEpoch) result.fold(
-                onSuccess = { page -> _discoverState.update { it.copy(savedPage = page.regular,
-                    savedRecent = page.recent, savedError = null) } },
-                onFailure = { failure -> _discoverState.update { it.copy(savedPage = null, savedRecent = null,
-                    savedError = failure.message ?: "Gespeicherte Personen konnten nicht geladen werden") } },
-            )
-        },
-    )
+    private suspend fun projectDiscovery(epoch: Long): Boolean = discoveryPublisher.project(epoch)
 
     fun markSwipeSnapshotChanged() = swipeInvalidation.sourceCompleted()
 

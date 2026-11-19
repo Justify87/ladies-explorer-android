@@ -9,19 +9,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SwipeProfileReadTest {
-    private fun profile(snapshot: Long = 11L) = ProfileResponse(
-        listingId = 4L, snapshotId = snapshot, newSnapshot = false, advertId = "fixture",
-        name = "Fixture", city = "Fixture city", description = "", postalCode = null,
-        hiddenLocation = null, sourceProfileId = null, canonicalId = null,
-        phoneDisplay = null, publishedAt = null, traitsJson = "{}", servicesJson = "{}",
-        openingTimesJson = "{}", media = emptyList(),
-    )
-
-    private fun identity(owner: Long) = ProfileIdentity(
-        personId = owner, status = "ACTIVE", profileUrl = null, personNew = false,
-        listingNew = false, hasVideo = false, age = null,
-    )
-
     private class Fixture(val cachedProfile: ProfileResponse?) {
         val calls = mutableListOf<String>()
         var owner = 1L
@@ -31,7 +18,7 @@ class SwipeProfileReadTest {
             cached = { calls += "cache:$it"; cachedProfile },
             source = { calls += "source:$it"; online() },
             identity = { calls += "identity:$it"; ProfileIdentity(owner, "ACTIVE", null, false, false, false, null) },
-            person = { calls += "person:$it"; onPerson(); PersonSummary(it, "Fixture", Preference.NONE, false, 1u, "") },
+            person = { calls += "person:$it"; onPerson(); fixturePerson(it) },
             media = { calls += "media:$it"; listOf(ProfileMediaItem("IMAGE", "", null, 0u)) },
             history = { calls += "history:$it"; emptyList() },
             candidates = {
@@ -42,17 +29,17 @@ class SwipeProfileReadTest {
     }
 
     @Test fun cachedPrefetchDoesNotAccessSourceAndReadsBySnapshotAndOwner() = runBlocking {
-        val f = Fixture(profile())
+        val f = Fixture(fixtureProfile())
         val result = readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads)
         assertTrue(result.fromArchive)
         assertEquals(11L, result.profile.snapshotId)
-        assertEquals(identity(1L), result.identity)
+        assertEquals(fixtureIdentity(1L), result.identity)
         assertEquals(1L, result.person?.personId)
         assertEquals(listOf("cache:4", "identity:4", "person:1", "media:11", "history:1", "candidates:4:owner:1"), f.calls)
     }
 
     @Test fun failedRefreshFallsBackLocallyAndReportsNativeCompletionExactlyOnce() = runBlocking {
-        val f = Fixture(profile())
+        val f = Fixture(fixtureProfile())
         f.online = { error("source failed") }
         val result = readSwipeProfile(4L, true, true, { f.calls += "completion" }, f.reads)
         assertTrue(result.fromArchive)
@@ -62,7 +49,7 @@ class SwipeProfileReadTest {
     }
 
     @Test fun successfulRefreshUsesReturnedSnapshotWithoutExtraSourceRead() = runBlocking {
-        val f = Fixture(profile())
+        val f = Fixture(fixtureProfile())
         val result = readSwipeProfile(4L, true, true, { f.calls += "completion" }, f.reads)
         assertFalse(result.fromArchive)
         assertNull(result.warning)
@@ -74,7 +61,7 @@ class SwipeProfileReadTest {
     }
 
     @Test fun cancelledSourceDoesNotFallBackOrStartLocalProjectionButSignalsCompletion() = runBlocking {
-        val f = Fixture(profile())
+        val f = Fixture(fixtureProfile())
         val stopped = CancellationException("cancelled")
         f.online = { throw stopped }
         val failure = runCatching {
@@ -85,7 +72,7 @@ class SwipeProfileReadTest {
     }
 
     @Test fun knownGapOwnerChangeDuringMultiReadReturnsMixedProjection() = runBlocking {
-        val f = Fixture(profile())
+        val f = Fixture(fixtureProfile())
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         f.onPerson = { started.complete(Unit); finish.await() }
@@ -107,4 +94,37 @@ class SwipeProfileReadTest {
     }
 
 
+
+    @Test fun offlineWithoutCacheFailsWithoutSourceOrCompletion() = runBlocking {
+        val f = Fixture(null)
+        val error = runCatching { readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads) }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+        assertEquals(listOf("cache:4"), f.calls)
+    }
+
+    @Test fun firstSourceFailureWithoutCacheSignalsCompletionAndPreservesFailure() = runBlocking {
+        val f = Fixture(null)
+        val expected = IllegalStateException("no cache")
+        f.online = { throw expected }
+        val error = runCatching { readSwipeProfile(4L, true, true, { f.calls += "completion" }, f.reads) }.exceptionOrNull()
+        assertSame(expected, error)
+        assertEquals(listOf("cache:4", "source:4", "completion"), f.calls)
+    }
+
+    @Test fun sourceSuccessThenProjectionFailureDoesNotRetrySource() = runBlocking {
+        val f = Fixture(fixtureProfile())
+        val failure = IllegalStateException("person projection failed")
+        f.onPerson = { throw failure }
+        val error = runCatching { readSwipeProfile(4L, true, true, { f.calls += "completion" }, f.reads) }.exceptionOrNull()
+        assertSame(failure, error)
+        assertEquals(listOf("cache:4", "source:4", "completion", "identity:4", "person:1"), f.calls)
+    }
+
+    @Test fun cachedActiveRunPrefetchStillAvoidsSource() = runBlocking {
+        val f = Fixture(fixtureProfile())
+        val result = readSwipeProfile(4L, false, true, { f.calls += "completion" }, f.reads)
+        assertTrue(result.fromArchive)
+        assertEquals(1L, result.person?.personId)
+        assertFalse(f.calls.any { it.startsWith("source:") || it == "completion" })
+    }
 }
