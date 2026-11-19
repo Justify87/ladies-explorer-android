@@ -20,6 +20,7 @@ internal fun ProfileDetailScreen(
     onPreference: (Long, Preference) -> Unit,
     onConfirmIdentity: (DetailIdentityToken, Long) -> Unit,
     onCancelArchive: () -> Unit,
+    onRetryProfile: () -> Unit,
     onBack: () -> Unit,
     actionsBusy: Boolean,
     modifier: Modifier = Modifier,
@@ -68,6 +69,11 @@ internal fun ProfileDetailScreen(
             if (state.loading) item { CircularProgressIndicator() }
             state.error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
             state.actionError?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
+            if (state.retryProfileListingId != null) item {
+                TextButton(onClick = onRetryProfile, enabled = !state.actionBusy && !actionsBusy) {
+                    Text("Profil erneut laden")
+                }
+            }
             if (profile != null) {
                 item(key = "media") {
                     ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),

@@ -274,6 +274,7 @@ fun LadiesApp(
                     onPreference = viewModel::choosePreference,
                     onConfirmIdentity = viewModel::confirmIdentity,
                     onCancelArchive = viewModel::cancelMediaArchive,
+                    onRetryProfile = viewModel::retryProfileProjection,
                     onBack = viewModel::closeProfile,
                     actionsBusy = discovery.busy,
                     modifier = modifier,

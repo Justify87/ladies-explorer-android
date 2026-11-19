@@ -117,6 +117,7 @@ data class SearchUiState(
     val identityCandidates: List<IdentityCandidate> = emptyList(),
     val actionBusy: Boolean = false,
     val actionError: String? = null,
+    val retryProfileListingId: Long? = null,
     val mediaArchive: MediaArchiveReport? = null,
     val archiving: Boolean = false,
     val mediaWarning: String? = null,
@@ -818,6 +819,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     internal fun confirmIdentity(token: DetailIdentityToken, targetPersonId: Long) =
         profileOperations.confirmIdentity(token, targetPersonId)
+
+    internal fun retryProfileProjection() = profileOperations.retryProfileProjection()
 
     fun refresh() {
         if (homeOwner.occupied) {

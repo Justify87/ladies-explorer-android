@@ -3,6 +3,10 @@ package de.justify87.ladiesexplorer.ui
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -54,6 +58,7 @@ internal class StandaloneProfileOperations<C : Any>(
         profile = local.profile, profileIdentity = local.identity,
         selectedPersonId = local.identity.personId, selectedPerson = local.person,
         profileMedia = local.media, changeEvents = local.history, identityCandidates = local.candidates,
+        retryProfileListingId = null,
     )
 
     fun invalidateProfileRequest() {
@@ -73,7 +78,7 @@ internal class StandaloneProfileOperations<C : Any>(
             it.copy(profileOpen = false, profile = null, profileIdentity = null, profileFromArchive = false, selectedPersonId = null,
                 selectedPerson = null, profileMedia = emptyList(), loading = false,
                 archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
-                actionBusy = false, actionError = null, error = null)
+                actionBusy = false, actionError = null, error = null, retryProfileListingId = null)
         }
     }
 
@@ -85,7 +90,7 @@ internal class StandaloneProfileOperations<C : Any>(
             it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
                 loading=true,profile=null,profileIdentity=null,profileFromArchive=false,profileMedia=emptyList(),changeEvents=emptyList(),
                 identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
-                mediaArchive=null,mediaWarning=null,archiving=false)
+                mediaArchive=null,mediaWarning=null,archiving=false,retryProfileListingId=null)
         }
         scope.launch {
             try {
@@ -158,6 +163,32 @@ internal class StandaloneProfileOperations<C : Any>(
         }
     }
 
+    /** Retry only the local projection; never replay the committed mutation or source request. */
+    fun retryProfileProjection() {
+        val active = _searchUiState.value
+        val listingId = active.retryProfileListingId ?: return
+        if (!active.profileOpen || active.actionBusy || _discoverState.value.busy) return
+        val requestId = profileGeneration.value
+        _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
+        scope.launch {
+            try {
+                val local = project(listingId)
+                if (profileGeneration.isCurrent(requestId)) {
+                    _searchUiState.update { it.withProjection(local) }
+                }
+                projections.discovery()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Exception) {
+                if (profileGeneration.isCurrent(requestId)) {
+                    _searchUiState.update { it.copy(actionError = "Ansicht konnte nicht aktualisiert werden.") }
+                }
+            } finally {
+                if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(actionBusy = false) }
+            }
+        }
+    }
+
     fun confirmIdentity(token: DetailIdentityToken, targetPersonId: Long) {
         val active = _searchUiState.value
         val sourceOwner = active.currentIdentityConfirmationOwner(token, targetPersonId, _discoverState.value.busy) ?: return
@@ -178,22 +209,28 @@ internal class StandaloneProfileOperations<C : Any>(
         _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
         scope.launch {
             var committed = false
-            var profileUpdated = false
             var projectionUpdated = false
             try {
-                io.confirmIdentityMatch(listingId, sourceOwner, targetPersonId)
-                committed = true
-                for (owner in listOf(sourceOwner, targetPersonId)) {
-                    noteReadTickets.invalidate(owner)
+                coroutineContext.ensureActive()
+                // Once sent, the native write and its commit bookkeeping must drain together.
+                withContext(NonCancellable) {
+                    io.confirmIdentityMatch(listingId, sourceOwner, targetPersonId)
+                    committed = true
+                    for (owner in listOf(sourceOwner, targetPersonId)) {
+                        noteReadTickets.invalidate(owner)
+                    }
+                    _profileNotes.update { it - sourceOwner - targetPersonId }
+                    if (profileGeneration.isCurrent(requestId)) {
+                        _searchUiState.update { it.invalidateMergedProfile(listingId) }
+                    }
                 }
-                _profileNotes.update { it - sourceOwner - targetPersonId }
+                coroutineContext.ensureActive()
                 val local = project(listingId)
                 if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update {
-                        if (it.profile?.listingId == listingId) it.withProjection(local) else it
+                        if (it.retryProfileListingId == listingId) it.withProjection(local) else it
                     }
                 }
-                profileUpdated = true
                 projectionUpdated = projections.projectDiscovery(epoch)
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -202,7 +239,7 @@ internal class StandaloneProfileOperations<C : Any>(
                     else failure.message ?: "Zusammenführung fehlgeschlagen"
                 if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update {
-                        it.identityConfirmationFailure(message, committed, profileUpdated)
+                        it.copy(actionError = message)
                     }
                 } else {
                     _discoverState.update { it.copy(mutationError = message) }

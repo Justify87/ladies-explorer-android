@@ -178,17 +178,13 @@ internal fun SearchUiState.currentIdentityConfirmationOwner(
     discoveryBusy: Boolean,
 ): Long? {
     if (discoveryBusy || actionBusy || detailIdentityToken() != token) return null
-    if (identityCandidates.none { it.personId == targetPersonId }) return null
+    if (token.ownerId == targetPersonId || identityCandidates.none { it.personId == targetPersonId }) return null
     return token.ownerId
 }
 
-// Existing post-commit read-failure publication. The remaining profile/media are a
-// known gap: T10.2 must invalidate all stale capabilities and recover locally.
-internal fun SearchUiState.identityConfirmationFailure(
-    message: String,
-    committed: Boolean,
-    profileUpdated: Boolean,
-): SearchUiState = if (committed && !profileUpdated) copy(
-    actionError = message, selectedPersonId = null, selectedPerson = null, profileIdentity = null,
-    identityCandidates = emptyList(), changeEvents = emptyList(),
-) else copy(actionError = message)
+/** A committed merge invalidates every rendered profile capability before local recovery. */
+internal fun SearchUiState.invalidateMergedProfile(listingId: Long): SearchUiState = copy(
+    profile = null, profileIdentity = null, selectedPersonId = null, selectedPerson = null,
+    profileMedia = emptyList(), identityCandidates = emptyList(), changeEvents = emptyList(),
+    mediaArchive = null, mediaWarning = null, retryProfileListingId = listingId,
+)

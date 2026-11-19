@@ -141,11 +141,10 @@ class StandaloneProfileOperationsTest {
             "discovery", "saved", "map", "home"), f.calls)
     }
 
-    @Test fun knownGapCommittedMergeReadFailureRetainsOldProfileButNeverRepeatsWrite() = runBlocking {
+    @Test fun committedMergeReadFailureInvalidatesCapabilitiesAndRetryNeverRepeatsWrite() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
-        val old = f.search.value
         val a = f.tickets.invalidate(1L)
         f.commit = { _, target -> f.owner = target; f.identityError = IllegalStateException("read failed") }
         f.confirmCurrent()
@@ -153,14 +152,21 @@ class StandaloneProfileOperationsTest {
         assertEquals(2L, f.owner)
         assertNull(f.search.value.profileIdentity)
         assertNull(f.search.value.selectedPersonId)
-        assertEquals(old.profile, f.search.value.profile)
-        assertEquals(old.profileMedia, f.search.value.profileMedia)
+        assertNull(f.search.value.profile)
+        assertTrue(f.search.value.profileMedia.isEmpty())
+        assertEquals(4L, f.search.value.retryProfileListingId)
         assertFalse(f.tickets.isCurrent(1L, a))
         assertEquals(setOf(3L), f.notes.value.keys)
         assertTrue(f.search.value.actionError!!.startsWith("Zusammenführung gespeichert"))
         assertEquals(listOf("confirm:4:2", "profile:4", "discovery", "saved", "map", "home"), f.calls)
         f.confirmCurrent()
+        f.identityError = null
+        f.operations.retryProfileProjection()
+        f.idle()
+        assertEquals(2L, f.search.value.profileIdentity?.personId)
+        assertNull(f.search.value.retryProfileListingId)
         assertEquals(1, f.calls.count { it.startsWith("confirm:") })
+        assertFalse(f.calls.any { it.startsWith("source:") })
         assertFalse(f.discovery.value.busy)
     }
 
@@ -247,7 +253,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.search.value.profileOpen)
     }
 
-    @Test fun knownGapNativeMergeCommitWithCancelledDeliveryDoesNotInvalidateNotesOrProjections() = runBlocking {
+    @Test fun nativeMergeCommitWithCancelledDeliveryStillInvalidatesNotesAndProjections() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
@@ -258,9 +264,11 @@ class StandaloneProfileOperationsTest {
         reply.await().resume(Unit)
         coroutineContext[Job]!!.children.single().cancelAndJoin()
         assertEquals(2L, f.owner)
-        assertEquals(listOf("confirm:4:2"), f.calls)
-        assertTrue(f.tickets.isCurrent(1L, ticket))
-        assertEquals(1L, f.search.value.profileIdentity?.personId)
+        assertEquals(listOf("confirm:4:2", "discovery", "saved", "map", "home"), f.calls)
+        assertFalse(f.tickets.isCurrent(1L, ticket))
+        assertNull(f.search.value.profileIdentity)
+        assertNull(f.search.value.profile)
+        assertEquals(4L, f.search.value.retryProfileListingId)
         assertFalse(f.discovery.value.busy)
     }
 
