@@ -83,14 +83,6 @@ internal fun DiscoverScreen(
         }
     }
     SideEffect { onRenderedSwipe(token) }
-    var confirmation by remember(token) { mutableStateOf<Long?>(null) }
-    confirmation?.let { target ->
-        IdentityConfirmationDialog(target, enabled = token != null && visible,
-            onConfirm = { confirmation = null; token?.let { onConfirmIdentity(it, target) } },
-            onDismiss = { confirmation = null })
-    }
-    val owner = current?.identity?.personId ?: card?.personId
-    val boundNotes = noteActions.boundTo(token, isProfileCurrent)
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
     SideEffect {
@@ -194,17 +186,16 @@ internal fun DiscoverScreen(
             val density = LocalDensity.current.density
             var drag by remember { mutableFloatStateOf(0f) }
             val listState = rememberLazyListState()
-            val sections = rememberProfileSections()
-            val panels = rememberProfilePanels(current, executedFiltersJson, listState)
-            rememberProfileNote(token, boundNotes, state.busy || token == null, sections)
-            ComparisonDialog(panels)
             val person = profile?.person?.takeIf { matchesOwner }
             val fallback = listOfNotNull(card.thumbnailUrl?.let {
                 ProfileMediaItem("IMAGE", it, card.localPath, 0u)
             } ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val heroHeight = (maxHeight * .88f).coerceIn(200.dp, 720.dp)
-                ProfileFlow(state = listState, modifier = Modifier.fillMaxSize()) {
+                ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
+                    token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
+                    isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
+                    modifier = Modifier.fillMaxSize()) {
                     item(key = "hero") {
                         // Only the image surface owns horizontal decisions. Vertical drags
                         // remain with LazyColumn; tap zones keep their click semantics.
@@ -254,12 +245,7 @@ internal fun DiscoverScreen(
                                 else onChoose(it, preference)
                             } })
                     }
-                    if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
-                        panels, sections, profile.candidates, profile.history, !actions,
-                        owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
-                        isCurrent = { token?.let(isProfileCurrent) == true },
-                        onConfirm = { target -> if (token?.let(isProfileCurrent) == true) confirmation = target })
-                    else card.description?.let { item { Text(it) } }
+                    if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

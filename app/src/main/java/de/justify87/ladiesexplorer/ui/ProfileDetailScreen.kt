@@ -25,27 +25,22 @@ internal fun ProfileDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val profile = state.profile
-    val owner = state.profileIdentity?.personId
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
     val renderedToken = state.detailIdentityToken()
     val busy = actionsBusy || state.actionBusy || renderedToken == null
-    val boundNotes = noteActions.boundTo(renderedToken, isProfileCurrent)
     val detailListState = rememberLazyListState()
-    val sections = key(owner) { rememberProfileSections() }
-    val panels = rememberProfilePanels(state.profileRead, filters, detailListState)
-    rememberProfileNote(renderedToken, boundNotes, busy, sections)
-    ComparisonDialog(panels)
-    var confirmTarget by remember(renderedToken, state.identityCandidates) { mutableStateOf<Pair<DetailIdentityToken, Long>?>(null) }
-
-    confirmTarget?.let { (token, target) ->
-        IdentityConfirmationDialog(target, enabled = !actionsBusy && !state.actionBusy,
-            onConfirm = { confirmTarget = null; onConfirmIdentity(token, target) },
-            onDismiss = { confirmTarget = null })
-    }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val heroHeight = (maxHeight * .84f).coerceIn(220.dp, 720.dp)
         ProfileFlow(
             state = detailListState,
+            model = state.profileRead,
+            filters = filters,
+            token = renderedToken,
+            actionsBusy = busy,
+            notes = notes,
+            noteActions = noteActions,
+            isProfileCurrent = isProfileCurrent,
+            onConfirmIdentity = onConfirmIdentity,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         ) {
@@ -95,11 +90,6 @@ internal fun ProfileDetailScreen(
                 state.mediaWarning?.let {
                     item { Text(it,color=MaterialTheme.colorScheme.error) }
                 }
-                profileContent(profile, state.profileIdentity, state.selectedPerson, state.profileMedia,
-                    panels, sections, state.identityCandidates, state.changeEvents,
-                    busy, owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
-                    isCurrent = { renderedToken?.let(isProfileCurrent) == true },
-                    onConfirm = { target -> renderedToken?.takeIf(isProfileCurrent)?.let { confirmTarget = it to target } })
             }
         }
     }

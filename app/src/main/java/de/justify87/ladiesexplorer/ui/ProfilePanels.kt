@@ -36,6 +36,12 @@ internal class ProfileSections(initial: List<String> = emptyList()) {
     fun toggle(section: ProfileSection) {
         entries = if (expanded(section)) entries - section.name else entries + section.name
     }
+
+    // A history filter is presentation state, not part of a replaceable read.
+    val showDescriptionChanges get() = "history-description" in entries
+    fun setShowDescriptionChanges(value: Boolean) {
+        entries = entries - "history-description" + if (value) listOf("history-description") else emptyList()
+    }
 }
 
 @Composable
@@ -60,16 +66,54 @@ internal fun rememberProfileNote(
     }
 }
 
-/** The only profile scroll container; context-specific navigation and hero are slots. */
+/** Shared scroll, section state, read demand and dialogs. The leading slot
+ * supplies only context-specific hero/status/navigation; no second profile route. */
 @Composable
 internal fun ProfileFlow(
     state: LazyListState,
+    model: ProfileReadModel?,
+    filters: String,
+    token: ProfileIdentityToken?,
+    actionsBusy: Boolean,
+    notes: Map<Long, NoteEditorState>,
+    noteActions: NoteEditorActions,
+    isProfileCurrent: (ProfileIdentityToken) -> Boolean,
+    onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    content: LazyListScope.() -> Unit,
+    leading: LazyListScope.() -> Unit,
 ) {
+    val owner = model?.identity?.personId
+    // A temporary read gap must not lose presentation state for the same owner.
+    // A genuine owner replacement or different outer profile session resets it.
+    var lastOwner by rememberSaveable { mutableStateOf<Long?>(null) }
+    SideEffect { if (owner != null) lastOwner = owner }
+    val sections = key(owner ?: lastOwner) { rememberProfileSections() }
+    val panels = rememberProfilePanels(model, filters, state)
+    val busy = actionsBusy || token == null
+    val boundNotes = noteActions.boundTo(token, isProfileCurrent)
+    rememberProfileNote(token, boundNotes, busy, sections)
+    ComparisonDialog(panels, active = !busy)
+    var confirmation by remember(token) { mutableStateOf<Long?>(null) }
+    val current = { token?.let(isProfileCurrent) == true }
+    val selected = confirmation
+    if (selected != null && token != null) {
+        IdentityConfirmationDialog(selected, enabled = !busy,
+            onConfirm = {
+                confirmation = null
+                if (!busy && current()) onConfirmIdentity(token, selected)
+            },
+            onDismiss = { confirmation = null })
+    }
     LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        leading()
+        if (model != null) profileContent(model.profile, model.identity, model.person, model.media,
+            panels, sections, model.candidates, model.history, busy,
+            owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
+            isCurrent = current,
+            onConfirm = { target -> if (!busy && current()) confirmation = target })
+    }
 }
 
 @Composable
@@ -222,7 +266,9 @@ private fun NotesPanel(
 }
 
 @Composable
-internal fun ComparisonDialog(panels: ProfilePanels) {
+private fun ComparisonDialog(panels: ProfilePanels, active: Boolean) {
+    LaunchedEffect(panels, active) { if (!active) panels.closeComparison() }
+    if (!active) return
     if (!panels.comparing && panels.comparison == null && panels.comparisonError == null) return
     AlertDialog(
         onDismissRequest = panels::closeComparison,
@@ -258,7 +304,7 @@ private fun HistoryValues(before: String?, after: String?) {
 }
 
 /** Both routes render identical inline sections in a single lazy list. */
-internal fun LazyListScope.profileContent(
+private fun LazyListScope.profileContent(
     profile: ProfileResponse,
     identity: ProfileIdentity?,
     person: PersonSummary?,
@@ -338,13 +384,13 @@ internal fun LazyListScope.profileContent(
     }
     item(key = "history-toggle") { SectionToggle(ProfileSection.History, sections) }
     if (sections.expanded(ProfileSection.History)) {
-        val visibleEvents = if (panels.showDescriptionChanges) history
+        val visibleEvents = if (sections.showDescriptionChanges) history
             else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }
         item(key = "profile-history-head") {
             Text("Profilverlauf", style = MaterialTheme.typography.titleMedium)
             Text("Bis zu 100 zuletzt gespeicherte Änderungen.", style = MaterialTheme.typography.bodySmall)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(panels.showDescriptionChanges, { panels.showDescriptionChanges = it })
+                Checkbox(sections.showDescriptionChanges, sections::setShowDescriptionChanges)
                 Text("Beschreibungstexte im Verlauf anzeigen")
             }
             if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")

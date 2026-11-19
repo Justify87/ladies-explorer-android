@@ -4,6 +4,8 @@ import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Test
@@ -50,7 +52,7 @@ class ProfilePanelsTest {
                 assertEquals(7L, owner)
                 if (from == 1L) {
                     started.complete(Unit)
-                    finish.await()
+                    withContext(NonCancellable) { finish.await() }
                     listOf(SnapshotDifference("name", "old", "stale"))
                 } else {
                     assertEquals(3L, to)

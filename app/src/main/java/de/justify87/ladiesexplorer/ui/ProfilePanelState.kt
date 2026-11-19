@@ -37,7 +37,6 @@ internal class ProfilePanels(
         private set
     var detailError by mutableStateOf<String?>(null)
         private set
-    var showDescriptionChanges by mutableStateOf(false)
     var comparison by mutableStateOf<List<SnapshotDifference>?>(null)
         private set
     var comparisonError by mutableStateOf<String?>(null)
@@ -101,6 +100,7 @@ internal class ProfilePanels(
         if (closed) return
         val owner = personId ?: return
         val generation = ++comparisonGeneration
+        comparisonJob?.cancel()
         comparing = true
         comparison = null
         comparisonError = null
@@ -119,6 +119,8 @@ internal class ProfilePanels(
 
     fun closeComparison() {
         comparisonGeneration++
+        comparisonJob?.cancel()
+        comparisonJob = null
         comparing = false
         comparison = null
         comparisonError = null
@@ -130,7 +132,6 @@ internal class ProfilePanels(
         detailGeneration++
         factsRetry?.cancel()
         detailRetry?.cancel()
-        comparisonJob?.cancel()
         closeComparison()
     }
 }

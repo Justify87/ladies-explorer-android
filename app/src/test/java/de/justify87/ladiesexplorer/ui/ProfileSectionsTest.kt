@@ -7,7 +7,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
-class ProfileTabsTest {
+class ProfileSectionsTest {
     @Test fun sectionsExpandIndependentlyAndStayContextLocal() {
         val swipe = ProfileSections()
         val detail = ProfileSections()
@@ -20,7 +20,11 @@ class ProfileTabsTest {
         assertEquals(false, detail.expanded(ProfileSection.Notes))
         swipe.toggle(ProfileSection.Notes)
         assertEquals(true, swipe.expanded(ProfileSection.History))
-        assertEquals(true, ProfileSections(swipe.entries).expanded(ProfileSection.History))
+        swipe.setShowDescriptionChanges(true)
+        assertEquals(false, detail.showDescriptionChanges)
+        val restored = ProfileSections(swipe.entries)
+        assertEquals(true, restored.expanded(ProfileSection.History))
+        assertEquals(true, restored.showDescriptionChanges)
     }
 
     @Test fun swipeNeutralResetIsIndependentOfDeckDecisions() {
