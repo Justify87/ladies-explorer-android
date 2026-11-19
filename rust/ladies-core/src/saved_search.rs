@@ -39,7 +39,10 @@ fn read_delta(raw: Option<&str>) -> Option<SavedSearchDelta> {
         new_count: count("new", "new_results_count")?,
         removed_count: count("removed", "removed_results_count")?,
         current_count: count("current", "current_result_count")?,
-        initial: value.get("initial").and_then(|v| v.as_bool()).unwrap_or(false),
+        initial: value
+            .get("initial")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     })
 }
 
@@ -362,7 +365,16 @@ pub(crate) fn results(
     })?;
     let mut records = rows
         .map(|row| {
-            let (position, result_key, snapshot, first_seen_at, listing_id, person_id, traits, relative) = row?;
+            let (
+                position,
+                result_key,
+                snapshot,
+                first_seen_at,
+                listing_id,
+                person_id,
+                traits,
+                relative,
+            ) = row?;
             let value = serde_json::from_str::<serde_json::Value>(&snapshot).unwrap_or_default();
             Ok((
                 SavedSearchCard {
@@ -424,7 +436,8 @@ pub(crate) fn rename(core: &LadiesCore, id: String, name: String) -> Result<(), 
         "UPDATE saved_searches SET name=?2,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
          WHERE saved_search_id=?1",
         params![id, name],
-    )? != 1 {
+    )? != 1
+    {
         return Err(CoreError::InvalidInput("Saved search not found".into()));
     }
     Ok(())
@@ -762,7 +775,10 @@ mod tests {
         assert!(!info.definition_supported);
         assert!(info.unread_new_results);
         let delta = info.delta.unwrap();
-        assert_eq!((delta.new_count, delta.removed_count, delta.current_count), (2, 1, 7));
+        assert_eq!(
+            (delta.new_count, delta.removed_count, delta.current_count),
+            (2, 1, 7)
+        );
     }
 
     #[test]

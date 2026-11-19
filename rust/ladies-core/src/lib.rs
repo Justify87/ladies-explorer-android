@@ -157,8 +157,8 @@ pub use profile_detail::{
     SnapshotDifference,
 };
 pub use saved_search::{
-    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchDelta, SavedSearchInfo,
-    SavedSearchResultPage,
+    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchDelta,
+    SavedSearchInfo, SavedSearchResultPage,
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
 pub use source::{
