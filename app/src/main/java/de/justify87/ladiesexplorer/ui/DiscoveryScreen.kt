@@ -28,11 +28,11 @@ internal fun DiscoverScreen(
     noteActions: NoteEditorActions,
     searchLoading: Boolean = false,
     executedFiltersJson: String = "{}",
-    onRefresh: () -> Unit,
-    onReset: () -> Unit,
-    onUndo: () -> Unit,
-    onReplayLikes: (Boolean) -> Unit,
-    onSkip: (SwipeActionToken) -> Unit,
+    onRefresh: (SwipeDeckToken) -> Unit,
+    onReset: (SwipeDeckToken) -> Unit,
+    onUndo: (SwipeDeckToken) -> Unit,
+    onReplayLikes: (SwipeDeckToken, Boolean) -> Unit,
+    onSkip: (SwipeCardToken) -> Unit,
     onChoose: (SwipeActionToken, Preference) -> Unit,
     onSwipeVisibility: (Boolean) -> Unit,
     onRenderedSwipe: (SwipeActionToken?) -> Unit,
@@ -40,10 +40,12 @@ internal fun DiscoverScreen(
     onSnapshotChanged: () -> Unit,
     onFavorite: (ProfileIdentityToken) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
-    onProfile: (Long, Long) -> Unit,
+    onProfile: (SwipeCardToken) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val card = state.cards.firstOrNull()
+    val deckToken = state.deckToken()
+    val cardToken = state.cardToken()
     val context = LocalContext.current
     val core = (context.applicationContext as LadiesApplication).coreStore
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
@@ -86,8 +88,9 @@ internal fun DiscoverScreen(
         try {
             decks.retain(window)
             decks.readCurrent(card) {
-                val localOnly = retryLocally || card.listingId in state.localProfileReloadIds
-                core.readSwipeProfile(card.listingId, control, refresh = !localOnly,
+                val localOnly = retryLocally || card.listingId in state.localProfileStrictIds
+                val preferLocal = localOnly || card.listingId in state.localProfileReloadIds
+                core.readSwipeProfile(card.listingId, control, refresh = !preferLocal,
                     allowNetwork = !localOnly, onSourceRead = onSnapshotChanged)
             }
             retry = 0
@@ -110,7 +113,7 @@ internal fun DiscoverScreen(
             try {
                 val profile = decks.prefetch(next) {
                     core.readSwipeProfile(next.listingId, prefetchControl,
-                        refresh = false, allowNetwork = state.activeRunId != null && next.listingId !in state.localProfileReloadIds,
+                        refresh = false, allowNetwork = state.activeRunId != null && next.listingId !in state.localProfileStrictIds,
                         onSourceRead = onSnapshotChanged)
                 }
                 if (profile != null) warmSwipeImages(context, next, profile)
@@ -134,16 +137,17 @@ internal fun DiscoverScreen(
                 else "Aktive Suche · ${state.activeVisibleCount} sichtbar · ${state.cards.size} im Deck",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { decks.clear(); onRefresh() }, enabled = enabled) { Text("Aktualisieren") }
+            TextButton(onClick = { onRefresh(deckToken) }, enabled = enabled) { Text("Aktualisieren") }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (state.activeRunId != null) FilterChip(
-                selected = state.replayLikes, enabled = enabled, onClick = { onReplayLikes(!state.replayLikes) },
+                selected = state.replayLikes, enabled = enabled, onClick = { onReplayLikes(deckToken, !state.replayLikes) },
                 label = { Text("Likes erneut zeigen") },
             )
-            TextButton(onClick = onUndo, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
-            TextButton(onClick = { decks.clear(); onReset() }, enabled = enabled) { Text("Reset") }
+            TextButton(onClick = { onUndo(deckToken) }, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
+            TextButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Reset") }
         }
+        state.mergeNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         state.mutationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (state.loading && card == null) {
@@ -153,7 +157,7 @@ internal fun DiscoverScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
                     Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
-                    OutlinedButton(onClick = onReset, enabled = enabled) { Text("Deck neu beginnen") }
+                    OutlinedButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Deck neu beginnen") }
                 }
             }
         } else key(card.listingId, card.personId) {
@@ -215,7 +219,7 @@ internal fun DiscoverScreen(
                             onFavorite = { token?.let(onFavorite) },
                             onPreference = { _, preference -> token?.let { onChoose(it, preference) } },
                             isCurrent = { token?.let(isProfileCurrent) == true })
-                        TextButton(onClick = { onProfile(card.listingId, card.personId) }, enabled = enabled) { Text("Profil öffnen") }
+                        TextButton(onClick = { cardToken?.let(onProfile) }, enabled = enabled && cardToken != null) { Text("Profil öffnen") }
                     }
                     if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
                         panels, tab, selectTab, profile.candidates, profile.history, !actions,
@@ -226,8 +230,8 @@ internal fun DiscoverScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedButton(onClick = { token?.let { onChoose(it, Preference.DISLIKE) } },
                     enabled = actions, modifier = Modifier.weight(1f)) { Text("Nein") }
-                OutlinedButton(onClick = { token?.let(onSkip) },
-                    enabled = actions, modifier = Modifier.weight(1f)) { Text("Später") }
+                OutlinedButton(onClick = { cardToken?.let(onSkip) },
+                    enabled = enabled && cardToken != null, modifier = Modifier.weight(1f)) { Text("Später") }
                 Button(onClick = { token?.let { onChoose(it, Preference.LIKE) } },
                     enabled = actions, modifier = Modifier.weight(1f)) { Text("Gefällt") }
             }

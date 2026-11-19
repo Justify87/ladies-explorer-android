@@ -54,15 +54,13 @@ class SwipeDeckStateTest {
         assertEquals(Preference.DISLIKE, swipePreference(-96f))
     }
 
-    @Test fun explicitNoneIsCurrentlyAVisitButSkipHasNoPreviousPreference() {
+    @Test fun explicitNoneDoesNotVisitButSkipHasNoPreviousPreference() {
         val session = SwipeSession()
         val cleared = SwipeStep(4, 1, Preference.LIKE, Preference.NONE)
         val rows = listOf(card(4, 1), card(5, 2))
         session.visit(cleared)
-        assertEquals(listOf(5L), session.queue(rows, true).map { it.listingId })
-        assertEquals(Preference.NONE, session.last?.after)
-        session.undo(cleared)
         assertEquals(listOf(4L, 5L), session.queue(rows, true).map { it.listingId })
+        assertNull(session.last)
         val skipped = SwipeStep(4, 1)
         session.visit(skipped)
         assertNull(session.last?.before)
@@ -113,5 +111,16 @@ class SwipeDeckStateTest {
         assertEquals(listOf(4L), session.queue(listOf(card(3), card(4)), true).map { it.listingId })
         session.reset()
         assertTrue(session.excludedPeople.isEmpty())
+    }
+    @Test fun traversalWithoutFullProfileStillRejectsReplacedRunSessionAndOwner() {
+        val state = DiscoverUiState(cards = listOf(card(4, 1)), activeRunId = 3L,
+            swipeSessionId = 8L, loading = false)
+        val token = requireNotNull(state.cardToken())
+        assertNull(state.swipeToken(null))
+        assertEquals(4L, currentSwipeTraversalCard(state, false, token)?.listingId)
+        assertNull(currentSwipeTraversalCard(state.copy(swipeSessionId = 9L), false, token))
+        assertNull(currentSwipeTraversalCard(state.copy(activeRunId = 4L), false, token))
+        assertNull(currentSwipeTraversalCard(state.copy(cards = listOf(card(4, 2))), false, token))
+        assertNull(currentSwipeTraversalCard(state.copy(busy = true), false, token))
     }
 }

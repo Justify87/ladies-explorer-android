@@ -316,7 +316,7 @@ fun LadiesApp(
                                 onSnapshotChanged = viewModel::markSwipeSnapshotChanged,
                                 onFavorite = viewModel::toggleProfileFavorite,
                                 isProfileCurrent = viewModel::isProfileActionCurrent,
-                                onProfile = viewModel::loadProfile,
+                                onProfile = viewModel::openSwipeProfile,
                                 modifier = Modifier.weight(1f),
                             )
                         } else if (route.discovery == DiscoverMode.Grid) {

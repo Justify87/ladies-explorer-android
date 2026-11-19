@@ -63,6 +63,9 @@ data class DiscoverUiState(
     val swipeSessionId: Long = 0L,
     val swipeProfileRevision: Long = 0L,
     val localProfileReloadIds: Set<Long> = emptySet(),
+    val localProfileStrictIds: Set<Long> = emptySet(),
+    val pendingMergeListingId: Long? = null,
+    val mergeNotice: String? = null,
     val activeVisibleCount: Int = 0,
     val replayLikes: Boolean = true,
     val canUndoSwipe: Boolean = false,
@@ -164,7 +167,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (swipeVisible == visible) return
         swipeVisible = visible
         renderedSwipe = null
-        _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1) }
+        _discoverState.update {
+            it.copy(swipeSessionId = it.swipeSessionId + 1,
+                localProfileReloadIds = if (visible) it.localProfileReloadIds else
+                    (it.localProfileReloadIds + it.cards.take(3).map { card -> card.listingId }).toSet())
+        }
     }
 
     internal fun publishRenderedSwipe(token: SwipeActionToken?) {
@@ -209,11 +216,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
+    private fun admittedDeck(token: SwipeDeckToken): Boolean =
+        swipeVisible && !_searchUiState.value.profileOpen &&
+            currentSwipeDeck(_discoverState.value, _searchUiState.value.loading, token)
+
+    private fun admittedTraversal(token: SwipeCardToken): DiscoveryCard? =
+        if (!admittedDeck(token.deck)) null
+        else currentSwipeTraversalCard(_discoverState.value, _searchUiState.value.loading, token)
+
+    internal fun openSwipeProfile(token: SwipeCardToken) {
+        val card = admittedTraversal(token) ?: return
+        loadProfile(card.listingId, card.personId)
+    }
+
+    private fun invalidateSwipeProfilesLocally(strictListing: Long? = null) {
+        renderedSwipe = null
+        _discoverState.update {
+            val window = it.cards.take(3).map { card -> card.listingId }.toSet()
+            val strict = it.localProfileStrictIds.intersect(window) + listOfNotNull(strictListing)
+            it.copy(swipeSessionId = it.swipeSessionId + 1, swipeProfileRevision = it.swipeProfileRevision + 1,
+                localProfileReloadIds = window + strict, localProfileStrictIds = strict)
+        }
+    }
+
     private fun invalidateSwipeActions(invalidateProfiles: Boolean = false) {
         renderedSwipe = null
         _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1,
             swipeProfileRevision = it.swipeProfileRevision + if (invalidateProfiles) 1 else 0,
-            localProfileReloadIds = if (invalidateProfiles) emptySet() else it.localProfileReloadIds) }
+            localProfileReloadIds = if (invalidateProfiles) emptySet() else it.localProfileReloadIds,
+            localProfileStrictIds = if (invalidateProfiles) emptySet() else it.localProfileStrictIds,
+            mergeNotice = null, pendingMergeListingId = null) }
     }
     private var localWindow = 0
     private val savedWindows = SavedWindowMemory()
@@ -534,8 +566,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
 
-    internal fun refreshSwipe() {
-        if (_discoverState.value.busy || _searchUiState.value.loading) return
+    internal fun refreshSwipe(token: SwipeDeckToken) {
+        if (!admittedDeck(token)) return
         invalidateSwipeActions(invalidateProfiles = true)
         refreshDiscovery()
     }
@@ -625,16 +657,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun resetSwipe() {
-        if (_discoverState.value.busy || _searchUiState.value.loading) return
+    internal fun resetSwipe(token: SwipeDeckToken) {
+        if (!admittedDeck(token)) return
         swipeSession.reset()
         invalidateSwipeActions(invalidateProfiles = true)
         _discoverState.update { it.copy(canUndoSwipe = false) }
         refreshDiscovery()
     }
 
-    fun setReplayLikes(replay: Boolean) {
-        if (_discoverState.value.busy || _searchUiState.value.loading || swipeSession.replayLikes == replay) return
+    internal fun setReplayLikes(token: SwipeDeckToken, replay: Boolean) {
+        if (!admittedDeck(token) || swipeSession.replayLikes == replay) return
         invalidateSwipeActions()
         swipeSession.replayLikes = replay
         core.setReplayLikes(replay)
@@ -642,8 +674,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshDiscovery()
     }
 
-    internal fun skipCard(token: SwipeActionToken) {
-        val card = admittedSwipe(token) ?: return
+    internal fun skipCard(token: SwipeCardToken) {
+        val card = admittedTraversal(token) ?: return
         invalidateSwipeActions()
         swipeSession.visit(SwipeStep(card.listingId, card.personId))
         _discoverState.update {
@@ -660,6 +692,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         afterWrite: suspend () -> Unit = {},
         onWriteFailure: () -> Unit = {},
         onFailure: (String) -> Unit = {},
+        refreshProfileWindow: Boolean = true,
     ) {
         invalidateSwipeActions()
         val epoch = ++discoveryEpoch
@@ -678,6 +711,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     afterWrite = {
                         // Revision can change even if membership did not. Existing controller coalesces hidden reads.
                         savedSearch.refreshResultProjection()
+                        if (refreshProfileWindow) invalidateSwipeProfilesLocally()
                         afterWrite()
                     },
                     onWriteFailure = onWriteFailure,
@@ -710,14 +744,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val card = admittedSwipe(token) ?: return
         mutateDiscovery("Entscheidung fehlgeschlagen", write = {
             val previous = core.setSwipePreference(card.listingId, card.personId, token.preference, preference)
-            if (preference != Preference.NONE) {
-                swipeSession.visit(SwipeStep(card.listingId, card.personId, previous, preference))
-            }
-        })
+            swipeSession.visit(SwipeStep(card.listingId, card.personId, previous, preference))
+        }, refreshProfileWindow = preference == Preference.NONE)
     }
 
-    fun undoSwipe() {
-        if (_discoverState.value.busy || _discoverState.value.loading || _searchUiState.value.loading) return
+    internal fun undoSwipe(token: SwipeDeckToken) {
+        if (!admittedDeck(token)) return
         val step = swipeSession.last ?: return
         mutateDiscovery("Undo fehlgeschlagen", write = {
             val previous = step.before
@@ -899,14 +931,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val current = _discoverState.value
         val preferred = if (token is SwipeActionToken) token.listingId else current.cards.firstOrNull()?.listingId
         swipeSession.reconcileMerge(token.ownerId, target, preferred)
-        // All old cache capabilities are revoked; existing affected listings recover locally.
-        val affected = (current.cards.take(3).filter { it.personId == token.ownerId || it.personId == target }
-            .map { it.listingId } + token.listingId).toSet()
-        renderedSwipe = null
+        // Revocation is bounded to the displayed window. Known merged listing must recover
+        // locally; other cards prefer cached native records but may lack a snapshot entirely.
+        invalidateSwipeProfilesLocally(token.listingId)
+        _mapState.update { it.copy(overview = null) }
         _discoverState.update {
-            it.copy(swipeSessionId = it.swipeSessionId + 1,
-                swipeProfileRevision = it.swipeProfileRevision + 1,
-                localProfileReloadIds = affected, canUndoSwipe = swipeSession.last != null)
+            it.copy(pendingMergeListingId = if (token is SwipeActionToken) token.listingId else null,
+                canUndoSwipe = swipeSession.last != null)
         }
     }
 

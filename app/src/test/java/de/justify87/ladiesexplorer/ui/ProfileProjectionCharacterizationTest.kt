@@ -66,12 +66,12 @@ class ProfileProjectionCharacterizationTest {
         assertEquals("new", state.value.savedError)
     }
 
-    @Test fun knownGapMapReadFailureKeepsOldOverviewAndLateSuccessCannotReplaceNewEpoch() = runBlocking {
+    @Test fun mapReadFailureInvalidatesOldOverviewAndLateSuccessCannotReplaceNewEpoch() = runBlocking {
         val old = MapOverview(emptyList(), 1u, 1u, 0u)
         val new = MapOverview(emptyList(), 2u, 2u, 0u)
         val state = MutableStateFlow(MapUiState(overview = old, loading = true))
         projectMapOverview(state, { true }, { error("map failed") }) { s, value -> s.copy(overview = value) }
-        assertEquals(old, state.value.overview)
+        assertNull(state.value.overview)
         assertEquals("map failed", state.value.error)
         assertFalse(state.value.loading)
         var epoch = 1

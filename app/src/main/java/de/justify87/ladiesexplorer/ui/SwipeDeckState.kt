@@ -34,6 +34,8 @@ internal class SwipeSession {
     }
 
     fun visit(step: SwipeStep) {
+        // Clearing a preference is a local user-state mutation, never deck traversal.
+        if (step.after == Preference.NONE) return
         history.add(step)
         restoredListingId = null
     }
@@ -73,6 +75,22 @@ internal fun swipePreference(distanceDp: Float): Preference? = when {
 
 internal fun prefetchCards(cards: List<DiscoveryCard>): List<DiscoveryCard> =
     cards.drop(1).take(2)
+
+/** Non-writing deck operations remain possible when a detailed profile cannot be loaded. */
+internal data class SwipeDeckToken(val runId: Long?, val session: Long)
+internal data class SwipeCardToken(val deck: SwipeDeckToken, val listingId: Long, val ownerId: Long)
+
+internal fun DiscoverUiState.deckToken() = SwipeDeckToken(activeRunId, swipeSessionId)
+internal fun DiscoverUiState.cardToken(): SwipeCardToken? =
+    cards.firstOrNull()?.let { SwipeCardToken(deckToken(), it.listingId, it.personId) }
+
+internal fun currentSwipeDeck(state: DiscoverUiState, searchLoading: Boolean, token: SwipeDeckToken): Boolean =
+    !state.busy && !state.loading && !searchLoading && state.deckToken() == token
+
+internal fun currentSwipeTraversalCard(
+    state: DiscoverUiState, searchLoading: Boolean, token: SwipeCardToken,
+): DiscoveryCard? = if (!currentSwipeDeck(state, searchLoading, token.deck) || state.cardToken() != token) null
+    else state.cards.firstOrNull()
 
 /** A rendered action is bound to its deck context and coherent local profile. */
 internal data class SwipeActionToken(
