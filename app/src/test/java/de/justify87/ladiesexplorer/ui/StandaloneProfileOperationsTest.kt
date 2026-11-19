@@ -270,4 +270,25 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.pending)
         assertFalse(f.discovery.value.busy)
     }
+    @Test fun knownGapDelayedConfirmCallbackUsesCurrentOwnerOfSameListingInNewSession() = runBlocking {
+        val f = Fixture(this)
+        f.openOffline()
+        val oldSession = f.search.value.profileSessionId
+        val oldTicket = f.tickets.invalidate(1L)
+        f.operations.closeProfile()
+        f.owner = 7L
+        f.openOffline()
+        assertNotEquals(oldSession, f.search.value.profileSessionId)
+        val currentTicket = f.tickets.invalidate(7L)
+        f.operations.confirmIdentity(5L, 2L)
+        assertTrue(f.calls.isEmpty())
+        // This callback still carries only listing + target, like the former dialog.
+        f.operations.confirmIdentity(4L, 2L)
+        f.idle()
+        assertEquals(1, f.calls.count { it == "confirm:4:2" })
+        assertEquals(2L, f.search.value.profileIdentity?.personId)
+        assertTrue(f.tickets.isCurrent(1L, oldTicket))
+        assertFalse(f.tickets.isCurrent(7L, currentTicket))
+    }
+
 }

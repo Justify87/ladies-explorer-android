@@ -972,7 +972,8 @@ mod tests {
         }
         let first = window(&core, id.clone(), 10).unwrap();
         assert_eq!(first.cards[0].listing_id, Some(listing));
-        core.set_preference(person, crate::Preference::Like).unwrap();
+        core.set_preference(person, crate::Preference::Like)
+            .unwrap();
         let second = window(&core, id.clone(), 10).unwrap();
         assert_ne!(first.searches[0].revision, second.searches[0].revision);
         assert!(!acknowledge_revision(&core, id.clone(), first.searches[0].revision).unwrap());
