@@ -443,3 +443,5 @@ Full-CI [#413](https://github.com/Justify87/ladies-explorer-android/actions/runs
 ### T10.2 – Inkrement 1 (19.11.2026)
 
 Basis `25300866`, PR #26 integriert, CI #414 erfolgreich. P20/P30/P49/P51: erwarteter Source-Owner ist verpflichtender Parameter der bestehenden Merge-Operation; Prüfung in derselben SQLite-Transaktion vor Evidenz und Mutation. Standalone-Dialog erfasst Listing, Owner, Snapshot und Session bei Darstellung, Admission prüft aktuellen Token und Kandidat. Dreier-Owner-Regression und verzögerter Detail-Callback ersetzen die jeweiligen KnownGap-Tests. Kein weiterer Mergepfad, kein UI-Redesign oder zusätzlicher HTTP-Abruf. T10.2 bleibt IN_PROGRESS: gemeinsames Profilmodell, Swipe-Admission/Cache, kontextunabhängige Merge-Integration, Drain/Recovery/Fanout und Full-CI noch offen; DEVICE_PENDING.
+
+CI #416 on `82d19e9`: HTTP boundary, export/roundtrip and synthetic fixture successful; rustfmt failed (identity.rs/lib.rs); formatting corrected exactly from job 135596327631. Native tests and Android build did not execute in this run.

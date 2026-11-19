@@ -661,7 +661,10 @@ mod tests {
         )
         .unwrap();
         drop(db);
-        assert!(core.confirm_identity_match(listing, source, target).is_err());
+        assert!(
+            core.confirm_identity_match(listing, source, target)
+                .is_err()
+        );
         assert_eq!(core.status().unwrap().person_count, 2);
     }
 
@@ -843,7 +846,10 @@ mod tests {
             core.save_person_note(listing, source, Some("Source note".into()), None)
                 .is_err()
         );
-        assert!(core.confirm_identity_match(listing, source, target).is_err());
+        assert!(
+            core.confirm_identity_match(listing, source, target)
+                .is_err()
+        );
         assert_eq!(core.profile_identity(listing).unwrap().person_id, target);
         let state = core.get_person(target).unwrap().unwrap();
         assert!(state.favorite);
@@ -930,7 +936,10 @@ mod tests {
             // Intentionally do not refresh the cached match status: confirm must
             // use current evidence, not a candidate that was previously rendered.
         }
-        assert!(core.confirm_identity_match(listing, source, target).is_err());
+        assert!(
+            core.confirm_identity_match(listing, source, target)
+                .is_err()
+        );
         assert_eq!(core.profile_identity(listing).unwrap().person_id, source);
         assert_eq!(core.status().unwrap().person_count, 2);
         assert!(core.list_identity_candidates(listing).unwrap().is_empty());
@@ -974,11 +983,12 @@ mod tests {
         core.confirm_identity_match(listing, a, b).unwrap();
         assert_eq!(core.profile_identity(listing).unwrap().person_id, b);
         // C remains a valid candidate for B, but an old A->C confirmation is invalid.
-        assert!(core
-            .list_identity_candidates(listing)
-            .unwrap()
-            .iter()
-            .any(|candidate| candidate.person_id == c));
+        assert!(
+            core.list_identity_candidates(listing)
+                .unwrap()
+                .iter()
+                .any(|candidate| candidate.person_id == c)
+        );
         assert!(matches!(
             core.confirm_identity_match(listing, a, c),
             Err(CoreError::IdentityConflict(_))
