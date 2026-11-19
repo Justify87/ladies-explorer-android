@@ -85,7 +85,8 @@ internal class SavedSearchController(
     val state: StateFlow<SavedSearchUiState> = mutable
     private var refreshPending = false
     private var readTicket = 0L
-    private var visible = true
+    // Fail closed until the foreground route explicitly reports visibility.
+    private var visible = false
     private var session = 0L
     private var control: SavedCheck? = null
     private val limits = mutableMapOf<String, UInt>()

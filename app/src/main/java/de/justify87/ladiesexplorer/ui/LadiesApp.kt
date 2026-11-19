@@ -45,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -107,15 +108,26 @@ fun LadiesApp(
         if (!savedVisible) viewModel.cancelSavedStatus()
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
+    val savedSearchRouteVisible = route.root == RootDestination.Search && !search.profileOpen
+    val currentSavedSearchRouteVisible by rememberUpdatedState(savedSearchRouteVisible)
+    DisposableEffect(lifecycle, viewModel) {
+        fun publishVisibility() {
+            viewModel.savedSearch.setVisible(currentSavedSearchRouteVisible &&
+                lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        }
         val observer = LifecycleEventObserver { _, event ->
+            publishVisibility()
             if (event == Lifecycle.Event.ON_STOP) {
                 viewModel.cancelSavedStatus()
                 viewModel.savedSearch.cancelCheck()
             }
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
+        publishVisibility()
+        onDispose {
+            lifecycle.removeObserver(observer)
+            viewModel.savedSearch.setVisible(false)
+        }
     }
 
     // Root changes must not reload already paginated lists or discard their scroll state.
@@ -123,7 +135,8 @@ fun LadiesApp(
     fun selectRoot(destination: RootDestination) {
         if (route.root == destination || saved.blockingNavigation) return
         route = route.select(destination)
-        viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen)
+        viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
+            lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         when (destination) {
             RootDestination.Search -> viewModel.refreshSearchDefinitions()
             RootDestination.Settings -> viewModel.refresh()
@@ -141,8 +154,9 @@ fun LadiesApp(
     }
 
     val pane = saved.pane
-    LaunchedEffect(route.root, search.profileOpen) {
-        viewModel.savedSearch.setVisible(route.root == RootDestination.Search && !search.profileOpen)
+    LaunchedEffect(savedSearchRouteVisible, lifecycle) {
+        viewModel.savedSearch.setVisible(savedSearchRouteVisible &&
+            lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
     }
     val savedResultsOpen = route.root == RootDestination.Search && pane == SearchPane.SavedResults
     val savedEditorOpen = route.root == RootDestination.Search && pane == SearchPane.SavedEditor

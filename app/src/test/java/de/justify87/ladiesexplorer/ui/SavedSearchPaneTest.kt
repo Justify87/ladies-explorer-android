@@ -56,7 +56,7 @@ class SavedSearchPaneTest {
     }
 
     private fun controller(scope: CoroutineScope, fake: Fake, ordinary: SearchDraft = SearchDraft()) =
-        SavedSearchController(scope, fake, { true }, { ordinary }, {})
+        SavedSearchController(scope, fake, { true }, { ordinary }, {}).apply { setVisible(true) }
 
     private suspend fun settle() { repeat(5) { yield() } }
 
@@ -150,6 +150,26 @@ class SavedSearchPaneTest {
         assertFalse(c.state.value.busy)
         assertEquals(1, finished)
         assertEquals(1, fake.cancels)
+    }
+
+    @Test fun hiddenWindowDoesNotAcknowledgeUntilExplicitVisibleRead() = runBlocking {
+        val fake = Fake(info(unread = true))
+        val c = controller(this, fake)
+        c.open(); settle()
+        val gate = CompletableDeferred<Unit>()
+        fake.onRead = { gate.await() }
+        c.openResults("one"); settle()
+        c.setVisible(false)
+        gate.complete(Unit); settle()
+        assertTrue(c.state.value.result!!.ready)
+        assertEquals(0, fake.acknowledgements)
+        assertTrue(c.state.value.searches.single().unreadNewResults)
+        c.setVisible(true)
+        assertEquals(0, fake.acknowledgements)
+        fake.onRead = {}
+        c.retryResults(); settle()
+        assertEquals(1, fake.acknowledgements)
+        assertFalse(c.state.value.searches.single().unreadNewResults)
     }
 
     @Test fun staleAcknowledgementKeepsUnreadAndDoesNotAutomaticallyRetry() = runBlocking {
