@@ -24,6 +24,7 @@ class SavedSearchPaneTest {
         var renames = 0
         var acknowledgements = 0
         var acceptAck = true
+        var onAck: suspend () -> Unit = {}
         var onRead: suspend () -> Unit = {}
         var onWrite: suspend () -> Unit = {}
         val windows = mutableListOf<UInt>()
@@ -46,8 +47,10 @@ class SavedSearchPaneTest {
         override suspend fun delete(id: String) { write(); list = list.filterNot { it.searchId == id } }
         override suspend fun acknowledge(id: String, revision: Long): Boolean {
             acknowledgements++
-            if (acceptAck) list = list.map { it.copy(unreadNewResults = false) }
-            return acceptAck
+            onAck()
+            val accepted = acceptAck && list.any { it.searchId == id && it.revision == revision && it.unreadNewResults }
+            if (accepted) list = list.map { if (it.searchId == id) it.copy(unreadNewResults = false) else it }
+            return accepted
         }
         var onCheck: suspend () -> Unit = {}
         var cancels = 0
@@ -134,6 +137,8 @@ class SavedSearchPaneTest {
         c.openResults("one"); settle()
         assertEquals(listOf(100u, 100u, 200u, 300u, 300u), fake.windows)
         assertTrue(c.state.value.result!!.ready)
+        assertEquals(0, fake.acknowledgements)
+        c.acknowledge("one"); settle()
         assertEquals(1, fake.acknowledgements)
     }
 
@@ -157,7 +162,7 @@ class SavedSearchPaneTest {
         assertEquals(1, fake.cancels)
     }
 
-    @Test fun hiddenWindowDoesNotAcknowledgeUntilExplicitVisibleRead() = runBlocking {
+    @Test fun hiddenWindowDoesNotAcknowledgeUntilExplicitVisibleAction() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
         c.open(); settle()
@@ -173,6 +178,8 @@ class SavedSearchPaneTest {
         assertEquals(0, fake.acknowledgements)
         fake.onRead = {}
         c.retryResults(); settle()
+        assertEquals(0, fake.acknowledgements)
+        c.acknowledge("one"); settle()
         assertEquals(1, fake.acknowledgements)
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
@@ -232,8 +239,48 @@ class SavedSearchPaneTest {
         val c = controller(this, fake)
         c.open(); settle()
         c.openResults("one"); settle()
+        c.acknowledge("one"); settle()
         assertEquals(1, fake.acknowledgements)
         assertTrue(c.state.value.searches.single().unreadNewResults)
         assertNotNull(c.state.value.error)
+    }
+    @Test fun hiddenInvalidationsCoalesceAndSuccessfulReadClearsOnlyItsError() = runBlocking {
+        val fake = Fake(info()).apply { cards = listOf(fixtureCard()) }
+        val c = controller(this, fake)
+        c.open(); settle()
+        c.openResults("one"); settle()
+        fake.windowError = true
+        c.refreshResultProjection(); settle()
+        assertNotNull(c.state.value.windowError)
+        c.setVisible(false)
+        fake.windowError = false
+        repeat(5) { c.refreshResultProjection() }
+        assertEquals(listOf(100u, 100u), fake.windows)
+        assertTrue(c.state.value.resultDirty)
+        assertFalse(c.state.value.busy)
+        c.setVisible(true); settle()
+        assertEquals(listOf(100u, 100u, 100u), fake.windows)
+        assertNull(c.state.value.windowError)
+        assertTrue(c.state.value.result!!.ready)
+        assertFalse(c.state.value.resultDirty)
+        assertEquals(0, fake.acknowledgements)
+    }
+
+    @Test fun explicitAckUsesDisplayedRevisionEvenIfVisibilityChangesDuringIo() = runBlocking {
+        val fake = Fake(info(unread = true))
+        val c = controller(this, fake)
+        c.open(); settle()
+        c.openResults("one"); settle()
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        fake.onAck = { started.complete(Unit); finish.await() }
+        c.acknowledge("one")
+        started.await()
+        c.setVisible(false)
+        fake.list = listOf(info(unread = true, revision = 2L))
+        finish.complete(Unit); settle()
+        assertEquals(1, fake.acknowledgements)
+        assertTrue(c.state.value.searches.single().unreadNewResults)
+        assertNotNull(c.state.value.actionError)
     }
 }

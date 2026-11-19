@@ -349,6 +349,7 @@ fun LadiesApp(
                     SearchPane.SavedResults -> key(saved.result?.id) {
                         SavedSearchResultsScreen(saved, !discovery.busy && !search.loading && !home.loading,
                             onMore = viewModel.savedSearch::more, onRetry = viewModel.savedSearch::retryResults,
+                            onAcknowledge = viewModel.savedSearch::acknowledge,
                             onOpen = viewModel::loadProfile, modifier = modifier)
                     }
                     else -> SearchScreen(
@@ -415,7 +416,7 @@ private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
         if (state.loading) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Suche läuft …", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onCancel) { Text("Abbrechen") }
+                TextButton(onClick = onCancel, enabled = !state.searchCancelling) { Text(if (state.searchCancelling) "Wird beendet …" else "Abbrechen") }
             }
         }
         state.error?.let {
