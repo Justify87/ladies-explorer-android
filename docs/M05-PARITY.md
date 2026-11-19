@@ -183,3 +183,16 @@ Review PR #20: P27–P32 korrigiert (Notiz-Verantwortung im ViewModel, katalogge
 | P36 | Ein gemeinsamer Rust-Quellenvertrag; Status-only ohne Umsortierung, eindeutige Evidenz, Teilfortschritt/Fehler und Abbruch bei Navigation/ON_STOP. | REVIEW / DEVICE_PENDING |
 
 Historische Referenzmatrix oben bleibt Inventar des M05-Ausgangsstands. Full-CI des Korrekturstands offen; keine Geräteabnahme.
+
+## M05.8 – Umsetzungsabgleich PR #22
+
+| ID | Implementierungsbeleg | Stand |
+|---|---|---|
+| P37 | SavedSearchScreen, LadiesApp, saved_search.rs: Delta, separate Rename-API, Übersicht/Prüfen/Acknowledge | REVIEW |
+| P38 | SearchScreen/SearchDraft und MainViewModel: gemeinsamer Editor, getrennte Session, Unsupported-Regeln unverändert | REVIEW |
+| P39 | SavedSearchResultsScreen: ProfileGridCard, Result-Keyset, archivierte Metadaten, Retry | REVIEW |
+| P40 | eigener Pane-/Back-/SaveableState-Vertrag, Loading/Empty/Error, keine Browserwerkzeuge | DEVICE_PENDING / REVIEW |
+
+### PR #22 – Reviewkorrektur
+
+P37/P38: SavedSearchController/SavedEditor/SearchDraft; getrennte Entwürfe, exklusive Operationen, revisionsgeprüfte Bestätigung, strikte Formatvalidierung. P39: kohärente Rust-Fenster mit aktuellem Medienpaar, stabile Result-Keys, gemerkte Fensterkapazität; kein Anhängen über Revisionen. P40: explizite Dialoge, Fehler/Commit-Trennung, Abbruch bis Drain, Offline-/Back-/Scroll-Szenarien als Controller-/Rust-Regressionen; manuelle Sicht-/TalkBack-/Font-Scale-/Rotationstests DEVICE_PENDING. Quellprüfung Rust-only, kein Browserwerkzeug.

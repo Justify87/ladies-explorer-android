@@ -157,8 +157,8 @@ pub use profile_detail::{
     SnapshotDifference,
 };
 pub use saved_search::{
-    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchInfo,
-    SavedSearchResultPage,
+    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchDelta,
+    SavedSearchInfo, SavedSearchResultPage, SavedSearchWindow,
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
 pub use source::{
@@ -576,16 +576,32 @@ impl LadiesCore {
         saved_search::results(self, id, limit, cursor)
     }
 
+    pub fn saved_search_window(
+        &self,
+        id: String,
+        limit: u32,
+    ) -> Result<SavedSearchWindow, CoreError> {
+        saved_search::window(self, id, limit)
+    }
+
+    pub fn acknowledge_saved_search_revision(
+        &self,
+        id: String,
+        revision: i64,
+    ) -> Result<bool, CoreError> {
+        saved_search::acknowledge_revision(self, id, revision)
+    }
+
     pub fn load_saved_search(&self, id: String) -> Result<SearchRequest, CoreError> {
         saved_search::load(self, id)
     }
 
-    pub fn delete_saved_search(&self, id: String) -> Result<(), CoreError> {
-        saved_search::delete(self, id)
+    pub fn rename_saved_search(&self, id: String, name: String) -> Result<(), CoreError> {
+        saved_search::rename(self, id, name)
     }
 
-    pub fn acknowledge_saved_search(&self, id: String) -> Result<(), CoreError> {
-        saved_search::acknowledge(self, id)
+    pub fn delete_saved_search(&self, id: String) -> Result<(), CoreError> {
+        saved_search::delete(self, id)
     }
 
     pub fn run_saved_search(

@@ -56,6 +56,7 @@ internal fun LazyListScope.searchFilterEditor(
     onFilterQuery: (String) -> Unit,
     categoryExpanded: Boolean,
     onCategoryExpanded: (Boolean) -> Unit,
+    enabled: Boolean,
     onCity: (String) -> Unit,
     onRadius: (UInt) -> Unit,
     onCategory: (String) -> Unit,
@@ -74,12 +75,12 @@ internal fun LazyListScope.searchFilterEditor(
         FilterCard("Standort") {
             OutlinedTextField(value = state.city, onValueChange = onCity,
                 label = { Text("Ort") }, singleLine = true,
-                enabled = !state.loading, modifier = Modifier.fillMaxWidth())
+                enabled = enabled, modifier = Modifier.fillMaxWidth())
             Text("Umkreis", style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 for (radius in listOf(5u,10u,20u,30u,50u,70u,100u)) {
                     FilterChip(selected = state.radiusKm == radius,
-                        onClick = { onRadius(radius) }, enabled = !state.loading, label = { Text("$radius km") })
+                        onClick = { onRadius(radius) }, enabled = enabled, label = { Text("$radius km") })
                 }
             }
         }
@@ -95,7 +96,7 @@ internal fun LazyListScope.searchFilterEditor(
                             if (filter.group == "category") onCategory(if (state.category == filter.value) "" else filter.value)
                             else onToggleFilter(filter.group, filter.value)
                         },
-                        enabled = !state.loading,
+                        enabled = enabled,
                         label = { Text(if (filter.group == "category") categoryLabels[filter.value] ?: filter.value else filter.value) },
                     )
                 }
@@ -104,7 +105,7 @@ internal fun LazyListScope.searchFilterEditor(
     }
     item {
         FilterCard("Verfügbarkeit") {
-            AvailabilitySelector(availabilityMode(state.selectedFilters), !state.loading, onAvailability)
+            AvailabilitySelector(availabilityMode(state.selectedFilters), enabled, onAvailability)
         }
     }
     item {
@@ -113,19 +114,19 @@ internal fun LazyListScope.searchFilterEditor(
             RangeSlider(value = state.ageMin.toFloat()..state.ageMax.toFloat(),
                 onValueChange = { onAge(it.start.roundToInt().toUInt().coerceIn(18u,60u),
                     it.endInclusive.roundToInt().toUInt().coerceIn(18u,60u)) },
-                valueRange = 18f..60f, enabled = !state.loading)
+                valueRange = 18f..60f, enabled = enabled)
         }
     }
     state.filterCatalog?.groups?.firstOrNull { it.key == "treff" }?.let { group ->
         if (matchesFilterGroup(group, filterQuery)) item(key = "filter/treff") {
-            FilterSection(group, state.selectedFilters[group.key].orEmpty(), !state.loading,
+            FilterSection(group, state.selectedFilters[group.key].orEmpty(), enabled,
                 filterQuery, true, { onToggleFilter(group.key, it) })
         }
     }
     if (filterQuery.isBlank() || "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) ||
         state.filterCatalog?.categories.orEmpty().any { (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }) item {
         FilterCard("Rubrik") {
-            OutlinedButton(onClick = { onCategoryExpanded(!categoryExpanded) }, enabled = !state.loading,
+            OutlinedButton(onClick = { onCategoryExpanded(!categoryExpanded) }, enabled = enabled,
                 modifier = Modifier.fillMaxWidth()) {
                 Text(categoryLabels[state.category] ?: state.category)
             }
@@ -134,7 +135,7 @@ internal fun LazyListScope.searchFilterEditor(
                     state.filterCatalog?.categories.orEmpty()
                         .filter { "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) || (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }
                         .forEach { category ->
-                            FilterChip(selected = state.category == category, enabled = !state.loading,
+                            FilterChip(selected = state.category == category, enabled = enabled,
                                 onClick = { onCategory(category) }, label = { Text(categoryLabels[category] ?: category) })
                         }
                 }
@@ -147,7 +148,7 @@ internal fun LazyListScope.searchFilterEditor(
             RangeSlider(value = state.heightMin.toFloat()..state.heightMax.toFloat(),
                 onValueChange = { onHeight(it.start.roundToInt().toUInt().coerceIn(140u,200u),
                     it.endInclusive.roundToInt().toUInt().coerceIn(140u,200u)) },
-                valueRange = 140f..200f, enabled = !state.loading)
+                valueRange = 140f..200f, enabled = enabled)
         }
     }
     val groupOrder = listOf(
@@ -165,7 +166,7 @@ internal fun LazyListScope.searchFilterEditor(
         }
         groups.forEach { group ->
             item(key = "filter/${group.key}") {
-                FilterSection(group, state.selectedFilters[group.key].orEmpty(), !state.loading,
+                FilterSection(group, state.selectedFilters[group.key].orEmpty(), enabled,
                     filterQuery, false, { onToggleFilter(group.key, it) })
             }
         }
@@ -174,7 +175,7 @@ internal fun LazyListScope.searchFilterEditor(
         FilterCard("Bilddarstellung und lokale Filter") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 listOf("ALL" to "Alle", "NATURAL" to "Natürlich", "AI" to "KI-markiert").forEach { (mode, label) ->
-                    FilterChip(selected = state.local.imageMode.ifBlank { "ALL" } == mode, enabled = !state.loading,
+                    FilterChip(selected = state.local.imageMode.ifBlank { "ALL" } == mode, enabled = enabled,
                         onClick = {
                             if (state.local.imageMode.ifBlank { "ALL" } != mode) {
                                 onLocalVisibility(state.local.copy(imageMode = mode))
@@ -182,16 +183,16 @@ internal fun LazyListScope.searchFilterEditor(
                         }, label = { Text(label) })
                 }
             }
-            LocalFilterRow("Nur mit Bildern", state.local.photosOnly, !state.loading) {
+            LocalFilterRow("Nur mit Bildern", state.local.photosOnly, enabled) {
                 onLocalVisibility(state.local.copy(photosOnly = it))
             }
-            LocalFilterRow("Nur mit Video", state.local.videoOnly, !state.loading) {
+            LocalFilterRow("Nur mit Video", state.local.videoOnly, enabled) {
                 onLocalVisibility(state.local.copy(videoOnly = it))
             }
-            LocalFilterRow("Dislikes ausblenden", state.local.hideDislikes, !state.loading) {
+            LocalFilterRow("Dislikes ausblenden", state.local.hideDislikes, enabled) {
                 onLocalVisibility(state.local.copy(hideDislikes = it))
             }
-            LocalFilterRow("Likes ausblenden", state.local.hideLikes, !state.loading) {
+            LocalFilterRow("Likes ausblenden", state.local.hideLikes, enabled) {
                 onLocalVisibility(state.local.copy(hideLikes = it))
             }
             Text("Studio, FaceApp und Betriebsprofile: keine zuverlässigen nativen Klassifikationsdaten.",
@@ -203,7 +204,7 @@ internal fun LazyListScope.searchFilterEditor(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 for (pages in listOf(1u,5u,10u,25u,50u)) {
                     FilterChip(selected = state.maxPages == pages, onClick = { onPages(pages) },
-                        enabled = !state.loading, label = { Text("$pages") })
+                        enabled = enabled, label = { Text("$pages") })
                 }
             }
         }

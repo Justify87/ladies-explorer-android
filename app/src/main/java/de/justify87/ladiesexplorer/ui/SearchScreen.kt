@@ -3,7 +3,6 @@ package de.justify87.ladiesexplorer.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -25,9 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -37,67 +33,39 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.DiscoveryCard
-import de.justify87.ladiesexplorer.core.LocalVisibility
+import de.justify87.ladiesexplorer.core.SearchRequest
 
 @Composable
-fun SearchScreen(
-    state: SearchUiState,
+internal fun SearchScreen(
+    search: SearchUiState,
+    saved: SavedSearchUiState,
     canStartSearch: Boolean,
-    onCity: (String) -> Unit,
-    onRadius: (UInt) -> Unit,
-    onCategory: (String) -> Unit,
-    onAge: (UInt,UInt) -> Unit,
-    onHeight: (UInt,UInt) -> Unit,
-    onPages: (UInt) -> Unit,
-    onToggleFilter: (String,String) -> Unit,
-    onAvailability: (AvailabilityMode) -> Unit,
-    onLocalVisibility: (LocalVisibility) -> Unit,
+    onDraftChange: ((SearchDraft) -> SearchDraft) -> Unit,
     onReset: () -> Unit,
-    onPreviewVisible: (Boolean) -> Unit,
+    onPreviewTarget: (SearchRequest?) -> Unit,
     onSearch: () -> Unit,
     onCancelSearch: () -> Unit,
-    onSave: (String) -> Unit,
-    onNewPreset: () -> Unit,
-    onLoadSaved: (String) -> Unit,
-    onRunSaved: (String) -> Unit,
-    onDeleteSaved: (String) -> Unit,
-    onAcknowledge: (String) -> Unit,
-    onShowSavedResults: (String) -> Unit,
-    onLoadMoreSavedResults: () -> Unit,
+    onSave: () -> Unit,
+    onName: (String) -> Unit,
+    onCancelEdit: () -> Unit,
     onProfile: (Long,Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val editor = saved.editor
+    val editing = editor != null
+    val draft = editor?.draft ?: SearchDraft.from(search)
+    val state = draft.applyTo(search)
+    val enabled = !search.loading && !saved.busy && (!editing || canStartSearch)
     var resultsVisible by rememberSaveable { mutableStateOf(false) }
-    var presetName by rememberSaveable { mutableStateOf("") }
     var filterQuery by rememberSaveable { mutableStateOf("") }
     var categoryExpanded by rememberSaveable { mutableStateOf(false) }
     val filterListState = rememberLazyListState()
     val resultListState = rememberLazyListState()
-    val savedListState = key(state.showingSavedSearchId) { rememberLazyListState() }
-    var lastEditingId by rememberSaveable { mutableStateOf<String?>(null) }
     var lastRunId by rememberSaveable { mutableStateOf<String?>(null) }
-    val listState = when {
-        state.showingSavedSearchId != null -> savedListState
-        resultsVisible && state.response != null -> resultListState
-        else -> filterListState
-    }
-    LaunchedEffect(state.showingSavedSearchId, state.savedResultCards.size, state.savedResultCursor) {
-        if (state.showingSavedSearchId != null && state.savedResultCursor != null) {
-            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-                .collect { last ->
-                    if (last >= state.savedResultCards.size - 3) onLoadMoreSavedResults()
-                }
-        }
-    }
-    LaunchedEffect(state.editingSavedSearchId) {
-        if (lastEditingId != state.editingSavedSearchId) {
-            presetName = state.savedSearches.firstOrNull { it.searchId == state.editingSavedSearchId }?.name.orEmpty()
-            lastEditingId = state.editingSavedSearchId
-        }
-    }
+    val listState = if (!editing && resultsVisible && state.response != null) resultListState else filterListState
     LaunchedEffect(state.response?.searchRunId) {
         val runId = state.response?.searchRunId?.toString()
-        if (runId != lastRunId) {
+        if (runId != lastRunId && !editing) {
             if (runId != null) {
                 resultListState.scrollToItem(0)
                 resultsVisible = true
@@ -105,11 +73,14 @@ fun SearchScreen(
             lastRunId = runId
         }
     }
-    val editorVisible = state.showingSavedSearchId == null && !(resultsVisible && state.response != null)
-    DisposableEffect(editorVisible) {
-        onPreviewVisible(editorVisible)
-        onDispose { onPreviewVisible(false) }
+    val editorVisible = editing || !(resultsVisible && state.response != null)
+    val target = if (editorVisible && !search.loading && !saved.blockingNavigation)
+        draft.request().copy(maxPages = 1u) else null
+    DisposableEffect(target) {
+        onPreviewTarget(target)
+        onDispose { onPreviewTarget(null) }
     }
+    val previewMatches = target != null && state.previewTarget == target
     Column(modifier = modifier.imePadding()) {
     LazyColumn(
         state = listState,
@@ -117,7 +88,7 @@ fun SearchScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        if (state.showingSavedSearchId == null) item {
+        if (!editing) item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (resultsVisible && state.response != null) "Ergebnisse" else "Filter",
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -134,46 +105,10 @@ fun SearchScreen(
                 TextButton(onClick = onCancelSearch) { Text("Suche abbrechen") }
             }
         }
-        state.error?.let { message ->
+        (if (editing) saved.error else state.error)?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.error) }
         }
-        if (state.showingSavedSearchId != null) {
-            item {
-                Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Text("${state.savedResultCards.size} bekannte Treffer",style=MaterialTheme.typography.bodyMedium)
-                }
-            }
-            if (state.savedResultCards.isEmpty() && !state.savedResultsLoadingMore && state.error == null) {
-                item { Text("Für diese Suche sind noch keine vollständigen Ergebnisse gespeichert.") }
-            }
-            items(state.savedResultCards,key={it.resultKey}) { card ->
-                Card(modifier=Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier=Modifier.padding(12.dp),
-                        horizontalArrangement=Arrangement.spacedBy(12.dp),
-                        verticalAlignment=Alignment.CenterVertically,
-                    ) {
-                        ProfileThumbnail(
-                            url=card.thumbnailUrl,
-                            modifier=Modifier.size(90.dp).clip(RoundedCornerShape(12.dp)),
-                        )
-                        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                            Text(card.name,style=MaterialTheme.typography.titleMedium)
-                            Text(card.city,style=MaterialTheme.typography.bodySmall)
-                            Text("Erstmals: ${card.firstSeenAt.take(16)}",style=MaterialTheme.typography.labelSmall)
-                            val listing = card.listingId
-                            val person = card.personId
-                            if (listing != null && person != null) {
-                                TextButton(onClick={onProfile(listing,person)}) { Text("Profil öffnen") }
-                            } else {
-                                Text("Profil lokal noch nicht verfügbar",style=MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                }
-            }
-            if (state.savedResultsLoadingMore) item { CircularProgressIndicator() }
-        } else if (resultsVisible && state.response != null) {
+        if (!editing && resultsVisible && state.response != null) {
             val response = state.response
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -199,102 +134,31 @@ fun SearchScreen(
                 SearchResultRow(card, onProfile)
             }
         } else {
+            if (editor != null) item {
+                OutlinedTextField(value = editor.name, onValueChange = onName,
+                    label = { Text("Name der Suche") }, singleLine = true,
+                    enabled = enabled, modifier = Modifier.fillMaxWidth())
+            }
             searchFilterEditor(
                 state = state,
                 filterQuery = filterQuery,
                 onFilterQuery = { filterQuery = it },
                 categoryExpanded = categoryExpanded,
                 onCategoryExpanded = { categoryExpanded = it },
-                onCity = onCity,
-                onRadius = onRadius,
-                onCategory = onCategory,
-                onAge = onAge,
-                onHeight = onHeight,
-                onPages = onPages,
-                onToggleFilter = onToggleFilter,
-                onAvailability = onAvailability,
-                onLocalVisibility = onLocalVisibility,
+                enabled = enabled,
+                onCity = { value -> onDraftChange { it.copy(city = value) } },
+                onRadius = { value -> onDraftChange { it.copy(radiusKm = value) } },
+                onCategory = { value -> onDraftChange { it.copy(category = value) } },
+                onAge = { min, max -> onDraftChange { it.copy(ageMin = min, ageMax = max) } },
+                onHeight = { min, max -> onDraftChange { it.copy(heightMin = min, heightMax = max) } },
+                onPages = { value -> onDraftChange { it.copy(maxPages = value) } },
+                onToggleFilter = { group, value -> onDraftChange { it.toggle(group, value) } },
+                onAvailability = { value -> onDraftChange { it.availability(value) } },
+                onLocalVisibility = { value -> onDraftChange { it.copy(local = value) } },
             )
-            item { HorizontalDivider() }
-            item {
-                Text("Gespeicherte Suchen",style = MaterialTheme.typography.titleLarge)
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value=presetName,onValueChange={presetName=it},
-                        label={Text("Name der Suche")},singleLine=true,
-                        modifier=Modifier.weight(1f),
-                    )
-                    Button(
-                        onClick={
-                            onSave(presetName)
-                        },
-                        enabled=!state.saving && !state.loading && presetName.isNotBlank(),
-                    ) { Text(if (state.editingSavedSearchId == null) "Speichern" else "Aktualisieren") }
-                }
-            }
-            if (state.editingSavedSearchId != null) {
-                val imported = state.savedSearches.firstOrNull { it.searchId == state.editingSavedSearchId }
-                if (imported?.localFilterSummary?.isNotBlank() == true) {
-                    item {
-                        Text(
-                            "Importierte lokale Filter bleiben beim Bearbeiten erhalten: ${imported.localFilterSummary}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-                item {
-                    TextButton(onClick = {
-                        onNewPreset()
-                        presetName = ""
-                    }) { Text("Als neue Suche speichern") }
-                }
-            }
-            if (state.savedSearches.isEmpty()) {
-                item { Text("Noch keine Suche gespeichert.") }
-            }
-            items(state.savedSearches, key = { it.searchId }) { saved ->
-                Card(modifier=Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                        Row(verticalAlignment=Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(saved.name,style=MaterialTheme.typography.titleMedium)
-                                Text(
-                                    if (saved.definitionSupported) "${saved.city} · ${saved.radiusKm} km" else
-                                        "Importierte Suchdefinition · bitte neu erstellen",
-                                    style=MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                            if (saved.unreadNewResults) {
-                                Text("Neu",color=MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                        if (saved.localFilterSummary.isNotBlank()) {
-                            Text("Lokale Filter: ${saved.localFilterSummary}",style=MaterialTheme.typography.bodySmall)
-                        }
-                        saved.lastError?.let {
-                            Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
-                        }
-                        FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            TextButton(
-                                enabled=saved.definitionSupported && !state.loading && !state.saving,
-                                onClick={ onLoadSaved(saved.searchId) },
-                            ) { Text("Bearbeiten") }
-                            TextButton(onClick={onShowSavedResults(saved.searchId)}, enabled = !state.loading) {
-                                Text("Ergebnisse")
-                            }
-                            TextButton(
-                                enabled=saved.definitionSupported && !state.loading && !state.saving && canStartSearch,
-                                onClick={ onRunSaved(saved.searchId) },
-                            ) { Text("Ausführen") }
-                            if (saved.unreadNewResults) {
-                                TextButton(onClick={ onAcknowledge(saved.searchId) }) { Text("Gelesen") }
-                            }
-                            TextButton(onClick={ onDeleteSaved(saved.searchId) }, enabled = !state.loading && !state.saving) { Text("Löschen") }
-                        }
-                    }
-                }
+            if (editing) item {
+                Text("Nicht unterstützte importierte Regeln sind nicht bearbeitbar. Unterstützte Filter bleiben erhalten.",
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -304,6 +168,7 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(when {
                         state.loading -> "Suche läuft …"
+                        !previewMatches -> "Quellzahl noch nicht geprüft"
                         state.previewLoading -> "Quellzahl wird geprüft …"
                         state.previewError != null -> "Vorschau nicht verfügbar: ${state.previewError}"
                         state.preview?.serverCount != null -> "${state.preview.serverCount} Treffer laut Quelle"
@@ -313,10 +178,15 @@ fun SearchScreen(
                     Text("Lokale Filter werden nach der Suche angewendet.", style = MaterialTheme.typography.labelSmall)
                     if (state.response != null) Text("Der letzte Suchlauf bleibt bis zur neuen Suche erhalten.",
                         style = MaterialTheme.typography.labelSmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { filterQuery = ""; onReset() }, enabled = !state.loading) { Text("Reset") }
+                    if (editor != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onCancelEdit, enabled = !saved.blockingNavigation) { Text("Abbrechen") }
+                        Button(onClick = onSave, enabled = enabled && editor.name.isNotBlank() && editor.name.length <= 100 && draft.city.isNotBlank(), modifier = Modifier.weight(1f)) {
+                            Text(if (saved.operation == SavedOperation.Write) "Speichert …" else "Speichern")
+                        }
+                    } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { filterQuery = ""; onReset() }, enabled = enabled) { Text("Reset") }
                         Button(onClick = if (state.loading) onCancelSearch else onSearch,
-                            enabled = state.loading || (canStartSearch && !state.saving && state.city.isNotBlank()), modifier = Modifier.weight(1f)) {
+                            enabled = state.loading || (canStartSearch && enabled && state.city.isNotBlank()), modifier = Modifier.weight(1f)) {
                             Text(if (state.loading) "Abbrechen" else "Suchen")
                         }
                     }

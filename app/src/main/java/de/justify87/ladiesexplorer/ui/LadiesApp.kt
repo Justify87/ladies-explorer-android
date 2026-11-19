@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material3.Button
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -44,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,6 +74,7 @@ fun LadiesApp(
 ) {
     val home by viewModel.uiState.collectAsStateWithLifecycle()
     val search by viewModel.searchUiState.collectAsStateWithLifecycle()
+    val saved by viewModel.savedSearch.state.collectAsStateWithLifecycle()
     val discovery by viewModel.discoverState.collectAsStateWithLifecycle()
     val map by viewModel.mapState.collectAsStateWithLifecycle()
     val notes by viewModel.profileNotes.collectAsStateWithLifecycle()
@@ -79,6 +82,7 @@ fun LadiesApp(
         save = { it.encode() }, restore = { ShellRoute.decode(it) },
     )) { mutableStateOf(ShellRoute()) }
     val stateHolder = rememberSaveableStateHolder()
+    val searchStateHolder = rememberSaveableStateHolder()
     val detailTabs = rememberProfileTabMemory()
     val swipeTabs = rememberProfileTabMemory()
     var lastPresentedRun by rememberSaveable { mutableStateOf(search.response?.searchRunId) }
@@ -104,19 +108,35 @@ fun LadiesApp(
         if (!savedVisible) viewModel.cancelSavedStatus()
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
+    val savedSearchRouteVisible = route.root == RootDestination.Search && !search.profileOpen
+    val currentSavedSearchRouteVisible by rememberUpdatedState(savedSearchRouteVisible)
+    DisposableEffect(lifecycle, viewModel) {
+        fun publishVisibility() {
+            viewModel.savedSearch.setVisible(currentSavedSearchRouteVisible &&
+                lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        }
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) viewModel.cancelSavedStatus()
+            publishVisibility()
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.cancelSavedStatus()
+                viewModel.savedSearch.cancelCheck()
+            }
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
+        publishVisibility()
+        onDispose {
+            lifecycle.removeObserver(observer)
+            viewModel.savedSearch.setVisible(false)
+        }
     }
 
     // Root changes must not reload already paginated lists or discard their scroll state.
     // Explicit refresh and data mutations remain owned by the ViewModel.
     fun selectRoot(destination: RootDestination) {
-        if (route.root == destination) return
+        if (route.root == destination || saved.blockingNavigation) return
         route = route.select(destination)
+        viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
+            lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         when (destination) {
             RootDestination.Search -> viewModel.refreshSearchDefinitions()
             RootDestination.Settings -> viewModel.refresh()
@@ -133,23 +153,44 @@ fun LadiesApp(
         }
     }
 
-    val savedResultsOpen = route.root == RootDestination.Search && search.showingSavedSearchId != null
+    val pane = saved.pane
+    LaunchedEffect(savedSearchRouteVisible, lifecycle) {
+        viewModel.savedSearch.setVisible(savedSearchRouteVisible &&
+            lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    val savedResultsOpen = route.root == RootDestination.Search && pane == SearchPane.SavedResults
+    val savedEditorOpen = route.root == RootDestination.Search && pane == SearchPane.SavedEditor
+    val savedOverviewOpen = route.root == RootDestination.Search && pane == SearchPane.SavedList
+    var previousEditorSession by rememberSaveable { mutableStateOf<Long?>(null) }
+    LaunchedEffect(saved.editor?.session) {
+        val old = previousEditorSession
+        if (old != null && old != saved.editor?.session) searchStateHolder.removeState("editor/$old")
+        previousEditorSession = saved.editor?.session
+    }
     fun back() {
+        if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen || savedResultsOpen)) {
+            viewModel.savedSearch.back()
+            return
+        }
         when (route.backAction(search.profileOpen, savedResultsOpen)) {
             BackAction.CloseProfile -> viewModel.closeProfile()
-            BackAction.CloseSavedResults -> viewModel.closeSavedResults()
+            BackAction.CloseSavedResults -> viewModel.savedSearch.back()
             BackAction.Navigate -> route = route.back()
             BackAction.System -> Unit
         }
     }
-    BackHandler(enabled = route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
+    BackHandler(enabled = savedEditorOpen || savedOverviewOpen || route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System) { back() }
 
     Scaffold(
         topBar = {
             if (!search.profileOpen) TopAppBar(
                 title = {
-                    if (savedResultsOpen) {
-                        Text("Gespeicherte Ergebnisse", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (savedResultsOpen || savedEditorOpen || savedOverviewOpen) {
+                        Text(when {
+                            savedResultsOpen -> saved.searches.firstOrNull { it.searchId == saved.result?.id }?.name ?: "Gespeicherte Ergebnisse"
+                            savedEditorOpen -> "Suche bearbeiten"
+                            else -> "Gespeicherte Suchen"
+                        }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     } else {
                         Text(
                             if (route.root == RootDestination.Discover) "Ladies Explorer" else route.root.title,
@@ -162,8 +203,8 @@ fun LadiesApp(
                     }
                 },
                 navigationIcon = {
-                    if (savedResultsOpen) {
-                        IconButton(onClick = { back() }) {
+                    if (savedResultsOpen || savedEditorOpen || savedOverviewOpen) {
+                        IconButton(onClick = { back() }, enabled = saved.operation != SavedOperation.Write) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Zurück")
                         }
                     }
@@ -172,6 +213,13 @@ fun LadiesApp(
                     if (route.root == RootDestination.Discover) {
                         IconButton(onClick = { selectRoot(RootDestination.Search) }) {
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
+                        }
+                    } else if (route.root == RootDestination.Search && pane == SearchPane.Filters) {
+                        IconButton(onClick = viewModel.savedSearch::open, enabled = !search.loading && !saved.blockingNavigation && !home.loading && !discovery.busy) {
+                            BadgedBox(badge = { if (saved.searches.any { it.unreadNewResults }) Badge() }) {
+                                Icon(Icons.Default.Bookmarks, contentDescription = if (saved.searches.any { it.unreadNewResults })
+                                    "Gespeicherte Suchen, neue Ergebnisse" else "Gespeicherte Suchen")
+                            }
                         }
                     }
                 },
@@ -185,6 +233,7 @@ fun LadiesApp(
                         NavigationBarItem(
                             selected = route.root == destination,
                             onClick = { selectRoot(destination) },
+                            enabled = !saved.blockingNavigation || route.root == destination,
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -196,11 +245,11 @@ fun LadiesApp(
                                 when (destination) {
                                     RootDestination.Discover -> Icon(Icons.Default.FavoriteBorder, contentDescription = null)
                                     RootDestination.Search -> BadgedBox(badge = {
-                                        if (search.savedSearches.any { it.unreadNewResults }) {
+                                        if (saved.searches.any { it.unreadNewResults }) {
                                             Badge() // unread indicator, not a count
                                         }
                                     }) { Icon(Icons.Default.Search, contentDescription =
-                                        if (search.savedSearches.any { it.unreadNewResults }) "Neue gespeicherte Suchergebnisse" else null) }
+                                        if (saved.searches.any { it.unreadNewResults }) "Neue gespeicherte Suchergebnisse" else null) }
                                     RootDestination.Saved -> Icon(Icons.Default.Favorite, contentDescription = null)
                                     RootDestination.Settings -> Icon(Icons.Default.Settings, contentDescription = null)
                                 }
@@ -235,7 +284,7 @@ fun LadiesApp(
                     RootDestination.Discover -> Column(modifier = modifier) {
                         if (route.discovery != DiscoverMode.Map) {
                             Column(Modifier.padding(horizontal = 16.dp)) {
-                                AvailabilitySelector(search.headerAvailability(), !search.loading && !home.loading && !discovery.busy) {
+                                AvailabilitySelector(search.headerAvailability(), !search.loading && !home.loading && !discovery.busy && !saved.busy) {
                                     viewModel.runAvailability(it)
                                 }
                             }
@@ -287,33 +336,36 @@ fun LadiesApp(
                             )
                         }
                     }
-                    RootDestination.Search -> SearchScreen(
-                        state=search,
+                    RootDestination.Search -> searchStateHolder.SaveableStateProvider(
+                        when (pane) {
+                            SearchPane.SavedResults -> "results/${saved.result?.id}"
+                            SearchPane.SavedEditor -> "editor/${saved.editor?.session}"
+                            else -> pane.name
+                        }
+                    ) { when (pane) {
+                    SearchPane.SavedList -> SavedSearchOverview(
+                        state = saved, enabled = !search.loading && !home.loading && !discovery.busy,
+                        controller = viewModel.savedSearch, modifier = modifier)
+                    SearchPane.SavedResults -> key(saved.result?.id) {
+                        SavedSearchResultsScreen(saved, !discovery.busy && !search.loading && !home.loading,
+                            onMore = viewModel.savedSearch::more, onRetry = viewModel.savedSearch::retryResults,
+                            onOpen = viewModel::loadProfile, modifier = modifier)
+                    }
+                    else -> SearchScreen(
+                        search = search, saved = saved,
                         canStartSearch = !home.loading && !discovery.busy,
-                        onCity=viewModel::setSearchCity,
-                        onRadius=viewModel::setSearchRadius,
-                        onCategory=viewModel::setCategory,
-                        onAge=viewModel::setAgeRange,
-                        onHeight=viewModel::setHeightRange,
-                        onPages=viewModel::setMaxPages,
-                        onToggleFilter=viewModel::toggleFilter,
-                        onAvailability=viewModel::setAvailability,
-                        onLocalVisibility=viewModel::setLocalVisibility,
-                        onReset=viewModel::resetSearchDraft,
-                        onPreviewVisible=viewModel::setPreviewVisible,
-                        onSearch={viewModel.startSearch()},
-                        onCancelSearch=viewModel::cancelActiveSearch,
-                        onSave=viewModel::saveCurrentSearch,
-                        onNewPreset=viewModel::createNewSavedSearch,
-                        onLoadSaved=viewModel::loadSavedSearch,
-                        onRunSaved={viewModel.startSearch(it)},
-                        onDeleteSaved=viewModel::deleteSavedSearch,
-                        onAcknowledge=viewModel::acknowledgeSavedSearch,
-                        onShowSavedResults=viewModel::showSavedResults,
-                        onLoadMoreSavedResults=viewModel::loadMoreSavedResults,
-                        onProfile=viewModel::loadProfile,
-                        modifier=modifier,
+                        onDraftChange = if (pane == SearchPane.SavedEditor) viewModel.savedSearch::editDraft else viewModel::editSearchDraft,
+                        onReset = viewModel::resetSearchDraft,
+                        onPreviewTarget = viewModel::setPreviewTarget,
+                        onSearch = { viewModel.startSearch() },
+                        onCancelSearch = viewModel::cancelActiveSearch,
+                        onSave = viewModel.savedSearch::saveEditor,
+                        onName = viewModel.savedSearch::editName,
+                        onCancelEdit = viewModel.savedSearch::back,
+                        onProfile = viewModel::loadProfile,
+                        modifier = modifier,
                     )
+                    } }
                     RootDestination.Saved -> SavedPeopleScreen(
                         state = discovery,
                         onKind = viewModel::selectSavedKind,
