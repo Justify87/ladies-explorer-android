@@ -275,7 +275,7 @@ P45–P51 ergänzen die bestehende funktionale Legacy-Matrix; sie sind explizit 
 
 | ID | Native Soll-Abweichung / funktionale Erhaltung | Vorgänger | Aufgaben / Abnahme |
 |---|---|---|---|
-| P45 | Ein gemeinsam scrollbareres Profil aus Swipe, Grid, Map, Suche, gespeichert; kein Swipe→Einzelprofil-Umweg. Standalone ohne Deck-Entscheidung | P19,P21,P27–P32 | T10.1,T10.5,T10.8: alle Einstiegspunkte, Back, Inline-Confirm |
+| P45 | Ein gemeinsam scrollbares Profil aus Swipe, Grid, Map, Suche, gespeichert; kein Swipe→Einzelprofil-Umweg. Standalone ohne Deck-Entscheidung | P19,P21,P27–P32 | T10.1,T10.5,T10.8: alle Einstiegspunkte, Back, Inline-Confirm |
 | P46 | Kompakte Shell, zusammengefasste Filter/Run/Modus/Deck-Menüs, Fehler und Teilstatus sichtbar; gleiche Optionen | P01–P05,P09,P20,P26 | T10.2,T10.6: Maß-/Erreichbarkeitsprüfung und Null zusätzlicher Runs |
 | P47 | Fotodominanter Hero: 65–72 % H, Ziel 70 %, Start ≤14 % H, 0–8 dp Seiten, Overlay/Story/Zähler, adaptive Ausnahmen gemäß Plan | P15–P17 | T10.3,T10.8: synthetische Layout-/Medienmatrix |
 | P48 | Tap-Galerie vs Horizontal-Entscheidung vs Vertical-Scroll eindeutig, genau ein Commit, keine Swipe-Entscheidung im Einzelprofil | P21,P22 | T10.4,T10.8: JVM-Sequenz + native Belege |
