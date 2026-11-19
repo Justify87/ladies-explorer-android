@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.first
 fun DiscoverScreen(
     state: DiscoverUiState,
     searchLoading: Boolean = false,
+    executedFiltersJson: String = "{}",
     onRefresh: () -> Unit,
     onReset: () -> Unit,
     onUndo: () -> Unit,
@@ -49,6 +50,9 @@ fun DiscoverScreen(
     var retry by remember(card?.listingId) { mutableIntStateOf(0) }
     var readError by remember(card?.listingId) { mutableStateOf<String?>(null) }
     val current = card?.let { decks[it.listingId] }
+    val owner = current?.identity?.personId ?: card?.personId
+    val panels = rememberProfilePanels(current?.profile, current?.identity?.personId, executedFiltersJson)
+    val (tab, selectTab) = rememberProfileTab(owner)
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
     val control = remember(state.activeRunId, card?.listingId, retry, visible) { RequestControl() }
@@ -181,7 +185,9 @@ fun DiscoverScreen(
                         }
                         TextButton(onClick = { onProfile(card.listingId, card.personId) }, enabled = enabled) { Text("Profil öffnen") }
                     }
-                    if (profile != null) profileContent(profile.profile, profile.candidates, profile.history, !actions)
+                    if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
+                        panels, tab, selectTab, profile.candidates, profile.history, !actions,
+                        onConfirm = null, onOpenDetail = { onProfile(card.listingId, card.personId) })
                     else card.description?.let { item { Text(it) } }
                 }
             }

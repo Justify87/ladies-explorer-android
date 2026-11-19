@@ -167,3 +167,6 @@ G4 technisch DONE: PR #17 gemergt, Full-CI #329 bestanden; manuelle Geräte-/Liv
 | P26 | ShellRoute, LadiesApp, DiscoveryState.kt, ShellRouteTest, SearchRunStateTest | Geladene DB-Fenster bleiben bei Reprojektion erhalten, kein neuer Suchlauf; Geräteposition/Moduswechsel offen, Kartenvertrag unverändert |
 
 G5 technisch DONE: PR #19 gemergt, Full-CI #341 auf e8c83e42 erfolgreich; Geräteprüfung DEVICE_PENDING.
+## M05.6 – Implementierung in Arbeit
+
+P27–P32: ProfilePanels.kt (gemeinsame native Tabs), profile_detail.rs (typisierte Fakten, Filterbelege, Notizen und Analyse), history.rs (Vergleich mit Eigentümerprüfung), CoreStore. Native Gerätebelege/Full-CI offen; Preis-, Begegnungs- und KI-Analysefunktionen nicht im M05-Scope.

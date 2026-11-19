@@ -51,7 +51,7 @@ internal fun phoneForWhatsApp(phone: String): String? {
     return normalized.takeIf { it.length in 9..15 }
 }
 
-private fun openExternal(context: Context, link: String, dial: Boolean = false) {
+internal fun openExternal(context: Context, link: String, dial: Boolean = false) {
     val uri = Uri.parse(link)
     val allowed = if (dial) uri.scheme == "tel" else uri.scheme == "https" &&
         uri.host != null && uri.userInfo == null

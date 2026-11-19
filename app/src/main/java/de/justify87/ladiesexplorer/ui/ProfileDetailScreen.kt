@@ -1,39 +1,14 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
-import org.json.JSONArray
-import org.json.JSONObject
-
-private fun jsonRows(raw: String): List<Pair<String,String>> {
-    return runCatching {
-        val root = JSONObject(raw)
-        val result = mutableListOf<Pair<String,String>>()
-        val keys = root.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val value = root.opt(key)
-            val visible = when (value) {
-                is JSONArray -> (0 until value.length()).map { value.optString(it) }.joinToString(" · ")
-                is JSONObject -> value.toString()
-                null, JSONObject.NULL -> ""
-                else -> value.toString()
-            }
-            if (visible.isNotBlank()) result.add(key to visible)
-        }
-        result
-    }.getOrDefault(emptyList())
-}
 
 @Composable
 fun ProfileDetailScreen(
@@ -47,6 +22,10 @@ fun ProfileDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val profile = state.profile
+    val owner = state.profileIdentity?.personId
+    val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
+    val panels = rememberProfilePanels(profile, owner, filters)
+    val (tab, selectTab) = rememberProfileTab(owner)
     val detailListState = rememberLazyListState()
     var confirmTarget by remember(profile?.listingId) { mutableStateOf<Long?>(null) }
 
@@ -121,8 +100,9 @@ fun ProfileDetailScreen(
                 state.mediaWarning?.let {
                     item { Text(it,color=MaterialTheme.colorScheme.error) }
                 }
-                profileContent(profile, state.identityCandidates, state.changeEvents,
-                    actionsBusy || state.actionBusy) { confirmTarget = it }
+                profileContent(profile, state.profileIdentity, state.selectedPerson, state.profileMedia,
+                    panels, tab, selectTab, state.identityCandidates, state.changeEvents,
+                    actionsBusy || state.actionBusy, onConfirm = { confirmTarget = it })
             }
         }
     }
@@ -143,88 +123,4 @@ internal fun ProfileHeader(
         hasVideo = media.any { it.kind == "VIDEO" }, fromArchive = fromArchive,
     )
     profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-}
-
-/** Existing detail sections remain shared; tab redesign is M05.6. */
-internal fun LazyListScope.profileContent(
-    profile: ProfileResponse,
-    candidates: List<IdentityCandidate>,
-    history: List<ChangeRecord>,
-    actionsBusy: Boolean,
-    onConfirm: ((Long) -> Unit)? = null,
-) {
-    item {
-        Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            Text("Über das Profil",style=MaterialTheme.typography.titleLarge)
-            SelectionContainer {
-                Text(profile.description.ifBlank { "Keine Beschreibung vorhanden." })
-            }
-        }
-    }
-    val sections = listOf(
-        "Merkmale" to jsonRows(profile.traitsJson),
-        "Services" to jsonRows(profile.servicesJson),
-        "Öffnungszeiten" to jsonRows(profile.openingTimesJson),
-    )
-    sections.forEach { (title,rows) ->
-        if (rows.isNotEmpty()) {
-            item {
-                Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    HorizontalDivider()
-                    Text(title,style=MaterialTheme.typography.titleLarge)
-                    rows.forEach { (key,value) ->
-                        Text(key,style=MaterialTheme.typography.labelLarge)
-                        Text(value,style=MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-        }
-    }
-    if (candidates.isNotEmpty()) {
-        item {
-            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                HorizontalDivider()
-                Text("Mögliche Identitätsübereinstimmungen",style=MaterialTheme.typography.titleLarge)
-                Text("Diese Hinweise führen niemals automatisch zu einer Zusammenführung.")
-            }
-        }
-        items(candidates,key={"candidate/" + it.personId}) { candidate ->
-            Card {
-                Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
-                    Text("Person #${candidate.personId} · ${candidate.decision}")
-                    Text(
-                        listOfNotNull(
-                            "Telefon".takeIf { candidate.phoneMatch },
-                            "Quellprofil".takeIf { candidate.sourceProfileMatch },
-                            "${candidate.strongImageMatches} Bildtreffer".takeIf { candidate.imageMatches>0u },
-                        ).joinToString(" · "),
-                    )
-                    if (onConfirm != null) OutlinedButton(
-                        onClick={ onConfirm(candidate.personId) },
-                        enabled=!actionsBusy,
-                    ) { Text("Zusammenführung prüfen") }
-                }
-            }
-        }
-    }
-    if (history.isNotEmpty()) {
-        item {
-            HorizontalDivider()
-            Text("Änderungshistorie",style=MaterialTheme.typography.titleLarge)
-        }
-        items(history,key={"event/" + it.changeEventId}) { event ->
-            Column(verticalArrangement=Arrangement.spacedBy(3.dp)) {
-                Text(
-                    "${event.createdAt.take(16)} · ${event.eventType}",
-                    style=MaterialTheme.typography.labelMedium,
-                )
-                event.fieldKey?.let { Text(it,style=MaterialTheme.typography.bodyMedium) }
-                event.newJson?.let {
-                    SelectionContainer {
-                        Text(it.take(220),style=MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-    }
 }

@@ -229,6 +229,7 @@ fun LadiesApp(
                             DiscoverScreen(
                                 state = discovery,
                                 searchLoading = search.loading,
+                                executedFiltersJson = search.response?.query?.filtersJson ?: "{}",
                                 onRefresh = viewModel::refreshDiscovery,
                                 onReset = viewModel::resetSwipe,
                                 onUndo = viewModel::undoSwipe,
