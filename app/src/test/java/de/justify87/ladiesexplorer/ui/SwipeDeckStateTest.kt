@@ -159,16 +159,29 @@ class SwipeDeckStateTest {
         assertNull(session.restoredPresentation(card(17)))
     }
 
+    @Test fun restoredReceiptIsOneShotButOnlyForTheMatchingPresentation() {
+        val session = SwipeSession()
+        val position = SwipePresentation(4, 1, 9, "{}", "IMAGE:fixture", "hero", 12, emptyList())
+        session.visit(SwipeStep(4, 1, presentation = position))
+        session.undo(requireNotNull(session.last))
+        session.consumePresentation(position.copy(anchorOffset = 13))
+        assertEquals(position, session.restoredPresentation(card(4, 1)))
+        session.consumePresentation(position)
+        assertNull(session.restoredPresentation(card(4, 1)))
+        assertEquals(4L, session.queue(listOf(card(5), card(4, 1)), true).first().listingId)
+    }
+
     @Test fun presentationRequiresSameSnapshotOwnerListingAndFiltersButNotTransientRevision() {
-        val saved = SwipePresentation(4, 1, 9, "{}", "IMAGE:fixture", "hero", 8, emptyList())
+        val saved = SwipePresentation(4, 1, 9, "{}", "IMAGE:fixture", "hero", 8, emptyList(), runId = 3)
         val projection = ProfileProjectionKey(4, 1, 9, 10, "{}")
-        assertTrue(saved.matches(projection))
-        assertTrue(saved.matches(projection.copy(revision = 11)))
-        assertFalse(saved.matches(projection.copy(snapshotId = 10)))
-        assertFalse(saved.matches(projection.copy(ownerId = 2)))
-        assertFalse(saved.matches(projection.copy(listingId = 5)))
-        assertFalse(saved.matches(projection.copy(filters = "different")))
-        assertFalse(saved.matches(null))
+        assertTrue(saved.matches(projection, 3))
+        assertTrue(saved.matches(projection.copy(revision = 11), 3))
+        assertFalse(saved.matches(projection.copy(snapshotId = 10), 3))
+        assertFalse(saved.matches(projection.copy(ownerId = 2), 3))
+        assertFalse(saved.matches(projection.copy(listingId = 5), 3))
+        assertFalse(saved.matches(projection.copy(filters = "different"), 3))
+        assertFalse(saved.matches(projection, 4))
+        assertFalse(saved.matches(null, 3))
     }
 
     @Test fun traversalWithoutFullProfileStillRejectsReplacedRunSessionAndOwner() {

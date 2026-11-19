@@ -17,6 +17,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
+import de.justify87.ladiesexplorer.core.Preference
 import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Rule
@@ -108,6 +109,54 @@ class ProfileShellDeviceTest {
         rule.runOnIdle { jump(0, 0) }
         rule.waitForIdle()
         rule.onNodeWithText("A").assertExists()
+    }
+
+    @Test fun actualDecisionRailUsesSameControlsBeforeAndAfterScrollAndAllowsUndoWhenEmpty() {
+        lateinit var jump: () -> Unit
+        lateinit var clear: () -> Unit
+        val actions = mutableListOf<String>()
+        rule.setContent {
+            MaterialTheme {
+                val list = rememberLazyListState()
+                val scope = rememberCoroutineScope()
+                var empty by remember { mutableStateOf(false) }
+                clear = { empty = true }
+                jump = { scope.launch { list.scrollToItem(1) } }
+                val deck = SwipeDeckToken(null, 1)
+                val context = SwipeMenuContext(deck, if (empty) null else SwipeCardToken(deck, 4, 1),
+                    if (empty) null else SwipeActionToken(null, 1, 4, 1, 11, 1,
+                        Preference.NONE, false, emptyList()),
+                    true, true, true, AvailabilityMode.All, true, true)
+                ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero", hasRail = true,
+                    notices = emptyList(), noticeOwner = context,
+                    header = { presentation, _, _ -> Text(if (presentation.identityInHeader) "B" else "A") },
+                    rail = { SwipeDecisionControls(context, if (empty) null else "Fixture",
+                        { actions.add("undo") }, { actions.add("skip") }, { actions.add(it.name) }) },
+                ) { presentation, measured ->
+                    LazyColumn(Modifier.fillMaxSize(), state = list) {
+                        item(key = "hero") {
+                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight)) {
+                                Box(Modifier.align(Alignment.BottomCenter).height(80.dp).fillMaxWidth()
+                                    .onSizeChanged { measured(it.height) })
+                            }
+                        }
+                        items(20) { Text("Detail $it", Modifier.height(48.dp)) }
+                    }
+                }
+            }
+        }
+        rule.onNodeWithText("A").assertExists()
+        rule.onNodeWithText("Gefällt").performClick()
+        rule.runOnIdle { jump() }
+        rule.onNodeWithText("B").assertExists()
+        rule.onNodeWithText("Nein").performClick()
+        rule.onNodeWithText("Später").performClick()
+        rule.runOnIdle { clear() }
+        rule.onNodeWithText("Nein").assertIsNotEnabled()
+        rule.onNodeWithText("Später").assertIsNotEnabled()
+        rule.onNodeWithText("Gefällt").assertIsNotEnabled()
+        rule.onNodeWithText("Undo").performClick()
+        rule.runOnIdle { assertEquals(listOf("LIKE", "DISLIKE", "skip", "undo"), actions) }
     }
 
     @Test fun imageTapZoneAndVideoActionAreSeparateNativeTargets() {

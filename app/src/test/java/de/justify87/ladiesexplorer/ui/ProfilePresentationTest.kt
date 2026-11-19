@@ -139,6 +139,61 @@ class ProfilePresentationTest {
         assertEquals(listOf(Preference.NONE, Preference.DISLIKE, Preference.DISLIKE), writes)
     }
 
+    @Test fun committedDecisionRetainsPresentationOnlyForMatchingSwipeAndUndoCasSuccess() = runBlocking {
+        val state = DiscoverUiState(cards = listOf(fixtureCard(4, 1)), activeRunId = 3, loading = false)
+        val token = requireNotNull(state.swipeToken(fixtureSwipe()))
+        val position = SwipePresentation(4, 1, token.snapshotId, "{}", "IMAGE:fixture",
+            "hero", 12, emptyList(), runId = 3)
+        val deck = SwipeSession()
+        var native = Preference.NONE
+        val write: suspend (Long, Long, Preference?, Preference) -> Preference = { listing, owner, expected, target ->
+            assertEquals(4L, listing)
+            assertEquals(1L, owner)
+            check(expected == native)
+            val previous = native
+            native = target
+            previous
+        }
+        val outcome = writeAndProject(write = {
+            commitProfilePreference(token, Preference.LIKE, write, deck::visit, position)
+        }, project = { error("read failed after commit") })
+        assertTrue(outcome is DiscoveryMutationOutcome.ProjectionFailed)
+        val step = requireNotNull(deck.last)
+        assertEquals(position, step.presentation)
+        native = Preference.DISLIKE
+        try {
+            undoSwipeStep(step, write, { 1 }, deck::undo)
+            fail("Expected CAS rejection")
+        } catch (_: IllegalStateException) { }
+        assertEquals(step, deck.last)
+        assertNull(deck.restoredPresentation(state.cards.first()))
+        native = Preference.LIKE
+        undoSwipeStep(step, write, { 1 }, deck::undo)
+        assertEquals(Preference.NONE, native)
+        assertNull(deck.last)
+        assertEquals(position, deck.restoredPresentation(state.cards.first()))
+        commitProfilePreference(token, Preference.LIKE, write, deck::visit, position.copy(runId = 4))
+        assertNull(deck.last?.presentation)
+    }
+
+    @Test fun skipUndoChecksOwnerWithoutWritingAndRestoresOnlyAfterSuccess() = runBlocking {
+        val deck = SwipeSession()
+        val position = SwipePresentation(4, 1, 11, "{}", "IMAGE:fixture", "hero", 12, emptyList())
+        val step = SwipeStep(4, 1, presentation = position)
+        deck.visit(step)
+        val noWrite: suspend (Long, Long, Preference?, Preference) -> Preference = { _, _, _, _ ->
+            error("Skip must never write")
+        }
+        try {
+            undoSwipeStep(step, noWrite, { 2 }, deck::undo)
+            fail("Expected owner conflict")
+        } catch (_: IllegalStateException) { }
+        assertEquals(step, deck.last)
+        undoSwipeStep(step, noWrite, { 1 }, deck::undo)
+        assertNull(deck.last)
+        assertEquals(position, deck.restoredPresentation(fixtureCard(4, 1)))
+    }
+
     @Test fun committedNeutralResetReprojectsWithoutVisitEvenIfFeedReadFails() = runBlocking {
         val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
         val token = requireNotNull(state.swipeToken(fixtureSwipe())).copy(preference = Preference.LIKE)

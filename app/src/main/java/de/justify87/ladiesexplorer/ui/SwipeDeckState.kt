@@ -64,6 +64,10 @@ internal class SwipeSession {
         return position
     }
 
+    fun consumePresentation(position: SwipePresentation) {
+        if (restoredPosition == position) restoredPosition = null
+    }
+
     fun reset() {
         history.clear()
         mergedOwners.clear()

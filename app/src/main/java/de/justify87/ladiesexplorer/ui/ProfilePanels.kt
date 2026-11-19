@@ -67,7 +67,9 @@ internal fun ProfileFlow(
     paddedDetails: Boolean = false,
     photoRequest: Int = 0,
     swipeRestore: SwipePresentation? = null,
+    swipeRunId: Long? = null,
     swipeCapture: SwipePresentationCapture? = null,
+    onSwipeRestoreConsumed: (SwipePresentation) -> Unit = {},
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -77,11 +79,13 @@ internal fun ProfileFlow(
     val projection = model?.let {
         ProfileProjectionKey(it.profile.listingId, it.identity.personId, it.profile.snapshotId, it.revision, filters)
     }
-    val restored = swipeRestore?.takeIf { it.matches(projection) }
+    val restored = swipeRestore?.takeIf { it.matches(projection, swipeRunId) }
     val sections = key(presentationOwner) { rememberProfileSections(restored?.sections.orEmpty()) }
     val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection(restored?.mediaId) }
     val scroll = key(presentationOwner) {
-        rememberProfileScrollMemory(ownerChanged, restored?.anchorKey?.let { ProfileScrollAnchor(it, restored.anchorOffset) })
+        rememberProfileScrollMemory(ownerChanged, restored?.let { position ->
+            position.anchorKey?.let { ProfileScrollAnchor(it, position.anchorOffset) }
+        })
     }
     DisposableEffect(swipeCapture) { onDispose { swipeCapture?.read = { null } } }
     SideEffect {
@@ -92,7 +96,7 @@ internal fun ProfileFlow(
                     ProfileScrollAnchor(it, state.firstVisibleItemScrollOffset)
                 } ?: scroll.anchor
                 SwipePresentation(current.listingId, current.ownerId, current.snapshotId, current.filters,
-                    mediaSelection.id, anchor?.key, anchor?.offset ?: 0, sections.entries.toList())
+                    mediaSelection.id, anchor?.key, anchor?.offset ?: 0, sections.entries.toList(), swipeRunId)
             }
         }
     }
@@ -139,6 +143,13 @@ internal fun ProfileFlow(
     // Restoring an anchor is itself demand. Avoid restoring an offset into a
     // temporarily short loading row or treating a not-yet-loaded listing as absent.
     val recovering = scroll.recovering
+    val consume by rememberUpdatedState(onSwipeRestoreConsumed)
+    LaunchedEffect(swipeRestore, projection, recovering, busy) {
+        // Back/rotation before the anchor resolves preserves the pending receipt.
+        // A valid or rejected receipt is consumed once, never re-applied after navigation.
+        if (swipeRestore != null && available && !busy && (!recovering || restored == null))
+            consume(swipeRestore)
+    }
     LaunchedEffect(panels, scroll, available, recovering) {
         if (available && recovering) {
             if (scroll.needsFacts()) panels.loadFacts(checkNotNull(model).profile.snapshotId, filters)

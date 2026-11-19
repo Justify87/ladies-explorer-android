@@ -211,9 +211,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         chooseProfilePreference(token, preference, null)
 
     internal fun chooseSwipePreference(token: SwipeActionToken, preference: Preference, presentation: SwipePresentation?) =
-        chooseProfilePreference(token, preference, presentation?.takeIf {
-            it.listingId == token.listingId && it.ownerId == token.ownerId && it.snapshotId == token.snapshotId
-        })
+        chooseProfilePreference(token, preference, presentation)
 
     private fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference, presentation: SwipePresentation?) {
         if (!isProfileActionCurrent(token)) return
@@ -222,9 +220,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
         }
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
-            commitProfilePreference(token, preference, core::setSwipePreference) { step ->
-                swipeSession.visit(step.copy(presentation = presentation))
-            }
+            commitProfilePreference(token, preference, core::setSwipePreference, swipeSession::visit, presentation)
         }, afterWrite = { refreshDetail() },
             recoverWriteFailure = { refreshDetail() },
             onFailure = { message ->
@@ -741,9 +737,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal fun skipCard(token: SwipeCardToken, presentation: SwipePresentation?) {
         val card = admittedTraversal(token) ?: return
         invalidateSwipeActions()
-        swipeSession.visit(SwipeStep(card.listingId, card.personId, presentation = presentation?.takeIf {
-            it.listingId == card.listingId && it.ownerId == card.personId
-        }))
+        swipeSession.visit(SwipeStep(card.listingId, card.personId, presentation = presentation?.takeIf { it.matches(token) }))
         _discoverState.update {
             it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true, swipeRestore = null)
         }
@@ -816,16 +810,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!admittedDeck(token)) return
         val step = swipeSession.last ?: return
         mutateDiscovery("Undo fehlgeschlagen", write = {
-            val previous = step.before
-            if (previous != null) {
-                core.setSwipePreference(step.listingId, step.personId, step.after, previous)
-            } else {
-                check(core.profileIdentity(step.listingId).personId == step.personId) {
-                    "Personenzuordnung geändert; Undo nicht möglich. Deck zurücksetzen."
-                }
-            }
-            swipeSession.undo(step)
+            undoSwipeStep(step, core::setSwipePreference, { core.profileIdentity(it).personId }, swipeSession::undo)
         })
+    }
+
+    internal fun consumeSwipePresentation(token: SwipeDeckToken, position: SwipePresentation) {
+        val state = _discoverState.value
+        val card = state.cardToken() ?: return
+        if (!swipeVisible || _searchUiState.value.profileOpen || state.deckToken() != token ||
+            state.swipeRestore != position || !position.matches(card)) return
+        swipeSession.consumePresentation(position)
+        _discoverState.update { it.copy(swipeRestore = null) }
     }
 
     /** The temporary hide belongs only to the grid of the executed run. */

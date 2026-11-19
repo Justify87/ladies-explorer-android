@@ -159,6 +159,7 @@ fun LadiesApp(
     fun selectRoot(destination: RootDestination) {
         if (route.root == destination || saved.blockingNavigation || home.importing) return
         profileTouchGate.invalidate()
+        if (swipeShell) viewModel.setSwipeVisible(false)
         route = route.select(destination)
         viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -339,13 +340,20 @@ fun LadiesApp(
                                 rootBarHeight = (padding.calculateBottomPadding() -
                                     WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()).coerceAtLeast(0.dp),
                                 onOpenSearch = { selectRoot(RootDestination.Search) },
-                                onSelectMode = { profileTouchGate.invalidate(); route = route.select(it) },
+                                onSelectMode = { mode ->
+                                    if (mode != DiscoverMode.Swipe) {
+                                        profileTouchGate.invalidate()
+                                        viewModel.setSwipeVisible(false)
+                                        route = route.select(mode)
+                                    }
+                                },
                                 availabilityEnabled = !search.loading && !home.loading && !discovery.busy && !saved.busy,
                                 onAvailability = viewModel::runSwipeAvailability,
                                 onCancelSearch = viewModel::cancelActiveSearch,
                                 onRefresh = viewModel::refreshSwipe,
                                 onReset = viewModel::resetSwipe,
                                 onUndo = viewModel::undoSwipe,
+                                onSwipeRestoreConsumed = viewModel::consumeSwipePresentation,
                                 onReplayLikes = viewModel::setReplayLikes,
                                 onSkip = viewModel::skipCard,
                                 onChoose = viewModel::chooseSwipePreference,

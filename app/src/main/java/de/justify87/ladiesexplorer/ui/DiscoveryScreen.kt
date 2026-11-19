@@ -11,6 +11,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -35,6 +37,7 @@ internal fun DiscoverScreen(
     onRefresh: (SwipeDeckToken) -> Unit,
     onReset: (SwipeDeckToken) -> Unit,
     onUndo: (SwipeDeckToken) -> Unit,
+    onSwipeRestoreConsumed: (SwipeDeckToken, SwipePresentation) -> Unit,
     onReplayLikes: (SwipeDeckToken, Boolean) -> Unit,
     onSkip: (SwipeCardToken, SwipePresentation?) -> Unit,
     onChoose: (SwipeActionToken, Preference, SwipePresentation?) -> Unit,
@@ -201,7 +204,7 @@ internal fun DiscoverScreen(
             token?.takeIf(isProfileCurrent)?.let { onChoose(it, preference, capture.read()) }
         }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
-            hasRail = card != null, notices = notices, noticeOwner = menuContext,
+            hasRail = card != null || state.canUndoSwipe, notices = notices, noticeOwner = menuContext,
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(
                     presentation = presentation, identity = identity, context = menuContext,
@@ -212,7 +215,7 @@ internal fun DiscoverScreen(
                     onFavorite = { token?.let(onFavorite) }, onChoose = choose, onUndo = undo, onSkip = skip,
                 )
             },
-            rail = { SwipeDecisionControls(menuContext, undo, skip, choose) },
+            rail = { SwipeDecisionControls(menuContext, identity?.title, undo, skip, choose) },
         ) { presentation, onIdentityMeasured ->
             if (card == null) {
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
@@ -224,7 +227,6 @@ internal fun DiscoverScreen(
                             Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
                             OutlinedButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Deck neu beginnen") }
                         }
-                        TextButton(onClick = undo, enabled = enabled && state.canUndoSwipe) { Text("Undo") }
                     }
                 }
             } else {
@@ -234,7 +236,8 @@ internal fun DiscoverScreen(
                     token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
                     isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
                     modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest,
-                    swipeRestore = state.swipeRestore, swipeCapture = capture) {
+                    swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
+                    onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }) {
                     item(key = "hero") {
                         ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
@@ -314,10 +317,10 @@ private fun SwipeShellHeader(
                 Text(counts, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
                 if (compactNotice != null) DropdownMenuItem(text = { Text("Status und Hinweise") }, onClick = { dispatch(onNotice) })
                 if (presentation.photoShortcut && context.card != null) DropdownMenuItem(text = { Text("Zum Foto") }, onClick = { dispatch(onPhoto) })
-                if (presentation.budget.railInMenu && context.card != null) {
+                if (presentation.budget.railInMenu && (context.card != null || context.canUndo)) {
                     DropdownMenuItem(text = { Text("Undo") }, enabled = context.deckEnabled && context.canUndo, onClick = { dispatch(onUndo) })
                     DropdownMenuItem(text = { Text("Nein") }, enabled = context.profile != null, onClick = { dispatch { onChoose(Preference.DISLIKE) } })
-                    DropdownMenuItem(text = { Text("Später") }, enabled = context.deckEnabled, onClick = { dispatch(onSkip) })
+                    DropdownMenuItem(text = { Text("Später") }, enabled = context.deckEnabled && context.card != null, onClick = { dispatch(onSkip) })
                     DropdownMenuItem(text = { Text("Gefällt") }, enabled = context.profile != null, onClick = { dispatch { onChoose(Preference.LIKE) } })
                     HorizontalDivider()
                 }
@@ -356,11 +359,12 @@ private fun SwipeShellHeader(
 
 /** One fixed A/B rail; constrained windows retain the same actions in the deck menu. */
 @Composable
-private fun SwipeDecisionControls(context: SwipeMenuContext, onUndo: () -> Unit,
+internal fun SwipeDecisionControls(context: SwipeMenuContext, profileTitle: String?, onUndo: () -> Unit,
     onSkip: () -> Unit, onChoose: (Preference) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxWidth < 340.dp || LocalDensity.current.fontScale >= 1.3f
-        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxSize().semantics { contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen" },
+            horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             if (compact) {
                 IconButton(onClick = onUndo, enabled = context.deckEnabled && context.canUndo) {
                     Icon(Icons.Default.Undo, "Undo")

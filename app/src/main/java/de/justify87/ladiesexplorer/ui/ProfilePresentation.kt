@@ -16,10 +16,17 @@ internal data class ProfileScrollAnchor(val key: String, val offset: Int)
 data class SwipePresentation(
     val listingId: Long, val ownerId: Long, val snapshotId: Long, val filters: String,
     val mediaId: String?, val anchorKey: String?, val anchorOffset: Int, val sections: List<String>,
+    val runId: Long? = null,
 ) {
-    internal fun matches(projection: ProfileProjectionKey?) = projection != null &&
-        listingId == projection.listingId && ownerId == projection.ownerId &&
+    internal fun matches(projection: ProfileProjectionKey?, run: Long?) = projection != null &&
+        runId == run && listingId == projection.listingId && ownerId == projection.ownerId &&
         snapshotId == projection.snapshotId && filters == projection.filters
+
+    internal fun matches(token: SwipeActionToken) = runId == token.runId &&
+        listingId == token.listingId && ownerId == token.ownerId && snapshotId == token.snapshotId
+
+    internal fun matches(token: SwipeCardToken) = runId == token.deck.runId &&
+        listingId == token.listingId && ownerId == token.ownerId
 }
 
 /** The flow owns actual presentation state; the deck captures it synchronously at admission. */
