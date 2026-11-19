@@ -2,7 +2,6 @@ package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,7 +24,6 @@ import kotlinx.coroutines.flow.first
 @Composable
 internal fun DiscoverScreen(
     state: DiscoverUiState,
-    tabs: ProfileTabMemory,
     notes: Map<Long, NoteEditorState>,
     noteActions: NoteEditorActions,
     searchLoading: Boolean = false,
@@ -43,7 +41,6 @@ internal fun DiscoverScreen(
     onSnapshotChanged: (Boolean) -> Unit,
     onFavorite: (ProfileIdentityToken) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
-    onProfile: (SwipeCardToken) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val card = state.cards.firstOrNull()
@@ -85,19 +82,6 @@ internal fun DiscoverScreen(
         }
     }
     SideEffect { onRenderedSwipe(token) }
-    var confirmation by remember(token) { mutableStateOf<Long?>(null) }
-    confirmation?.let { target ->
-        IdentityConfirmationDialog(target, enabled = token != null && visible,
-            onConfirm = { confirmation = null; token?.let { onConfirmIdentity(it, target) } },
-            onDismiss = { confirmation = null })
-    }
-    val owner = current?.identity?.personId ?: card?.personId
-    val tab = tabs.selected(owner)
-    val boundNotes = noteActions.boundTo(token, isProfileCurrent)
-    val panels = rememberProfilePanels(current, executedFiltersJson, tab)
-    rememberProfileNote(token, boundNotes, state.busy || token == null, tab == ProfileTab.Notes)
-    val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
-    ComparisonDialog(panels)
     val upcoming = prefetchCards(state.cards)
     val window = listOfNotNull(card) + upcoming
     SideEffect {
@@ -194,7 +178,7 @@ internal fun DiscoverScreen(
                     OutlinedButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Deck neu beginnen") }
                 }
             }
-        } else key(card.listingId, card.personId) {
+        } else key(state.activeRunId, card.listingId, card.personId) {
             val profile = current
             val matchesOwner = profile != null && profile.identity.personId == card.personId
             val actions = enabled && token != null
@@ -207,8 +191,10 @@ internal fun DiscoverScreen(
             } ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val heroHeight = (maxHeight * .88f).coerceIn(200.dp, 720.dp)
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
+                    token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
+                    isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
+                    modifier = Modifier.fillMaxSize()) {
                     item(key = "hero") {
                         // Only the image surface owns horizontal decisions. Vertical drags
                         // remain with LazyColumn; tap zones keep their click semantics.
@@ -231,6 +217,8 @@ internal fun DiscoverScreen(
                                     )
                                 },
                             originalUrl = profile?.identity?.profileUrl,
+                            selection = mediaSelection,
+                            projectionAvailable = profile != null,
                             actionsEnabled = actions,
                             isCurrent = { token?.let(isProfileCurrent) == true },
                         )
@@ -251,16 +239,11 @@ internal fun DiscoverScreen(
                         if (profile == null && readError == null && visible) CircularProgressIndicator(Modifier.size(24.dp))
                     }
                     item(key = "actions") {
-                        ProfileActionRail(person, profile?.profile?.phoneDisplay, !actions,
+                        ProfileActionRail(person, !actions,
                             onFavorite = { token?.let(onFavorite) },
-                            onPreference = { _, preference -> token?.let { onChoose(it, preference) } },
-                            isCurrent = { token?.let(isProfileCurrent) == true })
-                        TextButton(onClick = { cardToken?.let(onProfile) }, enabled = enabled && cardToken != null) { Text("Profil öffnen") }
+                            onPreference = { _, preference -> token?.let { onChoose(it, preference) } })
                     }
-                    if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
-                        panels, tab, selectTab, profile.candidates, profile.history, !actions,
-                        owner?.let(notes::get) ?: NoteEditorState(), boundNotes, onConfirm = { target -> if (token != null) confirmation = target })
-                    else card.description?.let { item { Text(it) } }
+                    if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

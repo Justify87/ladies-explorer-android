@@ -1,7 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -15,55 +16,178 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 
-internal enum class ProfileTab(val label: String) {
-    Info("Info"), Services("Dienste"), Analysis("Analyse"), Notes("Notizen"), History("Verlauf")
+internal enum class ProfileSection(val label: String) {
+    Description("Beschreibung"), Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), History("Verlauf / verknüpfte Anzeigen")
 }
 
-/** App-owned route-specific memory survives closing a detail session. */
 @Stable
-internal class ProfileTabMemory(initial: List<String> = emptyList()) {
-    var entries by mutableStateOf(initial)
+internal class ProfileSections(initial: List<String> = emptyList()) {
+    var entries by mutableStateOf(initial.distinct())
         private set
-
-    fun selected(personId: Long?): ProfileTab {
-        val selected = entries.firstOrNull { it.startsWith("$personId:") }?.substringAfter(':')
-        return ProfileTab.entries.firstOrNull { it.name == selected } ?: ProfileTab.Info
+    fun expanded(section: ProfileSection) = section.name in entries
+    fun toggle(section: ProfileSection) {
+        entries = if (expanded(section)) entries - section.name else entries + section.name
     }
 
-    fun select(personId: Long?, tab: ProfileTab) {
-        if (personId != null) entries =
-            entries.filterNot { it.startsWith("$personId:") }.takeLast(99) + "$personId:${tab.name}"
+    // A history filter is presentation state, not part of a replaceable read.
+    val showDescriptionChanges get() = "history-description" in entries
+    fun setShowDescriptionChanges(value: Boolean) {
+        entries = entries - "history-description" + if (value) listOf("history-description") else emptyList()
     }
 }
 
 @Composable
-internal fun rememberProfileTabMemory(): ProfileTabMemory = rememberSaveable(
-    saver = listSaver<ProfileTabMemory, String>(save = { it.entries }, restore = { ProfileTabMemory(it) })
-) { ProfileTabMemory() }
+internal fun rememberProfileSections(): ProfileSections = rememberSaveable(
+    saver = listSaver<ProfileSections, String>(save = { it.entries }, restore = { ProfileSections(it) })
+) { ProfileSections() }
 
+/** Shared scroll, section state, read demand and dialogs. The leading slot
+ * supplies only context-specific hero/status/navigation; no second profile route. */
 @Composable
-internal fun rememberProfileNote(
+internal fun ProfileFlow(
+    state: LazyListState,
+    model: ProfileReadModel?,
+    filters: String,
     token: ProfileIdentityToken?,
-    actions: NoteEditorActions,
-    busy: Boolean,
-    visible: Boolean,
+    actionsBusy: Boolean,
+    notes: Map<Long, NoteEditorState>,
+    noteActions: NoteEditorActions,
+    isProfileCurrent: (ProfileIdentityToken) -> Boolean,
+    onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    leading: ProfileFlowRows.() -> Unit,
 ) {
-    LaunchedEffect(token, busy, visible) {
-        if (token != null && !busy && visible) actions.load(token.listingId, token.ownerId)
+    val owner = model?.identity?.personId
+    var lastOwner by rememberSaveable { mutableStateOf<Long?>(null) }
+    val ownerChanged = owner != null && lastOwner != null && owner != lastOwner
+    val presentationOwner = owner ?: lastOwner
+    val sections = key(presentationOwner) { rememberProfileSections() }
+    val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
+    val scroll = key(presentationOwner) { rememberProfileScrollMemory(ownerChanged) }
+    val projection = model?.let {
+        ProfileProjectionKey(it.profile.listingId, it.identity.personId, it.profile.snapshotId, it.revision, filters)
+    }
+    SideEffect {
+        scroll.projectionChanged(projection)
+        if (owner != null) lastOwner = owner
+    }
+    val panels = rememberProfilePanels(model, filters, state)
+    val busy = actionsBusy || token == null
+    val boundNotes = noteActions.boundTo(token, isProfileCurrent)
+    val scope = rememberCoroutineScope()
+    val noteDemand = remember(model?.profile?.listingId, owner, model?.profile?.snapshotId,
+        model?.revision, scope) { ProfileNoteDemand(scope) }
+    DisposableEffect(noteDemand) { onDispose { noteDemand.close() } }
+    val noteExpanded = sections.expanded(ProfileSection.Notes)
+    LaunchedEffect(noteDemand, noteExpanded, token, busy) {
+        if (noteExpanded && !busy) noteDemand.request(token, false, isProfileCurrent, noteActions.load)
+    }
+    ComparisonDialog(panels, active = !busy)
+    var confirmation by remember(token) { mutableStateOf<Long?>(null) }
+    val current = { token?.let(isProfileCurrent) == true }
+    val selected = confirmation
+    if (selected != null && token != null) {
+        IdentityConfirmationDialog(selected, enabled = !busy,
+            onConfirm = {
+                confirmation = null
+                if (!busy && current()) onConfirmIdentity(token, selected)
+            },
+            onDismiss = { confirmation = null })
+    }
+    val rows = ProfileFlowRows(mediaSelection).apply {
+        leading()
+        if (model != null) profileContent(model.profile, model.identity, model.person, model.media,
+            panels, sections, model.candidates, model.history, busy,
+            owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
+            noteDemand = noteDemand,
+            onRetryNote = { if (!busy) noteDemand.request(token, true, isProfileCurrent, noteActions.load) },
+            isCurrent = current,
+            onConfirm = { target -> if (!busy && current()) confirmation = target })
+    }.build()
+    val keys = rows.map { it.key }
+    val available = model != null
+    // Restoring an anchor is itself demand. Avoid restoring an offset into a
+    // temporarily short loading row or treating a not-yet-loaded listing as absent.
+    val recovering = scroll.recovering
+    LaunchedEffect(panels, scroll, available, recovering) {
+        if (available && recovering) {
+            if (scroll.needsFacts()) panels.loadFacts(checkNotNull(model).profile.snapshotId, filters)
+            if (scroll.needsDetail()) panels.loadDetail()
+        }
+    }
+    val waitingForAnchor = scroll.needsFacts() && panels.facts == null && panels.factsError == null ||
+        scroll.needsDetail() && panels.detail == null && panels.detailError == null
+    LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor) {
+        if (!available || waitingForAnchor) return@LaunchedEffect
+        // Wait for the current manifest to be measured, never resolve against the gap's rows.
+        snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
+        val readFailed = scroll.needsFacts() && panels.factsError != null ||
+            scroll.needsDetail() && panels.detailError != null
+        scroll.target(keys, readFailed)?.let { (index, offset) ->
+            state.scrollToItem(index)
+            if (offset > 0) {
+                val measured = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == keys[index] }?.size ?: 0
+                val safeOffset = restoredRowOffset(offset, measured)
+                if (safeOffset > 0) state.scrollToItem(index, safeOffset)
+            }
+            scroll.restored()
+        }
+        snapshotFlow {
+            val index = state.firstVisibleItemIndex
+            val item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+            (item?.key as? String)?.let { ProfileScrollAnchor(it, state.firstVisibleItemScrollOffset) }
+        }.collect { anchor ->
+            if (anchor != null && anchor.key in keys) scroll.observe(anchor.key, anchor.offset)
+        }
+    }
+    LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(rows, key = { it.key }) { row -> row.content() }
     }
 }
 
 @Composable
-private fun PanelCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    OutlinedCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            content()
+private fun SectionToggle(
+    section: ProfileSection, sections: ProfileSections, hint: String? = null, hintError: Boolean = false,
+) {
+    val expanded = sections.expanded(section)
+    TextButton(onClick = { sections.toggle(section) },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+            stateDescription = if (expanded) "Ausgeklappt" else "Eingeklappt"
+        }) {
+        Column(Modifier.weight(1f)) {
+            Text(section.label, modifier = Modifier.semantics { heading() },
+                style = MaterialTheme.typography.titleMedium)
+            hint?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                color = if (hintError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
+        Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            contentDescription = null)
+    }
+}
+
+internal fun noteSectionHint(note: NoteEditorState): String? = when {
+    note.draft?.conflict == true -> "Notizkonflikt"
+    note.error != null -> note.error
+    note.loading -> "Notiz wird geladen"
+    note.draft?.dirty == true -> "Ungespeicherter Entwurf"
+    else -> null
+}
+
+@Composable
+private fun ProfileGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, modifier = Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+        content()
     }
 }
 
@@ -77,19 +201,16 @@ private fun FieldGrid(rows: List<Pair<String, String>>) {
         val fontScale = LocalDensity.current.fontScale
         val columns = when {
             maxWidth < 300.dp || fontScale > 1.5f -> 1
-            maxWidth >= 480.dp && fontScale <= 1.2f -> 3
             else -> 2
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             rows.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEach { (label, value) ->
-                        Surface(Modifier.weight(1f), shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.surfaceVariant) {
-                            Column(Modifier.padding(10.dp)) {
-                                Text(label, style = MaterialTheme.typography.labelMedium)
-                                Text(value, style = MaterialTheme.typography.bodyMedium)
-                            }
+                        Column(Modifier.weight(1f)) {
+                            Text(label, style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(value, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
@@ -105,41 +226,43 @@ internal fun evidenceLabel(status: EvidenceStatus): String = when (status) {
     EvidenceStatus.UNKNOWN -> "Unbekannt"
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FieldChips(rows: List<ProfileField>) {
-    if (rows.isEmpty()) {
-        Text("Keine Angaben gespeichert.")
-        return
-    }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        rows.forEach { field ->
-            field.values.forEach { value ->
-                Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant) {
-                    Text("${field.label}: $value", Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                        style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
+private fun FieldValues(rows: List<ProfileField>) {
+    FieldGrid(rows.map { it.label to it.values.joinToString(" · ") })
 }
 
-private fun ProfileFacts.importantRows(): List<Pair<String, String>> {
-    val trait = traits.firstOrNull {
+/** Promote one existing field; aliases with distinct values remain visible. */
+internal fun ProfileFacts.overviewAndTraits(): Pair<List<Pair<String, String>>, List<ProfileField>> {
+    val promoted = traits.indexOfFirst {
         it.label.lowercase() in setOf("busen", "oberweite", "brustgröße", "brustgroesse", "brust")
     }
-    return listOf("Busen" to (trait?.values?.joinToString(" · ") ?: "Unbekannt")) +
-        important.map { it.label to evidenceLabel(it.status) } +
-        filters.map { "${it.label} (${it.group})" to evidenceLabel(it.status) }
+    val first = traits.getOrNull(promoted)
+    val overview = listOf(if (first == null) "Busen" to "Unbekannt"
+        else first.label to first.values.joinToString(" · ")) +
+        important.map { it.label to evidenceLabel(it.status) }
+    return overview to traits.filterIndexed { index, _ -> index != promoted }
 }
 
+internal data class ProfileServiceRows(
+    val source: List<Pair<String, String>>,
+    val filters: List<Pair<String, String>>,
+) {
+    val count get() = source.size + filters.size
+    fun preview(expanded: Boolean): ProfileServiceRows =
+        if (expanded) this else copy(source = source.take(4), filters = filters.take(4))
+}
+
+internal fun ProfileFacts.serviceRows(): ProfileServiceRows = ProfileServiceRows(
+    source = services.flatMap { field -> field.values.map { field.label to it } },
+    filters = filters.map { "${it.label} (${it.group})" to evidenceLabel(it.status) },
+)
+
 @Composable
-private fun DescriptionCard(profile: ProfileResponse) {
-    var expanded by rememberSaveable(profile.snapshotId) { mutableStateOf(false) }
+private fun ProfileDescription(profile: ProfileResponse, sections: ProfileSections) {
+    val expanded = sections.expanded(ProfileSection.Description)
     var overflow by remember(profile.snapshotId) { mutableStateOf(false) }
     val text = profile.description.ifBlank { "Keine Beschreibung gespeichert." }
-    PanelCard("Über das Profil") {
+    ProfileGroup("Über das Profil") {
         SelectionContainer {
             Text(text, maxLines = if (expanded) Int.MAX_VALUE else 6,
                 overflow = TextOverflow.Ellipsis, onTextLayout = {
@@ -147,7 +270,7 @@ private fun DescriptionCard(profile: ProfileResponse) {
                 })
         }
         if (expanded || overflow) {
-            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Weniger" else "Mehr anzeigen") }
+            TextButton(onClick = { sections.toggle(ProfileSection.Description) }) { Text(if (expanded) "Weniger" else "Mehr anzeigen") }
         }
     }
 }
@@ -159,11 +282,13 @@ private fun NotesPanel(
     state: NoteEditorState,
     actions: NoteEditorActions,
     busy: Boolean,
+    demand: ProfileNoteDemand,
+    onRetry: () -> Unit,
 ) {
-    PanelCard("Private Personennotiz") {
+    ProfileGroup("Private Personennotiz") {
         val draft = state.draft
-        val scope = rememberCoroutineScope()
-        val editable = owner != null && !busy && !state.loading && !state.readError
+        val loading = demand.status != ProfileNoteDemand.Status.Settled || state.loading
+        val editable = owner != null && !busy && !loading && !state.readError
         if (draft != null && owner != null) {
             OutlinedTextField(draft.text, { actions.edit(owner, it) },
                 modifier = Modifier.fillMaxWidth(), label = { Text("Notiz") },
@@ -184,20 +309,22 @@ private fun NotesPanel(
                 Button(onClick = { actions.save(listingId, owner) },
                     enabled = editable && draft.dirty && !draft.conflict) { Text("Speichern") }
                 TextButton(onClick = { actions.useStored(owner) },
-                    enabled = !busy && !state.loading && draft.dirty) { Text("Verwerfen") }
+                    enabled = !busy && !loading && draft.dirty) { Text("Verwerfen") }
             }
         } else if (owner == null) Text("Person nicht verfügbar.")
-        if (state.loading || busy && draft != null) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (loading || busy && draft != null) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (owner != null && (state.readError || state.error != null || draft == null && !state.loading)) {
-            TextButton(onClick = { scope.launch { actions.load(listingId, owner) } },
-                enabled = !busy && !state.loading) { Text("Neu laden") }
+            TextButton(onClick = onRetry,
+                enabled = !busy && !loading) { Text("Neu laden") }
         }
     }
 }
 
 @Composable
-internal fun ComparisonDialog(panels: ProfilePanels) {
+private fun ComparisonDialog(panels: ProfilePanels, active: Boolean) {
+    LaunchedEffect(panels, active) { if (!active) panels.closeComparison() }
+    if (!active) return
     if (!panels.comparing && panels.comparison == null && panels.comparisonError == null) return
     AlertDialog(
         onDismissRequest = panels::closeComparison,
@@ -232,129 +359,138 @@ private fun HistoryValues(before: String?, after: String?) {
     }
 }
 
-/** Both routes use the same lazy tab content and local typed projections. */
-@OptIn(ExperimentalMaterial3Api::class)
-internal fun LazyListScope.profileContent(
+/** Both routes render identical inline sections in a single lazy list. */
+private fun ProfileFlowRows.profileContent(
     profile: ProfileResponse,
     identity: ProfileIdentity?,
     person: PersonSummary?,
     media: List<ProfileMediaItem>,
     panels: ProfilePanels,
-    tab: ProfileTab,
-    selectTab: (ProfileTab) -> Unit,
+    sections: ProfileSections,
     candidates: List<IdentityCandidate>,
     history: List<ChangeRecord>,
     actionsBusy: Boolean,
     note: NoteEditorState,
     noteActions: NoteEditorActions,
+    noteDemand: ProfileNoteDemand,
+    onRetryNote: () -> Unit,
+    isCurrent: () -> Boolean,
     onConfirm: (Long) -> Unit,
 ) {
-    item(key = "profile-tabs") {
-        ScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 0.dp) {
-            ProfileTab.entries.forEach { option ->
-                Tab(selected = tab == option, onClick = { selectTab(option) },
-                    text = { Text(if (option == ProfileTab.Notes && note.draft?.dirty == true)
-                        "Notizen •" else option.label, maxLines = 1) },
-                    icon = { Icon(when (option) {
-                        ProfileTab.Info -> Icons.Default.Info
-                        ProfileTab.Services -> Icons.Default.List
-                        ProfileTab.Analysis -> Icons.Default.Search
-                        ProfileTab.Notes -> Icons.Default.Edit
-                        ProfileTab.History -> Icons.Default.DateRange
-                    }, contentDescription = null) })
+    item(key = "profile-facts") {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ProfileGroup("Übersicht") {
+                FactsContent(panels) { facts ->
+                    val (overview, traits) = facts.overviewAndTraits()
+                    if (facts.openingTimes.isNotEmpty()) ProfileGroup("Öffnungszeiten") { FieldValues(facts.openingTimes) }
+                    FieldGrid(overview + listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() }))
+                    if (traits.isNotEmpty()) ProfileGroup("Merkmale") { FieldValues(traits) }
+                }
             }
         }
     }
-    when (tab) {
-        ProfileTab.Info -> {
-            item(key = "profile-info") {
-                PanelCard("Wichtige Informationen") {
-                    FieldGrid(listOf("Alter" to (identity?.age ?: "Unbekannt"),
-                        "Ort" to profile.city.ifBlank { "Unbekannt" },
-                        "Anzeigen" to (person?.listingCount?.toString() ?: "Unbekannt")) +
-                        panels.facts?.importantRows().orEmpty())
-                    if (panels.facts == null) FactsContent(panels) { }
+    if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile, sections) }
+    item(key = "profile-services") {
+        ProfileGroup("Dienste und Filterbelege") {
+            FactsContent(panels) { facts ->
+                val all = facts.serviceRows()
+                val expanded = sections.expanded(ProfileSection.Services)
+                val shown = all.preview(expanded)
+                if (shown.source.isNotEmpty()) FieldGrid(shown.source)
+                if (shown.filters.isNotEmpty()) {
+                    Text("Filterbelege", style = MaterialTheme.typography.labelLarge)
+                    FieldGrid(shown.filters)
                 }
-            }
-            item(key = "profile-traits") {
-                PanelCard("Merkmale") { FactsContent(panels) { FieldChips(it.traits) } }
-            }
-            item(key = "profile-times") {
-                PanelCard("Öffnungszeiten") { FactsContent(panels) { FieldChips(it.openingTimes) } }
-            }
-            item(key = "profile-description") { DescriptionCard(profile) }
-        }
-        ProfileTab.Services -> item(key = "profile-services") {
-            PanelCard("Dienste") { FactsContent(panels) { FieldChips(it.services) } }
-        }
-        ProfileTab.Analysis -> {
-            item(key = "profile-analysis") {
-                PanelCard("Gespeicherte Evidenz") {
-                    val data = panels.detail
-                    FieldGrid(listOf("Bilder im aktuellen Profil" to media.count { it.kind == "IMAGE" }.toString()) +
-                        if (data == null) emptyList() else listOf(
-                            "Anzeigen" to data.listings.size.toString(), "Bekannte Namen" to data.knownNames.toString(),
-                            "Bekannte Orte" to data.knownCities.toString(), "Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString(),
-                            "Mit anderen Personen geteilte Assets" to data.sharedImages.toString()))
-                    if (data == null) DetailStatus(panels)
-                    Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
+                if (all.count == 0) Text("Keine Angaben gespeichert.")
+                if (expanded || shown.count < all.count) {
+                    TextButton(onClick = { sections.toggle(ProfileSection.Services) }) {
+                        Text(if (expanded) "Weniger anzeigen" else "Alle ${all.count} Angaben anzeigen")
+                    }
+                    if (!expanded) Text("${shown.count} von ${all.count} Angaben sichtbar",
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
-            item(key = "profile-candidate-head") {
-                Text("Mögliche Identitätsübereinstimmungen", style = MaterialTheme.typography.titleMedium)
-                Text(if (candidates.isEmpty()) "Keine Kandidaten gespeichert." else "Keine automatische Zusammenführung.")
-            }
-            items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
-                PanelCard("Person #${candidate.personId} · ${candidate.decision}") {
-                    Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
-                        "Quellprofil".takeIf { candidate.sourceProfileMatch },
-                        "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
-                        .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
-                    OutlinedButton(onClick = { onConfirm(candidate.personId) },
-                        enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
-                }
+        }
+    }
+    if (!profile.phoneDisplay.isNullOrBlank()) item(key = "profile-contact") {
+        ProfileGroup("Kontakt") {
+            ProfileContactActions(profile.phoneDisplay, actionsBusy, isCurrent)
+        }
+    }
+    item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections) }
+    if (sections.expanded(ProfileSection.Analysis)) {
+        item(key = "profile-analysis") {
+            ProfileGroup("Gespeicherte Evidenz") {
+                val data = panels.detail
+                FieldGrid(listOf("Bilder im aktuellen Profil" to media.count { it.kind == "IMAGE" }.toString()) +
+                    if (data == null) emptyList() else listOf(
+                        "Anzeigen" to data.listings.size.toString(), "Bekannte Namen" to data.knownNames.toString(),
+                        "Bekannte Orte" to data.knownCities.toString(), "Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString(),
+                        "Mit anderen Personen geteilte Assets" to data.sharedImages.toString()))
+                if (data == null) DetailStatus(panels)
+                Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
-        ProfileTab.Notes -> item(key = "profile-notes") {
-            NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy)
+        item(key = "profile-candidate-head") {
+            Text("Mögliche Identitätsübereinstimmungen", style = MaterialTheme.typography.titleMedium)
+            Text(if (candidates.isEmpty()) "Keine Kandidaten gespeichert." else "Keine automatische Zusammenführung.")
         }
-        ProfileTab.History -> {
-            val visibleEvents = if (panels.showDescriptionChanges) history
-                else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }
-            item(key = "profile-history-head") {
-                Text("Profilverlauf", style = MaterialTheme.typography.titleMedium)
-                Text("Bis zu 100 zuletzt gespeicherte Änderungen.", style = MaterialTheme.typography.bodySmall)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(panels.showDescriptionChanges, { panels.showDescriptionChanges = it })
-                    Text("Beschreibungstexte im Verlauf anzeigen")
-                }
-                if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
+        items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
+            ProfileGroup("Person #${candidate.personId} · ${candidate.decision}") {
+                Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
+                    "Quellprofil".takeIf { candidate.sourceProfileMatch },
+                    "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
+                    .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
+                OutlinedButton(onClick = { if (isCurrent()) onConfirm(candidate.personId) },
+                    enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
             }
-            items(visibleEvents, key = { "event/${it.changeEventId}" }) { event ->
-                PanelCard(historyEventLabel(event.eventType, event.fieldKey)) {
-                    Text(historyDate(event.createdAt), style = MaterialTheme.typography.bodySmall)
-                    val listing = panels.detail?.listings?.firstOrNull { it.listingId == event.listingId }
-                    listing?.let { Text("Anzeige #${it.externalId}", style = MaterialTheme.typography.labelMedium) }
-                    if (event.oldDisplay != null || event.newDisplay != null)
-                        HistoryValues(event.oldDisplay, event.newDisplay)
-                    val from = event.fromSnapshotId
-                    val to = event.toSnapshotId
-                    if (from != null && to != null) TextButton(onClick = { panels.compare(from, to) },
-                        enabled = !actionsBusy) { Text("Snapshots vergleichen") }
-                }
+        }
+    }
+    item(key = "notes-toggle") {
+        SectionToggle(ProfileSection.Notes, sections, noteSectionHint(note),
+            hintError = note.error != null || note.draft?.conflict == true)
+    }
+    if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes") {
+        NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy, noteDemand, onRetryNote)
+    }
+    item(key = "history-toggle") { SectionToggle(ProfileSection.History, sections) }
+    if (sections.expanded(ProfileSection.History)) {
+        val visibleEvents = if (sections.showDescriptionChanges) history
+            else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }
+        item(key = "profile-history-head") {
+            Text("Profilverlauf", style = MaterialTheme.typography.titleMedium)
+            Text("Bis zu 100 zuletzt gespeicherte Änderungen.", style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(sections.showDescriptionChanges, sections::setShowDescriptionChanges)
+                Text("Beschreibungstexte im Verlauf anzeigen")
             }
-            item(key = "profile-listings-head") {
-                Text("Verknüpfte Anzeigen", style = MaterialTheme.typography.titleMedium)
-                if (panels.detail == null) DetailStatus(panels)
+            if (panels.detail == null) DetailStatus(panels)
+            if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
+        }
+        items(visibleEvents, key = { "event/${it.changeEventId}" }) { event ->
+            ProfileGroup(historyEventLabel(event.eventType, event.fieldKey)) {
+                Text(historyDate(event.createdAt), style = MaterialTheme.typography.bodySmall)
+                val listing = panels.detail?.listings?.firstOrNull { it.listingId == event.listingId }
+                listing?.let { Text("Anzeige #${it.externalId}", style = MaterialTheme.typography.labelMedium) }
+                if (event.oldDisplay != null || event.newDisplay != null)
+                    HistoryValues(event.oldDisplay, event.newDisplay)
+                val from = event.fromSnapshotId
+                val to = event.toSnapshotId
+                if (from != null && to != null) TextButton(onClick = { if (isCurrent()) panels.compare(from, to) },
+                    enabled = !actionsBusy) { Text("Snapshots vergleichen") }
             }
-            items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }) { listing ->
-                val context = LocalContext.current
-                PanelCard("Anzeige #${listing.externalId}") {
-                    Text(statusLabel(listing.status))
-                    Text("Zuletzt gesehen: ${historyDate(listing.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
-                    listing.url?.let { url -> TextButton(onClick = { openExternal(context, url) }) { Text("Original öffnen") } }
-                }
+        }
+        item(key = "profile-listings-head") {
+            Text("Verknüpfte Anzeigen", style = MaterialTheme.typography.titleMedium)
+            if (panels.detail == null) DetailStatus(panels)
+        }
+        items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }) { listing ->
+            val context = LocalContext.current
+            ProfileGroup("Anzeige #${listing.externalId}") {
+                Text(statusLabel(listing.status))
+                Text("Zuletzt gesehen: ${historyDate(listing.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
+                listing.url?.let { url -> TextButton(enabled = !actionsBusy, onClick = { if (isCurrent()) openExternal(context, url) }) { Text("Original öffnen") } }
             }
         }
     }
@@ -365,15 +501,21 @@ private fun FactsContent(panels: ProfilePanels, content: @Composable (ProfileFac
     val facts = panels.facts
     if (facts != null) content(facts)
     else {
-        panels.factsError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            ?: CircularProgressIndicator(Modifier.size(24.dp))
-        TextButton(onClick = panels::reload) { Text("Neu laden") }
+        val error = panels.factsError
+        if (error == null) CircularProgressIndicator(Modifier.size(24.dp))
+        else {
+            Text(error, color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = panels::retryFacts) { Text("Neu laden") }
+        }
     }
 }
 
 @Composable
 private fun DetailStatus(panels: ProfilePanels) {
-    panels.detailError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        ?: CircularProgressIndicator(Modifier.size(24.dp))
-    TextButton(onClick = panels::reload) { Text("Neu laden") }
+    val error = panels.detailError
+    if (error == null) CircularProgressIndicator(Modifier.size(24.dp))
+    else {
+        Text(error, color = MaterialTheme.colorScheme.error)
+        TextButton(onClick = panels::retryDetail) { Text("Neu laden") }
+    }
 }

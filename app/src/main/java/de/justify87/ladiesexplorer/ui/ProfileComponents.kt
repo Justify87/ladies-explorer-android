@@ -11,7 +11,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -160,11 +159,14 @@ internal fun ProfileMediaHero(
     originalUrl: String? = null,
     actionsEnabled: Boolean = true,
     isCurrent: () -> Boolean = { true },
+    selection: ProfileMediaSelection,
+    projectionAvailable: Boolean = true,
 ) {
     val context = LocalContext.current
-    var selected by rememberSaveable { mutableIntStateOf(0) }
-    val index = mediaIndex(selected, media.size)
-    LaunchedEffect(index, selected) { if (selected != index) selected = index }
+    val index = selection.resolve(media, projectionAvailable)
+    LaunchedEffect(media, index, projectionAvailable) {
+        if (projectionAvailable) selection.select(media, index)
+    }
     val item = media.getOrNull(index)
     var more by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
@@ -204,9 +206,9 @@ internal fun ProfileMediaHero(
                 }
             }
             MediaTapZone("Vorheriges Medium", Icons.Default.ChevronLeft, index > 0,
-                Modifier.align(Alignment.CenterStart)) { selected = index - 1 }
+                Modifier.align(Alignment.CenterStart)) { if (projectionAvailable) selection.select(media, index - 1) }
             MediaTapZone("Nächstes Medium", Icons.Default.ChevronRight, index < media.lastIndex,
-                Modifier.align(Alignment.CenterEnd)) { selected = index + 1 }
+                Modifier.align(Alignment.CenterEnd)) { if (projectionAvailable) selection.select(media, index + 1) }
         }
         onBack?.let {
             HeroButton(it, "Zurück", Icons.Default.ArrowBack,
@@ -271,13 +273,10 @@ internal fun ProfileIdentityHeader(
 @Composable
 internal fun ProfileActionRail(
     person: PersonSummary?,
-    phone: String?,
     busy: Boolean,
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
-    isCurrent: () -> Boolean = { true },
 ) {
-    val context = LocalContext.current
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (person != null) {
             FilterChip(selected = person.preference == Preference.LIKE, enabled = !busy,
@@ -290,6 +289,13 @@ internal fun ProfileActionRail(
                 onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.DISLIKE)) },
                 label = { Text("Nein") })
         }
+    }
+}
+
+@Composable
+internal fun ProfileContactActions(phone: String?, busy: Boolean, isCurrent: () -> Boolean) {
+    val context = LocalContext.current
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val normalized = phone?.let(::phoneForWhatsApp)
         OutlinedButton(enabled = !busy && normalized != null, onClick = {
             if (isCurrent()) normalized?.let { openExternal(context, "https://wa.me/$it") }

@@ -83,8 +83,6 @@ fun LadiesApp(
     )) { mutableStateOf(ShellRoute()) }
     val stateHolder = rememberSaveableStateHolder()
     val searchStateHolder = rememberSaveableStateHolder()
-    val detailTabs = rememberProfileTabMemory()
-    val swipeTabs = rememberProfileTabMemory()
     var lastPresentedRun by rememberSaveable { mutableStateOf(search.response?.searchRunId) }
     LaunchedEffect(search.response?.searchRunId) {
         val run = search.response?.searchRunId
@@ -271,11 +269,10 @@ fun LadiesApp(
             key(search.profileSessionId) {
                 ProfileDetailScreen(
                     state = search,
-                    tabs = detailTabs,
                     notes = notes,
                     noteActions = viewModel.noteActions,
                     onFavorite = viewModel::toggleProfileFavorite,
-                    onPreference = viewModel::chooseDetailPreference,
+                    onPreference = viewModel::chooseProfilePreference,
                     isProfileCurrent = viewModel::isProfileActionCurrent,
                     onConfirmIdentity = viewModel::confirmIdentity,
                     onCancelArchive = viewModel::cancelMediaArchive,
@@ -303,7 +300,6 @@ fun LadiesApp(
                         if (route.discovery == DiscoverMode.Swipe) {
                             DiscoverScreen(
                                 state = discovery,
-                                tabs = swipeTabs,
                                 notes = notes,
                                 noteActions = viewModel.noteActions,
                                 searchLoading = search.loading,
@@ -313,7 +309,7 @@ fun LadiesApp(
                                 onUndo = viewModel::undoSwipe,
                                 onReplayLikes = viewModel::setReplayLikes,
                                 onSkip = viewModel::skipCard,
-                                onChoose = viewModel::decideSwipe,
+                                onChoose = viewModel::chooseProfilePreference,
                                 onSwipeVisibility = viewModel::setSwipeVisible,
                                 onRenderedSwipe = viewModel::publishRenderedSwipe,
                                 onProjectionMismatch = viewModel::reconcileSwipeProjection,
@@ -321,7 +317,6 @@ fun LadiesApp(
                                 onSnapshotChanged = viewModel::markSwipeSnapshotChanged,
                                 onFavorite = viewModel::toggleProfileFavorite,
                                 isProfileCurrent = viewModel::isProfileActionCurrent,
-                                onProfile = viewModel::openSwipeProfile,
                                 modifier = Modifier.weight(1f),
                             )
                         } else if (route.discovery == DiscoverMode.Grid) {

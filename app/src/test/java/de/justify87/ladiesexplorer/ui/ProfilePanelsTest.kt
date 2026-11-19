@@ -4,6 +4,8 @@ import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Test
@@ -34,7 +36,6 @@ class ProfilePanelsTest {
         assertEquals(storedDetail, panel.detail)
         assertNull(panel.detailError)
         failFacts = false
-        panel.reload()
         panel.loadFacts(12L, "{}")
         assertNotNull(panel.facts)
         assertNull(panel.factsError)
@@ -51,7 +52,7 @@ class ProfilePanelsTest {
                 assertEquals(7L, owner)
                 if (from == 1L) {
                     started.complete(Unit)
-                    finish.await()
+                    withContext(NonCancellable) { finish.await() }
                     listOf(SnapshotDifference("name", "old", "stale"))
                 } else {
                     assertEquals(3L, to)
@@ -79,7 +80,7 @@ class ProfilePanelsTest {
         assertFalse(panel.comparing)
     }
 
-    @Test fun knownGapDeliveredOldFactsCanOverwriteNewFilterRevisionWithinSamePanel() = runBlocking {
+    @Test fun lateFactsCannotOverwriteNewFilterRevisionWithinSamePanel() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         val old = ProfileFacts(listOf(ProfileField("fixture", listOf("old"))), emptyList(), emptyList(), emptyList(), emptyList())
@@ -89,31 +90,134 @@ class ProfilePanelsTest {
         }, { detail() }, { _, _, _ -> emptyList() })
         val read = launch { panel.loadFacts(11L, "old") }
         started.await()
-        panel.reload()
         panel.loadFacts(11L, "new")
         assertEquals(new, panel.facts)
         finish.complete(Unit)
         read.join()
-        // Compose normally cancels its previous effect. The local read body itself has
-        // no revision admission if an older result is nevertheless delivered.
-        assertEquals(old, panel.facts)
+        assertEquals(new, panel.facts)
     }
 
-    @Test fun failedAnalysisReloadClearsPreviousDetailsWithoutErasingFacts() = runBlocking {
-        var fail = false
-        val stored = detail()
-        val content = facts()
-        val panel = ProfilePanels(this, 7L, { _, _ -> content },
-            { if (fail) error("analysis failed") else stored }, { _, _, _ -> emptyList() })
+    @Test fun factsAndDetailCoalesceInFlightAndSuccessfulReads() = runBlocking {
+        val start = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        var factsCalls = 0
+        var detailCalls = 0
+        val panel = ProfilePanels(this, 7L, { _, _ ->
+            factsCalls++
+            start.complete(Unit)
+            finish.await()
+            facts()
+        }, { detailCalls++; detail() }, { _, _, _ -> emptyList() })
+        val read = launch { panel.loadFacts(11L, "{}") }
+        start.await()
         panel.loadFacts(11L, "{}")
         panel.loadDetail()
-        assertEquals(stored, panel.detail)
-        fail = true
-        panel.reload()
         panel.loadDetail()
-        assertNull(panel.detail)
+        finish.complete(Unit)
+        read.join()
+        panel.loadFacts(11L, "{}")
+        assertEquals(1, factsCalls)
+        assertEquals(1, detailCalls)
+    }
+
+    @Test fun failedDetailRetriesIndependentlyOnlyByExplicitAction() = runBlocking {
+        var attempts = 0
+        val panel = ProfilePanels(this, 7L, { _, _ -> facts() },
+            { if (++attempts == 1) error("analysis failed") else detail() }, { _, _, _ -> emptyList() })
+        panel.loadFacts(11L, "{}")
+        val original = panel.facts
+        panel.loadDetail()
+        panel.loadDetail()
+        assertEquals(1, attempts)
         assertEquals("analysis failed", panel.detailError)
-        assertEquals(content, panel.facts)
+        panel.retryDetail()
+        coroutineContext[Job]!!.children.toList().forEach { it.join() }
+        assertEquals(2, attempts)
+        assertNotNull(panel.detail)
+        assertNull(panel.detailError)
+        assertEquals(original, panel.facts)
+    }
+
+    @Test fun promotedTraitDoesNotDiscardDistinctAliases() {
+        val first = ProfileField("Busen", listOf("A"))
+        val second = ProfileField("Oberweite", listOf("B"))
+        val other = ProfileField("Fixture", listOf("C"))
+        val (overview, traits) = ProfileFacts(listOf(first, second, other), emptyList(),
+            emptyList(), emptyList(), emptyList()).overviewAndTraits()
+        assertEquals(listOf("Busen" to "A"), overview)
+        assertEquals(listOf(second, other), traits)
+    }
+
+    @Test fun servicePreviewPreservesAllRawValuesAndFilterEvidenceOnExpansion() {
+        val raw = ProfileField("Fixture", (1..10).map { "v$it" })
+        val filters = (1..6).map { FilterEvidence("fixture", "f$it",
+            if (it % 2 == 0) EvidenceStatus.UNKNOWN else EvidenceStatus.NO) }
+        val all = ProfileFacts(emptyList(), listOf(raw), emptyList(), filters, emptyList()).serviceRows()
+        val preview = all.preview(false)
+        assertEquals(16, all.count)
+        assertEquals(8, preview.count)
+        assertEquals(raw.values, all.preview(true).source.map { it.second })
+        assertEquals(listOf("Nein", "Unbekannt", "Nein", "Unbekannt", "Nein", "Unbekannt"),
+            all.preview(true).filters.map { it.second })
+    }
+
+    @Test fun sameKeyFactsRetryCannotResetSuccessfulDetail() = runBlocking {
+        var attempts = 0
+        val panel = ProfilePanels(this, 7L, { _, _ ->
+            if (++attempts == 1) error("facts failed") else facts()
+        }, { detail() }, { _, _, _ -> emptyList() })
+        panel.loadFacts(11L, "{}")
+        panel.loadDetail()
+        val previousDetail = panel.detail
+        panel.loadFacts(11L, "{}")
+        assertEquals(1, attempts)
+        panel.retryFacts()
+        panel.retryFacts()
+        coroutineContext[Job]!!.children.toList().forEach { it.join() }
+        assertEquals(2, attempts)
+        assertNotNull(panel.facts)
         assertNull(panel.factsError)
+        assertEquals(previousDetail, panel.detail)
+    }
+
+    @Test fun lateFactsFailureCannotReplaceNewSuccess() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val panel = ProfilePanels(this, 7L, { _, filter ->
+            if (filter == "old") { started.complete(Unit); finish.await(); error("late") }
+            facts()
+        }, { detail() }, { _, _, _ -> emptyList() })
+        val old = launch { panel.loadFacts(11L, "old") }
+        started.await()
+        panel.loadFacts(11L, "new")
+        finish.complete(Unit)
+        old.join()
+        assertNull(panel.factsError)
+        assertNotNull(panel.facts)
+    }
+
+    @Test fun demandUsesVisibleLazyItemsNotCollapsedHeaders() {
+        assertFalse(factsDemand(setOf("hero", "header")))
+        assertFalse(detailDemand(setOf("analysis-toggle", "history-toggle", "notes-toggle")))
+        assertTrue(factsDemand(setOf("profile-services")))
+        assertTrue(factsDemand(setOf("profile-facts")))
+        assertTrue(detailDemand(setOf("profile-analysis")))
+        assertTrue(detailDemand(setOf("event/1")))
+    }
+
+    @Test fun disposedProjectionCannotPublishLateRead() = runBlocking {
+        val start = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val panel = ProfilePanels(this, 7L, { _, _ ->
+            start.complete(Unit)
+            finish.await()
+            facts()
+        }, { detail() }, { _, _, _ -> emptyList() })
+        val read = launch { panel.loadFacts(11L, "{}") }
+        start.await()
+        panel.close()
+        finish.complete(Unit)
+        read.join()
+        assertNull(panel.facts)
     }
 }

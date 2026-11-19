@@ -1,7 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,7 +12,6 @@ import de.justify87.ladiesexplorer.core.*
 @Composable
 internal fun ProfileDetailScreen(
     state: SearchUiState,
-    tabs: ProfileTabMemory,
     notes: Map<Long, NoteEditorState>,
     noteActions: NoteEditorActions,
     onFavorite: (ProfileIdentityToken) -> Unit,
@@ -27,39 +25,32 @@ internal fun ProfileDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val profile = state.profile
-    val owner = state.profileIdentity?.personId
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
-    val tab = tabs.selected(owner)
     val renderedToken = state.detailIdentityToken()
     val busy = actionsBusy || state.actionBusy || renderedToken == null
-    val boundNotes = noteActions.boundTo(renderedToken, isProfileCurrent)
-    val panels = rememberProfilePanels(state.profileRead, filters, tab)
-    rememberProfileNote(renderedToken, boundNotes, busy, tab == ProfileTab.Notes)
-    val selectTab: (ProfileTab) -> Unit = { tabs.select(owner, it) }
-    ComparisonDialog(panels)
     val detailListState = rememberLazyListState()
-    var confirmTarget by remember(renderedToken, state.identityCandidates) { mutableStateOf<Pair<DetailIdentityToken, Long>?>(null) }
-
-    confirmTarget?.let { (token, target) ->
-        IdentityConfirmationDialog(target, enabled = !actionsBusy && !state.actionBusy,
-            onConfirm = { confirmTarget = null; onConfirmIdentity(token, target) },
-            onDismiss = { confirmTarget = null })
-    }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val heroHeight = (maxHeight * .84f).coerceIn(220.dp, 720.dp)
-        LazyColumn(
+        ProfileFlow(
             state = detailListState,
+            model = state.profileRead,
+            filters = filters,
+            token = renderedToken,
+            actionsBusy = busy,
+            notes = notes,
+            noteActions = noteActions,
+            isProfileCurrent = isProfileCurrent,
+            onConfirmIdentity = onConfirmIdentity,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            if (profile == null) item {
+            if (profile == null) item(key = "detail-back") {
                 TextButton(onClick = onBack) { Text("Zurück") }
             }
-            if (state.loading) item { CircularProgressIndicator() }
-            state.error?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
-            state.actionError?.let { item { Text(it,color=MaterialTheme.colorScheme.error) } }
-            if (state.retryProfileListingId != null) item {
+            if (state.loading) item(key = "detail-loading") { CircularProgressIndicator() }
+            state.error?.let { item(key = "detail-error") { Text(it,color=MaterialTheme.colorScheme.error) } }
+            state.actionError?.let { item(key = "detail-action-error") { Text(it,color=MaterialTheme.colorScheme.error) } }
+            if (state.retryProfileListingId != null) item(key = "detail-retry") {
                 TextButton(onClick = onRetryProfile, enabled = !state.actionBusy && !actionsBusy) {
                     Text(if (state.profileSourceRetryAllowed) "Profil online abrufen" else "Profil erneut laden")
                 }
@@ -68,26 +59,20 @@ internal fun ProfileDetailScreen(
                 item(key = "media") {
                     ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
                         onBack = onBack, originalUrl = state.profileIdentity?.profileUrl,
+                        selection = mediaSelection,
                         actionsEnabled = !busy, isCurrent = { renderedToken?.let(isProfileCurrent) == true })
                 }
                 item(key = "identity") {
                     ProfileHeader(profile, state.profileIdentity, state.selectedPerson,
                         state.profileMedia, state.profileFromArchive)
                 }
-                if (state.profileFromArchive) {
-                    state.mediaWarning?.let { item(key = "archive-warning") {
-                        Text(it, color = MaterialTheme.colorScheme.error)
-                    } }
-                }
                 item(key = "actions") {
-                    ProfileActionRail(state.selectedPerson, profile.phoneDisplay,
-                        busy,
+                    ProfileActionRail(state.selectedPerson, busy,
                         onFavorite = { renderedToken?.let(onFavorite) },
-                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } },
-                        isCurrent = { renderedToken?.let(isProfileCurrent) == true })
+                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
                 }
                 if (state.archiving) {
-                    item {
+                    item(key = "archive-progress") {
                         Row(verticalAlignment=Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier=Modifier.width(28.dp).height(28.dp))
                             Text("  Medien werden lokal archiviert",modifier=Modifier.weight(1f))
@@ -96,7 +81,7 @@ internal fun ProfileDetailScreen(
                     }
                 }
                 state.mediaArchive?.let { report ->
-                    item {
+                    item(key = "archive-report") {
                         Text(
                             "Archiv: ${report.downloaded} geladen · ${report.reused} wiederverwendet · ${report.failed} fehlgeschlagen · ${report.deferred} zurückgestellt",
                             style=MaterialTheme.typography.bodySmall,
@@ -104,12 +89,8 @@ internal fun ProfileDetailScreen(
                     }
                 }
                 state.mediaWarning?.let {
-                    item { Text(it,color=MaterialTheme.colorScheme.error) }
+                    item(key = "archive-warning") { Text(it,color=MaterialTheme.colorScheme.error) }
                 }
-                profileContent(profile, state.profileIdentity, state.selectedPerson, state.profileMedia,
-                    panels, tab, selectTab, state.identityCandidates, state.changeEvents,
-                    busy, owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
-                    onConfirm = { target -> renderedToken?.let { confirmTarget = it to target } })
             }
         }
     }
