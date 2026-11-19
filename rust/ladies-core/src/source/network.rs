@@ -128,7 +128,9 @@ fn classify_profile_status(
     advert_id: &str,
 ) -> Result<(&'static str, u16), CoreError> {
     match response.status {
-        404 | 410 if response.same_path => Ok(("UNAVAILABLE", response.status)),
+        404 | 410 if response.same_path && !parse::verification_page(&response.body) => {
+            Ok(("UNAVAILABLE", response.status))
+        }
         200 if response.same_path && parse::confirms_profile(&response.body, advert_id) => {
             Ok(("ACTIVE", 200))
         }
@@ -966,6 +968,8 @@ mod tests {
         assert_eq!(classify(404, "", true).unwrap(), ("UNAVAILABLE", 404));
         assert_eq!(classify(410, "", true).unwrap(), ("UNAVAILABLE", 410));
         assert!(classify(404, "", false).is_err());
+        assert!(classify(404, "<title>Just a moment</title>", true).is_err());
+        assert!(classify(410, "ich bin über 18 jahre", true).is_err());
         assert!(classify(403, "", true).is_err());
         assert!(classify(500, "", true).is_err());
         assert!(classify(200, profile, false).is_err());

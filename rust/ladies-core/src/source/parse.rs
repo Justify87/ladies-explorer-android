@@ -177,6 +177,28 @@ pub(super) fn is_radius_transition_placeholder(html: &str, requested_radius: u32
         })
 }
 
+fn bot_verification(lowered: &str) -> bool {
+    [
+        "cf-chl",
+        "challenge-platform",
+        "checking your browser",
+        "just a moment",
+        "verify you are human",
+        "captcha",
+    ]
+    .iter()
+    .any(|marker| lowered.contains(marker))
+}
+
+fn age_verification(lowered: &str) -> bool {
+    lowered.contains("ich bin über 18 jahre") || lowered.contains("enthält erotische inhalte")
+}
+
+pub(super) fn verification_page(html: &str) -> bool {
+    let lowered = html.to_lowercase();
+    bot_verification(&lowered) || age_verification(&lowered)
+}
+
 pub(super) fn search_page_diagnostics(html: &str) -> String {
     let doc = Html::parse_document(html);
     let title = first_text(&doc, "title").unwrap_or_else(|| "ohne Titel".into());
@@ -199,21 +221,9 @@ pub(super) fn search_page_diagnostics(html: &str) -> String {
         .count();
     let page_kind = if plausible_links > 0 {
         "Suchseite mit Anzeigen"
-    } else if [
-        "cf-chl",
-        "challenge-platform",
-        "checking your browser",
-        "just a moment",
-        "verify you are human",
-        "captcha",
-    ]
-    .iter()
-    .any(|marker| lowered.contains(marker))
-    {
+    } else if bot_verification(&lowered) {
         "Bot-Verifizierung"
-    } else if lowered.contains("ich bin über 18 jahre")
-        || lowered.contains("enthält erotische inhalte")
-    {
+    } else if age_verification(&lowered) {
         "Altersabfrage oder Website-Startseite"
     } else if lowered.contains("anzeigen für dich gefunden") {
         "Suchseite mit Ergebnisüberschrift"

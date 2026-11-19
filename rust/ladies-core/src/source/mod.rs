@@ -233,14 +233,22 @@ pub(crate) fn load_profile(
         has_stars: false,
     };
     let parse_started = Instant::now();
-    let profile = parse::parse_profile(&html, &fallback).map_err(|error| {
-        core.diagnostics.html("profile_parse_failed", &html);
-        core.diagnostics.event(
-            "PROFILE",
-            format!("Profile parse failed listing={listing_id}: {error}"),
-        );
-        error
-    })?;
+    let profile = match parse::parse_profile(&html, &fallback) {
+        Ok(profile) => profile,
+        Err(error) => {
+            core.diagnostics.html("profile_parse_failed", &html);
+            core.diagnostics.event(
+                "PROFILE",
+                format!("Profile parse failed listing={listing_id}: {error}"),
+            );
+            // Metadata parsing failure does not negate independent, confirmed
+            // availability evidence. Still validate the observation at commit.
+            if verified {
+                storage::save_status(core, &target, "ACTIVE", 200, false, control)?;
+            }
+            return Err(error);
+        }
+    };
     core.diagnostics
         .phase("PROFILE", "html_parse", parse_started);
     core.diagnostics.event(

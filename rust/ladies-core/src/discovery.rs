@@ -1140,13 +1140,22 @@ mod tests {
             .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Name, 50, 50)
             .unwrap();
         assert_eq!(
-            window.regular.rows.iter().map(|r| r.person_id).collect::<Vec<_>>(),
+            window
+                .regular
+                .rows
+                .iter()
+                .map(|r| r.person_id)
+                .collect::<Vec<_>>(),
             vec![a, b, c, d]
         );
         let first = core
             .saved_people(
-                SavedPersonKind::Favorite, SavedPersonSort::Name, SavedPersonSection::All,
-                1, None, None,
+                SavedPersonKind::Favorite,
+                SavedPersonSort::Name,
+                SavedPersonSection::All,
+                1,
+                None,
+                None,
             )
             .unwrap();
         let cursor = first.next_cursor.unwrap();
@@ -1165,8 +1174,12 @@ mod tests {
         core.set_favorite(b, false).unwrap();
         assert!(
             core.saved_people(
-                SavedPersonKind::Favorite, SavedPersonSort::Name, SavedPersonSection::All,
-                1, Some(cursor), None,
+                SavedPersonKind::Favorite,
+                SavedPersonSort::Name,
+                SavedPersonSection::All,
+                1,
+                Some(cursor),
+                None,
             )
             .is_err()
         );
@@ -1179,7 +1192,12 @@ mod tests {
         assert_eq!(recent.section_total, 1);
         assert_eq!(recent.rows[0].person_id, a);
         assert_eq!(fresh.regular.section_total, 2);
-        let mut regular = fresh.regular.rows.iter().map(|r| r.person_id).collect::<Vec<_>>();
+        let mut regular = fresh
+            .regular
+            .rows
+            .iter()
+            .map(|r| r.person_id)
+            .collect::<Vec<_>>();
         regular.sort_unstable();
         assert_eq!(regular, vec![c, d]);
     }

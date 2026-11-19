@@ -797,7 +797,10 @@ mod tests {
         let person = found.profiles[0].person_id;
         let older = core
             .add_listing(
-                person, None, "LADIES".into(), "102".into(),
+                person,
+                None,
+                "LADIES".into(),
+                "102".into(),
                 Some("https://www.ladies.de/sex-anzeigen/huren-hostessen/102".into()),
             )
             .unwrap();
@@ -817,9 +820,17 @@ mod tests {
                 save_status(&core, &target, "ACTIVE", 200, true, Some(&control)).unwrap();
             }
             let page = core
-                .saved_people_window(crate::SavedPersonKind::Favorite, crate::SavedPersonSort::Name, 50, 50)
+                .saved_people_window(
+                    crate::SavedPersonKind::Favorite,
+                    crate::SavedPersonSort::Name,
+                    50,
+                    50,
+                )
                 .unwrap();
-            assert_eq!(page.regular.rows[0].card.as_ref().unwrap().listing_id, listing);
+            assert_eq!(
+                page.regular.rows[0].card.as_ref().unwrap().listing_id,
+                listing
+            );
         }
         let stale = listing_target(&core, listing, false).unwrap();
         save_status(&core, &stale, "UNAVAILABLE", 404, false, None).unwrap();
@@ -828,10 +839,13 @@ mod tests {
         save_observed_profile(&core, &target, profile("Fixture"), false, None).unwrap();
         {
             let db = core.connection().unwrap();
-            let state: String = db.query_row(
-                "SELECT current_status FROM listings WHERE listing_id=?1",
-                [listing], |r| r.get(0),
-            ).unwrap();
+            let state: String = db
+                .query_row(
+                    "SELECT current_status FROM listings WHERE listing_id=?1",
+                    [listing],
+                    |r| r.get(0),
+                )
+                .unwrap();
             assert_eq!(state, "UNAVAILABLE");
         }
         let target = listing_target(&core, listing, false).unwrap();
