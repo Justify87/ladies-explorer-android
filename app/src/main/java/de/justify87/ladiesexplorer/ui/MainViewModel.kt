@@ -168,9 +168,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         swipeVisible = visible
         renderedSwipe = null
         _discoverState.update {
+            val window = it.cards.take(3).map { card -> card.listingId }.toSet()
             it.copy(swipeSessionId = it.swipeSessionId + 1,
-                localProfileReloadIds = if (visible) it.localProfileReloadIds else
-                    (it.localProfileReloadIds + it.cards.take(3).map { card -> card.listingId }).toSet())
+                localProfileReloadIds = if (visible) it.localProfileReloadIds else window,
+                localProfileStrictIds = it.localProfileStrictIds.intersect(window))
         }
     }
 
@@ -278,6 +279,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             StandaloneProfileIo(
                 core::loadProfile, core::cachedProfile, core::profileProjection, core::archiveProfileMedia,
                 { RequestControl() }, { it.cancel() }, core::confirmIdentityMatch,
+                { RequestControl() }, { it.cancel() },
             ),
             ProfileProjectionCallbacks(
                 epoch = { discoveryEpoch }, nextEpoch = { ++discoveryEpoch },
@@ -322,6 +324,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelMediaArchive() = profileOperations.cancelMediaArchive()
 
     fun closeProfile() = profileOperations.closeProfile()
+
+    internal fun setProfilePresentationVisible(visible: Boolean) {
+        if (!visible) setSwipeVisible(false)
+        profileOperations.setPresentationVisible(visible)
+    }
 
     private fun cancelPreview() {
         previewGeneration.invalidate()

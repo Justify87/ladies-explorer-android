@@ -27,7 +27,7 @@ internal suspend fun CoreStore.readSwipeProfile(
     onSourceRead: () -> Unit = {},
 ): ProfileReadModel = readSwipeProfile(
     listingId, refresh, allowNetwork, onSourceRead,
-    SwipeProfileReads(::cachedProfile, { loadSwipeProfile(it, control) }, ::profileProjection),
+    SwipeProfileReads(::cachedProfile, { loadProfile(it, control) }, ::profileProjection),
 )
 
 internal suspend fun readSwipeProfile(

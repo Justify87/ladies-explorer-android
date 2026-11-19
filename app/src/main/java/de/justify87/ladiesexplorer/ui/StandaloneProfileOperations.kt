@@ -9,18 +9,21 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Existing standalone IO calls, bound to CoreStore in MainViewModel. No transport or state. */
 internal class StandaloneProfileIo<C : Any>(
-    val loadProfile: suspend (Long) -> ProfileResponse,
+    val loadProfile: suspend (Long, C) -> ProfileResponse,
     val cachedProfile: suspend (Long) -> ProfileResponse?,
     val profileProjection: suspend (Long) -> NativeProfileProjection?,
     val archiveProfileMedia: suspend (Long, C) -> MediaArchiveReport,
     val newArchiveControl: () -> C,
     val cancelArchive: (C) -> Unit,
     val confirmIdentityMatch: suspend (Long, Long, Long, Long) -> Unit,
+    val newSourceControl: () -> C,
+    val cancelSource: (C) -> Unit,
 )
 
 /** The existing independent projection owners remain in MainViewModel/SavedSearchController. */
@@ -51,7 +54,7 @@ internal class StandaloneProfileOperations<C : Any>(
 ) {
     private val profileGeneration = RequestGeneration()
     private var projectionRevision = 0L
-    private class ArchiveCall<C>(val control: C) {
+    private class NativeProfileCall<C>(val control: C) {
         val drained = CompletableDeferred<Unit>()
         var cancelled = false
         fun cancel(signal: (C) -> Unit) {
@@ -61,7 +64,10 @@ internal class StandaloneProfileOperations<C : Any>(
             }
         }
     }
-    private var archiveCall: ArchiveCall<C>? = null
+    private var archiveCall: NativeProfileCall<C>? = null
+    private var sourceCall: NativeProfileCall<C>? = null
+    private var presentationVisible = true
+    private var requestedListingId: Long? = null
 
     private suspend fun project(listingId: Long): NativeProfileProjection =
         checkNotNull(io.profileProjection(listingId)) { "Profil nicht mehr verfügbar" }
@@ -78,6 +84,7 @@ internal class StandaloneProfileOperations<C : Any>(
 
     fun invalidateProfileRequest() {
         profileGeneration.invalidate()
+        sourceCall?.cancel(io.cancelSource)
         archiveCall?.cancel(io.cancelArchive)
     }
 
@@ -87,6 +94,7 @@ internal class StandaloneProfileOperations<C : Any>(
     }
 
     fun closeProfile() {
+        requestedListingId = null
         invalidateProfileRequest()
         _searchUiState.update {
             it.copy(profileOpen = false, profileRead = null, profileRetryFromArchive = false,
@@ -96,7 +104,9 @@ internal class StandaloneProfileOperations<C : Any>(
     }
 
     fun loadProfile(listingId: Long, personId: Long, beforeOpen: () -> Unit) {
+        if (!presentationVisible) return
         invalidateProfileRequest()
+        requestedListingId = listingId
         beforeOpen()
         val requestId = profileGeneration.value
         _searchUiState.update {
@@ -109,20 +119,31 @@ internal class StandaloneProfileOperations<C : Any>(
             var showingArchive = false
             var refreshError: String? = null
             try {
+                sourceCall?.drained?.await()
                 archiveCall?.drained?.await()
                 if (!profileGeneration.isCurrent(requestId)) return@launch
                 try {
+                    val call = NativeProfileCall(io.newSourceControl())
+                    check(sourceCall == null)
+                    sourceCall = call
                     try {
-                        io.loadProfile(listingId)
+                        withContext(NonCancellable) { io.loadProfile(listingId, call.control) }
+                        coroutineContext.ensureActive()
                     } finally {
+                        if (sourceCall === call) sourceCall = null
                         // A source read can persist before a later failure or invalidation.
-                        projections.savedSearch()
-                        projections.discovery()
-                        projections.map()
+                        try {
+                            projections.savedSearch()
+                            projections.discovery()
+                            projections.map()
+                        } finally {
+                            call.drained.complete(Unit)
+                        }
                     }
                 } catch (failure: CancellationException) {
                     throw failure
                 } catch (failure: Exception) {
+                    if (!profileGeneration.isCurrent(requestId)) return@launch
                     io.cachedProfile(listingId) ?: throw failure
                     showingArchive = true
                     refreshError = "Archivierte Profildaten: Online-Aktualisierung fehlgeschlagen (${failure.message ?: "Netzwerk nicht verfügbar"})."
@@ -137,7 +158,7 @@ internal class StandaloneProfileOperations<C : Any>(
                 }
                 if (showingArchive) return@launch
                 val profile = local.profile
-                val call = ArchiveCall(io.newArchiveControl())
+                val call = NativeProfileCall(io.newArchiveControl())
                 check(archiveCall == null)
                 archiveCall = call
                 try {
@@ -189,6 +210,30 @@ internal class StandaloneProfileOperations<C : Any>(
         }
     }
 
+    /** ON_STOP revokes delivery, not native execution ownership. Resume only projects locally. */
+    fun setPresentationVisible(visible: Boolean) {
+        if (presentationVisible == visible) return
+        presentationVisible = visible
+        val active = _searchUiState.value
+        val listing = requestedListingId ?: return
+        if (!active.profileOpen) return
+        if (!visible) {
+            invalidateProfileRequest()
+            _searchUiState.update {
+                it.copy(profileSessionId = profileGeneration.value, profileRead = null,
+                    profileRetryFromArchive = it.profileRead?.fromArchive ?: true,
+                    retryProfileListingId = listing, loading = false, archiving = false,
+                    actionBusy = false, actionError = null, mediaArchive = null)
+            }
+        } else {
+            val ticket = profileGeneration.value
+            scope.launch {
+                _discoverState.first { !it.busy }
+                if (presentationVisible && profileGeneration.isCurrent(ticket)) retryProfileProjection()
+            }
+        }
+    }
+
     /** Independent preference/favorite changes must refresh the same coherent detail record. */
     suspend fun refreshLocalProfileForOwner(personId: Long) {
         val active = _searchUiState.value
@@ -214,11 +259,14 @@ internal class StandaloneProfileOperations<C : Any>(
     fun retryProfileProjection() {
         val active = _searchUiState.value
         val listingId = active.retryProfileListingId ?: return
-        if (!active.profileOpen || active.actionBusy || _discoverState.value.busy) return
+        if (!presentationVisible || !active.profileOpen || active.actionBusy || _discoverState.value.busy) return
         val requestId = profileGeneration.value
         _searchUiState.update { it.copy(actionBusy = true, actionError = null, error = null) }
         scope.launch {
             try {
+                sourceCall?.drained?.await()
+                archiveCall?.drained?.await()
+                if (!presentationVisible || !profileGeneration.isCurrent(requestId)) return@launch
                 val local = project(listingId)
                 if (profileGeneration.isCurrent(requestId)) {
                     _searchUiState.update { it.withProjection(local) }
@@ -264,7 +312,9 @@ internal class StandaloneProfileOperations<C : Any>(
         }
         projections.beginMerge()
         val epoch = projections.nextEpoch()
+        val pendingSource = sourceCall
         val pendingArchive = archiveCall
+        pendingSource?.cancel(io.cancelSource)
         pendingArchive?.cancel(io.cancelArchive)
         // The mutation outlives the detail screen. Keep the shared write guard until
         // it finishes even if Back clears the screen's own actionBusy flag.
@@ -275,6 +325,7 @@ internal class StandaloneProfileOperations<C : Any>(
             var committed = false
             var projectionUpdated = false
             try {
+                pendingSource?.drained?.await()
                 pendingArchive?.drained?.await()
                 coroutineContext.ensureActive()
                 // Once sent, the native write and its commit bookkeeping must drain together.

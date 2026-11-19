@@ -28,10 +28,11 @@ class StandaloneProfileOperationsTest {
             MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u)
         }
         val controls = mutableListOf<Control>()
+        val sourceControls = mutableListOf<Control>()
         val operations = StandaloneProfileOperations(
             scope, search, discovery, notes, tickets,
             StandaloneProfileIo(
-                loadProfile = { calls += "source:$it"; source(it).also { cached = it } },
+                loadProfile = { listing, _ -> calls += "source:$listing"; source(listing).also { cached = it } },
                 cachedProfile = { calls += "cache:$it"; cached },
                 profileProjection = {
                     calls += "profile:$it"
@@ -50,6 +51,8 @@ class StandaloneProfileOperationsTest {
                     check(cached?.snapshotId == expectedSnapshot)
                     calls += "confirm:$listing:$target"; commit(listing, target)
                 },
+                newSourceControl = { Control().also(sourceControls::add) },
+                cancelSource = { it.cancelled++ },
             ),
             ProfileProjectionCallbacks(
                 epoch = { epoch }, nextEpoch = { ++epoch }, pending = { pending },
@@ -189,30 +192,53 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.discovery.value.busy)
     }
 
-    @Test fun sameListingReopenedBeforeOldSourceCompletionStillRefreshesMapForLateCommit() = runBlocking {
+    @Test fun reopenedListingWaitsForOldSourceDrainAndBothCompletionsRefreshMap() = runBlocking {
         val f = Fixture(this)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        f.source = { started.complete(Unit); finish.await(); fixtureProfile(11L) }
+        f.source = { started.complete(Unit); finish.await(); error("late native response rejected") }
         f.operations.loadProfile(4L, 1L) {}
         started.await()
         val oldSession = f.search.value.profileSessionId
-        val oldJob = coroutineContext[Job]!!.children.single()
         f.operations.closeProfile()
         f.owner = 7L
         f.cached = fixtureProfile(12L)
         f.source = { error("offline") }
         f.operations.loadProfile(4L, 7L) {}
-        // Wait for the new local projection, not the old blocked source.
-        coroutineContext[Job]!!.children.single { it != oldJob }.join()
+        yield()
         assertNotEquals(oldSession, f.search.value.profileSessionId)
-        assertEquals(7L, f.search.value.profileIdentity?.personId)
-        assertEquals(12L, f.search.value.profile?.snapshotId)
-        f.calls.clear()
+        assertNull(f.search.value.profile)
+        assertEquals(1, f.calls.count { it.startsWith("source:") })
+        assertEquals(1, f.sourceControls.single().cancelled)
         finish.complete(Unit)
         f.idle()
-        assertEquals(listOf("saved", "discovery", "map"), f.calls)
+        assertEquals(7L, f.search.value.profileIdentity?.personId)
         assertEquals(12L, f.search.value.profile?.snapshotId)
+        assertEquals(2, f.calls.count { it == "map" })
+        assertEquals(2, f.calls.count { it.startsWith("source:") })
+        assertTrue(f.controls.isEmpty())
+    }
+
+    @Test fun stopRevokesDetailDeliveryAndResumeReadsOnlyAfterSourceDrain() = runBlocking {
+        val f = Fixture(this)
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        f.source = { started.complete(Unit); finish.await(); fixtureProfile(12L) }
+        f.operations.loadProfile(4L, 1L) {}
+        started.await()
+        val oldSession = f.search.value.profileSessionId
+        f.operations.setPresentationVisible(false)
+        assertNotEquals(oldSession, f.search.value.profileSessionId)
+        assertNull(f.search.value.profile)
+        assertEquals(1, f.sourceControls.single().cancelled)
+        f.operations.setPresentationVisible(true)
+        yield()
+        assertNull(f.search.value.profile)
+        finish.complete(Unit)
+        f.idle()
+        assertEquals(12L, f.search.value.profile?.snapshotId)
+        assertEquals(1, f.calls.count { it.startsWith("source:") })
+        assertEquals(1, f.calls.count { it == "map" })
         assertTrue(f.controls.isEmpty())
     }
 

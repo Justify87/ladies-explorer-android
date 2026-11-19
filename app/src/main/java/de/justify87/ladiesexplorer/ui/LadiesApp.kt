@@ -117,15 +117,19 @@ fun LadiesApp(
         }
         val observer = LifecycleEventObserver { _, event ->
             publishVisibility()
+            if (event == Lifecycle.Event.ON_START) viewModel.setProfilePresentationVisible(true)
             if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.setProfilePresentationVisible(false)
                 viewModel.cancelSavedStatus()
                 viewModel.savedSearch.cancelCheck()
             }
         }
         lifecycle.addObserver(observer)
         publishVisibility()
+        viewModel.setProfilePresentationVisible(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         onDispose {
             lifecycle.removeObserver(observer)
+            viewModel.setProfilePresentationVisible(false)
             viewModel.savedSearch.setVisible(false)
         }
     }

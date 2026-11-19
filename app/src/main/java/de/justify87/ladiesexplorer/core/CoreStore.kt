@@ -178,18 +178,10 @@ class CoreStore(context: Context) {
     // Source profile reads and identity confirmation share native execution ownership.
     private val profileSourceMutex = Mutex()
 
-    suspend fun loadProfile(listingId: Long): ProfileResponse = profileSourceMutex.withLock {
-        withContext(Dispatchers.IO) {
-            recorded("loadProfile listingId=$listingId") {
-                engine.loadSourceProfile(listingId)
-            }
-        }
-    }
-
-    suspend fun loadSwipeProfile(listingId: Long, control: RequestControl): ProfileResponse =
+    suspend fun loadProfile(listingId: Long, control: RequestControl): ProfileResponse =
         profileSourceMutex.withLock {
             withContext(Dispatchers.IO) {
-                recorded("loadSwipeProfile listingId=$listingId") {
+                recorded("loadProfile listingId=$listingId") {
                     engine.loadSwipeProfile(listingId, control)
                 }
             }
