@@ -16,6 +16,7 @@ class SavedSearchPaneTest {
         var list = listOf(item)
         var loaded = SearchDraft(city = "Dresden", selectedFilters = mapOf("zeiten" to setOf("jetzt geöffnet")))
         var writeError = false
+        var windowError = false
         var readError = false
         var afterWriteReadError = false
         var writes = 0
@@ -33,6 +34,7 @@ class SavedSearchPaneTest {
         override suspend fun window(id: String, limit: UInt): SavedSearchWindow {
             windows += limit
             onRead()
+            if (windowError) error("window failed")
             return SavedSearchWindow(emptyList(), limit < 400u, list)
         }
         override suspend fun create(name: String, draft: SearchDraft) { write() }
@@ -170,6 +172,44 @@ class SavedSearchPaneTest {
         c.retryResults(); settle()
         assertEquals(1, fake.acknowledgements)
         assertFalse(c.state.value.searches.single().unreadNewResults)
+    }
+
+    @Test fun lateNativeWriteQueuesCoherentResultRefreshWithoutAcknowledging() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(); settle()
+        c.openResults("one"); settle()
+        val gate = CompletableDeferred<Unit>()
+        fake.onRead = { gate.await() }
+        c.more(); settle()
+        fake.list = listOf(info(unread = true, revision = 2L))
+        c.refreshResultProjection()
+        assertEquals(SavedOperation.Results, c.state.value.operation)
+        gate.complete(Unit); settle()
+        assertEquals(listOf(100u, 200u, 200u), fake.windows)
+        assertTrue(c.state.value.result!!.ready)
+        assertTrue(c.state.value.searches.single().unreadNewResults)
+        assertEquals(0, fake.acknowledgements)
+    }
+
+    @Test fun failedReprojectionInvalidatesActionsAndRetryRetainsWindowCapacity() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(); settle()
+        c.openResults("one"); settle()
+        c.more(); settle()
+        fake.windowError = true
+        c.refreshResultProjection(); settle()
+        val failed = c.state.value.result!!
+        assertFalse(failed.ready)
+        assertFalse(failed.hasMore)
+        assertTrue(failed.cards.isEmpty())
+        assertNotNull(c.state.value.error)
+        fake.windowError = false
+        c.retryResults(); settle()
+        assertTrue(c.state.value.result!!.ready)
+        assertNull(c.state.value.error)
+        assertEquals(listOf(100u, 200u, 200u, 200u), fake.windows)
     }
 
     @Test fun staleAcknowledgementKeepsUnreadAndDoesNotAutomaticallyRetry() = runBlocking {
