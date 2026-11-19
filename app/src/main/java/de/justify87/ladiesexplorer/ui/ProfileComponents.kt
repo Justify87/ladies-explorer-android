@@ -14,6 +14,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,81 +75,69 @@ internal fun openExternal(context: Context, link: String, dial: Boolean = false)
     }
 }
 
+private data class ImageFeedback(val loading: Boolean = false, val failed: Boolean = false, val retry: (() -> Unit)? = null)
+
+/** One image request / local fallback owner, independent of the visual chrome. */
 @Composable
-internal fun ProfileImage(
-    url: String?,
-    localPath: String?,
-    modifier: Modifier = Modifier,
-    scale: ContentScale = ContentScale.Crop,
-    description: String = "Profilbild",
-    allowRetry: Boolean = false,
+private fun ProfileImageSurface(
+    url: String?, localPath: String?, modifier: Modifier, scale: ContentScale,
+    description: String, allowRetry: Boolean,
+    content: @Composable BoxScope.(ImageFeedback) -> Unit,
 ) {
-    // A new media identity owns separate state. Callbacks from disposed requests
-    // cannot advance another image's local/remote fallback.
     key(localPath, url) {
         val models = remember { mediaModels(localPath, url) }
         var retry by remember { mutableIntStateOf(0) }
+        var attempt by remember(retry) { mutableIntStateOf(0) }
+        var loading by remember(retry, attempt) { mutableStateOf(true) }
         Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-            key(retry) {
-                var attempt by remember { mutableIntStateOf(0) }
-                if (attempt >= models.size) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Kein Bild verfügbar", style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                        if (allowRetry && models.isNotEmpty()) {
-                            TextButton(onClick = { retry++ }) { Text("Erneut laden") }
-                        }
-                    }
-                } else {
-                    val requestedAttempt = attempt
-                    key(requestedAttempt) {
-                        var loading by remember { mutableStateOf(true) }
-                        AsyncImage(
-                            model = models[requestedAttempt],
-                            contentDescription = description,
-                            contentScale = scale,
-                            onSuccess = { loading = false },
-                            onError = {
-                                if (attempt == requestedAttempt) attempt = requestedAttempt + 1
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        if (loading) CircularProgressIndicator(Modifier.size(28.dp))
-                    }
+            if (attempt < models.size) {
+                val requested = attempt
+                key(retry, requested) {
+                    AsyncImage(model = models[requested], contentDescription = description, contentScale = scale,
+                        onSuccess = { loading = false },
+                        onError = { if (attempt == requested) attempt = requested + 1 },
+                        modifier = Modifier.fillMaxSize())
                 }
             }
+            content(ImageFeedback(loading = attempt < models.size && loading, failed = attempt >= models.size,
+                retry = if (allowRetry && models.isNotEmpty()) ({ retry++ }) else null))
         }
     }
 }
 
 @Composable
-private fun HeroButton(
-    onClick: () -> Unit,
-    description: String,
-    image: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier,
+private fun ImageFeedbackContent(feedback: ImageFeedback) {
+    if (feedback.failed) Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Kein Bild verfügbar", style = MaterialTheme.typography.bodySmall,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        feedback.retry?.let { retry -> TextButton(onClick = retry, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("Erneut laden")
+        } }
+    } else if (feedback.loading) CircularProgressIndicator(Modifier.size(28.dp))
+}
+
+@Composable
+internal fun ProfileImage(
+    url: String?, localPath: String?, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop,
+    description: String = "Profilbild", allowRetry: Boolean = false,
 ) {
-    Surface(modifier = modifier, shape = MaterialTheme.shapes.extraLarge,
-        color = Color.Black.copy(alpha = .65f)) {
-        IconButton(onClick = onClick) {
-            Icon(image, contentDescription = description, tint = Color.White)
-        }
+    ProfileImageSurface(url, localPath, modifier, scale, description, allowRetry) { feedback ->
+        ImageFeedbackContent(feedback)
     }
 }
 
 @Composable
-private fun MediaTapZone(
-    label: String, enabled: Boolean, modifier: Modifier, onClick: () -> Unit,
-) {
-    Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).fillMaxWidth(.30f).fillMaxHeight(.65f)
-        .semantics { contentDescription = label }
+private fun GalleryTapZone(label: String, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Box(modifier.semantics { contentDescription = label }
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick))
 }
 
-/** Shared presentation only; the swipe surface owns horizontal decisions. */
+/** Normal photo uses a single image surface and a disjoint chrome layout.
+ * Compact gallery scrolls with ProfileFlow and does not squeeze controls into a tiny photo. */
 @Composable
 internal fun ProfileMediaHero(
     media: List<ProfileMediaItem>,
+    height: Dp,
     modifier: Modifier = Modifier,
     originalUrl: String?,
     actionsEnabled: Boolean,
@@ -154,6 +146,9 @@ internal fun ProfileMediaHero(
     projectionAvailable: Boolean = true,
     identity: HeroIdentity?,
     actionToken: ProfileIdentityToken?,
+    compact: Boolean,
+    headerOwnsIdentity: Boolean,
+    onIdentityMeasured: (Int) -> Unit,
 ) {
     val context = LocalContext.current
     val index = selection.resolve(media, projectionAvailable)
@@ -161,77 +156,130 @@ internal fun ProfileMediaHero(
         if (projectionAvailable) selection.select(media, index)
     }
     val item = media.getOrNull(index)
-    var more by remember(actionToken, item?.url, item?.localPath, originalUrl) { mutableStateOf(false) }
-    var fullscreen by remember(actionToken, item?.url, item?.localPath) { mutableStateOf(false) }
-    LaunchedEffect(item?.kind, actionsEnabled) {
-        if (item?.kind != "IMAGE" || !actionsEnabled) fullscreen = false
-        if (!actionsEnabled) more = false
-    }
+    var more by remember(actionToken, item?.url, item?.localPath, originalUrl, actionsEnabled) { mutableStateOf(false) }
+    var fullscreen by remember(actionToken, item?.url, item?.localPath, actionsEnabled) { mutableStateOf(false) }
+    val previous = projectionAvailable && index > 0
+    val next = projectionAvailable && index < media.lastIndex
+    val canMore = actionsEnabled && (item?.kind == "IMAGE" || originalUrl != null)
+
     if (fullscreen && actionsEnabled && item?.kind == "IMAGE") {
-        Dialog(onDismissRequest = { fullscreen = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Box(Modifier.fillMaxSize().background(Color.Black)) {
-                ProfileImage(item.url, item.localPath, Modifier.fillMaxSize(), ContentScale.Fit, allowRetry = true)
-                HeroButton({ fullscreen = false }, "Vollbild schließen", Icons.Default.Close,
-                    Modifier.align(Alignment.TopEnd).padding(12.dp))
+        Dialog(onDismissRequest = { fullscreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Column(Modifier.fillMaxSize().background(Color.Black)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    IconButton(onClick = { fullscreen = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "Vollbild schließen", tint = Color.White)
+                    }
+                }
+                ProfileImage(item.url, item.localPath, Modifier.fillMaxWidth().weight(1f), ContentScale.Fit, allowRetry = true)
             }
         }
     }
-    Box(modifier.clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceVariant)) {
-        when {
-            item == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Keine Medien verfügbar")
-            }
-            item.kind == "VIDEO" -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                FilledTonalButton(enabled = actionsEnabled, onClick = { if (isCurrent()) openExternal(context, item.url) }) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Text("Video extern öffnen")
-                }
-            }
-            else -> ProfileImage(item.url, item.localPath, Modifier.fillMaxSize(),
-                description = "Profilbild ${index + 1}", allowRetry = true)
-        }
-        if (media.size > 1) {
-            val start = (index / 10) * 10
-            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                for (i in start until minOf(start + 10, media.size)) {
-                    Box(Modifier.weight(1f).height(4.dp).clip(MaterialTheme.shapes.small)
-                        .background(Color.Black.copy(alpha = .55f))) {
-                        if (i == index) Box(Modifier.fillMaxSize().padding(.5.dp).background(Color.White))
+    val controls: @Composable (Boolean) -> Unit = { arrows ->
+        Column(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = .70f))) {
+            if (media.size > 1) {
+                val start = (index / 10) * 10
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (i in start until minOf(start + 10, media.size)) {
+                        Box(Modifier.weight(1f).height(4.dp).clip(MaterialTheme.shapes.small)
+                            .background(if (i == index) Color.White else Color.Gray))
                     }
                 }
             }
-            MediaTapZone("Vorheriges Medium", projectionAvailable && index > 0,
-                Modifier.align(Alignment.CenterStart)) { if (projectionAvailable) selection.select(media, index - 1) }
-            MediaTapZone("Nächstes Medium", projectionAvailable && index < media.lastIndex,
-                Modifier.align(Alignment.CenterEnd)) { if (projectionAvailable) selection.select(media, index + 1) }
-        }
-        if (actionsEnabled && (item?.kind == "IMAGE" || originalUrl != null)) {
-            Box(Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 12.dp)) {
-                HeroButton({ if (isCurrent()) more = true }, "Weitere Aktionen", Icons.Default.MoreVert)
-                DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
-                    if (item?.kind == "IMAGE") DropdownMenuItem(text = { Text("Bild groß anzeigen") },
-                        onClick = { more = false; if (isCurrent()) fullscreen = true })
-                    if (originalUrl != null) DropdownMenuItem(text = { Text("Originalprofil öffnen") },
-                        onClick = { more = false; if (isCurrent()) openExternal(context, originalUrl) })
+            Row(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                if (arrows && media.size > 1) IconButton(onClick = { selection.select(media, index - 1) }, enabled = previous) {
+                    Icon(Icons.Default.ChevronLeft, "Vorheriges Medium", tint = Color.White.copy(alpha = if (previous) 1f else .4f))
+                }
+                Text(if (media.isEmpty()) "–" else "${index + 1} / ${media.size}",
+                    color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (arrows && media.size > 1) IconButton(onClick = { selection.select(media, index + 1) }, enabled = next) {
+                    Icon(Icons.Default.ChevronRight, "Nächstes Medium", tint = Color.White.copy(alpha = if (next) 1f else .4f))
+                }
+                if (canMore) Box {
+                    IconButton(onClick = { if (isCurrent()) more = true }) {
+                        Icon(Icons.Default.MoreVert, "Weitere Medienaktionen", tint = Color.White)
+                    }
+                    DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+                        if (item?.kind == "IMAGE") DropdownMenuItem(text = { Text("Bild groß anzeigen") },
+                            onClick = { more = false; if (isCurrent()) fullscreen = true })
+                        if (originalUrl != null) DropdownMenuItem(text = { Text("Originalprofil öffnen") },
+                            onClick = { more = false; if (isCurrent()) openExternal(context, originalUrl) })
+                    }
                 }
             }
         }
-        Surface(Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 26.dp), shape = MaterialTheme.shapes.small,
-            color = Color.Black.copy(alpha = .7f)) {
-            Text(if (media.isEmpty()) "–" else "${index + 1} / ${media.size}",
-                Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = Color.White)
+    }
+    val center: @Composable () -> Unit = {
+        if (item?.kind == "VIDEO") FilledTonalButton(enabled = actionsEnabled,
+            onClick = { if (isCurrent()) openExternal(context, item.url) },
+            modifier = Modifier.heightIn(min = 48.dp)) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null)
+            Text("Video extern öffnen")
+        } else if (item == null) Text("Keine Medien verfügbar")
+    }
+    if (compact) {
+        // Controls and feedback are in distinct scrollable rows, even if only a
+        // small part of this item fits above an IME. No overlap or squeezed target.
+        Column(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large)) {
+            controls(true)
+            if (item?.kind == "IMAGE") {
+                ProfileImageSurface(item.url, item.localPath,
+                    modifier.fillMaxWidth().height(maxOf(height, 160.dp)),
+                    ContentScale.Crop, "Profilbild ${index + 1}", true) { feedback -> ImageFeedbackContent(feedback) }
+            } else Box(Modifier.fillMaxWidth().heightIn(min = maxOf(height, 96.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { center() }
         }
-        if (identity != null) Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            color = Color.Black.copy(alpha = .82f)) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(identity.subtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+    } else {
+        val chrome: @Composable (ImageFeedback?) -> Unit = { feedback ->
+            Column(Modifier.fillMaxSize()) {
+                controls(item?.kind != "IMAGE")
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    val side = gallerySideFraction(maxWidth.value)
+                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                        if (item?.kind == "IMAGE" && media.size > 1 && side > 0f) {
+                            GalleryTapZone("Vorheriges Medium", previous, Modifier.weight(side).fillMaxHeight()) {
+                                selection.select(media, index - 1)
+                            }
+                            Box(Modifier.weight(1f - side * 2).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                                feedback?.let { ImageFeedbackContent(it) }
+                            }
+                            GalleryTapZone("Nächstes Medium", next, Modifier.weight(side).fillMaxHeight()) {
+                                selection.select(media, index + 1)
+                            }
+                        } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            if (feedback != null) ImageFeedbackContent(feedback) else center()
+                        }
+                    }
+                }
+                if (identity != null) {
+                    val hidden = if (headerOwnsIdentity) Modifier.alpha(0f).clearAndSetSemantics {} else Modifier
+                    Surface(Modifier.fillMaxWidth().onSizeChanged { onIdentityMeasured(it.height) }.then(hidden),
+                        color = Color.Black.copy(alpha = .82f)) {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(identity.compactSubtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            if (identity.decisions.isNotBlank()) Text(identity.decisions, color = Color.White,
+                                style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
             }
         }
+        val surface = Modifier.fillMaxWidth().height(height).clip(MaterialTheme.shapes.large)
+        if (item?.kind == "IMAGE") {
+            ProfileImageSurface(surface.then(modifier), item, chrome)
+        } else Box(surface.background(MaterialTheme.colorScheme.surfaceVariant)) { chrome(null) }
+    }
+}
+
+@Composable
+private fun ProfileImageSurface(modifier: Modifier, item: ProfileMediaItem, chrome: @Composable (ImageFeedback?) -> Unit) {
+    ProfileImageSurface(item.url, item.localPath, modifier, ContentScale.Crop, "Profilbild", true) { feedback ->
+        chrome(feedback)
     }
 }
 

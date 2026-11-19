@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -269,6 +270,7 @@ fun LadiesApp(
         },
     ) { padding ->
         val modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
+            .then(if (swipeShell || search.profileOpen) Modifier.imePadding() else Modifier)
         if (search.profileOpen) {
             key(search.profileSessionId) {
                 ProfileDetailScreen(

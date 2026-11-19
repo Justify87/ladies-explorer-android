@@ -65,6 +65,7 @@ internal fun ProfileFlow(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     paddedDetails: Boolean = false,
+    photoRequest: Int = 0,
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -116,6 +117,14 @@ internal fun ProfileFlow(
     }.build()
     val keys = rows.map { it.key }
     val available = model != null
+    var appliedPhotoRequest by remember { mutableIntStateOf(photoRequest) }
+    LaunchedEffect(photoRequest, keys) {
+        if (appliedPhotoRequest != photoRequest && keys.isNotEmpty()) {
+            appliedPhotoRequest = photoRequest
+            scroll.returnToHero(keys.first())
+            state.scrollToItem(0)
+        }
+    }
     // Restoring an anchor is itself demand. Avoid restoring an offset into a
     // temporarily short loading row or treating a not-yet-loaded listing as absent.
     val recovering = scroll.recovering
