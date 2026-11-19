@@ -65,10 +65,7 @@ internal class RequestGeneration {
 }
 
 internal fun SearchUiState.beginRun(): SearchUiState = copy(
-    savedOverviewOpen = false,
     loading = true, error = null, profile = null, profileOpen = false,
-    showingSavedSearchId = null, savedResultCards = emptyList(),
-    savedResultCursor = null, savedResultsLoadingMore = false,
 )
 
 internal fun SearchUiState.endRun(errorMessage: String? = null): SearchUiState =
@@ -80,32 +77,50 @@ internal fun SearchUiState.acceptRun(
 ): SearchUiState = copy(loading = false, error = null, response = run, activeCards = cards, gridHiddenLikes = emptySet())
 
 internal fun SearchUiState.applyDraftChange(next: SearchUiState): SearchUiState =
-    next.copy(response = response, activeCards = activeCards, gridHiddenLikes = gridHiddenLikes, error = null,
-        showingSavedSearchId = null, savedResultCards = emptyList(),
-        savedResultCursor = null, savedResultsLoadingMore = false)
+    next.copy(response = response, activeCards = activeCards, gridHiddenLikes = gridHiddenLikes, error = null)
 
-/** Own the first page before awaiting I/O so the previous cursor cannot be reused. */
-internal fun SearchUiState.beginSavedResults(id: String): SearchUiState = copy(
-    savedOverviewOpen = true, showingSavedSearchId = id, savedResultCards = emptyList(), savedResultCursor = null,
-    savedResultsLoadingMore = true, error = null,
-)
+/** Typed presentation draft. JSON exists only when crossing the core API. */
+internal data class SearchDraft(
+    val city: String = "Leipzig",
+    val radiusKm: UInt = 20u,
+    val category: String = "",
+    val ageMin: UInt = 18u,
+    val ageMax: UInt = 60u,
+    val heightMin: UInt = 140u,
+    val heightMax: UInt = 200u,
+    val maxPages: UInt = 10u,
+    val selectedFilters: Map<String, Set<String>> = emptyMap(),
+    val local: LocalVisibility = defaultLocalVisibility(),
+) {
+    fun request() = SearchRequest(city.trim(), radiusKm, category, ageMin, ageMax,
+        heightMin, heightMax, encodeSelectedFilters(selectedFilters), maxPages)
 
-// Only draft fields are restored; active results, error state and definitions
-// remain owned by the current ViewModel state.
-internal data class SearchDraft(val query: SearchRequest, val local: LocalVisibility) {
-    fun restore(state: SearchUiState): SearchUiState = state.copy(
-        city = query.city, radiusKm = query.radiusKm, category = query.category,
-        ageMin = query.ageMin, ageMax = query.ageMax, heightMin = query.heightMin,
-        heightMax = query.heightMax, maxPages = query.maxPages,
-        selectedFilters = decodeSelectedFilters(query.filtersJson), local = local,
-        preview = null, previewError = null, previewLoading = false,
+    fun applyTo(state: SearchUiState): SearchUiState = state.copy(
+        city = city, radiusKm = radiusKm, category = category, ageMin = ageMin, ageMax = ageMax,
+        heightMin = heightMin, heightMax = heightMax, maxPages = maxPages,
+        selectedFilters = selectedFilters, local = local,
     )
-}
 
-internal enum class SearchPane { Filters, SavedList, SavedEditor, SavedResults }
-internal fun SearchUiState.searchPane(): SearchPane = when {
-    showingSavedSearchId != null -> SearchPane.SavedResults
-    editingSavedSearchId != null -> SearchPane.SavedEditor
-    savedOverviewOpen -> SearchPane.SavedList
-    else -> SearchPane.Filters
+    fun availability(mode: AvailabilityMode) = copy(selectedFilters = withAvailability(selectedFilters, mode))
+
+    fun toggle(group: String, value: String): SearchDraft {
+        if (group == "zeiten" && value in quickTimes) {
+            val mode = if (value.startsWith("jetzt")) AvailabilityMode.Now else AvailabilityMode.Today
+            return availability(if (availabilityMode(selectedFilters) == mode) AvailabilityMode.All else mode)
+        }
+        val selected = selectedFilters[group].orEmpty().toMutableSet()
+        if (!selected.add(value)) selected.remove(value)
+        return copy(selectedFilters = if (selected.isEmpty()) selectedFilters - group
+            else selectedFilters + (group to selected.toSet()))
+    }
+
+    companion object {
+        fun from(state: SearchUiState) = SearchDraft(state.city, state.radiusKm, state.category,
+            state.ageMin, state.ageMax, state.heightMin, state.heightMax, state.maxPages,
+            state.selectedFilters, state.local)
+
+        fun from(query: SearchRequest, local: LocalVisibility) = SearchDraft(query.city, query.radiusKm,
+            query.category, query.ageMin, query.ageMax, query.heightMin, query.heightMax, query.maxPages,
+            decodeSelectedFilters(query.filtersJson), local)
+    }
 }

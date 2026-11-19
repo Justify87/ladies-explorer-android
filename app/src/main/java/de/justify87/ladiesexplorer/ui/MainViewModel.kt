@@ -93,18 +93,7 @@ data class SearchUiState(
     val previewError: String? = null,
     val activeCards: List<DiscoveryCard> = emptyList(),
     val gridHiddenLikes: Set<Long> = emptySet(),
-    val savedSearches: List<SavedSearchInfo> = emptyList(),
-    val showingSavedSearchId: String? = null,
-    val savedResultCards: List<SavedSearchCard> = emptyList(),
-    val savedResultCursor: SavedResultCursor? = null,
-    val savedResultsLoadingMore: Boolean = false,
-    val editingSavedSearchId: String? = null,
-    val savedOverviewOpen: Boolean = false,
-    val savedEditorLoading: Boolean = false,
-    val savedEditorSession: Long = 0L,
-    val savedListLoading: Boolean = false,
     val loading: Boolean = false,
-    val saving: Boolean = false,
     val response: SearchResponse? = null,
     val profileOpen: Boolean = false,
     val profileSessionId: Long = 0L,
@@ -159,9 +148,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var discoveryListVisible = false
     private var mapProjectionVisible = false
     private val searchGeneration = RequestGeneration()
-    private val savedListGeneration = RequestGeneration()
-    private var ordinaryDraft: SearchDraft? = null
     private val swipeSession = SwipeSession().apply { replayLikes = core.replayLikes() }
+
+    internal val savedSearch = SavedSearchController(
+        scope = viewModelScope,
+        store = SavedSearchStore(core),
+        canOperate = { !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
+        ordinaryDraft = { SearchDraft.from(_searchUiState.value) },
+        onSourceFinished = { refreshDiscovery(); refreshMap(); refresh() },
+    )
 
     init {
         refresh()
@@ -173,7 +168,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchGeneration.invalidate()
         searchControl?.cancel()
         searchControl = null
-        _searchUiState.update { it.copy(savedResultsLoadingMore = false) }
     }
 
     fun cancelActiveSearch() {
@@ -190,6 +184,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         savedStatusControl?.cancel()
+        savedSearch.cancelCheck()
         cancelMapResolution()
         cancelPreview()
         invalidateActiveSearch()
@@ -206,7 +201,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateProfileRequest()
         _searchUiState.update {
             it.copy(profileOpen = false, profile = null, profileIdentity = null, profileFromArchive = false, selectedPersonId = null,
-                savedResultsLoadingMore = false,
                 selectedPerson = null, profileMedia = emptyList(), loading = false,
                 archiving = false, changeEvents = emptyList(), identityCandidates = emptyList(),
                 actionBusy = false, actionError = null, error = null)
@@ -256,267 +250,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun editDraft(change: (SearchUiState) -> SearchUiState) {
+    internal fun editSearchDraft(change: (SearchDraft) -> SearchDraft) {
         val current = _searchUiState.value
-        if (current.loading || current.saving || current.savedEditorLoading) return
-        val next = change(current)
-        if (current == next) return
-        // Cancel pending editor/paging work, not the previous committed active run.
-        invalidateActiveSearch()
-        _searchUiState.value = current.applyDraftChange(next)
-        // Page cap and local rules do not change the source's total count.
-        if (request(current).copy(maxPages = 1u) != request(next).copy(maxPages = 1u)) schedulePreview()
+        if (current.loading || savedSearch.state.value.busy) return
+        val draft = SearchDraft.from(current)
+        val next = change(draft)
+        if (draft == next) return
+        _searchUiState.update { it.applyDraftChange(next.applyTo(it)) }
+        if (draft.request().copy(maxPages = 1u) != next.request().copy(maxPages = 1u)) schedulePreview()
     }
 
-    fun setSearchCity(value: String) = editDraft { it.copy(city = value) }
-    fun setSearchRadius(value: UInt) = editDraft { it.copy(radiusKm = value) }
-    fun setCategory(value: String) = editDraft { it.copy(category = value) }
-    fun setAgeRange(min: UInt, max: UInt) = editDraft { it.copy(ageMin = min, ageMax = max) }
-    fun setHeightRange(min: UInt, max: UInt) = editDraft { it.copy(heightMin = min, heightMax = max) }
-    fun setMaxPages(value: UInt) = editDraft { it.copy(maxPages = value.coerceIn(1u, 50u)) }
-
-    fun setLocalVisibility(value: LocalVisibility) = editDraft { it.copy(local = value) }
-
-    fun resetSearchDraft() = editDraft {
-        it.copy(city = "Leipzig", radiusKm = 20u, category = "", ageMin = 18u, ageMax = 60u,
-            heightMin = 140u, heightMax = 200u, maxPages = 10u, selectedFilters = emptyMap(),
-            local = defaultLocalVisibility())
-    }
-
-    fun setAvailability(mode: AvailabilityMode) =
-        editDraft { it.copy(selectedFilters = withAvailability(it.selectedFilters, mode)) }
+    fun resetSearchDraft() = editSearchDraft { SearchDraft() }
 
     fun runAvailability(mode: AvailabilityMode) {
         val state = _searchUiState.value
         val active = state.response
-        val query = (active?.query ?: ordinaryDraft?.query ?: request(state)).withAvailabilityMode(mode)
-        startSearch(requestOverride = query, localOverride = active?.local ?: ordinaryDraft?.local ?: state.local)
+        val draft = SearchDraft.from(state)
+        val query = (active?.query ?: draft.request()).withAvailabilityMode(mode)
+        startSearch(requestOverride = query, localOverride = active?.local ?: draft.local)
     }
 
-    fun toggleFilter(group: String, value: String) = editDraft {
-        if (group == "zeiten" && value in setOf("jetzt geöffnet", "jetzt-offen", "heute geöffnet", "heute-offen")) {
-            val target = if (value.startsWith("jetzt")) AvailabilityMode.Now else AvailabilityMode.Today
-            it.copy(selectedFilters = withAvailability(it.selectedFilters,
-                if (availabilityMode(it.selectedFilters) == target) AvailabilityMode.All else target))
-        } else {
-            val selected = it.selectedFilters[group].orEmpty().toMutableSet()
-            if (!selected.add(value)) selected.remove(value)
-            it.copy(selectedFilters = if (selected.isEmpty()) it.selectedFilters - group
-                else it.selectedFilters + (group to selected.toSet()))
-        }
-    }
+    private fun request(input: SearchUiState) = SearchDraft.from(input).request()
 
-    private fun request(input: SearchUiState): SearchRequest {
-        return SearchRequest(
-            city = input.city.trim(),
-            radiusKm = input.radiusKm,
-            category = input.category,
-            ageMin = input.ageMin,
-            ageMax = input.ageMax,
-            heightMin = input.heightMin,
-            heightMax = input.heightMax,
-            filtersJson = encodeSelectedFilters(input.selectedFilters),
-            maxPages = input.maxPages,
-        )
-    }
+    private val filterGeneration = RequestGeneration()
 
     fun refreshSearchDefinitions() {
-        savedListGeneration.invalidate()
-        val ticket = savedListGeneration.value
-        _searchUiState.update { it.copy(savedListLoading = true) }
+        savedSearch.refresh()
+        filterGeneration.invalidate()
+        val ticket = filterGeneration.value
         viewModelScope.launch {
             try {
                 val catalog = core.sourceFilterCatalog()
-                val saved = core.savedSearches()
                 val frequent = core.frequentFilters()
-                if (savedListGeneration.isCurrent(ticket)) _searchUiState.update {
-                    it.copy(filterCatalog = catalog, savedSearches = saved, frequentFilters = frequent)
+                if (filterGeneration.isCurrent(ticket)) _searchUiState.update {
+                    it.copy(filterCatalog = catalog, frequentFilters = frequent)
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
-                if (savedListGeneration.isCurrent(ticket)) _searchUiState.update {
+                if (filterGeneration.isCurrent(ticket)) _searchUiState.update {
                     it.copy(error = failure.message ?: "Filter konnten nicht geladen werden")
-                }
-            } finally {
-                if (savedListGeneration.isCurrent(ticket)) _searchUiState.update { it.copy(savedListLoading = false) }
-            }
-        }
-    }
-
-    fun openSavedSearches() {
-        if (_searchUiState.value.loading || _searchUiState.value.saving) return
-        cancelPreview()
-        _searchUiState.update { it.copy(savedOverviewOpen = true, error = null) }
-        refreshSearchDefinitions()
-    }
-
-    fun closeSavedSearches() {
-        if (_searchUiState.value.loading || _searchUiState.value.saving) return
-        cancelSavedEditor()
-        closeSavedResults()
-        _searchUiState.update { it.copy(savedOverviewOpen = false, error = null) }
-    }
-
-    fun cancelSavedEditor() {
-        if (_searchUiState.value.saving) return
-        invalidateActiveSearch()
-        val original = ordinaryDraft
-        ordinaryDraft = null
-        _searchUiState.update {
-            (original?.restore(it) ?: it).copy(editingSavedSearchId = null,
-                savedEditorLoading = false, error = null)
-        }
-        schedulePreview()
-    }
-
-    private fun mutateSavedDefinition(message: String, write: suspend () -> Unit, after: () -> Unit = {}) {
-        val state = _searchUiState.value
-        if (state.loading || state.saving || state.savedEditorLoading || state.savedResultsLoadingMore) return
-        savedListGeneration.invalidate()
-        invalidateActiveSearch()
-        _searchUiState.update { it.copy(saving = true, savedListLoading = false, error = null) }
-        viewModelScope.launch {
-            try {
-                write()
-                after()
-                _searchUiState.update { it.copy(savedSearches = core.savedSearches()) }
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (failure: Exception) {
-                _searchUiState.update { it.copy(error = failure.message ?: message) }
-            } finally {
-                _searchUiState.update { it.copy(saving = false) }
-            }
-        }
-    }
-
-    fun saveCurrentSearch(name: String) {
-        val input = _searchUiState.value
-        mutateSavedDefinition("Suche konnte nicht gespeichert werden", write = {
-            val id = input.editingSavedSearchId
-            if (id == null) core.saveSearch(name, request(input), input.local)
-            else core.updateSavedSearch(id, name, request(input), input.local)
-        }, after = {
-            val original = ordinaryDraft
-            ordinaryDraft = null
-            _searchUiState.update {
-                (original?.restore(it) ?: it).copy(editingSavedSearchId = null, savedOverviewOpen = true)
-            }
-        })
-    }
-
-    fun renameSavedSearch(id: String, name: String) =
-        mutateSavedDefinition("Umbenennen fehlgeschlagen", { core.renameSavedSearch(id, name) })
-
-    fun loadSavedSearch(id: String) {
-        val input = _searchUiState.value
-        if (input.loading || input.saving || input.savedEditorLoading) return
-        invalidateActiveSearch()
-        val epoch = searchGeneration.value
-        _searchUiState.update { it.copy(savedEditorLoading = true, error = null) }
-        viewModelScope.launch {
-            try {
-                val definition = core.loadSavedSearch(id)
-                val draft = SearchDraft(definition.query, definition.local)
-                if (!searchGeneration.isCurrent(epoch)) return@launch
-                ordinaryDraft = ordinaryDraft ?: SearchDraft(request(input).copy(city = input.city), input.local)
-                _searchUiState.update { draft.restore(it).copy(editingSavedSearchId = id,
-                    savedOverviewOpen = true, savedEditorLoading = false, savedEditorSession = epoch, error = null) }
-                schedulePreview()
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (failure: Exception) {
-                if (searchGeneration.isCurrent(epoch)) _searchUiState.update {
-                    it.copy(savedEditorLoading = false, error = failure.message ?: "Suche konnte nicht geladen werden")
-                }
-            }
-        }
-    }
-
-    fun deleteSavedSearch(id: String) =
-        mutateSavedDefinition("Gespeicherte Suche konnte nicht entfernt werden", { core.deleteSavedSearch(id) })
-
-    fun closeSavedResults() {
-        if (_searchUiState.value.loading || _searchUiState.value.saving) return
-        invalidateActiveSearch()
-        _searchUiState.update {
-            it.copy(showingSavedSearchId = null, savedResultCards = emptyList(),
-                savedResultCursor = null, savedResultsLoadingMore = false, error = null)
-        }
-    }
-
-    fun showSavedResults(id: String) {
-        if (_searchUiState.value.loading || _searchUiState.value.saving || _searchUiState.value.savedEditorLoading) return
-        invalidateActiveSearch()
-        // Bind the pending load to the new list immediately. Never page the previous cursor
-        // under the new generation; Back can invalidate the pending first page as well.
-        _searchUiState.update { it.beginSavedResults(id) }
-        val epoch = searchGeneration.value
-        viewModelScope.launch {
-            try {
-                val page = core.savedSearchResults(id)
-                if (!searchGeneration.isCurrent(epoch)) return@launch
-                _searchUiState.update {
-                    it.copy(savedOverviewOpen=true,showingSavedSearchId=id,savedResultCards=page.cards,
-                        savedResultCursor=page.nextCursor,savedResultsLoadingMore=false,error=null)
-                }
-                core.acknowledgeSavedSearch(id)
-                val saved = core.savedSearches()
-                if (searchGeneration.isCurrent(epoch)) {
-                    _searchUiState.update { it.copy(savedSearches = saved) }
-                }
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (failure: Exception) {
-                if (searchGeneration.isCurrent(epoch)) {
-                    _searchUiState.update { it.copy(savedResultsLoadingMore = false, error=failure.message ?: "Gespeicherte Ergebnisse konnten nicht geladen werden") }
-                }
-            }
-        }
-    }
-
-    fun loadMoreSavedResults() {
-        val state = _searchUiState.value
-        val id = state.showingSavedSearchId ?: return
-        val cursor = state.savedResultCursor ?: return
-        if (state.savedResultsLoadingMore || state.loading || state.saving) return
-        val epoch = searchGeneration.value
-        _searchUiState.update { it.copy(savedResultsLoadingMore = true, error = null) }
-        viewModelScope.launch {
-            try {
-                val page = core.savedSearchResults(id, cursor)
-                if (searchGeneration.isCurrent(epoch)) {
-                    _searchUiState.update {
-                        if (it.showingSavedSearchId != id) return@update it
-                        val known = it.savedResultCards.mapTo(mutableSetOf()) { card -> card.resultKey }
-                        it.copy(
-                            savedResultCards = it.savedResultCards +
-                                page.cards.filter { card -> known.add(card.resultKey) },
-                            savedResultCursor = page.nextCursor,
-                            savedResultsLoadingMore = false,
-                        )
-                    }
-                }
-            } catch (cancellation: CancellationException) {
-                if (searchGeneration.isCurrent(epoch)) {
-                    _searchUiState.update { it.copy(savedResultsLoadingMore = false) }
-                }
-                throw cancellation
-            } catch (failure: Exception) {
-                if (searchGeneration.isCurrent(epoch)) {
-                    _searchUiState.update {
-                        it.copy(savedResultsLoadingMore = false,
-                            error = failure.message ?: "Weitere Suchergebnisse konnten nicht geladen werden")
-                    }
                 }
             }
         }
     }
 
     fun startSearch(requestOverride: SearchRequest? = null, localOverride: LocalVisibility? = null) {
-        if (_searchUiState.value.loading || _searchUiState.value.saving || _uiState.value.loading || _discoverState.value.busy || _searchUiState.value.savedEditorLoading) return
-        if (_searchUiState.value.editingSavedSearchId != null) cancelSavedEditor()
+        if (_searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
         val input = _searchUiState.value
         cancelPreview()
         invalidateActiveSearch()
@@ -560,45 +340,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-
-    fun runSavedSearch(id: String) {
-        val state = _searchUiState.value
-        if (state.loading || state.saving || _discoverState.value.busy || _uiState.value.loading) return
-        cancelPreview()
-        invalidateActiveSearch()
-        val ticket = searchGeneration.value
-        val control = RequestControl()
-        searchControl = control
-        _searchUiState.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
-            try {
-                core.runSavedSearch(id, control)
-                if (searchGeneration.isCurrent(ticket)) {
-                    _searchUiState.update { it.copy(loading = false) }
-                    if (_searchUiState.value.showingSavedSearchId == id) showSavedResults(id)
-                }
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (failure: Exception) {
-                if (searchGeneration.isCurrent(ticket)) _searchUiState.update {
-                    it.copy(error = failure.message ?: "Gespeicherte Suche fehlgeschlagen")
-                }
-            } finally {
-                if (searchControl === control) {
-                    searchControl = null
-                    _searchUiState.update { it.copy(loading = false) }
-                }
-                // Source writes can have committed even if the result is cancelled.
-                refreshSearchDefinitions()
-                refreshDiscovery()
-                refreshMap()
-                refresh()
-            }
-        }
-    }
-
-    fun acknowledgeSavedSearch(id: String) =
-        mutateSavedDefinition("Status konnte nicht gespeichert werden", { core.acknowledgeSavedSearch(id) })
 
     fun refreshMap() {
         if (mapControl != null) return // completion refreshes from the actual database
@@ -1130,14 +871,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadProfile(listingId: Long, personId: Long) {
-        if (_discoverState.value.busy || _searchUiState.value.loading || _searchUiState.value.saving) return
+        if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.busy) return
         cancelPreview()
         invalidateActiveSearch()
         invalidateProfileRequest()
         val requestId = profileRequestId
         _searchUiState.update {
             it.copy(profileOpen=true,profileSessionId=requestId,selectedPersonId=personId,selectedPerson=null,
-                savedResultsLoadingMore=false,
                 loading=true,profile=null,profileIdentity=null,profileFromArchive=false,profileMedia=emptyList(),changeEvents=emptyList(),
                 identityCandidates=emptyList(),error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false)
@@ -1324,7 +1064,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun importBundle(uri: Uri) {
-        if (_uiState.value.loading || _searchUiState.value.loading || _discoverState.value.busy) return
+        if (_uiState.value.loading || _searchUiState.value.loading || _discoverState.value.busy || savedSearch.state.value.busy) return
+        if (savedSearch.state.value.editor != null || savedSearch.state.value.dialog != null) {
+            _uiState.update { it.copy(error = "Gespeicherte Suchentwürfe vor dem Import speichern oder verwerfen.") }
+            return
+        }
         if (_profileNotes.value.values.any { it.draft?.dirty == true }) {
             _uiState.update { it.copy(error = "Ungespeicherte Notizen vor dem Import speichern oder verwerfen.") }
             return
@@ -1346,6 +1090,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 noteReadTickets.clear()
                 _profileNotes.value = emptyMap()
+                savedSearch.resetAfterImport()
                 _uiState.update { it.copy(lastImport=result) }
                 refresh()
                 refreshDiscovery()
