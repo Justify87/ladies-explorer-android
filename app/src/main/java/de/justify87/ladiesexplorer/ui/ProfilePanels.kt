@@ -64,6 +64,8 @@ internal fun ProfileFlow(
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    paddedDetails: Boolean = false,
+    photoRequest: Int = 0,
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -115,6 +117,7 @@ internal fun ProfileFlow(
     }.build()
     val keys = rows.map { it.key }
     val available = model != null
+    var appliedPhotoRequest by remember { mutableIntStateOf(photoRequest) }
     // Restoring an anchor is itself demand. Avoid restoring an offset into a
     // temporarily short loading row or treating a not-yet-loaded listing as absent.
     val recovering = scroll.recovering
@@ -126,7 +129,15 @@ internal fun ProfileFlow(
     }
     val waitingForAnchor = scroll.needsFacts() && panels.facts == null && panels.factsError == null ||
         scroll.needsDetail() && panels.detail == null && panels.detailError == null
-    LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor) {
+    // One scroll-command coroutine owns both explicit photo jumps and anchor
+    // recovery. A new jump cancels the previous recovery before it can scroll.
+    LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor, photoRequest) {
+        if (appliedPhotoRequest != photoRequest && keys.isNotEmpty()) {
+            snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
+            scroll.returnToHero(keys.first())
+            state.scrollToItem(0)
+            appliedPhotoRequest = photoRequest
+        }
         if (!available || waitingForAnchor) return@LaunchedEffect
         // Wait for the current manifest to be measured, never resolve against the gap's rows.
         snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
@@ -151,7 +162,11 @@ internal fun ProfileFlow(
     }
     LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(rows, key = { it.key }) { row -> row.content() }
+        items(rows, key = { it.key }) { row ->
+            if (paddedDetails && row.key != "hero" && row.key != "media") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { row.content() }
+            } else row.content()
+        }
     }
 }
 

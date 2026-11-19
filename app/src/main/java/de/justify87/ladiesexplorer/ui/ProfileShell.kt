@@ -1,0 +1,176 @@
+package de.justify87.ladiesexplorer.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+/** Only UI messages / commands; no duplicate source or mutation state. */
+internal data class ProfileNotice(
+    val label: String,
+    val message: String,
+    val action: String? = null,
+    val enabled: Boolean = true,
+    val invoke: () -> Unit = {},
+    val warning: Boolean = false,
+)
+
+internal data class ProfileNoticeIndicator(val label: String, val warning: Boolean)
+
+internal data class ProfileShellPresentation(
+    val budget: ProfileShellBudget,
+    val heroHeight: Dp,
+    val identityInHeader: Boolean,
+    val photoShortcut: Boolean,
+)
+
+/** One bounded vertical profile viewport in either context. All fixed chrome
+ * has an explicit budget. Full messages live in an explicitly opened dialog,
+ * not an unbounded stack of Text above the LazyColumn. */
+@Composable
+internal fun ProfileShell(
+    modifier: Modifier,
+    listState: LazyListState,
+    heroKey: String,
+    rootHeight: Dp = 0.dp,
+    hasRail: Boolean,
+    notices: List<ProfileNotice>,
+    noticeOwner: Any?,
+    header: @Composable (ProfileShellPresentation, ProfileNoticeIndicator?, () -> Unit) -> Unit,
+    rail: @Composable () -> Unit = {},
+    content: @Composable (ProfileShellPresentation, (Int) -> Unit) -> Unit,
+) {
+    BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        val width = maxWidth.coerceAtMost(600.dp)
+        val height = maxHeight
+        val fontScale = LocalDensity.current.fontScale
+        val budget = profileShellBudget(width.value, height.value, rootHeight.value, fontScale,
+            notices.isNotEmpty(), hasRail)
+        val heroHeight = profileHeroHeight(width.value, height.value + rootHeight.value, budget.body).dp
+        var identityHeight by remember(heroKey) { mutableIntStateOf(0) }
+        // Reading lazy layout inside derivedStateOf avoids raw per-pixel recomposition.
+        val handoff by remember(listState, heroKey) {
+            derivedStateOf { listState.headerOwnsIdentity(heroKey, identityHeight) }
+        }
+        val scrolled by remember(listState) {
+            derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
+        }
+        val headerIdentity = budget.compactGallery || handoff
+        val presentation = ProfileShellPresentation(budget, heroHeight, headerIdentity, headerIdentity && scrolled)
+        val summary = notices.firstOrNull { it.warning } ?: notices.firstOrNull()
+        val indicator = summary?.let { ProfileNoticeIndicator(it.label, it.warning) }
+        val signature = notices.map { listOf(it.label, it.message, it.action, it.enabled, it.warning) }
+        var dialog by remember(noticeOwner, signature) { mutableStateOf(false) }
+        var active by remember { mutableStateOf(true) }
+        DisposableEffect(Unit) { onDispose { active = false } }
+        val currentNotices by rememberUpdatedState(notices)
+        val currentOwner by rememberUpdatedState(noticeOwner)
+        val currentSignature by rememberUpdatedState(signature)
+        fun runNotice(index: Int) {
+            if (!active || currentOwner != noticeOwner || currentSignature != signature) return
+            currentNotices.getOrNull(index)?.takeIf { it.enabled }?.invoke?.invoke()
+            dialog = false
+        }
+        if (dialog && notices.isNotEmpty()) {
+            AlertDialog(onDismissRequest = { dialog = false },
+                title = { Text("Status und Hinweise") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        notices.forEachIndexed { index, item ->
+                            Text(item.message, color = if (item.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                            item.action?.let { label ->
+                                TextButton(onClick = { runNotice(index) }, enabled = item.enabled,
+                                    modifier = Modifier.heightIn(min = 48.dp)) { Text(label) }
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { dialog = false }) { Text("Schließen") } })
+        }
+        Column(Modifier.width(width).fillMaxHeight()) {
+            Box(Modifier.fillMaxWidth().height(budget.header.dp)) {
+                header(presentation, indicator.takeIf { budget.noticeInHeader }, { dialog = true })
+            }
+            if (budget.notice > 0f) {
+                val index = notices.indexOfFirst { it.action != null && it.enabled }
+                val item = notices.getOrNull(index)
+                Row(Modifier.fillMaxWidth().height(budget.notice.dp).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { dialog = true }, modifier = Modifier.weight(1f).fillMaxHeight(),
+                        contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        Text(indicator?.label.orEmpty(),
+                            color = if (notices.any { it.warning }) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (notices.size > 1) Text(" +${notices.size - 1}", style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (item != null && width >= 300.dp && fontScale < 1.5f) {
+                        TextButton(onClick = { runNotice(index) }, modifier = Modifier.fillMaxHeight(),
+                            contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            Text(item.action.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                content(presentation) { measured -> identityHeight = measured }
+            }
+            if (budget.rail > 0f) Box(Modifier.fillMaxWidth().height(budget.rail.dp)) { rail() }
+        }
+    }
+}
+
+/** Fixed-size header slot; full information is reachable through the header's
+ * actions. A and B don't have different heights or line budgets. */
+@Composable
+internal fun ProfileShellTitle(title: String, context: String, status: String, short: Boolean,
+    modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    val click = if (onClick == null) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick)
+    Column(modifier.then(click).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
+        if (short && LocalDensity.current.fontScale >= 1.5f) {
+            // One line at very large type in a short window; the complete identity
+            // and status remain accessible via the header's context action.
+            Text("$context · $title", style = MaterialTheme.typography.labelMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        } else {
+            Text(title, style = if (short) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(context, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (!short && status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+internal fun IdentityInfoDialog(identity: HeroIdentity, dismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Profilinformationen") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(identity.title, style = MaterialTheme.typography.titleLarge)
+                Text(identity.subtitle)
+                if (identity.decisions.isNotBlank()) Text(identity.decisions)
+            }
+        }, confirmButton = { TextButton(onClick = dismiss) { Text("Schließen") } })
+}
+
+@Composable
+internal fun ProfileStatusButton(indicator: ProfileNoticeIndicator, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(if (indicator.warning) Icons.Default.Warning else Icons.Default.Info,
+            contentDescription = "Status und Hinweise: ${indicator.label}",
+            tint = if (indicator.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}

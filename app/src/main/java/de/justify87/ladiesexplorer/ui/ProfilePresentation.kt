@@ -53,6 +53,10 @@ internal class ProfileScrollMemory(
         return keys.indexOf(fallback).takeIf { it >= 0 }?.let { it to 0 } ?: (0 to 0)
     }
     fun restored() { recovering = false }
+    fun returnToHero(key: String) {
+        anchor = ProfileScrollAnchor(key, 0)
+        recovering = false
+    }
 }
 
 /** A replacement row may be shorter (new content, empty data, error). Its

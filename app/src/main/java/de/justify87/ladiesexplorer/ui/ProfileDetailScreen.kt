@@ -2,6 +2,10 @@ package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,88 +33,72 @@ internal fun ProfileDetailScreen(
     val renderedToken = state.detailIdentityToken()
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val detailListState = rememberLazyListState()
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        val heroHeight = (maxHeight * .84f).coerceIn(220.dp, 720.dp)
-        ProfileFlow(
-            state = detailListState,
-            model = state.profileRead,
-            filters = filters,
-            token = renderedToken,
-            actionsBusy = busy,
-            notes = notes,
-            noteActions = noteActions,
-            isProfileCurrent = isProfileCurrent,
-            onConfirmIdentity = onConfirmIdentity,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            if (profile == null) item(key = "detail-back") {
-                TextButton(onClick = onBack) { Text("Zurück") }
-            }
-            if (state.loading) item(key = "detail-loading") { CircularProgressIndicator() }
-            state.error?.let { item(key = "detail-error") { Text(it,color=MaterialTheme.colorScheme.error) } }
-            state.actionError?.let { item(key = "detail-action-error") { Text(it,color=MaterialTheme.colorScheme.error) } }
-            if (state.retryProfileListingId != null) item(key = "detail-retry") {
-                TextButton(onClick = onRetryProfile, enabled = !state.actionBusy && !actionsBusy) {
-                    Text(if (state.profileSourceRetryAllowed) "Profil online abrufen" else "Profil erneut laden")
+    var photoRequest by remember { mutableIntStateOf(0) }
+    val identity = profile?.let { heroIdentity(it, state.profileIdentity, state.profileFromArchive,
+        state.profileMedia.any { medium -> medium.kind == "VIDEO" } || state.profileIdentity?.hasVideo == true,
+        state.selectedPerson?.preference, state.selectedPerson?.favorite) }
+    var info by remember(renderedToken, identity) { mutableStateOf(false) }
+    if (info && identity != null) IdentityInfoDialog(identity) { info = false }
+    val notices = buildList {
+        if (state.loading) add(ProfileNotice("Profil wird geladen", "Profil wird geladen …"))
+        state.error?.let { add(ProfileNotice("Profilfehler", it, warning = true)) }
+        state.actionError?.let { add(ProfileNotice("Aktionsfehler", it, warning = true)) }
+        if (state.retryProfileListingId != null) add(ProfileNotice("Profil erneut laden", "Profil konnte nicht vollständig geladen werden.",
+            if (state.profileSourceRetryAllowed) "Online abrufen" else "Erneut laden",
+            !state.actionBusy && !actionsBusy, onRetryProfile, warning = true))
+        if (state.archiving) add(ProfileNotice("Medienarchiv", "Medien werden lokal archiviert", "Stoppen", true, onCancelArchive))
+        state.mediaWarning?.let { add(ProfileNotice("Archivhinweis", it, warning = true)) }
+        if (actionsBusy || state.actionBusy) add(ProfileNotice("Wird verarbeitet", "Profilaktion wird verarbeitet."))
+    }
+    ProfileShell(modifier, detailListState, "media", hasRail = false, notices = notices,
+        noticeOwner = Triple(state.profileSessionId, renderedToken, state.retryProfileListingId),
+        header = { presentation, compactNotice, onNotice ->
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Zurück") }
+                val shown = identity.takeIf { presentation.identityInHeader }
+                ProfileShellTitle(shown?.title ?: "Profil", shown?.compactSubtitle ?: "Profilansicht",
+                    shown?.decisions.orEmpty(), presentation.budget.shortHeader, Modifier.weight(1f),
+                    onClick = if (identity == null) null else ({ info = true }))
+                if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
+                if (presentation.photoShortcut && profile != null) IconButton(onClick = { photoRequest++ }) {
+                    Icon(Icons.Default.KeyboardArrowUp, "Zum Foto")
+                } else if (identity != null) IconButton(onClick = { info = true }) {
+                    Icon(Icons.Default.Info, "Vollständige Profilinformationen")
                 }
             }
+        },
+    ) { presentation, onIdentityMeasured ->
+        ProfileFlow(state = detailListState, model = state.profileRead, filters = filters,
+            token = renderedToken, actionsBusy = busy, notes = notes, noteActions = noteActions,
+            isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
+            modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest) {
             if (profile != null) {
                 item(key = "media") {
-                    ProfileMediaHero(state.profileMedia, Modifier.fillMaxWidth().height(heroHeight),
-                        onBack = onBack, originalUrl = state.profileIdentity?.profileUrl,
-                        selection = mediaSelection,
-                        actionsEnabled = !busy, isCurrent = { renderedToken?.let(isProfileCurrent) == true })
+                    ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
+                        originalUrl = state.profileIdentity?.profileUrl, selection = mediaSelection,
+                        identity = identity, actionToken = renderedToken, actionsEnabled = !busy,
+                        isCurrent = { renderedToken?.let(isProfileCurrent) == true },
+                        compact = presentation.budget.compactGallery,
+                        headerOwnsIdentity = presentation.identityInHeader,
+                        onIdentityMeasured = onIdentityMeasured)
                 }
                 item(key = "identity") {
-                    ProfileHeader(profile, state.profileIdentity, state.selectedPerson,
-                        state.profileMedia, state.profileFromArchive)
+                    Text("Profilinfos", style = MaterialTheme.typography.labelMedium)
+                    ProfileMetadata(profile, state.profileIdentity, state.selectedPerson, state.profileMedia, state.profileFromArchive)
                 }
                 item(key = "actions") {
-                    ProfileActionRail(state.selectedPerson, busy,
-                        onFavorite = { renderedToken?.let(onFavorite) },
+                    ProfileActionRail(state.selectedPerson, busy, onFavorite = { renderedToken?.let(onFavorite) },
                         onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
-                }
-                if (state.archiving) {
-                    item(key = "archive-progress") {
-                        Row(verticalAlignment=Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier=Modifier.width(28.dp).height(28.dp))
-                            Text("  Medien werden lokal archiviert",modifier=Modifier.weight(1f))
-                            TextButton(onClick=onCancelArchive) { Text("Stoppen") }
-                        }
-                    }
                 }
                 state.mediaArchive?.let { report ->
                     item(key = "archive-report") {
-                        Text(
-                            "Archiv: ${report.downloaded} geladen · ${report.reused} wiederverwendet · ${report.failed} fehlgeschlagen · ${report.deferred} zurückgestellt",
-                            style=MaterialTheme.typography.bodySmall,
-                        )
+                        Text("Archiv: ${report.downloaded} geladen · ${report.reused} wiederverwendet · ${report.failed} fehlgeschlagen · ${report.deferred} zurückgestellt",
+                            style = MaterialTheme.typography.bodySmall)
                     }
-                }
-                state.mediaWarning?.let {
-                    item(key = "archive-warning") { Text(it,color=MaterialTheme.colorScheme.error) }
                 }
             }
         }
     }
-}
-
-@Composable
-internal fun ProfileHeader(
-    profile: ProfileResponse,
-    identity: ProfileIdentity?,
-    person: PersonSummary?,
-    media: List<ProfileMediaItem>,
-    fromArchive: Boolean,
-) {
-    ProfileIdentityHeader(
-        name = profile.name,
-        place = listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
-        age = identity?.age, identity = identity, person = person,
-        hasVideo = media.any { it.kind == "VIDEO" }, fromArchive = fromArchive,
-    )
-    profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 }
 
 /** The same explicit destructive confirmation in both profile contexts. */
