@@ -34,6 +34,7 @@ internal fun DiscoverScreen(
     onReplayLikes: (SwipeDeckToken, Boolean) -> Unit,
     onSkip: (SwipeCardToken) -> Unit,
     onChoose: (SwipeActionToken, Preference) -> Unit,
+    onIndependentPreference: (ProfileIdentityToken, Preference) -> Unit,
     onSwipeVisibility: (Boolean) -> Unit,
     onRenderedSwipe: (SwipeActionToken?) -> Unit,
     onProjectionMismatch: (SwipeActionToken) -> Unit,
@@ -186,7 +187,7 @@ internal fun DiscoverScreen(
                     OutlinedButton(onClick = { onReset(deckToken) }, enabled = enabled) { Text("Deck neu beginnen") }
                 }
             }
-        } else key(card.listingId, card.personId) {
+        } else key(state.activeRunId, card.listingId, card.personId) {
             val profile = current
             val matchesOwner = profile != null && profile.identity.personId == card.personId
             val actions = enabled && token != null
@@ -195,7 +196,7 @@ internal fun DiscoverScreen(
             val listState = rememberLazyListState()
             val sections = rememberProfileSections()
             val panels = rememberProfilePanels(current, executedFiltersJson, listState)
-            rememberProfileNote(token, boundNotes, state.busy || token == null, sections.expanded(ProfileSection.Notes))
+            rememberProfileNote(token, boundNotes, state.busy || token == null, sections)
             ComparisonDialog(panels)
             val person = profile?.person?.takeIf { matchesOwner }
             val fallback = listOfNotNull(card.thumbnailUrl?.let {
@@ -246,10 +247,12 @@ internal fun DiscoverScreen(
                         if (profile == null && readError == null && visible) CircularProgressIndicator(Modifier.size(24.dp))
                     }
                     item(key = "actions") {
-                        ProfileActionRail(person, profile?.profile?.phoneDisplay, !actions,
+                        ProfileActionRail(person, !actions,
                             onFavorite = { token?.let(onFavorite) },
-                            onPreference = { _, preference -> token?.let { onChoose(it, preference) } },
-                            isCurrent = { token?.let(isProfileCurrent) == true })
+                            onPreference = { _, preference -> token?.let {
+                                if (preference == Preference.NONE) onIndependentPreference(it, preference)
+                                else onChoose(it, preference)
+                            } })
                     }
                     if (profile != null) profileContent(profile.profile, profile.identity, person, profile.media,
                         panels, sections, profile.candidates, profile.history, !actions,

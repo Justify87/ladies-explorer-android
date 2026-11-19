@@ -23,6 +23,14 @@ class ProfileTabsTest {
         assertEquals(true, ProfileSections(swipe.entries).expanded(ProfileSection.History))
     }
 
+    @Test fun swipeNeutralResetIsIndependentOfDeckDecisions() {
+        val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
+        val token = requireNotNull(state.swipeToken(fixtureSwipe()))
+        assertEquals(true, independentProfilePreference(token, de.justify87.ladiesexplorer.core.Preference.NONE))
+        assertEquals(false, independentProfilePreference(token, de.justify87.ladiesexplorer.core.Preference.LIKE))
+        assertEquals(false, independentProfilePreference(token, de.justify87.ladiesexplorer.core.Preference.DISLIKE))
+    }
+
     @Test fun collapsedNoteShowsConflictBeforeDraft() {
         val dirty = NoteDraft.from("original").copy(text = "mine")
         assertEquals("Ungespeicherter Entwurf", noteSectionHint(NoteEditorState(draft = dirty)))

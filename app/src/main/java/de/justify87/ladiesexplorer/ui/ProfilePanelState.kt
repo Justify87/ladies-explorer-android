@@ -7,6 +7,7 @@ import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -25,6 +26,9 @@ internal class ProfilePanels(
     private var detailRequested = false
     private var detailGeneration = 0L
     private var closed = false
+    private var factsRetry: Job? = null
+    private var detailRetry: Job? = null
+    private var comparisonJob: Job? = null
     var facts by mutableStateOf<ProfileFacts?>(null)
         private set
     var detail by mutableStateOf<PersonDetail?>(null)
@@ -46,13 +50,13 @@ internal class ProfilePanels(
         val key = factsKey ?: return
         if (closed || factsError == null) return
         factsKey = null
-        scope.launch { loadFacts(key.snapshot, key.filters) }
+        factsRetry = scope.launch { loadFacts(key.snapshot, key.filters) }
     }
 
     fun retryDetail() {
         if (closed || detailError == null) return
         detailRequested = false
-        scope.launch { loadDetail() }
+        detailRetry = scope.launch { loadDetail() }
     }
 
     suspend fun loadFacts(snapshot: Long?, filters: String) {
@@ -100,7 +104,7 @@ internal class ProfilePanels(
         comparing = true
         comparison = null
         comparisonError = null
-        scope.launch {
+        comparisonJob = scope.launch {
             try {
                 val result = readComparison(owner, from, to)
                 if (generation == comparisonGeneration) comparison = result
@@ -124,6 +128,9 @@ internal class ProfilePanels(
         closed = true
         factsGeneration++
         detailGeneration++
+        factsRetry?.cancel()
+        detailRetry?.cancel()
+        comparisonJob?.cancel()
         closeComparison()
     }
 }

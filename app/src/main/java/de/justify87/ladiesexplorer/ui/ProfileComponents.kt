@@ -271,13 +271,10 @@ internal fun ProfileIdentityHeader(
 @Composable
 internal fun ProfileActionRail(
     person: PersonSummary?,
-    phone: String?,
     busy: Boolean,
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
-    isCurrent: () -> Boolean = { true },
 ) {
-    val context = LocalContext.current
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (person != null) {
             FilterChip(selected = person.preference == Preference.LIKE, enabled = !busy,
@@ -290,6 +287,13 @@ internal fun ProfileActionRail(
                 onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.DISLIKE)) },
                 label = { Text("Nein") })
         }
+    }
+}
+
+@Composable
+internal fun ProfileContactActions(phone: String?, busy: Boolean, isCurrent: () -> Boolean) {
+    val context = LocalContext.current
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val normalized = phone?.let(::phoneForWhatsApp)
         OutlinedButton(enabled = !busy && normalized != null, onClick = {
             if (isCurrent()) normalized?.let { openExternal(context, "https://wa.me/$it") }

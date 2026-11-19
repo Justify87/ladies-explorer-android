@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 internal enum class ProfileSection(val label: String) {
@@ -47,13 +48,14 @@ internal fun rememberProfileNote(
     token: ProfileIdentityToken?,
     actions: NoteEditorActions,
     busy: Boolean,
-    expanded: Boolean,
+    sections: ProfileSections,
 ) {
-    var requested by remember(token) { mutableStateOf(false) }
-    LaunchedEffect(token, busy, expanded) {
-        if (token != null && !busy && expanded && !requested) {
+    // Opening is a one-shot demand for this rendered revision. Folding the
+    // section does not cancel a local read or reload on every toggle.
+    LaunchedEffect(token, busy, sections) {
+        if (token != null && !busy) {
+            snapshotFlow { sections.expanded(ProfileSection.Notes) }.first { it }
             actions.load(token.listingId, token.ownerId)
-            requested = true
         }
     }
 }
@@ -77,12 +79,17 @@ private fun SectionToggle(section: ProfileSection, sections: ProfileSections, hi
         Column(Modifier.weight(1f)) {
             Text(section.label, modifier = Modifier.semantics { heading() },
                 style = MaterialTheme.typography.titleMedium)
-            hint?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            hint?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
             contentDescription = if (expanded) "Einklappen" else "Ausklappen")
     }
 }
+
+/** An explicit neutral reset in Swipe remains a person operation, never a deck visit. */
+internal fun independentProfilePreference(token: ProfileIdentityToken, preference: Preference): Boolean =
+    token is DetailIdentityToken || preference == Preference.NONE
 
 internal fun noteSectionHint(note: NoteEditorState): String? = when {
     note.draft?.conflict == true -> "Notizkonflikt"
@@ -140,12 +147,16 @@ private fun FieldValues(rows: List<ProfileField>) {
     FieldGrid(rows.map { it.label to it.values.joinToString(" · ") })
 }
 
-private fun ProfileFacts.importantRows(): List<Pair<String, String>> {
-    val trait = traits.firstOrNull {
+/** Promote one existing field; aliases with distinct values remain visible. */
+internal fun ProfileFacts.overviewAndTraits(): Pair<List<Pair<String, String>>, List<ProfileField>> {
+    val promoted = traits.indexOfFirst {
         it.label.lowercase() in setOf("busen", "oberweite", "brustgröße", "brustgroesse", "brust")
     }
-    return listOf("Busen" to (trait?.values?.joinToString(" · ") ?: "Unbekannt")) +
+    val first = traits.getOrNull(promoted)
+    val overview = listOf(if (first == null) "Busen" to "Unbekannt"
+        else first.label to first.values.joinToString(" · ")) +
         important.map { it.label to evidenceLabel(it.status) }
+    return overview to traits.filterIndexed { index, _ -> index != promoted }
 }
 
 @Composable
@@ -265,13 +276,10 @@ internal fun LazyListScope.profileContent(
     item(key = "profile-facts") {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             PanelCard("Übersicht") {
-                if (person != null) FieldGrid(listOf("Anzeigen" to person.listingCount.toString()))
                 FactsContent(panels) { facts ->
-                    FieldGrid(facts.importantRows())
+                    val (overview, traits) = facts.overviewAndTraits()
                     if (facts.openingTimes.isNotEmpty()) PanelCard("Öffnungszeiten") { FieldValues(facts.openingTimes) }
-                    val traits = facts.traits.filterNot {
-                        it.label.lowercase() in setOf("busen", "oberweite", "brustgröße", "brustgroesse", "brust")
-                    }
+                    FieldGrid(overview + listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() }))
                     if (traits.isNotEmpty()) PanelCard("Merkmale") { FieldValues(traits) }
                 }
             }
@@ -289,79 +297,83 @@ internal fun LazyListScope.profileContent(
             }
         }
     }
+    if (!profile.phoneDisplay.isNullOrBlank()) item(key = "profile-contact") {
+        PanelCard("Kontakt") {
+            ProfileContactActions(profile.phoneDisplay, actionsBusy, isCurrent)
+        }
+    }
     item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections) }
     if (sections.expanded(ProfileSection.Analysis)) {
-
-            item(key = "profile-analysis") {
-                PanelCard("Gespeicherte Evidenz") {
-                    val data = panels.detail
-                    FieldGrid(listOf("Bilder im aktuellen Profil" to media.count { it.kind == "IMAGE" }.toString()) +
-                        if (data == null) emptyList() else listOf(
-                            "Anzeigen" to data.listings.size.toString(), "Bekannte Namen" to data.knownNames.toString(),
-                            "Bekannte Orte" to data.knownCities.toString(), "Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString(),
-                            "Mit anderen Personen geteilte Assets" to data.sharedImages.toString()))
-                    if (data == null) DetailStatus(panels)
-                    Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            item(key = "profile-candidate-head") {
-                Text("Mögliche Identitätsübereinstimmungen", style = MaterialTheme.typography.titleMedium)
-                Text(if (candidates.isEmpty()) "Keine Kandidaten gespeichert." else "Keine automatische Zusammenführung.")
-            }
-            items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
-                PanelCard("Person #${candidate.personId} · ${candidate.decision}") {
-                    Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
-                        "Quellprofil".takeIf { candidate.sourceProfileMatch },
-                        "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
-                        .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
-                    OutlinedButton(onClick = { if (isCurrent()) onConfirm(candidate.personId) },
-                        enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
-                }
+        item(key = "profile-analysis") {
+            PanelCard("Gespeicherte Evidenz") {
+                val data = panels.detail
+                FieldGrid(listOf("Bilder im aktuellen Profil" to media.count { it.kind == "IMAGE" }.toString()) +
+                    if (data == null) emptyList() else listOf(
+                        "Anzeigen" to data.listings.size.toString(), "Bekannte Namen" to data.knownNames.toString(),
+                        "Bekannte Orte" to data.knownCities.toString(), "Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString(),
+                        "Mit anderen Personen geteilte Assets" to data.sharedImages.toString()))
+                if (data == null) DetailStatus(panels)
+                Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
+        item(key = "profile-candidate-head") {
+            Text("Mögliche Identitätsübereinstimmungen", style = MaterialTheme.typography.titleMedium)
+            Text(if (candidates.isEmpty()) "Keine Kandidaten gespeichert." else "Keine automatische Zusammenführung.")
+        }
+        items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
+            PanelCard("Person #${candidate.personId} · ${candidate.decision}") {
+                Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
+                    "Quellprofil".takeIf { candidate.sourceProfileMatch },
+                    "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
+                    .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
+                OutlinedButton(onClick = { if (isCurrent()) onConfirm(candidate.personId) },
+                    enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
+            }
+        }
+    }
     item(key = "notes-toggle") { SectionToggle(ProfileSection.Notes, sections, noteSectionHint(note)) }
     if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes") {
         NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy)
     }
     item(key = "history-toggle") { SectionToggle(ProfileSection.History, sections) }
     if (sections.expanded(ProfileSection.History)) {
-            val visibleEvents = if (panels.showDescriptionChanges) history
-                else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }
-            item(key = "profile-history-head") {
-                Text("Profilverlauf", style = MaterialTheme.typography.titleMedium)
-                Text("Bis zu 100 zuletzt gespeicherte Änderungen.", style = MaterialTheme.typography.bodySmall)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(panels.showDescriptionChanges, { panels.showDescriptionChanges = it })
-                    Text("Beschreibungstexte im Verlauf anzeigen")
-                }
-                if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
+        val visibleEvents = if (panels.showDescriptionChanges) history
+            else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }
+        item(key = "profile-history-head") {
+            Text("Profilverlauf", style = MaterialTheme.typography.titleMedium)
+            Text("Bis zu 100 zuletzt gespeicherte Änderungen.", style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(panels.showDescriptionChanges, { panels.showDescriptionChanges = it })
+                Text("Beschreibungstexte im Verlauf anzeigen")
             }
-            items(visibleEvents, key = { "event/${it.changeEventId}" }) { event ->
-                PanelCard(historyEventLabel(event.eventType, event.fieldKey)) {
-                    Text(historyDate(event.createdAt), style = MaterialTheme.typography.bodySmall)
-                    val listing = panels.detail?.listings?.firstOrNull { it.listingId == event.listingId }
-                    listing?.let { Text("Anzeige #${it.externalId}", style = MaterialTheme.typography.labelMedium) }
-                    if (event.oldDisplay != null || event.newDisplay != null)
-                        HistoryValues(event.oldDisplay, event.newDisplay)
-                    val from = event.fromSnapshotId
-                    val to = event.toSnapshotId
-                    if (from != null && to != null) TextButton(onClick = { if (isCurrent()) panels.compare(from, to) },
-                        enabled = !actionsBusy) { Text("Snapshots vergleichen") }
-                }
+            if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
+        }
+        items(visibleEvents, key = { "event/${it.changeEventId}" }) { event ->
+            PanelCard(historyEventLabel(event.eventType, event.fieldKey)) {
+                Text(historyDate(event.createdAt), style = MaterialTheme.typography.bodySmall)
+                val listing = panels.detail?.listings?.firstOrNull { it.listingId == event.listingId }
+                listing?.let { Text("Anzeige #${it.externalId}", style = MaterialTheme.typography.labelMedium) }
+                if (event.oldDisplay != null || event.newDisplay != null)
+                    HistoryValues(event.oldDisplay, event.newDisplay)
+                val from = event.fromSnapshotId
+                val to = event.toSnapshotId
+                if (from != null && to != null) TextButton(onClick = { if (isCurrent()) panels.compare(from, to) },
+                    enabled = !actionsBusy) { Text("Snapshots vergleichen") }
             }
-            item(key = "profile-listings-head") {
-                Text("Verknüpfte Anzeigen", style = MaterialTheme.typography.titleMedium)
-                if (panels.detail == null) DetailStatus(panels)
+        }
+        item(key = "profile-listings-head") {
+            Text("Verknüpfte Anzeigen", style = MaterialTheme.typography.titleMedium)
+            if (panels.detail == null) DetailStatus(panels)
+        }
+        items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }) { listing ->
+            val context = LocalContext.current
+            PanelCard("Anzeige #${listing.externalId}") {
+                Text(statusLabel(listing.status))
+                Text("Zuletzt gesehen: ${historyDate(listing.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
+                listing.url?.let { url -> TextButton(enabled = !actionsBusy, onClick = { if (isCurrent()) openExternal(context, url) }) { Text("Original öffnen") } }
             }
-            items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }) { listing ->
-                val context = LocalContext.current
-                PanelCard("Anzeige #${listing.externalId}") {
-                    Text(statusLabel(listing.status))
-                    Text("Zuletzt gesehen: ${historyDate(listing.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
-                    listing.url?.let { url -> TextButton(enabled = !actionsBusy, onClick = { if (isCurrent()) openExternal(context, url) }) { Text("Original öffnen") } }
-                }
-            }
+        }
     }
 }
 

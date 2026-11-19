@@ -137,6 +137,16 @@ class ProfilePanelsTest {
         assertEquals(original, panel.facts)
     }
 
+    @Test fun promotedTraitDoesNotDiscardDistinctAliases() {
+        val first = ProfileField("Busen", listOf("A"))
+        val second = ProfileField("Oberweite", listOf("B"))
+        val other = ProfileField("Fixture", listOf("C"))
+        val (overview, traits) = ProfileFacts(listOf(first, second, other), emptyList(),
+            emptyList(), emptyList(), emptyList()).overviewAndTraits()
+        assertEquals(listOf("Busen" to "A"), overview)
+        assertEquals(listOf(second, other), traits)
+    }
+
     @Test fun demandUsesVisibleLazyItemsNotCollapsedHeaders() {
         assertFalse(factsDemand(setOf("hero", "header")))
         assertFalse(detailDemand(setOf("analysis-toggle", "history-toggle", "notes-toggle")))

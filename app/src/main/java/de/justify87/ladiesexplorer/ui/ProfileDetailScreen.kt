@@ -33,7 +33,7 @@ internal fun ProfileDetailScreen(
     val detailListState = rememberLazyListState()
     val sections = key(owner) { rememberProfileSections() }
     val panels = rememberProfilePanels(state.profileRead, filters, detailListState)
-    rememberProfileNote(renderedToken, boundNotes, busy, sections.expanded(ProfileSection.Notes))
+    rememberProfileNote(renderedToken, boundNotes, busy, sections)
     ComparisonDialog(panels)
     var confirmTarget by remember(renderedToken, state.identityCandidates) { mutableStateOf<Pair<DetailIdentityToken, Long>?>(null) }
 
@@ -71,11 +71,9 @@ internal fun ProfileDetailScreen(
                         state.profileMedia, state.profileFromArchive)
                 }
                 item(key = "actions") {
-                    ProfileActionRail(state.selectedPerson, profile.phoneDisplay,
-                        busy,
+                    ProfileActionRail(state.selectedPerson, busy,
                         onFavorite = { renderedToken?.let(onFavorite) },
-                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } },
-                        isCurrent = { renderedToken?.let(isProfileCurrent) == true })
+                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
                 }
                 if (state.archiving) {
                     item {
