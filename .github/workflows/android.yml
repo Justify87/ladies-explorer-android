@@ -157,6 +157,9 @@ jobs:
     if: ${{ needs.scope.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      native_qualification: ${{ steps.native_qualification.outcome }}
+      performance_measurement: ${{ steps.performance_measurement.outcome }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -219,6 +222,15 @@ jobs:
           test -x "$aapt2"
           python3 tools/check_architecture.py --apk "$1" --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 "$aapt2"
 
+      # Publish the checked regular APK before optional qualifications.
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: ladies-explorer-android-arm64-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
+
       # Qualification runs use the same verified policy as the routine build.
       - name: Verify native task cache contract
         id: native_qualification
@@ -229,14 +241,6 @@ jobs:
         id: performance_measurement
         if: ${{ needs.scope.outputs.performance_measurement == 'true' }}
         run: bash tools/measure-android-build.sh
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: ladies-explorer-android-arm64-debug
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
 
       - name: Upload Gradle timing and test reports
         if: ${{ !cancelled() && (steps.gradle.outcome == 'success' || steps.gradle.outcome == 'failure') }}
@@ -264,28 +268,54 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Evaluate required CI gate
+        shell: bash
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
           MODE: ${{ needs.scope.outputs.mode }}
           CORE_RESULT: ${{ needs.core.result }}
           ANDROID_RESULT: ${{ needs.android.result }}
+          NATIVE_REQUIRED: ${{ needs.scope.outputs.native_qualification }}
+          PERFORMANCE_REQUIRED: ${{ needs.scope.outputs.performance_measurement }}
+          NATIVE_OUTCOME: ${{ needs.android.outputs.native_qualification }}
+          PERFORMANCE_OUTCOME: ${{ needs.android.outputs.performance_measurement }}
         run: |
           {
             echo "### Required CI gate"
             echo ""
-            echo "| Check | Result |"
-            echo "| --- | --- |"
-            echo "| Scope ($MODE) | $SCOPE_RESULT |"
-            echo "| Core and contracts | $CORE_RESULT |"
-            echo "| Android integration | $ANDROID_RESULT |"
+            echo "| Check | Expected | Actual |"
+            echo "| --- | --- | --- |"
+            printf '| Scope (%s) | success | %s |\n' "$MODE" "$SCOPE_RESULT"
+            if [ "$MODE" = docs ]; then
+              echo "| Core and contracts | skipped | $CORE_RESULT |"
+              echo "| Android integration | skipped | $ANDROID_RESULT |"
+              echo "| Native cache qualification | not required | ${NATIVE_OUTCOME:-no step (job skipped)} |"
+              echo "| Performance measurement | not required | ${PERFORMANCE_OUTCOME:-no step (job skipped)} |"
+            else
+              echo "| Core and contracts | success | $CORE_RESULT |"
+              echo "| Android integration | success | $ANDROID_RESULT |"
+              echo "| Native cache qualification (selected: $NATIVE_REQUIRED) | $(if [ "$NATIVE_REQUIRED" = true ]; then echo success; else echo skipped; fi) | ${NATIVE_OUTCOME:-missing} |"
+              echo "| Performance measurement (selected: $PERFORMANCE_REQUIRED) | $(if [ "$PERFORMANCE_REQUIRED" = true ]; then echo success; else echo skipped; fi) | ${PERFORMANCE_OUTCOME:-missing} |"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
+
           test "$SCOPE_RESULT" = success
-          case "$MODE" in
-            full)
-              test "$CORE_RESULT" = success && test "$ANDROID_RESULT" = success
+          case "$MODE:$NATIVE_REQUIRED:$PERFORMANCE_REQUIRED" in
+            docs:false:false)
+              test "$CORE_RESULT" = skipped
+              test "$ANDROID_RESULT" = skipped
+              # No Android job ran: its step outputs must be absent.
+              test -z "$NATIVE_OUTCOME"
+              test -z "$PERFORMANCE_OUTCOME"
               ;;
-            docs)
-              test "$CORE_RESULT" = skipped && test "$ANDROID_RESULT" = skipped
+            full:false:false|full:true:false|full:false:true|full:true:true)
+              test "$CORE_RESULT" = success
+              test "$ANDROID_RESULT" = success
+              for pair in "$NATIVE_REQUIRED:$NATIVE_OUTCOME" "$PERFORMANCE_REQUIRED:$PERFORMANCE_OUTCOME"; do
+                case "$pair" in
+                  true:success|false:skipped) ;;
+                  *) echo "Qualification selection/outcome mismatch: $pair" >&2; exit 1 ;;
+                esac
+              done
               ;;
-            *) exit 1 ;;
+            *) echo "Invalid or incomplete CI policy" >&2; exit 1 ;;
           esac
