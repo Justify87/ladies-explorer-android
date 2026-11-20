@@ -30,7 +30,7 @@ Stabile P-/X-IDs als Regressionsreferenz, kein Aufgabenregister. Status: [Arbeit
 | P24 | Grid | ui/screens/discover.js; components/listing-card.css | Zwei Spalten, 0,77 Aspect, Cover, Name/Alter, Gradienten |
 | P25 | Grid-Aktion | requested_fixes.js; app/selectors.js | Direkte Like-Aktion ohne Profilöffnung, Fehler-/Filterverhalten |
 | P26 | View-Switch | ui/screens/discover.js; app/reducer.js | Swipe/Grid/Karte wechseln ohne erneute Suche, Position erhalten |
-| P27 | Profil-Tabs | ui/profile.js; requested_fixes.js; regressions.js | Info/Dienste/Analyse/Notizen/Verlauf im gemeinsamen vertikalen Profilfluss, keine Pflicht-Tabs |
+| P27 | Profilabschnitte | ui/profile.js; requested_fixes.js; regressions.js | Info/Dienste/Analyse/Notizen/Verlauf im gemeinsamen vertikalen Profilfluss, keine Pflicht-Tabs |
 | P28 | Info | ui/profile.js; requested_fixes.js; regressions.js | Info-Raster, Merkmale, Zeiten, einklappbare Beschreibung |
 | P29 | Dienste/Filterbelege | ui/profile.js; requested_fixes.js | Dienste und ausgewählte Filterbelege Ja/Nein/Unbekannt im gemeinsamen Profilfluss |
 | P30 | Analyse | ui/profile.js: renderAnalysis | Vorhandene Belege, keine erdachten Scores/AI; sichere Bestätigung bewahren |
@@ -46,7 +46,7 @@ Stabile P-/X-IDs als Regressionsreferenz, kein Aufgabenregister. Status: [Arbeit
 | P40 | Zustände/UX | app/scroll_state.js; regressions.js; ux_patch.js | Konsistente Loading/Empty/Error, Wiederherstellung, Accessibility |
 | P41 | Gesamtcheck | bootstrap.js; tools/check_* (Legacy) | Referenzvergleich und gezielte Regression; technische Prüfungen und Abschluss nach Merge-Regel |
 | P42 | Quellen-HTTP | — | Alle app-internen ladies.de-/CDN-Anfragen inkl. Videobytes ausschließlich Rust. |
-| P43 | Medien | — | Coil-Cache, Offline, Prefetch und HAR über Rust; reine Anzeige ohne Archiv-/DB-Mutation. |
+| P43 | Medien | — | Coil besitzt Bildcache und Dekodierung; lokale Medien zuerst, begrenzter Prefetch, Remote-Abrufe und HTTP-Mitschnitt ausschließlich Rust; reine Anzeige ohne Archiv-/DB-Mutation. |
 | P44 | Architekturgrenze | — | Automatisierte Architekturverträge; MapLibre und explizite externe Intents ausgenommen. |
 
 ## Profilvertrag
@@ -73,7 +73,7 @@ Stabile P-/X-IDs als Regressionsreferenz, kein Aufgabenregister. Status: [Arbeit
 | X06 | Globale Statistik, Verlauf außerhalb Profil, eigenständiges Bild-/Videoarchiv | Separat gegen Hauptplan abgleichen, nicht M05. |
 | X07 | Kartenlogik/Geocoding-Erweiterung | M06; bestehende Karte anbinden P04/P26. |
 | X08 | Backup/Export/Release, allgemeine Performanceoptimierung | M07; M05 nur funktionsbezogene Tests/Regression. |
-| X09 | Eingebettetes Video | Ursprünglicher Ausschluss aufgehoben; ausdrücklich Teil der Galerie P16/P47, kein Messenger. |
+| X09 | Eingebettetes Video | Zulässig und Bestandteil der Galerie (P16/P47); lokaler Player gemäß Architekturvertrag, kein Messenger. |
 | X10 | Automatische Radiusaufweitung | Bewusst abweichender aktueller SOURCE-Vertrag P11; keine Rücknahme. |
 | X11 | Browser-Smartphone-Simulation, synthetische Statusleiste | Native Systemleisten P02. |
 
