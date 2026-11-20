@@ -596,7 +596,7 @@ pub(super) fn save_observed_profile(
                 }
             }
         }
-        // Only remote references in M03. Asset downloads and historic image comparison belong to M04.
+        // Persist remote references here; asset archiving is separate.
         for reference in &profile.media {
             let mut media_base = Url::parse(&reference.url)
                 .map_err(|_| CoreError::Source("Invalid parsed media URL".into()))?;

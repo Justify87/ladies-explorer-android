@@ -7,7 +7,7 @@ import coil3.network.NetworkResponse
 import coil3.network.NetworkResponseBody
 import okio.Buffer
 
-/** Coil retains its cache and decoders. This adapter owns no HTTP transport. */
+/** Coil caches and decodes; Rust owns the HTTP transport. */
 internal class RustImageNetworkClient(
     private val load: suspend (String) -> DisplayImage,
 ) : NetworkClient {
@@ -17,7 +17,6 @@ internal class RustImageNetworkClient(
     ): T {
         require(request.method == "GET" && request.body == null) { "Only image GET requests are supported" }
         val started = System.currentTimeMillis()
-        // Rust validates every URL and performs the actual request and HTTP recording.
         val image = load(request.url)
         val body = NetworkResponseBody(Buffer().write(image.bytes))
         val headers = NetworkHeaders.Builder().apply {

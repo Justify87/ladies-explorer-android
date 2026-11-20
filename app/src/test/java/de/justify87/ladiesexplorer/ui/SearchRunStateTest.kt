@@ -57,7 +57,7 @@ class SearchRunStateTest {
         val generation = RequestGeneration()
         val first = generation.value
         var state = SearchUiState().acceptRun(response(1), listOf(card(1))).beginRun()
-        generation.invalidate() // cancel
+        generation.invalidate()
         val second = generation.value
         val newRun = response(2, partial = true)
         if (generation.isCurrent(second)) state = state.acceptRun(newRun, listOf(card(2)))

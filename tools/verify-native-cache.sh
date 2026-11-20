@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# CI02 integration probe after the normal ARM64 build. Only synthetic copies
-# are changed. Shared Gradle task cache is read-only throughout the probe.
+# Native cache probe after ARM64 build; disposable copies, read-only shared cache.
 set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 tmp="$(mktemp -d)"
@@ -57,8 +56,7 @@ rust_source="rust/ladies-core/src/source/filter.rs"
 token="$(basename "$tmp" | tr -cd '[:alnum:]')"
 probe_package="de.justify87.ladiesexplorer.cacheprobe_$token"
 
-# A Kotlin-only edit in another checkout and a different nonempty image label
-# must reuse both native artifacts when the effective toolchain is unchanged.
+# Relocation and a changed image label must preserve both native artifacts if tools match.
 printf '\n// CI02 synthetic Kotlin-only edit\n' >> "$copy/app/src/main/java/de/justify87/ladiesexplorer/MainActivity.kt"
 test ! -e "$copy/rust/target"
 ImageVersion="${ImageVersion:?Expected hosted runner image}-ci02-probe" \
@@ -91,8 +89,7 @@ run_native "$tmp/resource.log" arm64-v8a
 require_execution "$tmp/resource.log"
 grep -aFq "$resource_marker" "$library"
 
-# Rust source: independently change a reachable diagnostic string and prove
-# that the new bytes are present in the actual library.
+# Change a reachable Rust diagnostic and verify the library bytes.
 source_marker="ci02_rust_$token"
 sed -i "s/the checked-in source filter catalog is valid JSON/$source_marker/" "$copy/$rust_source"
 if grep -aFq "$source_marker" "$library"; then exit 1; fi

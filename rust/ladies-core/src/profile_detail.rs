@@ -1,4 +1,4 @@
-//! Local-only typed detail projections. No source requests or schema changes.
+//! Local-only detail projections; no source requests.
 use crate::{
     CoreError, LadiesCore,
     source::filter::{EvidenceOption, evidence_option},
@@ -127,8 +127,7 @@ fn evidence(option: &EvidenceOption, fields: &[&ProfileField]) -> EvidenceStatus
     }
 }
 
-/// Structural groups come from the parser (trait/standard attributes/opening times).
-/// Unknown headings and unsupported live-time inferences deliberately remain unknown.
+/// Preserve unknown headings and unsupported live-time inferences as unknown.
 fn in_trait_group(group: &str, label: &str) -> bool {
     let label = normalize(label);
     match group {

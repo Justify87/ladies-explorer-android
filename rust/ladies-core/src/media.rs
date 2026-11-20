@@ -621,8 +621,7 @@ pub(crate) fn display_image(
     display_image_with(url, &core.media_http, control)
 }
 
-/// Display-only encoded video, bounded by the existing media transport.
-/// Never creates an archive row, asset, or profile observation.
+/// Bounded display-only video; never creates archive assets or profile observations.
 #[derive(Debug, uniffi::Record)]
 pub struct DisplayVideo {
     pub bytes: Vec<u8>,
@@ -944,7 +943,6 @@ mod tests {
             params![second, first],
         )
         .unwrap();
-        // The first snapshot now provides a verified cached revision.
         db.execute("UPDATE media_sources SET revision_token='rev1'", [])
             .unwrap();
         drop(db);

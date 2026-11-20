@@ -16,7 +16,7 @@ APP = BASE + "LadiesApplication.kt"
 VIDEO = BASE + "ui/GalleryVideo.kt"
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 
-# Preserve the former source-HTTP gate; allow SDK map transport, not app HTTP.
+# Allow SDK map transport, not application HTTP.
 HTTP = r"\b(?:okhttp3|retrofit2|ktor\.client|com\.android\.volley|java\.net|javax\.net|android\.webkit|HttpURLConnection|URLConnection|OkHttpClient|OkHttpNetworkFetcherFactory|KtorNetworkFetcherFactory|WebView|DownloadManager|openConnection|openStream|Socket|SSLSocket)\b"
 HTTP_DEP = r"coil[-.]network[-.](?:okhttp|ktor)|com\.squareup\.(?:okhttp|retrofit)|io\.ktor|com\.android\.volley"
 DB = r"\b(?:android\.database\.sqlite|androidx\.sqlite|androidx\.room|java\.sql|org\.sqlite|SQLiteDatabase|SQLiteOpenHelper|SupportSQLiteDatabase|SupportSQLiteOpenHelper|RoomDatabase|openOrCreateDatabase)\b"
@@ -30,8 +30,7 @@ def issue(rule, path, message, line=None):
     return (rule, path, line, message)
 
 
-# The scanner only masks comments and optionally literals, preserving positions.
-# It is deliberately not a Kotlin parser. Keep literal values for option checks.
+# Mask comments and optionally literals without shifting positions; not a Kotlin parser.
 LEXEME = re.compile(r'"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|//[^\n]*|/\*')
 LOCAL_OPTIONS = {
     "config": "no", "load-scripts": "no", "ytdl": "no",
@@ -100,8 +99,7 @@ def wiring(app, store, video):
     errors = []
     app, store, video = (masked(s) for s in (app, store, video))
     app_code, store_code, video_code = (masked(s, literals=True) for s in (app, store, video))
-    # Allow whitespace, local names and formatting changes; don't prescribe the
-    # method/body layout of CoreStore. Compiled API signatures are tested on JVM.
+    # Match structure independent of formatting; JVM tests check compiled signatures.
     if not re.search(r"RustImageNetworkClient\s*\(\s*\w+\s*::\s*loadDisplayImage\s*\)", app_code) or len(re.findall(FACTORY, app_code)) != 1:
         errors.append(issue("ARC-01", APP, "exactly one Coil network adapter must delegate to Rust"))
     if not re.search(r"\bprivate\s+val\s+\w+\s*:\s*LadiesCore\b", store_code):
@@ -110,8 +108,7 @@ def wiring(app, store, video):
         errors.append(issue("ARC-03", STORE, "CoreStore must own the native engine"))
     if not re.search(r"\.\s*loadDisplayVideo\s*\(", video_code):
         errors.append(issue("ARC-07", VIDEO, "gallery must obtain remote bytes through CoreStore"))
-    # Match real string pairs in the adapter, requiring unique settings. Reject
-    # direct changes to these options outside the existing checked option loop.
+    # Require unique option pairs and reject overrides outside the checked loop.
     for name, value in LOCAL_OPTIONS.items():
         pairs = re.findall(r'"' + re.escape(name) + r'"\s+to\s+"([^"]*)"', video)
         if pairs != [value]:

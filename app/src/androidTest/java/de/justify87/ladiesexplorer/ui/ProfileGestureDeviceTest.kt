@@ -24,7 +24,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 
-/** Synthetic, real Compose events; no source, database write or external intent. */
+/** Synthetic Compose events; no source access or database writes. */
 class ProfileGestureDeviceTest {
     @get:Rule val rule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
 
@@ -115,8 +115,7 @@ class ProfileGestureDeviceTest {
         val decisions = mutableListOf<Preference>()
         rule.setContent {
             MaterialTheme {
-                // Use the real geometry policy at a deterministic dp width.
-                // The test environment needs at least 320dp of usable width.
+                // Use the real geometry policy; requires at least 320dp usable width.
                 Box(Modifier.requiredWidth(320.dp)) {
                     ProfileMediaHero(
                         media = listOf(ProfileMediaItem("IMAGE", "", null, 0u),

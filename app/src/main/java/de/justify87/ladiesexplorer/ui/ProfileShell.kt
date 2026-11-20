@@ -18,7 +18,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Only UI messages / commands; no duplicate source or mutation state. */
 internal data class ProfileNotice(
     val label: String,
     val message: String,
@@ -37,9 +36,7 @@ internal data class ProfileShellPresentation(
     val photoShortcut: Boolean,
 )
 
-/** One bounded vertical profile viewport in either context. All fixed chrome
- * has an explicit budget. Full messages live in an explicitly opened dialog,
- * not an unbounded stack of Text above the LazyColumn. */
+/** Bound fixed chrome; put full messages in a dialog rather than shrinking the scrolling body. */
 @Composable
 internal fun ProfileShell(
     modifier: Modifier,
@@ -133,16 +130,14 @@ internal fun ProfileShell(
     }
 }
 
-/** Fixed-size header slot; full information is reachable through the header's
- * actions. A and B don't have different heights or line budgets. */
+/** Keep header height and line budgets stable across identity modes. */
 @Composable
 internal fun ProfileShellTitle(title: String, context: String, status: String, short: Boolean,
     modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val click = if (onClick == null) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick)
     Column(modifier.then(click).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
         if (short && LocalDensity.current.fontScale >= 1.5f) {
-            // One line at very large type in a short window; the complete identity
-            // and status remain accessible via the header's context action.
+            // At large font sizes, expose full identity/status through the context action.
             Text("$context · $title", style = MaterialTheme.typography.labelMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         } else {

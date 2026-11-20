@@ -5,8 +5,7 @@ import de.justify87.ladiesexplorer.core.SavedPersonSort
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
-/** Only the requested presentation capacity is remembered; Rust owns rows,
- * membership, time boundary, ordering, and both section totals. */
+/** Kotlin remembers capacity; Rust owns membership, order, time boundary and totals. */
 internal class SavedWindowMemory {
     private val regular = mutableMapOf<Pair<SavedPersonKind, SavedPersonSort>, UInt>()
     private var recent = 50u
@@ -21,7 +20,7 @@ internal class SavedWindowMemory {
     }
 }
 
-/** Serial status work with partial results. Cancellation never repeats completed writes. */
+/** Cancellation must not replay completed status writes. */
 internal suspend fun runSavedStatusBatch(
     targets: List<Long>,
     cancelled: () -> Boolean,

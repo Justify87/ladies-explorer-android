@@ -241,8 +241,7 @@ pub(crate) fn load_profile(
                 "PROFILE",
                 format!("Profile parse failed listing={listing_id}: {error}"),
             );
-            // Metadata parsing failure does not negate independent, confirmed
-            // availability evidence. Still validate the observation at commit.
+            // Parsing failure does not negate confirmed availability; revalidate at commit.
             if verified {
                 storage::save_status(core, &target, "ACTIVE", 200, false, control)?;
             }

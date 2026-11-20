@@ -142,7 +142,7 @@ def restore(directory, env):
     pr_run = latest_run(repository, pr["head"]["sha"], "pull_request")
     candidate = env["REUSE_CANDIDATE"]
     if candidate == "docs":
-        # CI01 permits strictly allowlisted docs to reuse the exact green base.
+        # Only allowlisted docs can reuse the exact verified base.
         run = latest_run(repository, before, "push")
         expected = snapshot(before)
         expected_commit = before

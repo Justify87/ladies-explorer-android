@@ -34,7 +34,7 @@ const TRACKED: &[(&str, &str)] = &[
     ("opening_times_json", "opening_times_json"),
 ];
 
-/// Rendering-only projection; the persisted payload and transition logic stay unchanged.
+/// Rendering-only projection; never changes persisted history.
 fn readable(raw: Option<&str>) -> Option<String> {
     let raw = raw?;
     fn display(value: &Value) -> String {
@@ -105,8 +105,7 @@ fn media(db: &Connection, snapshot: i64) -> Result<Value, CoreError> {
     Ok(Value::Array(rows.collect::<rusqlite::Result<Vec<_>>>()?))
 }
 
-// The first known advert is not a relisting. Use the same chronological
-// rule for native first snapshots and later explicit identity confirmation.
+// First advert is not a relisting; apply chronology to snapshots and identity confirmation.
 fn later_listing(db: &Connection, listing_id: i64) -> Result<bool, CoreError> {
     Ok(db.query_row(
         "SELECT EXISTS(SELECT 1 FROM listings l JOIN listings older ON older.person_id=l.person_id
@@ -139,8 +138,7 @@ pub(crate) fn reconcile_relistings(db: &Connection, person_id: i64) -> Result<()
         if exists {
             continue;
         }
-        // Reclassify native events, preserving their timestamp and snapshot.
-        // Imported events retain their provenance.
+        // Reclassify native events without changing timestamps/snapshots; preserve imported provenance.
         let updated = db.execute(
             "UPDATE change_events SET event_type='NEW_LISTING_FOR_PERSON',importance='HIGH'
              WHERE person_id=?1 AND listing_id=?2 AND event_type='PROFILE_CREATED'",

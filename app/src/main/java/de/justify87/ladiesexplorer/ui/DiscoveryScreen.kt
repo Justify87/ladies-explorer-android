@@ -89,8 +89,7 @@ internal fun DiscoverScreen(
     val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }?.let { decks[it] }
     val projectedToken = state.swipeToken(current)
     val token = projectedToken?.takeIf { visible && currentSwipeActionCard(state, searchLoading, it) != null }
-    // Native person state is authoritative for rendering; stale queue membership
-    // must be reconciled before enabling callbacks. Do not spin on a persistent mismatch.
+    // Reconcile stale membership before admitting callbacks; do not loop on persistent mismatches.
     var lastMismatch by remember(state.activeRunId, card?.listingId, card?.personId) {
         mutableStateOf<Pair<Pair<Preference, Boolean>, Pair<Preference, Boolean>>?>(null)
     }
@@ -111,9 +110,7 @@ internal fun DiscoverScreen(
         decks.retain(window)
         decks.applyExternalRevision(state.swipeExternalRevision)
     }
-    // A bounded set of three keyed slots owns its native read independently of
-    // its role in the deck. Promotion does not dispose an already-running
-    // prefetch; pruning, revision replacement and navigation still cancel.
+    // Promotion preserves in-flight prefetch; pruning, revision changes and navigation cancel it.
     val readGate = remember(decks) { Mutex() }
     val latestReadState by rememberUpdatedState(state)
     val latestReadCard by rememberUpdatedState(card)
@@ -183,9 +180,7 @@ internal fun DiscoverScreen(
                     }
                 }
                 if (completed) break
-                // No automatic retry of a failed current read while it remains
-                // current. Explicit retry replaces this effect; Undo may instead
-                // demote the same slot and later promote it without recreating it.
+                // A failed current read retries only explicitly or after demotion and promotion.
                 if (waitForDemotion) {
                     snapshotFlow { !sameSwipeCard(target, latestReadCard) }.first { it }
                 }
@@ -202,14 +197,13 @@ internal fun DiscoverScreen(
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (_: Exception) {
-                // Optional image warming never changes authoritative membership.
+                // Prefetch failure must not affect deck membership.
             }
         }
     }
 
     val matchingRun = search.response?.searchRunId == state.activeRunId
-    // Flight owns only inert visual data. Authority stays with the existing VM
-    // and its CAS/queue read; no speculative promotion of an upcoming card.
+    // Animation must not promote cards before the authoritative mutation.
     val cardIdentity = card?.let { it.listingId to it.personId }
     var flight by remember(state.activeRunId, state.swipePresentationGeneration, started) { mutableStateOf<SwipeFlight?>(null) }
     var liveDrag by remember(cardIdentity) { mutableFloatStateOf(0f) }
@@ -220,8 +214,7 @@ internal fun DiscoverScreen(
     val latestReady by rememberUpdatedState(current != null && settledMedia || readError != null || card == null)
     LaunchedEffect(flight) {
         val outgoing = flight ?: return@LaunchedEffect
-        // A rejected callback cannot strand an animation. Once the mutation
-        // owns the deck, wait for authoritative completion, not a fixed timer.
+        // Bound admission; once admitted, wait for authoritative completion.
         val admitted = withTimeoutOrNull(350) {
             snapshotFlow {
                 latestState.busy || latestState.swipeSessionId != outgoing.session ||
@@ -231,8 +224,7 @@ internal fun DiscoverScreen(
         if (admitted) {
             snapshotFlow { latestState.busy }.first { !it }
             if (latestIdentity != outgoing.card && latestState.mutationError == null) {
-                // A bounded visual handoff accommodates a cold decode; a real
-                // error still exposes the next card's honest fallback and retry.
+                // Bound the visual wait for a cold image decode.
                 withTimeoutOrNull(220) { snapshotFlow { latestReady }.first { it } }
                 motion.animateTo(outgoing.destination, tween(200))
             }
@@ -304,7 +296,6 @@ internal fun DiscoverScreen(
             if (flight == null) cardToken?.let { beginFlight(-1f); onSkip(it, capture.read()) }
             Unit
         }
-        // Hero gestures, rail and menu use exactly this rendered-token dispatch.
         val choose: (Preference) -> Unit = { preference ->
             if (flight == null) token?.takeIf(isProfileCurrent)?.let {
                 if (preference != Preference.NONE) beginFlight(if (preference == Preference.LIKE) 1f else -1f)
@@ -406,7 +397,7 @@ fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: Str
     ProfileImage(url = url, localPath = localPath, modifier = modifier)
 }
 
-/** A/B share the same measured shell slots. Menu actions retain their opening context. */
+/** Menu actions retain their opening context. */
 @Composable
 private fun SwipeShellHeader(
     presentation: ProfileShellPresentation, identity: HeroIdentity?, context: SwipeMenuContext,
@@ -500,7 +491,6 @@ private fun SwipeShellHeader(
     }
 }
 
-/** One fixed A/B rail; constrained windows retain the same actions in the deck menu. */
 @Composable
 internal fun SwipeDecisionControls(context: SwipeMenuContext, profileTitle: String?, onUndo: () -> Unit,
     onSkip: () -> Unit, onChoose: (Preference) -> Unit) {

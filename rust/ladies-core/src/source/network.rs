@@ -91,7 +91,6 @@ impl SourceHttp {
         })
     }
 
-    // Shared evidence contract for detail reads and explicit checks.
     pub(super) fn get_profile(
         &self,
         url: &str,
@@ -707,8 +706,7 @@ fn fetch_search_controlled<T: Transport>(
     if cards.is_empty()
         && (server_count != Some(0) || total_from_html.is_some_and(|pages| pages > 1))
     {
-        // The browser HAR shows the same search cards in an API 'content' field.
-        // Try that first-page representation before treating HTML parser drift as fatal.
+        // Before declaring parser drift, try the API's first-page card representation.
         let diagnostic = parse::search_page_diagnostics(&first.body);
         client.log_html("search_page_1_unrecognized", &first.body);
         client.log_event("SEARCH", "Attempting JSON API fallback for page 1");
@@ -1074,7 +1072,7 @@ mod tests {
 
     #[test]
     fn november_har_card_and_search_config_shapes_are_supported() {
-        // Synthetic IDs and names, exact HTML class and metadata shapes from the browser HAR.
+        // Synthetic data preserving observed HTML and metadata shapes.
         let html = r#"<div class="card-gallery-premium ladies-card top-teaser">
             <a class="card-link" data-owg-id="9988" data-ref-id="9988"
                href="/fkk-saunaclubs/test-studio"></a>

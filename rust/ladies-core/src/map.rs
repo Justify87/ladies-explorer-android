@@ -1,6 +1,4 @@
-//! Coarse, app-private map locations. Never geocode a full hidden address.
-//! Source: ZIPPOPOTAM for German postcodes, Nominatim for city fallback.
-//! Both services are contacted only after an explicit user request.
+//! Coarse German locations; never geocode a full hidden address or call providers without user initiation.
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Read;
 use std::sync::Arc;
@@ -17,8 +15,7 @@ const NEGATIVE_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 const MAX_GEOCODE_REQUESTS: u32 = 15;
 const CITY_INTERVAL: Duration = Duration::from_millis(1100);
 
-/// Held for a complete resolve operation. Retains fairness and provider pacing
-/// across user-triggered runs without adding a persistent job queue.
+/// Hold for the entire resolve operation to preserve fairness and provider pacing.
 #[derive(Default)]
 pub(crate) struct GeocodeState {
     last_city_request: Option<Instant>,
@@ -473,8 +470,7 @@ fn execute_geocoding(
         {
             obs.body = Some(body.clone());
         }
-        // The postcode endpoint defines HTTP 404 as not found; a 404 at
-        // the city-search endpoint is an HTTP failure, not an empty result.
+        // Postal 404 means not found; city-search 404 is an HTTP failure.
         if postal && status == reqwest::StatusCode::NOT_FOUND {
             return Ok(Lookup::NotFound);
         }
@@ -494,8 +490,7 @@ fn execute_geocoding(
     result
 }
 
-/// Explicit, bounded geocoding. The app-wide operation lease and city pacing
-/// prevent overlapping requests; failures rotate behind untried locations.
+/// Serialize and pace explicit geocoding; rotate failures behind untried locations.
 pub(crate) fn resolve(
     core: &LadiesCore,
     favorites_only: bool,

@@ -23,7 +23,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 
-/** Synthetic native probes. No source request, real profile, database mutation or intent. */
+/** Synthetic native UI probes; no source access or database writes. */
 class ProfileShellDeviceTest {
     @get:Rule val rule = createComposeRule()
 

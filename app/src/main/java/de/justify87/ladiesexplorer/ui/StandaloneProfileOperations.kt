@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Existing standalone IO calls, bound to CoreStore in MainViewModel. No transport or state. */
 internal class StandaloneProfileIo<C : Any>(
     val loadProfile: suspend (Long, C) -> ProfileResponse,
     val cachedProfile: suspend (Long) -> ProfileResponse?,
@@ -26,7 +25,6 @@ internal class StandaloneProfileIo<C : Any>(
     val cancelSource: (C) -> Unit,
 )
 
-/** The existing independent projection owners remain in MainViewModel/SavedSearchController. */
 internal class ProfileProjectionCallbacks(
     val epoch: () -> Long,
     val nextEpoch: () -> Long,
@@ -42,8 +40,7 @@ internal class ProfileProjectionCallbacks(
     val profileChanged: () -> Unit = {},
 )
 
-/** Standalone read/archive lifecycle and the shared, context-neutral identity operation.
- * Only detail delivery uses profileGeneration. A Swipe merge never opens a detail route. */
+/** Detail generation fences delivery; swipe merges must not open detail routes. */
 internal class StandaloneProfileOperations<C : Any>(
     private val scope: CoroutineScope,
     private val _searchUiState: MutableStateFlow<SearchUiState>,
@@ -77,8 +74,7 @@ internal class StandaloneProfileOperations<C : Any>(
         presentationVisible && profileGeneration.isCurrent(session) &&
             _searchUiState.value.profileOpen && requestedListingId == listingId
 
-    /** All detail reads, including archive completion and mutation recovery, use
-     * one delivery owner. A superseded success or failure has no UI side effect. */
+    /** Superseded detail successes and failures have no UI effect. */
     private suspend fun readDetail(
         session: Long,
         listingId: Long,
@@ -138,7 +134,7 @@ internal class StandaloneProfileOperations<C : Any>(
     }
 
     fun cancelMediaArchive() {
-        // Cancellation is a signal, not completion; the native call still owns the slot.
+        // Cancellation signals the call; it owns the slot until drain.
         archiveCall?.cancel(io.cancelArchive)
     }
 
@@ -220,8 +216,7 @@ internal class StandaloneProfileOperations<C : Any>(
                 check(archiveCall == null)
                 archiveCall = call
                 try {
-                    // Archive persistence is incremental. A failed call can have
-                    // committed media, so outcome and local projection are independent.
+                    // Archive commits incrementally; failure does not imply rollback.
                     var archiveWarning: String? = null
                     val report = try {
                         withContext(NonCancellable) {
@@ -264,7 +259,6 @@ internal class StandaloneProfileOperations<C : Any>(
                 } finally {
                     if (archiveCall === call) archiveCall = null
                     if (profileGeneration.isCurrent(requestId)) _searchUiState.update { it.copy(archiving=false) }
-                    // Even a cancelled archive may already have committed individual media.
                     try {
                         projections.profileChanged()
                         projections.savedSearch()
@@ -289,7 +283,7 @@ internal class StandaloneProfileOperations<C : Any>(
         }
     }
 
-    /** ON_STOP revokes delivery, not native execution ownership. Resume only projects locally. */
+    /** ON_STOP revokes delivery, not native ownership; resume projects locally. */
     fun setPresentationVisible(visible: Boolean) {
         if (presentationVisible == visible) return
         presentationVisible = visible
@@ -314,7 +308,6 @@ internal class StandaloneProfileOperations<C : Any>(
         }
     }
 
-    /** Mutation completion and rejection use the same local projection owner. */
     suspend fun refreshLocalProfileForOwner(personId: Long) {
         val active = _searchUiState.value
         val listingId = active.profile?.listingId ?: return
@@ -326,8 +319,7 @@ internal class StandaloneProfileOperations<C : Any>(
         readDetail(session, listingId) { local, revision -> withProjection(local, revision) }
     }
 
-    /** Recover locally first. Only an explicit retry after confirmed local absence
-     * may start a first source read; a known persisted profile never replays it. */
+    /** Recover locally; only explicit retry after confirmed absence may fetch from source. */
     fun retryProfileProjection() {
         val active = _searchUiState.value
         val listingId = active.retryProfileListingId ?: return
@@ -400,8 +392,7 @@ internal class StandaloneProfileOperations<C : Any>(
         val pendingArchive = archiveCall
         pendingSource?.cancel(io.cancelSource)
         pendingArchive?.cancel(io.cancelArchive)
-        // The mutation outlives the detail screen. Keep the shared write guard until
-        // it finishes even if Back clears the screen's own actionBusy flag.
+        // Keep the shared write guard across Back until the mutation completes.
         _discoverState.update { it.copy(busy = true, loading = false, loadingMore = false,
             savedLoadingMore = false, savedRecentLoadingMore = false, mutationError = null) }
         if (detailCurrent()) _searchUiState.update { it.copy(actionBusy = true, actionError = null) }
@@ -426,7 +417,6 @@ internal class StandaloneProfileOperations<C : Any>(
                     }
                 }
                 coroutineContext.ensureActive()
-                // A failed detail read must not suppress the independent feed projection.
                 var detailFailed = false
                 if (token is DetailIdentityToken) {
                     try {
@@ -447,8 +437,7 @@ internal class StandaloneProfileOperations<C : Any>(
                 val message = if (committed) "Zusammenführung gespeichert; Ansicht konnte nicht vollständig aktualisiert werden."
                     else failure.message ?: "Zusammenführung fehlgeschlagen"
                 if (!committed) {
-                    // A rejection can mean that the rendered evidence/owner has
-                    // changed. Reconcile independently; no write or note is replayed.
+                    // Reconcile changed owner/evidence after rejection; never replay the write.
                     projections.profileChanged()
                     if (token is DetailIdentityToken && detailCurrent()) {
                         try {
@@ -456,7 +445,7 @@ internal class StandaloneProfileOperations<C : Any>(
                         } catch (cancel: CancellationException) {
                             throw cancel
                         } catch (_: Exception) {
-                            // readDetail already revoked the stale capabilities.
+                            // readDetail already revoked stale capabilities.
                         }
                     }
                     try {
@@ -464,7 +453,7 @@ internal class StandaloneProfileOperations<C : Any>(
                     } catch (cancel: CancellationException) {
                         throw cancel
                     } catch (_: Exception) {
-                        // Independent owners retain their read error/retry state.
+                        // Projection owners handle read errors; continue reconciliation.
                     }
                     projections.savedSearch()
                     projections.map()

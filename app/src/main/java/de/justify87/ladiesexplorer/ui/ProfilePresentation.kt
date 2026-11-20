@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 /** No profile payloads or callback closures are retained through a projection gap. */
 internal data class ProfileScrollAnchor(val key: String, val offset: Int)
 
-/** Session-only presentation reference; no payload, native handle, or persisted preference. */
+/** Session-only reference; no payload, native handle or persisted preference. */
 data class SwipePresentation(
     val listingId: Long, val ownerId: Long, val snapshotId: Long, val filters: String,
     val mediaId: String?, val anchorKey: String?, val anchorOffset: Int, val sections: List<String>,
@@ -35,19 +35,16 @@ data class SwipePresentation(
         listingId == token.listingId && ownerId == token.ownerId
 }
 
-/** The flow owns actual presentation state; the deck captures it synchronously at admission. */
 internal class SwipePresentationCapture {
     var read: () -> SwipePresentation? = { null }
 }
 
-/** Pending receipt is authoritative until the entire presentation has been applied.
- * A newer live capture must not overwrite it during a projection/layout gap. */
+/** Preserve the pending receipt until applied; live captures cannot overwrite it. */
 internal fun presentationForDecision(
     pending: SwipePresentation?, captured: SwipePresentation?, card: SwipeCardToken,
 ): SwipePresentation? = pending?.takeIf { it.matches(card) } ?: captured?.takeIf { it.matches(card) }
 
-/** Coordinates existing presentation owners; no copied media, section or scroll state.
- * A composition replacement deliberately starts a pending receipt again against its own layout. */
+/** A new composition reapplies a pending receipt against its own layout. */
 internal class ProfileRestoreCoordinator {
     enum class Phase { Idle, Waiting, Restoring, Applied, Invalid }
     var phase by mutableStateOf(Phase.Idle)
@@ -109,7 +106,6 @@ internal class ProfileScrollMemory(
         private set
     private var projection: ProfileProjectionKey? = null
 
-    /** Also detects a direct revision replacement, where model never becomes null. */
     fun projectionChanged(next: ProfileProjectionKey?) {
         if (projection != null && projection != next) gap()
         projection = next
@@ -147,8 +143,7 @@ internal class ProfileScrollMemory(
     }
 }
 
-/** A replacement row may be shorter (new content, empty data, error). Its
- * previous offset must never skip into a different row. */
+/** Clamp an old offset to its replacement row so it cannot skip into another row. */
 internal fun restoredRowOffset(offset: Int, measuredSize: Int) =
     offset.coerceIn(0, (measuredSize - 1).coerceAtLeast(0))
 
@@ -158,13 +153,12 @@ internal fun rememberProfileScrollMemory(reset: Boolean): ProfileScrollMemory = 
         save = { listOf(it.anchor?.key.orEmpty(), (it.anchor?.offset ?: 0).toString()) },
         restore = {
             val anchor = it[0].takeIf(String::isNotEmpty)?.let { key -> ProfileScrollAnchor(key, it[1].toInt()) }
-            // The old LazyColumn indices and projection are not transferable to a new layout.
             ProfileScrollMemory(anchor, initialRecovery = anchor != null || reset)
         },
     ),
 ) { ProfileScrollMemory(initialRecovery = reset) }
 
-/** The actual lazy row manifest is also the anchor resolver; there is no parallel index table. */
+/** Resolve anchors against the actual lazy row manifest. */
 internal enum class ProfileRowRead { Facts, Detail, Note }
 
 internal class ProfileFlowRows(val mediaSelection: ProfileMediaSelection) {
@@ -212,8 +206,7 @@ internal fun rememberProfileMediaSelection(): ProfileMediaSelection = rememberSa
     ),
 ) { ProfileMediaSelection() }
 
-/** Owns only demand for one immutable local projection, never the draft or its write.
- * Both automatic demand and explicit retry live outside lazy items. */
+/** Demand belongs to one immutable projection; draft/write ownership is separate. */
 internal class ProfileNoteDemand(private val scope: CoroutineScope) {
     enum class Status { Idle, Loading, Settled }
     var status by mutableStateOf(Status.Idle)

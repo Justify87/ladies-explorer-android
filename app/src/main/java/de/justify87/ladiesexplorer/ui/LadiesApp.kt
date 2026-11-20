@@ -100,8 +100,7 @@ fun LadiesApp(
             }
         }
     }
-    // A swipe read can persist new snapshots. Refresh only when another projection
-    // becomes visible and the swipe actually changed data; no new source search.
+    // Refresh visible local projections after swipe persistence, without a new source search.
     val listVisible = !search.profileOpen && (route.root == RootDestination.Saved ||
         route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid)
     val mapVisible = route.mapVisible && !search.profileOpen
@@ -117,7 +116,6 @@ fun LadiesApp(
     val windowInfo = LocalWindowInfo.current
     val swipeShell = !search.profileOpen && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe
     val profileTouchEnabled = swipeShell || search.profileOpen
-    // Revoke a still-down stream on route/session replacement and focus loss.
     DisposableEffect(route, search.profileOpen, search.profileSessionId, discovery.swipeSessionId) {
         onDispose { profileTouchGate.invalidate() }
     }
@@ -154,8 +152,7 @@ fun LadiesApp(
         }
     }
 
-    // Root changes must not reload already paginated lists or discard their scroll state.
-    // Explicit refresh and data mutations remain owned by the ViewModel.
+    // Root navigation preserves pagination and scroll state.
     fun selectRoot(destination: RootDestination) {
         if (route.root == destination || saved.blockingNavigation || home.importing) return
         profileTouchGate.invalidate()
@@ -207,8 +204,7 @@ fun LadiesApp(
             BackAction.System -> Unit
         }
     }
-    // Preserve the existing Back owner. On the default swipe route Back
-    // cancels an active touch first; without one it is delegated to Android.
+    // On the default swipe route, Back cancels an active touch or delegates to Android.
     BackHandler(enabled = home.importing || savedEditorOpen || savedOverviewOpen ||
         route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System ||
         (profileTouchEnabled && profileTouchGate.active)) { back() }

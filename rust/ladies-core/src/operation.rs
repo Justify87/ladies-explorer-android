@@ -5,7 +5,6 @@ use std::sync::{
 
 use crate::CoreError;
 
-/// A small, thread-safe cancellation signal shared by HTTP searches and media work.
 #[derive(Default, uniffi::Object)]
 pub struct RequestControl {
     cancelled: AtomicBool,

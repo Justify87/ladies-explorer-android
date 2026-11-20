@@ -46,7 +46,6 @@ internal fun statusLabel(status: String?): String = when (status) {
     else -> "Status unbekannt"
 }
 
-/** The standalone preference chip toggles the same selected preference back to neutral. */
 internal fun toggledProfilePreference(current: Preference, action: Preference): Preference =
     if (current == action) Preference.NONE else action
 
@@ -78,7 +77,6 @@ internal fun openExternal(context: Context, link: String, dial: Boolean = false)
 
 private data class ImageFeedback(val loading: Boolean = false, val failed: Boolean = false, val retry: (() -> Unit)? = null)
 
-/** One image request / local fallback owner, independent of the visual chrome. */
 @Composable
 private fun ProfileImageSurface(
     url: String?, localPath: String?, modifier: Modifier, scale: ContentScale,
@@ -128,8 +126,7 @@ internal fun ProfileImage(
     }
 }
 
-/** Normal photo uses a single image surface and a disjoint chrome layout.
- * Compact gallery scrolls with ProfileFlow and does not squeeze controls into a tiny photo. */
+/** Compact gallery scrolls with the profile instead of squeezing controls into the photo. */
 @Composable
 internal fun ProfileMediaHero(
     media: List<ProfileMediaItem>,
@@ -182,8 +179,7 @@ internal fun ProfileMediaHero(
                     ContentScale.Crop, "Profilbild ${index + 1}", true, imageModifier = imageMotion) { feedback ->
                     SideEffect { onMediaSettled(!feedback.loading) }
                     BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
-                        // Full halves when a photo is available. A failed image reserves
-                        // its native retry control in the middle, just like a video.
+                        // Reserve the center for retry or video controls.
                         val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed) else 0f
                         GalleryTargets(side, hit, gestureOwner, previous, next,
                             { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
@@ -195,8 +191,6 @@ internal fun ProfileMediaHero(
                 }
                 "VIDEO" -> BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                     val side = if (galleryTaps) gallerySideFraction(maxWidth.value, true) else 0f
-                    // Player is below the native side targets, with one independent
-                    // center control. It receives only validated local files.
                     SideEffect { onMediaSettled(true) } // playback has its own stable loading surface
                     GalleryVideo(item, active = actionsEnabled && projectionAvailable,
                         mediaVisible = playbackVisible, canInteract = isCurrent,
@@ -267,8 +261,7 @@ internal fun ProfileImageDialog(item: ProfileMediaItem, onDismiss: () -> Unit) {
     }
 }
 
-/** Supplementary facts only. The name/age/place/status have exactly one presentation
- * owner (the hero or the fixed compact header). */
+/** Identity is rendered only in the hero or fixed header. */
 @Composable
 internal fun ProfileMetadata(
     profile: ProfileResponse,

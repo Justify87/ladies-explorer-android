@@ -42,8 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Push ranges may span multiple commits; ancestry needs complete history.
-          # For PRs the checked synthetic merge and its parents are sufficient.
+          # Push ancestry needs full history; PRs need only the checked merge and its parents.
           fetch-depth: ${{ github.event_name != 'push' && 2 || 0 }}
           persist-credentials: false
       - name: Verify scope policy
@@ -132,8 +131,7 @@ jobs:
           workspaces: rust -> target
           save-if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
 
-      # Run independent checks even when another check fails. No failures
-      # are ignored; the job and final gate still report failure.
+      # Independent checks still run on failure; the aggregate gate must fail.
       - name: Architecture source contracts and regression tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: |
@@ -214,8 +212,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         with:
-          # Public repository; enhanced caching evaluation. Set basic here
-          # to roll back if the provider is incompatible.
+          # Use basic caching if the enhanced provider is incompatible.
           cache-provider: enhanced
           cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
 
@@ -284,7 +281,6 @@ jobs:
           PERFORMANCE_REQUIRED: ${{ needs.scope.outputs.performance_measurement }}
         run: python3 tools/ci_reuse.py record app/build/outputs/apk/debug
 
-      # Publish the checked regular APK before optional qualifications.
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
@@ -296,7 +292,6 @@ jobs:
           retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
           overwrite: true
 
-      # Qualification runs use the same verified policy as the routine build.
       - name: Verify native task cache contract
         id: native_qualification
         if: ${{ github.event_name == 'workflow_dispatch' && needs.scope.outputs.native_qualification == 'true' }}
@@ -323,8 +318,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Keep the historical check name. A skipped dependency is not green,
-  # except for an explicitly proven docs-only PR.
+  # Preserve the required check name; only proven docs-only PRs may skip its dependency.
   build:
     name: build
     needs: [scope, core, android]

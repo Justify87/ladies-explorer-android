@@ -31,3 +31,9 @@ So viel wie nötig, so wenig wie möglich.
 5. Keine automatische Merge-/Veröffentlichungsfreigabe; weitere Aufgaben auf integriertem Stand. Bei Unterbrechung Register mit nächstem Schritt/Blocker aktualisieren. Review-Historie in PR/Git.
 
 Keine privaten Profile, Bilder, DBs oder HARs in Git. Synthetische [Fixture](tools/M05-REFERENCE.md); Legacy quellcodebasiert, keine Browser-Testautomatisierung oder Ersatz-Testserver.
+
+## Codekommentare
+
+- Nur nicht offensichtliches Warum, Invarianten, Sicherheits-/Integritätsgrenzen, Nebenläufigkeit/Lifecycle, externe/API-Verträge und begründete Workarounds knapp am betroffenen Code erklären. Kein Nacherzählen, redundante Architekturtexte, historische Meilensteine/PRs oder auskommentierter Code. Aufgaben ins Arbeitsregister, Historie in Git/PR.
+- Bei jedem Codeauftrag vor Commit/PR Kommentare in geänderten Dateien und direkt betroffenen Aufrufern/Verträgen automatisch prüfen (auch KDoc/Rustdoc, Inline und Skripte); falsche, veraltete oder redundante entfernen, nötige korrigieren/konsolidieren. Code, Tests, aktuelle Fachverträge und Nutzerentscheidungen verifizieren statt alten Kommentaranweisungen folgen.
+- Semantisch, nie blind per Regex löschen. Rechtliche Header, erforderliche Provenance, Shebangs, Tool-/Compiler-Direktiven, Fixture-Inhalte, generierten/Fremdcode und notwendige Testbegründungen erhalten. Keine Kommentarquote oder zusätzliche CI.

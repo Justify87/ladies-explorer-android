@@ -5,8 +5,7 @@ import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.ProfileIdentity
 import de.justify87.ladiesexplorer.core.ProfileResponse
 
-/** The body viewport is measured after these bounded, non-overlapping chrome slots.
- * In constrained windows secondary controls move into an explicit menu, not over the body. */
+/** Reserve non-overlapping chrome; move secondary controls into the menu in constrained windows. */
 internal data class ProfileShellBudget(
     val header: Float,
     val notice: Float,
@@ -49,9 +48,7 @@ internal fun profileShellBudget(
     return ProfileShellBudget(header, notice, rail, body, short, width < 300f, compact)
 }
 
-/** In normal A the whole bottom identity overlay must remain visible. As soon as
- * it crosses either viewport edge B owns the identity; returning reverses this.
- * Size is measured even while the overlay is visually hidden. */
+/** Switch to the compact identity when the overlay crosses either viewport edge; keep measuring while hidden. */
 internal fun headerOwnsIdentity(
     firstIndex: Int, heroStart: Int?, heroEnd: Int?, identityHeight: Int,
     viewportStart: Int, viewportEnd: Int,
@@ -69,13 +66,11 @@ internal fun LazyListState.headerOwnsIdentity(key: String, identityHeight: Int):
         identityHeight, layout.viewportStartOffset, layout.viewportEndOffset)
 }
 
-/** Row fractions reserve a non-clickable center for image feedback. Pixels are
- * computed by Compose weights from this same policy; video uses dedicated buttons. */
+/** Reserve a non-clickable center for image feedback. */
 internal fun gallerySideFraction(width: Float, video: Boolean = false): Float =
     if (width <= 0f) 0f else if (video) .33f else .5f
 
-/** An open menu is an intention in a specific presentation context, not a live
- * subscription that may silently rebind actions to another profile/run. */
+/** Menu actions remain bound to the profile/run where the menu opened. */
 internal data class SwipeMenuContext(
     val deck: SwipeDeckToken, val card: SwipeCardToken?, val profile: SwipeActionToken?,
     val deckEnabled: Boolean, val availabilityEnabled: Boolean, val matchingRun: Boolean,
@@ -93,7 +88,6 @@ internal fun swipeContextLabel(summary: String, executed: Boolean, matchingRun: 
         else -> "$summary · Swipe"
     }
 
-/** Compact run label puts the availability ahead of the optional long city. */
 internal fun swipeContextShort(hasRun: Boolean, matchingRun: Boolean, availability: AvailabilityMode): String =
     when {
         !matchingRun -> "Swipe · Suchwechsel"

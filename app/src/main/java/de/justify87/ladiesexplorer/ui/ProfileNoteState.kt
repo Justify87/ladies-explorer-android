@@ -1,6 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
-/** Immutable editor state. A refresh never silently rebases a dirty draft. */
+/** A refresh never silently rebases a dirty draft. */
 internal data class NoteDraft(
     val expected: String?,
     val text: String,
@@ -44,7 +44,6 @@ internal fun Map<Long, NoteEditorState>.updateNote(
 internal fun Map<Long, NoteEditorState>.dirtyOwners(vararg owners: Long): List<Long> =
     owners.distinct().filter { this[it]?.draft?.dirty == true }
 
-/** Only the ViewModel owns the drafts and mutations; the screens render this contract. */
 internal data class NoteEditorActions(
     val load: suspend (Long, Long) -> Unit,
     val edit: (Long, String) -> Unit,
@@ -53,7 +52,7 @@ internal data class NoteEditorActions(
     val keepDraft: (Long) -> Unit,
 )
 
-/** Every UI callback carries the owner and exact rendered context, not merely the current tab. */
+/** Callbacks carry the rendered owner and context. */
 internal fun NoteEditorActions.boundTo(
     token: ProfileIdentityToken?,
     isCurrent: (ProfileIdentityToken) -> Boolean,
@@ -69,7 +68,6 @@ internal fun NoteEditorActions.boundTo(
     )
 }
 
-/** Existing per-owner note-read tickets, shared by the editor and merge completion. */
 internal class NoteReadTickets {
     private var next = 0L
     private val tickets = mutableMapOf<Long, Long>()

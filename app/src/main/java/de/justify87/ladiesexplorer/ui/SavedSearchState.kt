@@ -44,7 +44,6 @@ internal data class SavedSearchUiState(
     }
 }
 
-// Testable IO seam; CoreStore remains the only Kotlin bridge to Rust.
 internal class SavedCheck(val run: suspend () -> Unit, val cancel: () -> Unit)
 
 internal interface SavedSearchAccess {
@@ -77,8 +76,7 @@ internal class SavedSearchStore(private val core: CoreStore) : SavedSearchAccess
     }
 }
 
-/** One main-thread operation owner for saved definitions, reads, acknowledgement and checks.
- *  Cancellation signals Rust but keeps ownership until the call has drained. */
+/** Cancellation signals Rust; operation ownership lasts until drain. */
 internal class SavedSearchController(
     private val scope: CoroutineScope,
     private val store: SavedSearchAccess,
@@ -129,7 +127,7 @@ internal class SavedSearchController(
         }
     }
 
-    /** Definition refresh also updates the badge; never materialize a hidden grid. */
+    /** Refresh badge without materializing a hidden grid. */
     fun refresh() {
         if (state.value.result != null) markResultDirty()
         if (state.value.busy) { refreshPending = true; return }
@@ -144,8 +142,7 @@ internal class SavedSearchController(
         }
     }
 
-    /** Native completions invalidate the projection even when another root is visible.
-     * Coalesce while reading and consume only when the result pane is visible. */
+    /** Coalesce invalidations until results are visible. */
     fun refreshResultProjection() {
         markResultDirty()
         refreshDirtyWindow()
@@ -264,8 +261,7 @@ internal class SavedSearchController(
         val s = state.value
         if (s.busy || !canOperate() || !visible) return
         if (s.result != null && (s.result.id != id || !s.result.ready || s.resultDirty)) return
-        // Explicit user intent is the linearization point for presentation.
-        // The native revision CAS still prevents acknowledging a newer baseline.
+        // Acknowledge explicit user intent using the rendered revision, never a newer baseline.
         val revision = if (s.result != null) s.result.revision ?: return else info.revision
         if (displayedRevision != revision) {
             mutable.update { it.copy(actionError = "Ergebnisse haben sich geändert. Bitte erneut als gelesen markieren.") }

@@ -55,7 +55,7 @@ internal fun SearchUiState.headerAvailability(): AvailabilityMode =
     response?.query?.let { availabilityMode(decodeSelectedFilters(it.filtersJson)) }
         ?: availabilityMode(selectedFilters)
 
-/** Main-thread-owned generation; invalidated before cancel or replacing a request. */
+/** Main-thread generation; invalidate before cancellation or replacement. */
 internal class RequestGeneration {
     var value: Long = 0L
         private set
@@ -80,7 +80,6 @@ internal fun SearchUiState.acceptRun(
 internal fun SearchUiState.applyDraftChange(next: SearchUiState): SearchUiState =
     next.copy(response = response, activeCards = activeCards, gridHiddenLikes = gridHiddenLikes, error = null)
 
-/** Typed presentation draft. JSON exists only when crossing the core API. */
 internal data class SearchDraft(
     val city: String = "Leipzig",
     val radiusKm: UInt = 20u,
@@ -126,7 +125,7 @@ internal data class SearchDraft(
     }
 }
 
-/** Main-thread owner: cancel invalidates delivery, not native execution. */
+/** Main-thread only; cancellation revokes delivery, not native ownership before drain. */
 internal class DrainingOperation<T> {
     private var next = 0L
     private var active: Pair<Long, T>? = null
@@ -154,11 +153,10 @@ internal class DrainingOperation<T> {
     }
 }
 
-/** Native ownership is authoritative even before/after a UI state emission. */
+/** Native ownership is authoritative independently of UI emissions. */
 internal fun canAcquireImport(search: DrainingOperation<*>, home: DrainingOperation<*>, uiBusy: Boolean) =
     !search.occupied && !home.occupied && !uiBusy
 
-/** Both render contexts carry the same native identity and evidence contract. */
 internal sealed interface ProfileIdentityToken {
     val listingId: Long
     val ownerId: Long
@@ -169,7 +167,7 @@ internal sealed interface ProfileIdentityToken {
     val candidates: List<de.justify87.ladiesexplorer.core.IdentityCandidate>
 }
 
-/** Captured from the rendered detail, never reconstructed at confirmation time. */
+/** Capture evidence from rendered detail, never at confirmation time. */
 internal data class DetailIdentityToken(
     val sessionId: Long,
     override val listingId: Long,

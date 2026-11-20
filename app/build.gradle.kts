@@ -27,9 +27,7 @@ val cargoExecutable: String = providers.environmentVariable("CARGO").orNull ?: r
 }
 
 
-// CI02: only cache task outputs in the known hosted Linux environment. Outside
-// it Cargo remains the authority (including developer toolchain overrides).
-// No ambient RUSTFLAGS, CC, wrappers, target-dir, or SDK overrides enter cached builds.
+// Cache native outputs only on verified hosted Linux; local Cargo overrides remain authoritative.
 val nativeCacheRequested = providers.gradleProperty("ladies.nativeCache").orNull == "true"
 val userHome = System.getProperty("user.home")
 val cargoHome = System.getenv("CARGO_HOME") ?: File(userHome, ".cargo").absolutePath
@@ -49,8 +47,7 @@ if (nativeCacheRequested && !nativeCacheEnabled) {
     logger.lifecycle("CI02: native task output cache disabled (unverified host or Cargo config); using Cargo directly")
 }
 
-// These values are both the actual subprocess environment and cache inputs.
-// Host paths intentionally partition caches by tool installation, not checkout.
+// Subprocess environment doubles as cache input; paths distinguish tool installations.
 val nativeEnvironment = if (nativeCacheEnabled) mapOf(
     "PATH" to requireNotNull(System.getenv("PATH")),
     "HOME" to userHome,
@@ -69,8 +66,7 @@ fun nativeToolVersion(vararg command: String): Provider<String> =
         setEnvironment(nativeEnvironment)
     }.standardOutput.asText.map { it.trim() }
 
-// Native cache identities use actual toolchain versions, not the rotating image label.
-// ImageVersion is only an eligibility check for the hosted environment.
+// Key on effective tool versions; ImageVersion only qualifies the host.
 val compilerIdentity = if (nativeCacheEnabled) {
     val versions = listOf(
         nativeToolVersion(cargoExecutable, "--version", "--verbose"),
@@ -107,8 +103,7 @@ abstract class NativeCargoTask : DefaultTask() {
     @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
     init {
-        // No stale Gradle UP-TO-DATE result when local tools/config can vary.
-        // Cargo still performs its own normal dependency/fingerprint reuse.
+        // Locally, defer incremental validity to Cargo, not Gradle's UP-TO-DATE state.
         outputs.upToDateWhen { controlled.get() }
         outputs.doNotCacheIf("Native environment is not controlled") { !controlled.get() }
     }
@@ -124,8 +119,7 @@ abstract class NativeCargoTask : DefaultTask() {
             workingDir(root)
             if (controlled.get()) {
                 setEnvironment(toolEnvironment.get())
-                // Preserve Cargo dependency reuse across image-only changes, while
-                // invalidating compiled artifacts on effective compiler/NDK changes.
+                // Reuse dependencies across image changes; partition artifacts by effective toolchain.
                 val identity = (toolIdentity.get() + "\n" + cargo.get() + "\n" +
                     extraIdentity).toByteArray(Charsets.UTF_8)
                 val digest = MessageDigest.getInstance("SHA-256")
@@ -187,8 +181,7 @@ abstract class GenerateUniffiKotlin : NativeCargoTask() {
     }
 }
 
-// Include non-Rust resources (e.g. filter_catalog.json), Cargo.lock, all
-// manifests/configs and generator inputs. Do not guess which files affect Cargo.
+// Include all Cargo/generator inputs, including embedded non-Rust resources.
 val nativeSources = fileTree(rustWorkspace) {
     exclude("target/**", ".git/**")
 }

@@ -42,7 +42,7 @@ pub struct FrequentFilter {
     pub count: u32,
 }
 
-/// Derive usage from committed search runs; never write a second usage database.
+/// Derive usage from committed runs without a separate usage store.
 pub(crate) fn frequent(core: &crate::LadiesCore) -> Result<Vec<FrequentFilter>, CoreError> {
     let db = core.connection()?;
     let mut query = db.prepare(
@@ -133,7 +133,6 @@ fn canonical_label(allowed: &BTreeMap<String, String>, slug: &str) -> Option<Str
         .map(|(label, _)| label.clone())
 }
 
-/// Resolve the same catalog option used by search, retaining all documented aliases.
 pub(crate) struct EvidenceOption {
     pub group: String,
     pub label: String,
@@ -257,7 +256,6 @@ pub(crate) fn validate_request(request: &SearchRequest) -> Result<(), CoreError>
     Ok(())
 }
 
-/// Normalize source aliases and technical filter values to the keys shown by Compose.
 pub(crate) fn canonicalize_request(mut request: SearchRequest) -> Result<SearchRequest, CoreError> {
     validate_request(&request)?;
     let catalog = catalog();

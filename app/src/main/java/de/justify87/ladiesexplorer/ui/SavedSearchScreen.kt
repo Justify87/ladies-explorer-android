@@ -117,8 +117,7 @@ internal fun SavedSearchResultsScreen(
     modifier: Modifier = Modifier,
 ) {
     val result = state.result ?: return
-    // Keep the saved scroll position intact while re-opening the previously
-    // loaded prefix. Never attach it to a temporary empty grid.
+    // Restore the saved scroll position against loaded results, not an empty grid.
     val grid = rememberLazyGridState()
     if (!result.ready || state.resultDirty) {
         Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
