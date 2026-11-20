@@ -8,7 +8,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
-class ProfileProjectionCharacterizationTest {
+class ProfileProjectionTest {
     @Test fun rejectedConditionalWriteRecoversDetailAndFeedIndependentlyWithoutReplay() = runBlocking {
         val calls = mutableListOf<String>()
         val original = IllegalStateException("CAS rejected")

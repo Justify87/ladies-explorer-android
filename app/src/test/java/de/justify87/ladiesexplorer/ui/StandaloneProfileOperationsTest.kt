@@ -68,10 +68,12 @@ class StandaloneProfileOperationsTest {
             ),
         )
         suspend fun idle() {
-            while (true) {
-                val children = scope.coroutineContext[Job]!!.children.toList()
-                if (children.isEmpty()) return
-                children.joinAll()
+            withTimeout(10_000) {
+                while (true) {
+                    val children = scope.coroutineContext[Job]!!.children.toList()
+                    if (children.isEmpty()) break
+                    children.joinAll()
+                }
             }
         }
         suspend fun openOffline() {

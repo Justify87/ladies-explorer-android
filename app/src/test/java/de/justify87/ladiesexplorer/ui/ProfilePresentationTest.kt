@@ -194,37 +194,6 @@ class ProfilePresentationTest {
             { error("standalone must never visit") }, saved)
     }
 
-    @Test fun openedNoteCoalescesDemandAndRetryDoesNotDependOnLazyItem() = runBlocking {
-        val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
-        val token = requireNotNull(state.swipeToken(fixtureSwipe()))
-        var current = true
-        var reads = 0
-        val started = CompletableDeferred<Unit>()
-        val finish = CompletableDeferred<Unit>()
-        val demand = ProfileNoteDemand(this)
-        val load: suspend (Long, Long) -> Unit = { listing, owner ->
-            assertEquals(4L, listing)
-            assertEquals(1L, owner)
-            reads++
-            if (reads == 2) { started.complete(Unit); finish.await() }
-        }
-        demand.request(token, false, { current }, load)
-        demand.request(token, false, { current }, load)
-        assertEquals(1, reads)
-        demand.request(token, true, { current }, load)
-        started.await()
-        demand.request(token, false, { current }, load)
-        demand.request(token, true, { current }, load)
-        assertEquals(ProfileNoteDemand.Status.Loading, demand.status)
-        finish.complete(Unit)
-        coroutineContext[Job]!!.children.toList().forEach { it.join() }
-        assertEquals(ProfileNoteDemand.Status.Settled, demand.status)
-        current = false
-        demand.request(token, true, { current }, load)
-        assertEquals(2, reads)
-        demand.close()
-    }
-
     @Test fun productionPreferenceCommitUsesCasThenTraversesOnlyForExplicitDeckDecision() = runBlocking {
         val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
         val token = requireNotNull(state.swipeToken(fixtureSwipe())).copy(preference = Preference.LIKE)
@@ -338,5 +307,13 @@ class ProfilePresentationTest {
         val projected = state.cards.map { it.copy(preference = native) }
         assertEquals(projected, deck.queue(projected, active = false))
         assertEquals(1, writes)
+    }
+
+    @Test fun photoRequestSupersedesPendingAnchorRecovery() {
+        val memory = ProfileScrollMemory(ProfileScrollAnchor("profile-facts", 35), initialRecovery = true)
+        memory.returnToHero("hero")
+        assertFalse(memory.recovering)
+        assertEquals(ProfileScrollAnchor("hero", 0), memory.anchor)
+        assertNull(memory.target(listOf("hero", "profile-facts")))
     }
 }

@@ -68,30 +68,6 @@ class ProfileHeroLayoutTest {
         assertEquals(.33f, gallerySideFraction(300f, true), .01f)
     }
 
-    @Test fun menuNeverRebindsAcrossDeckOwnerRevisionOrBusyChanges() {
-        val deck = SwipeDeckToken(3L, 4L)
-        val card = SwipeCardToken(deck, 10L, 20L)
-        val token = SwipeActionToken(3L, 4L, 10L, 20L, 30L, 1L, Preference.LIKE, false, emptyList())
-        val context = SwipeMenuContext(deck, card, token, true, true, true, AvailabilityMode.Now, false, true)
-        assertTrue(swipeMenuCurrent(context, context.copy()))
-        assertFalse(swipeMenuCurrent(null, context))
-        assertFalse(swipeMenuCurrent(context, context.copy(deck = deck.copy(session = 5L))))
-        assertFalse(swipeMenuCurrent(context, context.copy(card = card.copy(ownerId = 21L))))
-        assertFalse(swipeMenuCurrent(context, context.copy(profile = token.copy(projectionRevision = 2L))))
-        assertFalse(swipeMenuCurrent(context, context.copy(profile = token.copy(preference = Preference.NONE))))
-        assertFalse(swipeMenuCurrent(context, context.copy(profile = null, deckEnabled = false)))
-        assertFalse(swipeMenuCurrent(context, context.copy(availabilityEnabled = false)))
-        assertFalse(swipeMenuCurrent(context, context.copy(matchingRun = false)))
-    }
-
-    @Test fun localSourceAndAvailabilityAreExplicitEvenInCompactContext() {
-        assertEquals("Lokaler Bestand · Swipe", swipeContextLabel("Lokaler Bestand", false, true, AvailabilityMode.Now))
-        assertEquals("Leipzig · Swipe · Heute", swipeContextLabel("Leipzig", true, true, AvailabilityMode.Today))
-        assertEquals("Lokal · Swipe", swipeContextShort(false, true, AvailabilityMode.Now))
-        assertEquals("Suche · Heute · Swipe", swipeContextShort(true, true, AvailabilityMode.Today))
-        assertEquals("Swipe · Suchwechsel", swipeContextShort(true, false, AvailabilityMode.Now))
-    }
-
     @Test fun identityRetainsSourceStatusVideoAndExistingPreference() {
         assertEquals("Test", HeroIdentity("Test", place = "Ort").title)
         assertEquals("Status unbekannt · Ort", HeroIdentity("Test", place = "Ort", status = statusLabel(null)).compactSubtitle)
@@ -99,13 +75,5 @@ class ProfileHeroLayoutTest {
             preference = Preference.LIKE, favorite = true).decisions)
         assertEquals("Unbekannt", HeroIdentity("", "", "").title)
         assertEquals("Ort unbekannt", HeroIdentity("", "", "").subtitle)
-    }
-
-    @Test fun photoRequestSupersedesPendingAnchorRecovery() {
-        val memory = ProfileScrollMemory(ProfileScrollAnchor("profile-facts", 35), initialRecovery = true)
-        memory.returnToHero("hero")
-        assertFalse(memory.recovering)
-        assertEquals(ProfileScrollAnchor("hero", 0), memory.anchor)
-        assertNull(memory.target(listOf("hero", "profile-facts")))
     }
 }

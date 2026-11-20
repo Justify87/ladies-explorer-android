@@ -787,18 +787,6 @@ mod tests {
             })
         }
     }
-    #[test]
-    fn rejects_oversized_image_dimensions_before_decode() {
-        // PNG header announces 12001x1 pixels; decoding must not be attempted.
-        let mut png = std::io::Cursor::new(Vec::new());
-        image::DynamicImage::new_rgb8(1, 1)
-            .write_to(&mut png, image::ImageFormat::Png)
-            .unwrap();
-        let mut bytes = png.into_inner();
-        bytes[16..20].copy_from_slice(&12_001u32.to_be_bytes());
-        assert!(image_dhash(&bytes).is_err());
-    }
-
     fn fixture() -> (tempfile::TempDir, std::sync::Arc<LadiesCore>, i64, i64) {
         let temp = tempfile::tempdir().unwrap();
         let path = temp
@@ -1027,15 +1015,24 @@ mod tests {
     }
 
     #[test]
-    fn oversized_pixel_dimensions_are_rejected_before_decode() {
-        let mut png = Cursor::new(Vec::new());
-        image::DynamicImage::new_rgb8(8193, 1)
-            .write_to(&mut png, image::ImageFormat::Png)
-            .unwrap();
-        assert!(matches!(
-            image_dhash(&png.into_inner()),
-            Err(CoreError::Media(_))
-        ));
+    fn image_dimensions_enforce_safe_decode_budget() {
+        for (width, height) in [(8192, 1), (8193, 1), (1, 8193)] {
+            let mut png = Cursor::new(Vec::new());
+            image::DynamicImage::new_rgb8(width, height)
+                .write_to(&mut png, image::ImageFormat::Png)
+                .unwrap();
+            let result = image_dhash(&png.into_inner());
+            if width == 8192 {
+                let (_, decoded_width, decoded_height, _) = result.unwrap();
+                assert_eq!((decoded_width, decoded_height), (width, height));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(CoreError::Media(reason))
+                        if reason == "Image dimensions exceed safe decode budget"
+                ));
+            }
+        }
     }
 
     #[test]
