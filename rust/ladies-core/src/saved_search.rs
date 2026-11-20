@@ -872,10 +872,20 @@ pub(crate) fn run(
     id: String,
     control: Option<&RequestControl>,
 ) -> Result<SearchResponse, CoreError> {
+    run_with_source(core, id, control, |request| {
+        source::search(core, request, control)
+    })
+}
+
+fn run_with_source(
+    core: &LadiesCore,
+    id: String,
+    control: Option<&RequestControl>,
+    fetch: impl FnOnce(SearchRequest) -> Result<SearchResponse, CoreError>,
+) -> Result<SearchResponse, CoreError> {
     let (stored_definition, version) = definition(core, &id)?;
     let definition = decode_definition(&stored_definition)?;
-    let fetched = source::search(core, definition.query, control);
-    match fetched {
+    match fetch(definition.query) {
         Ok(mut response) => {
             if let Some(control) = control {
                 control.check()?;
@@ -1352,6 +1362,90 @@ mod tests {
             .unwrap();
         assert_eq!(count, 0);
         assert_eq!(last_run, None);
+    }
+
+    #[test]
+    fn only_complete_radius_verified_search_replaces_saved_baseline() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let id = save(&core, "Leipzig".into(), SearchRequest::for_test()).unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO saved_search_results(saved_search_id,result_key,snapshot_json,position,present,visible)
+                 VALUES (?1,'old','{}',0,1,1)",
+                [&id],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE saved_searches
+                 SET last_run_at='2000-01-01',last_attempt_at='2000-01-01',
+                     last_delta_json='{\"new\":1,\"removed\":0,\"current\":1,\"initial\":false}',
+                     unread_new_results=1,new_results_at='2000-01-01'
+                 WHERE saved_search_id=?1",
+                [&id],
+            )
+            .unwrap();
+        }
+        let incomplete_error = "Search incomplete; saved results not updated";
+        for (partial, radius_verified) in
+            [(true, true), (false, false), (true, false), (false, true)]
+        {
+            let response = run_with_source(&core, id.clone(), None, |query| {
+                Ok(SearchResponse {
+                    query,
+                    local: LocalVisibility::default(),
+                    search_run_id: 1,
+                    city: "Leipzig".into(),
+                    requested_radius_km: 20,
+                    server_count: Some(0),
+                    total_pages: 1,
+                    fetched_pages: 1,
+                    partial,
+                    radius_boundary_stopped: false,
+                    radius_verified,
+                    profiles: Vec::new(),
+                })
+            })
+            .unwrap();
+            assert_eq!(response.partial, partial);
+            assert_eq!(response.radius_verified, radius_verified);
+            let info = list(&core).unwrap().remove(0);
+            let cards = results(&core, id.clone(), 100, None).unwrap().cards;
+            let delta = info.delta.unwrap();
+            assert!(info.unread_new_results);
+            if partial || !radius_verified {
+                assert_eq!(info.last_run_at.as_deref(), Some("2000-01-01"));
+                assert_eq!(info.last_error.as_deref(), Some(incomplete_error));
+                assert_eq!(cards.len(), 1);
+                assert_eq!(cards[0].result_key, "old");
+                assert_eq!(
+                    (delta.new_count, delta.removed_count, delta.current_count),
+                    (1, 0, 1)
+                );
+            } else {
+                assert_ne!(info.last_run_at.as_deref(), Some("2000-01-01"));
+                assert!(info.last_run_at.is_some());
+                assert!(info.last_error.is_none());
+                assert!(cards.is_empty());
+                assert_eq!(
+                    (delta.new_count, delta.removed_count, delta.current_count),
+                    (0, 1, 0)
+                );
+            }
+            let db = core.connection().unwrap();
+            let (present, attempt, new_at): (bool, String, String) = db
+                .query_row(
+                    "SELECT r.present,s.last_attempt_at,s.new_results_at
+                     FROM saved_search_results r JOIN saved_searches s USING(saved_search_id)
+                     WHERE r.saved_search_id=?1 AND r.result_key='old'",
+                    [&id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .unwrap();
+            assert_eq!(present, partial || !radius_verified);
+            assert_ne!(attempt, "2000-01-01");
+            assert_eq!(new_at, "2000-01-01");
+        }
     }
 
     #[test]

@@ -10,7 +10,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from ci_scope import classify, docs_only, parse_diff, main
+from ci_scope import classify, docs_only, is_docs_only, parse_diff, main
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -326,14 +326,18 @@ class RealGitPolicyTest(unittest.TestCase):
     def test_complete_pr_diff_is_not_truncated(self):
         self.git("checkout", "-qb", "feature")
         for number in range(301):
-            self.write(f"app/src/main/java/test/File{number:03}.kt", "// synthetic\n")
+            self.write(f"docs/test/File{number:03}.md", "synthetic\n")
         self.write("rust/Cargo.lock", "# synthetic lock\n")
         self.commit("large change")
         self.write("README.md", "updated")
         self.commit("last commit docs")
         self.git("checkout", "-q", "main")
         self.git("merge", "--no-ff", "-qm", "PR merge", "feature")
-        self.assertEqual(303, len(parse_diff(self.raw_diff())))
+        changes = parse_diff(self.raw_diff())
+        self.assertEqual(303, len(changes))
+        self.assertTrue(is_docs_only(changes[:300]))
+        self.assertTrue(is_docs_only(changes[:-1]))
+        self.assertEqual(b"rust/Cargo.lock", changes[-1].path)
         self.assert_decision(self.classify_pr(),
                              "full", False, False)
 

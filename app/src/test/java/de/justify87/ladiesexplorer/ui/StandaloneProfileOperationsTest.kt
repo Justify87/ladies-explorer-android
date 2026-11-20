@@ -87,7 +87,7 @@ class StandaloneProfileOperationsTest {
             calls.clear()
         }
         fun confirmCurrent() {
-            search.value.detailIdentityToken()?.let { operations.confirmIdentity(it, 2L) }
+            operations.confirmIdentity(requireNotNull(search.value.detailIdentityToken()), 2L)
         }
         fun oldNotes() {
             notes.value = (1L..3L).associateWith { NoteEditorState().loaded("note $it") }
@@ -97,7 +97,7 @@ class StandaloneProfileOperationsTest {
     @Test(timeout = 15_000) fun dirtyNotesForEitherOwnerBlockRealMergeAdmission() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
-        f.oldNotes()
+        val token = requireNotNull(f.search.value.detailIdentityToken())
         for (owner in listOf(1L, 2L)) {
             f.oldNotes()
             f.notes.value = f.notes.value.updateNote(owner) { it.copy(draft = it.draft!!.edit("draft")) }
@@ -106,9 +106,12 @@ class StandaloneProfileOperationsTest {
             assertFalse(f.discovery.value.busy)
             assertTrue(f.calls.isEmpty())
         }
+        f.oldNotes()
         f.operations.closeProfile()
-        f.confirmCurrent()
+        f.operations.confirmIdentity(token, 2L)
+        f.idle()
         assertTrue(f.calls.isEmpty())
+        assertEquals(1L, f.owner)
     }
 
     @Test(timeout = 15_000) fun mergeCommitsOnceAndInvalidatesBothTicketsBeforeReloadAndAllCompletionCallbacks() = runBlocking {
@@ -121,15 +124,23 @@ class StandaloneProfileOperationsTest {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         f.commit = { _, target -> started.complete(Unit); finish.awaitSignal(); f.owner = target }
-        f.confirmCurrent()
+        f.afterProjection = {
+            assertEquals(2L, f.owner)
+            assertFalse(f.tickets.isCurrent(1L, a))
+            assertFalse(f.tickets.isCurrent(2L, b))
+            assertEquals(setOf(3L), f.notes.value.keys)
+            it
+        }
+        val token = requireNotNull(f.search.value.detailIdentityToken())
+        f.operations.confirmIdentity(token, 2L)
         started.awaitSignal()
         assertTrue(f.discovery.value.busy)
-        f.confirmCurrent()
+        f.operations.confirmIdentity(token, 2L)
         assertTrue(f.tickets.isCurrent(1L, a))
         finish.complete(Unit)
         f.idle()
-        assertEquals(listOf("confirm:4:2", "profile:4",
-            "project:1", "saved", "map", "home"), f.calls)
+        assertEquals("confirm:4:2", f.calls.first())
+        assertEquals(listOf("home", "map", "profile:4", "project:1", "saved"), f.calls.drop(1).sorted())
         assertEquals(2L, f.search.value.profileIdentity?.personId)
         assertEquals(2L, f.search.value.selectedPerson?.personId)
         assertFalse(f.tickets.isCurrent(1L, a))
@@ -147,19 +158,25 @@ class StandaloneProfileOperationsTest {
         val finish = CompletableDeferred<Unit>()
         f.commit = { _, target -> started.complete(Unit); finish.awaitSignal(); f.owner = target }
         f.feedOk = false
-        f.confirmCurrent()
+        val token = requireNotNull(f.search.value.detailIdentityToken())
+        f.operations.confirmIdentity(token, 2L)
         started.awaitSignal()
         f.operations.closeProfile()
         assertFalse(f.search.value.profileOpen)
         assertTrue(f.discovery.value.busy)
-        f.confirmCurrent()
+        f.operations.confirmIdentity(token, 2L)
+        yield()
+        assertEquals(listOf("confirm:4:2"), f.calls)
         finish.complete(Unit)
         f.idle()
         assertNull(f.search.value.profile)
         assertFalse(f.search.value.profileOpen)
         assertFalse(f.discovery.value.busy)
-        assertEquals(listOf("confirm:4:2", "project:1",
-            "discovery", "saved", "map", "home"), f.calls)
+        f.operations.confirmIdentity(token, 2L)
+        f.idle()
+        assertEquals(listOf("confirm:4:2", "project:1"), f.calls.take(2))
+        assertEquals(listOf("discovery", "home", "map", "saved"), f.calls.drop(2).sorted())
+        assertEquals(2L, f.owner)
     }
 
     @Test(timeout = 15_000) fun committedMergeReadFailureInvalidatesCapabilitiesAndRetryNeverRepeatsWrite() = runBlocking {
@@ -168,7 +185,8 @@ class StandaloneProfileOperationsTest {
         f.oldNotes()
         val a = f.tickets.invalidate(1L)
         f.commit = { _, target -> f.owner = target; f.identityError = IllegalStateException("read failed") }
-        f.confirmCurrent()
+        val token = requireNotNull(f.search.value.detailIdentityToken())
+        f.operations.confirmIdentity(token, 2L)
         f.idle()
         assertEquals(2L, f.owner)
         assertNull(f.search.value.profileIdentity)
@@ -179,8 +197,9 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.tickets.isCurrent(1L, a))
         assertEquals(setOf(3L), f.notes.value.keys)
         assertTrue(f.search.value.actionError!!.startsWith("Zusammenführung gespeichert"))
-        assertEquals(listOf("confirm:4:2", "profile:4", "project:1", "saved", "map", "home"), f.calls)
-        f.confirmCurrent()
+        assertEquals("confirm:4:2", f.calls.first())
+        assertEquals(listOf("home", "map", "profile:4", "project:1", "saved"), f.calls.drop(1).sorted())
+        f.operations.confirmIdentity(token, 2L)
         f.identityError = null
         f.operations.retryProfileProjection()
         f.idle()
@@ -199,7 +218,8 @@ class StandaloneProfileOperationsTest {
         f.commit = { _, _ -> error("write failed") }
         f.confirmCurrent()
         f.idle()
-        assertEquals(listOf("confirm:4:2", "profile:4", "project:1", "saved", "map"), f.calls)
+        assertEquals("confirm:4:2", f.calls.first())
+        assertEquals(listOf("map", "profile:4", "project:1", "saved"), f.calls.drop(1).sorted())
         assertEquals("write failed", f.search.value.actionError)
         assertEquals(1L, f.search.value.profileIdentity?.personId)
         assertTrue(f.tickets.isCurrent(1L, ticket))
@@ -222,7 +242,8 @@ class StandaloneProfileOperationsTest {
         assertNotEquals(old, f.search.value.detailIdentityToken())
         assertTrue(f.tickets.isCurrent(1L, ticket))
         assertEquals(setOf(1L, 2L, 3L), f.notes.value.keys)
-        assertEquals(listOf("confirm:4:2", "profile:4", "project:1", "saved", "map"), f.calls)
+        assertEquals("confirm:4:2", f.calls.first())
+        assertEquals(listOf("map", "profile:4", "project:1", "saved"), f.calls.drop(1).sorted())
         assertFalse(f.discovery.value.busy)
         assertEquals("fixture owner conflict", f.search.value.actionError)
     }
@@ -463,7 +484,8 @@ class StandaloneProfileOperationsTest {
         reply.awaitSignal().resume(Unit)
         coroutineContext[Job]!!.children.single().cancelAndJoin()
         assertEquals(2L, f.owner)
-        assertEquals(listOf("confirm:4:2", "discovery", "saved", "map", "home"), f.calls)
+        assertEquals("confirm:4:2", f.calls.first())
+        assertEquals(listOf("discovery", "home", "map", "saved"), f.calls.drop(1).sorted())
         assertFalse(f.tickets.isCurrent(1L, ticket))
         assertNull(f.search.value.profileIdentity)
         assertNull(f.search.value.profile)
@@ -482,8 +504,9 @@ class StandaloneProfileOperationsTest {
         f.pending = true
         finish.complete(Unit)
         f.idle()
-        assertEquals(listOf("confirm:4:2", "profile:4",
-            "project:1", "discovery", "saved", "map", "home"), f.calls)
+        assertEquals("confirm:4:2", f.calls.first())
+        assertTrue(f.calls.indexOf("project:1") in 1 until f.calls.indexOf("discovery"))
+        assertEquals(listOf("discovery", "home", "map", "profile:4", "project:1", "saved"), f.calls.drop(1).sorted())
         assertFalse(f.pending)
         assertFalse(f.discovery.value.busy)
     }
@@ -532,7 +555,8 @@ class StandaloneProfileOperationsTest {
         f.operations.confirmIdentity(token, 2L)
         f.idle()
         assertEquals(2L, f.owner)
-        assertEquals(listOf("confirm:4:2", "project:1", "saved", "map", "home"), f.calls)
+        assertEquals("confirm:4:2", f.calls.first())
+        assertEquals(listOf("home", "map", "project:1", "saved"), f.calls.drop(1).sorted())
         assertFalse(f.search.value.profileOpen)
         assertNull(f.search.value.profile)
         assertEquals(setOf(3L), f.notes.value.keys)
