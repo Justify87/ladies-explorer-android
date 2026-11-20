@@ -129,6 +129,10 @@ abstract class NativeCargoTask : DefaultTask() {
                     "--cfg=ladies_native_toolchain=\"" + digest + "\"",
                 ).joinToString("\u001f"))
                 environment("CARGO", cargo.get())
+                if (logger.isInfoEnabled) {
+                    logger.info("Native Cargo toolchain fingerprint for ${this@NativeCargoTask.path}: $digest")
+                    environment("CARGO_LOG", "cargo::core::compiler::fingerprint=info")
+                }
             }
             if (ndk != null) environment("ANDROID_NDK_HOME", ndk.absolutePath)
             commandLine(listOf(cargo.get()) + arguments)
