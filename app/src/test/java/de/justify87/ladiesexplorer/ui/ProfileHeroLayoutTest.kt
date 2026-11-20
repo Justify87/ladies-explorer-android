@@ -60,10 +60,12 @@ class ProfileHeroLayoutTest {
     }
 
     @Test fun mediaZonesLeaveAnIndependentCenter() {
-        val side = gallerySideFraction(320f)
+        assertEquals(.5f, gallerySideFraction(320f))
+        assertEquals(.5f, gallerySideFraction(240f))
+        val side = gallerySideFraction(320f, true)
         assertTrue(320f * side >= 48f)
-        assertTrue(320f * (1f - 2f * side) >= 160f)
-        assertEquals(0f, gallerySideFraction(300f), .01f)
+        assertTrue(320f * (1f - 2f * side) >= 48f)
+        assertEquals(.33f, gallerySideFraction(300f, true), .01f)
     }
 
     @Test fun menuNeverRebindsAcrossDeckOwnerRevisionOrBusyChanges() {

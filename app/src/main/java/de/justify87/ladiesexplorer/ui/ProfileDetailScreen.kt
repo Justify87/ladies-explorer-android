@@ -6,6 +6,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,10 +36,17 @@ internal fun ProfileDetailScreen(
     val renderedToken = state.detailIdentityToken()
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val detailListState = rememberLazyListState()
+    val heroVisible by remember(detailListState) { derivedStateOf { profileHeroVisible(detailListState, "media") } }
     var photoRequest by remember { mutableIntStateOf(0) }
     val identity = profile?.let { heroIdentity(it, state.profileIdentity, state.profileFromArchive,
         state.profileMedia.any { medium -> medium.kind == "VIDEO" } || state.profileIdentity?.hasVideo == true,
         state.selectedPerson?.preference, state.selectedPerson?.favorite) }
+    val context = LocalContext.current
+    var selectedMedia by remember(state.profileSessionId) { mutableStateOf<ProfileMediaItem?>(null) }
+    var fullImage by remember(renderedToken) { mutableStateOf<ProfileMediaItem?>(null) }
+    var galleryMenu by remember(renderedToken, selectedMedia) { mutableStateOf(false) }
+    val latestSelected by rememberUpdatedState(selectedMedia)
+    fullImage?.takeIf { !busy }?.let { ProfileImageDialog(it) { fullImage = null } }
     var info by remember(renderedToken, identity) { mutableStateOf(false) }
     if (info && identity != null) IdentityInfoDialog(identity) { info = false }
     val notices = buildList {
@@ -63,8 +72,21 @@ internal fun ProfileDetailScreen(
                 if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
                 if (presentation.photoShortcut && profile != null) IconButton(onClick = { photoRequest++ }) {
                     Icon(Icons.Default.KeyboardArrowUp, "Zum Foto")
-                } else if (identity != null) IconButton(onClick = { info = true }) {
-                    Icon(Icons.Default.Info, "Vollständige Profilinformationen")
+                }
+                if (identity != null) Box {
+                    IconButton(onClick = { galleryMenu = true }) { Icon(Icons.Default.MoreVert, "Profilaktionen") }
+                    DropdownMenu(expanded = galleryMenu, onDismissRequest = { galleryMenu = false }) {
+                        DropdownMenuItem(text = { Text("Vollständige Profilinformationen") },
+                            onClick = { galleryMenu = false; info = true })
+                        selectedMedia?.takeIf { it.kind == "IMAGE" }?.let { item ->
+                            DropdownMenuItem(text = { Text("Bild groß anzeigen") }, enabled = !busy,
+                                onClick = { galleryMenu = false; if (latestSelected == item && renderedToken?.let(isProfileCurrent) == true) fullImage = item })
+                        }
+                        state.profileIdentity?.profileUrl?.let { url ->
+                            DropdownMenuItem(text = { Text("Originalprofil öffnen") }, enabled = !busy,
+                                onClick = { galleryMenu = false; if (renderedToken?.let(isProfileCurrent) == true) openExternal(context, url) })
+                        }
+                    }
                 }
             }
         },
@@ -72,16 +94,18 @@ internal fun ProfileDetailScreen(
         ProfileFlow(state = detailListState, model = state.profileRead, filters = filters,
             token = renderedToken, actionsBusy = busy, notes = notes, noteActions = noteActions,
             isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
-            modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest) {
+            modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest,
+            onGallerySelection = { selectedMedia = it }) {
             if (profile != null) {
                 item(key = "media") {
                     ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
-                        originalUrl = state.profileIdentity?.profileUrl, selection = mediaSelection,
+                        selection = mediaSelection,
                         identity = identity, actionToken = renderedToken, actionsEnabled = !busy,
                         isCurrent = { renderedToken?.let(isProfileCurrent) == true },
                         compact = presentation.budget.compactGallery,
                         headerOwnsIdentity = presentation.identityInHeader,
-                        onIdentityMeasured = onIdentityMeasured, touchGate = touchGate)
+                        onIdentityMeasured = onIdentityMeasured, touchGate = touchGate,
+                        playbackVisible = heroVisible)
                 }
                 item(key = "identity") {
                     Text("Profilinfos", style = MaterialTheme.typography.labelMedium)

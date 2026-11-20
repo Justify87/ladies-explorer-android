@@ -29,6 +29,15 @@ class SwipeProfileReadTest {
         )
     }
 
+    @Test fun slotRolePreservesActiveFreshnessAndLocalFirstRecovery() {
+        assertEquals(SwipeReadPolicy(true, true), swipeReadPolicy(true, 3, 4, false, false))
+        assertEquals(SwipeReadPolicy(false, true), swipeReadPolicy(false, 3, 4, false, false))
+        assertEquals(SwipeReadPolicy(false, true), swipeReadPolicy(true, null, 4, false, false))
+        assertEquals(SwipeReadPolicy(false, false), swipeReadPolicy(false, null, 4, false, false))
+        assertEquals(SwipeReadPolicy(false, false), swipeReadPolicy(true, 3, 4, true, false))
+        assertEquals(SwipeReadPolicy(false, true), swipeReadPolicy(true, 3, 4, false, true))
+    }
+
     @Test fun cachedPrefetchDoesNotAccessSourceAndReadsBySnapshotAndOwner() = runBlocking {
         val f = Fixture(fixtureProfile())
         val result = readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads)
@@ -121,6 +130,13 @@ class SwipeProfileReadTest {
         val recovered = readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads)
         assertEquals(12L, recovered.profile.snapshotId)
         assertEquals(1, f.calls.count { it.startsWith("source:") })
+    }
+
+    @Test fun currentReadFailureWaitsForDemotionButSpeculativeFailureDoesNot() {
+        assertTrue(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = true))
+        assertFalse(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = false))
+        assertFalse(swipeFailureNeedsDemotion(startedCurrent = false, stillCurrent = true))
+        assertFalse(swipeFailureNeedsDemotion(startedCurrent = false, stillCurrent = false))
     }
 
     @Test fun cachedActiveRunPrefetchStillAvoidsSource() = runBlocking {

@@ -142,6 +142,54 @@ class SwipeDeckStateTest {
         session.reset()
         assertTrue(session.excludedPeople.isEmpty())
     }
+    @Test fun undoPresentationIsBoundedAndNeverFollowsChangedIdentity() {
+        val session = SwipeSession()
+        fun position(id: Long) = SwipePresentation(id, id, 9, "{}", "IMAGE:fixture", "profile-facts", 12, listOf("Services"))
+        for (id in 1L..17L) session.visit(SwipeStep(id, id, presentation = position(id)))
+        val last = requireNotNull(session.last)
+        session.undo(last)
+        assertEquals(position(17), session.restoredPresentation(card(17)))
+        assertEquals(position(17), session.restoredPresentation(card(17)))
+        assertNull(session.restoredPresentation(card(17, 99)))
+        assertNull(session.restoredPresentation(card(17)))
+        repeat(15) { session.undo(requireNotNull(session.last)) }
+        assertNull(session.last?.presentation)
+        session.reset()
+        assertNull(session.restoredPresentation(card(17)))
+    }
+
+    @Test fun restoredReceiptIsOneShotButOnlyForTheMatchingPresentation() {
+        val session = SwipeSession()
+        val position = SwipePresentation(4, 1, 9, "{}", "IMAGE:fixture", "hero", 12, emptyList())
+        session.visit(SwipeStep(4, 1, presentation = position))
+        session.undo(requireNotNull(session.last))
+        session.consumePresentation(position.copy(anchorOffset = 13))
+        assertEquals(position, session.restoredPresentation(card(4, 1)))
+        session.consumePresentation(position)
+        assertNull(session.restoredPresentation(card(4, 1)))
+        assertEquals(4L, session.queue(listOf(card(5), card(4, 1)), true).first().listingId)
+        session.visit(SwipeStep(4, 1, presentation = position))
+        session.undo(requireNotNull(session.last))
+        assertNull(session.restoredPresentation(null)) // successful empty result, no eligible profile
+        assertNull(session.restoredPresentation(card(4, 1)))
+    }
+
+    @Test fun presentationRequiresSameContextAndIndividuallyValidatesSnapshotAndFilters() {
+        val saved = SwipePresentation(4, 1, 9, "{}", "IMAGE:fixture", "hero", 8, emptyList(), runId = 3)
+        val projection = ProfileProjectionKey(4, 1, 9, 10, "{}")
+        assertTrue(saved.matches(projection, 3))
+        assertTrue(saved.matches(projection.copy(revision = 11), 3))
+        assertTrue(saved.matches(projection.copy(snapshotId = 10), 3))
+        assertEquals(ProfileScrollAnchor("hero", 0), saved.anchorFor(projection.copy(snapshotId = 10)))
+        assertFalse(saved.matches(projection.copy(ownerId = 2), 3))
+        assertFalse(saved.matches(projection.copy(listingId = 5), 3))
+        assertTrue(saved.matches(projection.copy(filters = "different"), 3))
+        assertEquals(ProfileScrollAnchor("hero", 0), saved.anchorFor(projection.copy(filters = "different")))
+        assertEquals(ProfileScrollAnchor("hero", 8), saved.anchorFor(projection))
+        assertFalse(saved.matches(projection, 4))
+        assertFalse(saved.matches(null, 3))
+    }
+
     @Test fun traversalWithoutFullProfileStillRejectsReplacedRunSessionAndOwner() {
         val state = DiscoverUiState(cards = listOf(card(4, 1)), activeRunId = 3L,
             swipeSessionId = 8L, loading = false)

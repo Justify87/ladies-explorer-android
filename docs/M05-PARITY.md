@@ -281,3 +281,13 @@ P45–P51 präzisieren und ersetzen nur entgegenstehende Präsentationsvorgaben;
 | P49 | Eine Decision Rail in A/B, Undo letzte gültige Medien-/Scrollposition, Skip/Reset/Replay, Favorit abgrenzen, erwarteter Owner/Run und eine Write-Route | P18,P20–P23,P25 | T10.1,T10.2,T10.6,T10.8: Write/Read/Undo/Navigation |
 | P50 | Scanbare kondensierte Fakten/Verfügbarkeit/Beschreibung/Dienste/Kontakt, progressive Offenlegung von Analyse/Notiz/Verlauf; vollständige bestehende Felder, keine falschen Werte; bedarfsgerechte wiederverwendbare Reads | P16,P18,P27–P32 | T10.3,T10.4,T10.7,T10.8: Sichtbarkeit, Daten-/Note-/History-/Offline-Regression |
 | P51 | Vor UI-Refactor Charakterisierung und gemeinsame Kontext-/Operations-/Projektionsverträge; native Drain, Owner/CAS, unabhängige Reprojektion, Prefetch, Rust-only HTTP unverändert; keine zweite Queue/DB/HTTP, keine Scope-Erweiterung | P03,P23,P37–P44,X01–X11 | T10.0–T10.2,T10.7–T10.9: Regression, CI, neue Gerätebelege |
+
+### Aktive Nutzerpräzisierung 20.11.2026 (nur M05.10)
+
+| Matrix | Aktualisierte Anforderung | Nachweis / Rest |
+|---|---|---|
+| P16/P47 | Keine obere Galerie-Chrome (keine Storysegmente, Zähler oder Pfeile); Bildhälften und Video-Seitenzonen nativ, Original/Fit im Profilmenü. Eingebettetes stummes libmpv-Video, autoplay/loop, mittiges Play/Pause; Archiv zuerst. | Gemeinsamer Hero, GalleryVideoDeviceTest, ProfileGestureDeviceTest; echte Geräte-/Decoder-/Touchprüfung offen |
+| P21/P22/P23/P46/P48/P49 | Fingerfolgen, Rückfedern bei Cancel, keine vorgetäuschte Mutation; stabiler Viewport, vorbereitete nächste Karte, bestätigter Exit, gemeinsame Admission und Undo. | SwipeFlight, Slot-Promotion/Policy- und Rail-/Undo-Regressionen; Frame-Timing auf Gerät offen |
+| P42/P43/P44/P51 | Quelle ausschließlich Rust einschließlich Videobytes: Host/Kinds/Size/Timeout/Cancel/HAR, keine Auto-Archivierung/SQLite-Mutation; nur lokale Dateien im Decoder, externe Referenzen/Netzwerkprotokolle gesperrt. | Rust transport test, JVM local-container test, CI HTTP check, native Gerät/HAR noch offen; Lizenz-/ABI-Prüfung vor Distribution |
+
+Die historische externe Video-Parität ist durch diese ausdrückliche Nutzerentscheidung nur im aktiven Präsentationsumfang ersetzt; alte Meilensteinabnahmen bleiben unverändert.

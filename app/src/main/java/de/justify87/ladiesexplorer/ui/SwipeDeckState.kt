@@ -10,12 +10,14 @@ internal data class SwipeStep(
     val before: Preference? = null,
     val after: Preference? = null,
     val undoable: Boolean = true,
+    val presentation: SwipePresentation? = null,
 )
 
 internal class SwipeSession {
     var replayLikes: Boolean = true
     private val history = mutableListOf<SwipeStep>()
     private var restoredListingId: Long? = null
+    private var restoredPosition: SwipePresentation? = null
     private val mergedOwners = mutableMapOf<Long, Long>()
     val last: SwipeStep? get() = history.lastOrNull()?.takeIf { it.undoable }
     private fun canonicalOwner(personId: Long): Long {
@@ -28,7 +30,8 @@ internal class SwipeSession {
     /** Merge is not a Visit. Old owner-bound undo steps may not mutate the canonical person. */
     fun reconcileMerge(source: Long, target: Long, preferredListing: Long?) {
         val affected = history.indices.filter { canonicalOwner(history[it].personId) in setOf(source, target) }
-        affected.forEach { history[it] = history[it].copy(undoable = false) }
+        affected.forEach { history[it] = history[it].copy(undoable = false, presentation = null) }
+        if (restoredPosition?.ownerId in setOf(source, target)) restoredPosition = null
         mergedOwners[source] = target
         if (preferredListing != null) restoredListingId = preferredListing
     }
@@ -37,19 +40,39 @@ internal class SwipeSession {
         // Clearing a preference is a local user-state mutation, never deck traversal.
         if (step.after == Preference.NONE) return
         history.add(step)
+        // Keep at most 16 recent presentation references; traversal/undo semantics remain intact.
+        val old = history.lastIndex - 16
+        if (old >= 0) history[old] = history[old].copy(presentation = null)
         restoredListingId = null
+        restoredPosition = null
     }
 
     fun undo(step: SwipeStep) {
         if (last != step) return
         history.removeAt(history.lastIndex)
         restoredListingId = step.listingId
+        restoredPosition = step.presentation?.takeIf { it.listingId == step.listingId && it.ownerId == step.personId }
+    }
+
+    fun restoredPresentation(card: DiscoveryCard?): SwipePresentation? {
+        val position = restoredPosition ?: return null
+        // Called only for a successful projection (including an empty result).
+        if (card == null || card.listingId != position.listingId || card.personId != position.ownerId) {
+            restoredPosition = null
+            return null
+        }
+        return position
+    }
+
+    fun consumePresentation(position: SwipePresentation) {
+        if (restoredPosition == position) restoredPosition = null
     }
 
     fun reset() {
         history.clear()
         mergedOwners.clear()
         restoredListingId = null
+        restoredPosition = null
     }
 
     fun queue(cards: List<DiscoveryCard>, active: Boolean): List<DiscoveryCard> {

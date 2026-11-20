@@ -5,6 +5,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.size.Scale
+import androidx.compose.ui.unit.IntSize
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -70,15 +73,43 @@ internal suspend fun readSwipeProfile(
     return ProfileReadModel(local, fromArchive, warning)
 }
 
+internal fun sameSwipeCard(a: DiscoveryCard?, b: DiscoveryCard?): Boolean =
+    a != null && b != null && a.listingId == b.listingId && a.personId == b.personId
+
+/** A read that both started and failed as current requires explicit retry
+ * or a real demotion/promotion cycle. A speculative failure may retry once
+ * on becoming current, but must not publish an error for a different card. */
+internal fun swipeFailureNeedsDemotion(startedCurrent: Boolean, stillCurrent: Boolean): Boolean =
+    startedCurrent && stillCurrent
+
+internal data class SwipeReadPolicy(val refresh: Boolean, val allowNetwork: Boolean)
+
+/** Current active-run freshness remains explicit. Promotion reuses its slot;
+ * local decks and speculation prefer the archived projection, never refresh
+ * cached snapshots unnecessarily. Strict recovery never accesses the source. */
+internal fun swipeReadPolicy(
+    current: Boolean, runId: Long?, listingId: Long,
+    localOnly: Boolean, preferLocal: Boolean,
+): SwipeReadPolicy {
+    require(listingId > 0)
+    return SwipeReadPolicy(
+        refresh = current && runId != null && !localOnly && !preferLocal,
+        allowNetwork = !localOnly && (current || runId != null),
+    )
+}
+
 /** Only first two images; Coil shares the app's cache/HTTP diagnostics and suspending cancellation. */
-internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?) {
-    val models = profile?.media.orEmpty().filter { it.kind == "IMAGE" }
-        .mapNotNull { mediaModels(it.localPath, it.url).firstOrNull() }.take(2)
-        .ifEmpty { mediaModels(card.localPath, card.thumbnailUrl).take(1) }
+internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
+    if (size.width <= 0 || size.height <= 0) return
+    val media = profile?.media.orEmpty().filter { it.kind == "IMAGE" }
+        .map { mediaModels(it.localPath, it.url) }.filter { it.isNotEmpty() }.take(2)
+        .ifEmpty { listOf(mediaModels(card.localPath, card.thumbnailUrl)) }
     val loader = SingletonImageLoader.get(context)
-    for (model in models) {
+    for (models in media) for (model in models) {
         currentCoroutineContext().ensureActive()
-        loader.execute(ImageRequest.Builder(context).data(model).size(512).build())
+        val result = loader.execute(ImageRequest.Builder(context).data(model)
+            .size(size.width, size.height).scale(Scale.FILL).build())
+        if (result is SuccessResult) break
     }
 }
 

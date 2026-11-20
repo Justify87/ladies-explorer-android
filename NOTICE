@@ -13,3 +13,12 @@ were adapted. No document-processing or visual assets are included.
 UniFFI is licensed MPL-2.0; JNA is available under Apache-2.0; AndroidX
 and Compose components are licensed Apache-2.0. See upstream projects for
 full third-party licensing information.
+
+Embedded video integration uses dev.jdtech.mpv:libmpv:1.0.0, MIT wrapper,
+https://github.com/jarnedemeulemeester/libmpv-android/tree/v1.0.0
+Native mpv and its bundled dependencies have independent licenses; mpv is
+GPL by default. See upstream build scripts and source for the corresponding
+native sources. This is a development integration; distribution/license
+verification of the complete native artifact is a release blocker.
+The pinned upstream FFmpeg build enables GPL and version3. Consult the
+exact native source/build manifest; wrapper MIT alone is not sufficient.

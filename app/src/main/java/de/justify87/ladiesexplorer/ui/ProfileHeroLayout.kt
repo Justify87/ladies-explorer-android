@@ -71,7 +71,8 @@ internal fun LazyListState.headerOwnsIdentity(key: String, identityHeight: Int):
 
 /** Row fractions reserve a non-clickable center for image feedback. Pixels are
  * computed by Compose weights from this same policy; video uses dedicated buttons. */
-internal fun gallerySideFraction(width: Float): Float = if (width >= 320f) .24f else 0f
+internal fun gallerySideFraction(width: Float, video: Boolean = false): Float =
+    if (width <= 0f) 0f else if (video) .33f else .5f
 
 /** An open menu is an intention in a specific presentation context, not a live
  * subscription that may silently rebind actions to another profile/run. */
@@ -79,6 +80,7 @@ internal data class SwipeMenuContext(
     val deck: SwipeDeckToken, val card: SwipeCardToken?, val profile: SwipeActionToken?,
     val deckEnabled: Boolean, val availabilityEnabled: Boolean, val matchingRun: Boolean,
     val availability: AvailabilityMode, val replay: Boolean, val canUndo: Boolean,
+    val medium: String? = null,
 )
 
 internal fun swipeMenuCurrent(opened: SwipeMenuContext?, current: SwipeMenuContext): Boolean =

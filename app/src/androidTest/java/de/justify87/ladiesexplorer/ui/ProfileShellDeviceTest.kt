@@ -17,6 +17,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
+import de.justify87.ladiesexplorer.core.Preference
 import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Rule
@@ -110,6 +111,54 @@ class ProfileShellDeviceTest {
         rule.onNodeWithText("A").assertExists()
     }
 
+    @Test fun actualDecisionRailUsesSameControlsBeforeAndAfterScrollAndAllowsUndoWhenEmpty() {
+        lateinit var jump: () -> Unit
+        lateinit var clear: () -> Unit
+        val actions = mutableListOf<String>()
+        rule.setContent {
+            MaterialTheme {
+                val list = rememberLazyListState()
+                val scope = rememberCoroutineScope()
+                var empty by remember { mutableStateOf(false) }
+                clear = { empty = true }
+                jump = { scope.launch { list.scrollToItem(1) } }
+                val deck = SwipeDeckToken(null, 1)
+                val context = SwipeMenuContext(deck, if (empty) null else SwipeCardToken(deck, 4, 1),
+                    if (empty) null else SwipeActionToken(null, 1, 4, 1, 11, 1,
+                        Preference.NONE, false, emptyList()),
+                    true, true, true, AvailabilityMode.All, true, true)
+                ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero", hasRail = true,
+                    notices = emptyList(), noticeOwner = context,
+                    header = { presentation, _, _ -> Text(if (presentation.identityInHeader) "B" else "A") },
+                    rail = { SwipeDecisionControls(context, if (empty) null else "Fixture",
+                        { actions.add("undo") }, { actions.add("skip") }, { actions.add(it.name) }) },
+                ) { presentation, measured ->
+                    LazyColumn(Modifier.fillMaxSize(), state = list) {
+                        item(key = "hero") {
+                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight)) {
+                                Box(Modifier.align(Alignment.BottomCenter).height(80.dp).fillMaxWidth()
+                                    .onSizeChanged { measured(it.height) })
+                            }
+                        }
+                        items(20) { Text("Detail $it", Modifier.height(48.dp)) }
+                    }
+                }
+            }
+        }
+        rule.onNodeWithText("A").assertExists()
+        rule.onNode(hasText("Gefällt") or hasContentDescription("Gefällt")).performClick()
+        rule.runOnIdle { jump() }
+        rule.onNodeWithText("B").assertExists()
+        rule.onNode(hasText("Nein") or hasContentDescription("Nein")).performClick()
+        rule.onNode(hasText("Später") or hasContentDescription("Später")).performClick()
+        rule.runOnIdle { clear() }
+        rule.onNode(hasText("Nein") or hasContentDescription("Nein")).assertIsNotEnabled()
+        rule.onNode(hasText("Später") or hasContentDescription("Später")).assertIsNotEnabled()
+        rule.onNode(hasText("Gefällt") or hasContentDescription("Gefällt")).assertIsNotEnabled()
+        rule.onNode(hasText("Undo") or hasContentDescription("Undo")).performClick()
+        rule.runOnIdle { assertEquals(listOf("LIKE", "DISLIKE", "skip", "undo"), actions) }
+    }
+
     @Test fun imageTapZoneAndVideoActionAreSeparateNativeTargets() {
         rule.setContent {
             MaterialTheme {
@@ -118,7 +167,7 @@ class ProfileShellDeviceTest {
                     ProfileMediaHero(
                         media = listOf(ProfileMediaItem("IMAGE", "", null, 0u),
                             ProfileMediaItem("VIDEO", "https://example.invalid/video", null, 1u)),
-                        height = 420.dp, originalUrl = null, actionsEnabled = false,
+                        height = 420.dp, actionsEnabled = false,
                         isCurrent = { false }, selection = selection, identity = HeroIdentity("Fixture", place = "Ort"),
                         actionToken = null, compact = false, headerOwnsIdentity = false, onIdentityMeasured = {},
                     )
@@ -129,7 +178,7 @@ class ProfileShellDeviceTest {
         val feedback = rule.onNodeWithText("Kein Bild verfügbar").fetchSemanticsNode().boundsInRoot
         assertTrue(next.left >= feedback.right - 1f)
         rule.onNodeWithContentDescription("Nächstes Medium").performClick()
-        rule.onNodeWithText("Video extern öffnen").assertExists().assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Video abspielen").assertExists().assertIsNotEnabled()
         rule.onNodeWithContentDescription("Vorheriges Medium").performClick()
         rule.onNodeWithText("Kein Bild verfügbar").assertExists()
     }

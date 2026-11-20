@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 internal enum class ProfileSection(val label: String) {
     Description("Beschreibung"), Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), History("Verlauf / verknüpfte Anzeigen")
@@ -32,6 +33,9 @@ internal enum class ProfileSection(val label: String) {
 internal class ProfileSections(initial: List<String> = emptyList()) {
     var entries by mutableStateOf(initial.distinct())
         private set
+    fun restore(values: List<String>) {
+        entries = values.distinct().filter { name -> name == "history-description" || ProfileSection.entries.any { it.name == name } }
+    }
     fun expanded(section: ProfileSection) = section.name in entries
     fun toggle(section: ProfileSection) {
         entries = if (expanded(section)) entries - section.name else entries + section.name
@@ -66,23 +70,48 @@ internal fun ProfileFlow(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     paddedDetails: Boolean = false,
     photoRequest: Int = 0,
+    swipeRestore: SwipePresentation? = null,
+    swipeRunId: Long? = null,
+    swipeCapture: SwipePresentationCapture? = null,
+    onSwipeRestoreConsumed: (SwipePresentation) -> Unit = {},
+    panelReads: ProfilePanelReads? = null,
+    onGallerySelection: (ProfileMediaItem?) -> Unit = {},
+    userScrollEnabled: Boolean = true,
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
     var lastOwner by rememberSaveable { mutableStateOf<Long?>(null) }
     val ownerChanged = owner != null && lastOwner != null && owner != lastOwner
     val presentationOwner = owner ?: lastOwner
-    val sections = key(presentationOwner) { rememberProfileSections() }
-    val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
-    val scroll = key(presentationOwner) { rememberProfileScrollMemory(ownerChanged) }
     val projection = model?.let {
         ProfileProjectionKey(it.profile.listingId, it.identity.personId, it.profile.snapshotId, it.revision, filters)
     }
+    val sections = key(presentationOwner) { rememberProfileSections() }
+    val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
+    val scroll = key(presentationOwner) { rememberProfileScrollMemory(ownerChanged) }
+    val restore = remember(presentationOwner) { ProfileRestoreCoordinator() }
+    val selectedMedium = model?.media?.let { it.getOrNull(mediaSelection.resolve(it, true)) }
+    SideEffect { onGallerySelection(selectedMedium) }
+    DisposableEffect(swipeCapture) { onDispose { swipeCapture?.read = { null } } }
+    SideEffect {
+        swipeCapture?.read = {
+            projection?.let { current ->
+                val item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == state.firstVisibleItemIndex }
+                val anchor = if (scroll.recovering) scroll.anchor else (item?.key as? String)?.let {
+                    ProfileScrollAnchor(it, state.firstVisibleItemScrollOffset)
+                } ?: scroll.anchor
+                SwipePresentation(current.listingId, current.ownerId, current.snapshotId, current.filters,
+                    mediaSelection.id, anchor?.key, anchor?.offset ?: 0, sections.entries.toList(), swipeRunId,
+                    mediaSelection.index)
+            }
+        }
+    }
     SideEffect {
         scroll.projectionChanged(projection)
+        restore.synchronize(swipeRestore, projection, swipeRunId, mediaSelection, sections, scroll)
         if (owner != null) lastOwner = owner
     }
-    val panels = rememberProfilePanels(model, filters, state)
+    val panels = rememberProfilePanels(model, filters, panelReads)
     val busy = actionsBusy || token == null
     val boundNotes = noteActions.boundTo(token, isProfileCurrent)
     val scope = rememberCoroutineScope()
@@ -121,36 +150,68 @@ internal fun ProfileFlow(
     // Restoring an anchor is itself demand. Avoid restoring an offset into a
     // temporarily short loading row or treating a not-yet-loaded listing as absent.
     val recovering = scroll.recovering
-    LaunchedEffect(panels, scroll, available, recovering) {
-        if (available && recovering) {
-            if (scroll.needsFacts()) panels.loadFacts(checkNotNull(model).profile.snapshotId, filters)
-            if (scroll.needsDetail()) panels.loadDetail()
+    val phase = restore.phase
+    val canRestore = restore.canRestore(swipeRestore)
+    val terminal = restore.terminal(swipeRestore)
+    val consume by rememberUpdatedState(onSwipeRestoreConsumed)
+    LaunchedEffect(swipeRestore, terminal, busy, token) {
+        if (swipeRestore != null && terminal && !busy && current()) consume(swipeRestore)
+    }
+    // The same real row manifest declares both viewport and recovery demand.
+    val dependency = if (canRestore) scroll.dependency(rows) else null
+    val latestRows by rememberUpdatedState(rows)
+    val anchorRead by rememberUpdatedState(dependency)
+    LaunchedEffect(panels, state) {
+        if (model == null) return@LaunchedEffect
+        snapshotFlow {
+            val visible = state.layoutInfo.visibleItemsInfo.map { it.key }.toSet()
+            visibleProfileReads(latestRows, visible) + listOfNotNull(anchorRead)
+        }.collect { reads ->
+            // A demand survives scrolling or a changing row manifest; panels coalesce
+            // it and the immutable projection owns cancellation.
+            if (ProfileRowRead.Facts in reads) launch { panels.loadFacts(model.profile.snapshotId, filters) }
+            if (ProfileRowRead.Detail in reads) launch { panels.loadDetail() }
+            // Notes already use the expanded section and admitted token.
         }
     }
-    val waitingForAnchor = scroll.needsFacts() && panels.facts == null && panels.factsError == null ||
-        scroll.needsDetail() && panels.detail == null && panels.detailError == null
-    // One scroll-command coroutine owns both explicit photo jumps and anchor
-    // recovery. A new jump cancels the previous recovery before it can scroll.
-    LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor, photoRequest) {
+    val noteState = owner?.let(notes::get) ?: NoteEditorState()
+    val waitingForAnchor = when (dependency) {
+        ProfileRowRead.Facts -> panels.facts == null && panels.factsError == null
+        ProfileRowRead.Detail -> panels.detail == null && panels.detailError == null
+        ProfileRowRead.Note -> noteDemand.status != ProfileNoteDemand.Status.Settled || noteState.loading
+        null -> false
+    }
+    val readFailed = when (dependency) {
+        ProfileRowRead.Facts -> panels.factsError != null
+        ProfileRowRead.Detail -> panels.detailError != null
+        ProfileRowRead.Note -> noteState.readError
+        null -> false
+    }
+    // A single coroutine processes the actual anchor or explicit photo jump.
+    LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor, readFailed,
+        photoRequest, swipeRestore, phase, canRestore) {
+        if (!available || (!canRestore && !terminal)) return@LaunchedEffect
         if (appliedPhotoRequest != photoRequest && keys.isNotEmpty()) {
             snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
-            scroll.returnToHero(keys.first())
             state.scrollToItem(0)
+            scroll.returnToHero(keys.first())
+            restore.complete(swipeRestore)
             appliedPhotoRequest = photoRequest
         }
-        if (!available || waitingForAnchor) return@LaunchedEffect
-        // Wait for the current manifest to be measured, never resolve against the gap's rows.
+        if (waitingForAnchor) return@LaunchedEffect
         snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
-        val readFailed = scroll.needsFacts() && panels.factsError != null ||
-            scroll.needsDetail() && panels.detailError != null
         scroll.target(keys, readFailed)?.let { (index, offset) ->
             state.scrollToItem(index)
-            if (offset > 0) {
-                val measured = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == keys[index] }?.size ?: 0
-                val safeOffset = restoredRowOffset(offset, measured)
-                if (safeOffset > 0) state.scrollToItem(index, safeOffset)
-            }
+            val measured = snapshotFlow {
+                state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == keys[index] }?.size
+            }.first { it != null } ?: 0
+            val safeOffset = restoredRowOffset(offset, measured)
+            if (safeOffset > 0) state.scrollToItem(index, safeOffset)
             scroll.restored()
+            state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == state.firstVisibleItemIndex }?.let { item ->
+                (item.key as? String)?.let { scroll.observe(it, state.firstVisibleItemScrollOffset) }
+            }
+            restore.complete(swipeRestore)
         }
         snapshotFlow {
             val index = state.firstVisibleItemIndex
@@ -161,6 +222,7 @@ internal fun ProfileFlow(
         }
     }
     LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
+        userScrollEnabled = userScrollEnabled,
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(rows, key = { it.key }) { row ->
             if (paddedDetails && row.key != "hero" && row.key != "media") {
@@ -392,7 +454,7 @@ private fun ProfileFlowRows.profileContent(
     isCurrent: () -> Boolean,
     onConfirm: (Long) -> Unit,
 ) {
-    item(key = "profile-facts") {
+    item(key = "profile-facts", read = ProfileRowRead.Facts) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ProfileGroup("Übersicht") {
                 FactsContent(panels) { facts ->
@@ -405,7 +467,7 @@ private fun ProfileFlowRows.profileContent(
         }
     }
     if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile, sections) }
-    item(key = "profile-services") {
+    item(key = "profile-services", read = ProfileRowRead.Facts) {
         ProfileGroup("Dienste und Filterbelege") {
             FactsContent(panels) { facts ->
                 val all = facts.serviceRows()
@@ -434,7 +496,7 @@ private fun ProfileFlowRows.profileContent(
     }
     item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections) }
     if (sections.expanded(ProfileSection.Analysis)) {
-        item(key = "profile-analysis") {
+        item(key = "profile-analysis", read = ProfileRowRead.Detail) {
             ProfileGroup("Gespeicherte Evidenz") {
                 val data = panels.detail
                 FieldGrid(listOf("Bilder im aktuellen Profil" to media.count { it.kind == "IMAGE" }.toString()) +
@@ -462,18 +524,18 @@ private fun ProfileFlowRows.profileContent(
             }
         }
     }
-    item(key = "notes-toggle") {
+    item(key = "notes-toggle", read = ProfileRowRead.Note.takeIf { sections.expanded(ProfileSection.Notes) }) {
         SectionToggle(ProfileSection.Notes, sections, noteSectionHint(note),
             hintError = note.error != null || note.draft?.conflict == true)
     }
-    if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes") {
+    if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes", read = ProfileRowRead.Note) {
         NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy, noteDemand, onRetryNote)
     }
     item(key = "history-toggle") { SectionToggle(ProfileSection.History, sections) }
     if (sections.expanded(ProfileSection.History)) {
         val visibleEvents = if (sections.showDescriptionChanges) history
             else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }
-        item(key = "profile-history-head") {
+        item(key = "profile-history-head", read = ProfileRowRead.Detail) {
             Text("Profilverlauf", style = MaterialTheme.typography.titleMedium)
             Text("Bis zu 100 zuletzt gespeicherte Änderungen.", style = MaterialTheme.typography.bodySmall)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -483,7 +545,7 @@ private fun ProfileFlowRows.profileContent(
             if (panels.detail == null) DetailStatus(panels)
             if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
         }
-        items(visibleEvents, key = { "event/${it.changeEventId}" }) { event ->
+        items(visibleEvents, key = { "event/${it.changeEventId}" }, read = ProfileRowRead.Detail) { event ->
             ProfileGroup(historyEventLabel(event.eventType, event.fieldKey)) {
                 Text(historyDate(event.createdAt), style = MaterialTheme.typography.bodySmall)
                 val listing = panels.detail?.listings?.firstOrNull { it.listingId == event.listingId }
@@ -496,11 +558,11 @@ private fun ProfileFlowRows.profileContent(
                     enabled = !actionsBusy) { Text("Snapshots vergleichen") }
             }
         }
-        item(key = "profile-listings-head") {
+        item(key = "profile-listings-head", read = ProfileRowRead.Detail) {
             Text("Verknüpfte Anzeigen", style = MaterialTheme.typography.titleMedium)
             if (panels.detail == null) DetailStatus(panels)
         }
-        items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }) { listing ->
+        items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }, read = ProfileRowRead.Detail) { listing ->
             val context = LocalContext.current
             ProfileGroup("Anzeige #${listing.externalId}") {
                 Text(statusLabel(listing.status))
