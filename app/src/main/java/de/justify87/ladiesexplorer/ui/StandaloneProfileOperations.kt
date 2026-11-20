@@ -445,6 +445,7 @@ internal class StandaloneProfileOperations<C : Any>(
                         } catch (cancel: CancellationException) {
                             throw cancel
                         } catch (_: Exception) {
+                            // readDetail already revoked stale capabilities.
                         }
                     }
                     try {
@@ -452,6 +453,7 @@ internal class StandaloneProfileOperations<C : Any>(
                     } catch (cancel: CancellationException) {
                         throw cancel
                     } catch (_: Exception) {
+                        // Projection owners handle read errors; continue reconciliation.
                     }
                     projections.savedSearch()
                     projections.map()

@@ -124,7 +124,7 @@ internal class DiscoveryProjectionPublisher(
         if (projection.runId == null) onLocalWindow(projection.page.cards.size)
         _searchUiState.update { it.copy(activeCards = projection.visible) }
         val next = swipeSession.queue(projection.page.cards, active = projection.runId != null)
-        // Consume the receipt only after a successful read, outside the retryable StateFlow update.
+        // Validate or discard the receipt after a successful read, outside the retryable StateFlow update.
         val restore = swipeSession.restoredPresentation(next.firstOrNull())
         _discoverState.update {
             val mergeNotice = it.pendingMergeListingId?.let { listing ->

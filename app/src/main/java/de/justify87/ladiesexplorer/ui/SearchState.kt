@@ -125,7 +125,7 @@ internal data class SearchDraft(
     }
 }
 
-/** Cancel revokes delivery, not native execution. */
+/** Main-thread only; cancellation revokes delivery, not native ownership before drain. */
 internal class DrainingOperation<T> {
     private var next = 0L
     private var active: Pair<Long, T>? = null

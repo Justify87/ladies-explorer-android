@@ -191,7 +191,6 @@ internal fun ProfileMediaHero(
                 }
                 "VIDEO" -> BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                     val side = if (galleryTaps) gallerySideFraction(maxWidth.value, true) else 0f
-                    // Player receives only validated local files.
                     SideEffect { onMediaSettled(true) } // playback has its own stable loading surface
                     GalleryVideo(item, active = actionsEnabled && projectionAvailable,
                         mediaVisible = playbackVisible, canInteract = isCurrent,

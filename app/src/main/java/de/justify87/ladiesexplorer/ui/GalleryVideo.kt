@@ -30,7 +30,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** Allow only local MP4/WebM playback; no URLs, playlists or other schemes. */
+/** Recognize only MP4/EBML headers and select the corresponding demuxer. */
 internal fun videoDemuxer(header: ByteArray): String? = when {
     header.size >= 8 && header.copyOfRange(4, 8).contentEquals(byteArrayOf(102, 116, 121, 112)) -> "mov"
     header.size >= 4 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x1a, 0x45, 0xdf.toByte(), 0xa3.toByte())) -> "matroska"
@@ -212,7 +212,7 @@ private class MpvSurfaceOwner(
             player.setPropertyString("force-window", "yes")
             player.setPropertyString("android-surface-size", "${width}x$height")
             player.setPropertyBoolean("pause", desiredPause)
-            // Never pass a source URL to libmpv.
+            // Pass only a validated local path to libmpv; Rust owns source HTTP.
             player.command(arrayOf("loadfile", source.file.absolutePath, "replace"))
         } catch (_: Exception) {
             onFailure()

@@ -145,7 +145,7 @@ internal fun ProfileFlow(
     val keys = rows.map { it.key }
     val available = model != null
     var appliedPhotoRequest by remember { mutableIntStateOf(photoRequest) }
-    // Wait for the target row before restoring its offset.
+    // Anchor restoration triggers demand; wait for data before applying the offset.
     val recovering = scroll.recovering
     val phase = restore.phase
     val canRestore = restore.canRestore(swipeRestore)
