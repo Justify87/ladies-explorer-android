@@ -10,10 +10,10 @@ mod media;
 mod media_url;
 mod operation;
 mod profile_detail;
-mod saved_search;
-mod schema;
 #[cfg(test)]
 mod reference_fixture;
+mod saved_search;
+mod schema;
 mod source;
 
 use std::sync::{Arc, Mutex, MutexGuard};

@@ -37,7 +37,7 @@ cargo install cargo-ndk --version 4.1.2 --locked
 
 ## Prüfung / CI
 
-Der [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft bei PRs, Pushes auf main und manuellen Starts. **Core and contracts** und **Android integration** prüfen unabhängig Rust fmt/test/clippy, Quellen- und APK-Architekturverträge, Export-/Import-Fixtures, ARM64-Rust/UniFFI, Debug- und Instrumentierungstest-APK, JVM-Tests und Lint. Gradle führt die Aufgaben gemeinsam mit `--continue` aus. Cargo.lock ist maßgeblich. Instrumentierungstests werden gebaut, nicht automatisch auf einem Gerät ausgeführt.
+Der [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft bei PRs, Pushes auf main und manuellen Starts. **Core and contracts** und **Android integration** prüfen unabhängig Rust fmt/test/clippy, Quellen- und APK-Architekturverträge, native synthetische Fixtures, ARM64-Rust/UniFFI, Debug- und Instrumentierungstest-APK, JVM-Tests und Lint. Gradle führt die Aufgaben gemeinsam mit `--continue` aus. Cargo.lock ist maßgeblich. Instrumentierungstests werden gebaut, nicht automatisch auf einem Gerät ausgeführt.
 
 ### CI-Ausführungsmodi
 

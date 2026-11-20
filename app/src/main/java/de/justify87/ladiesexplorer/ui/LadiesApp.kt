@@ -586,6 +586,5 @@ private fun SettingsScreen(
             modifier=Modifier.fillMaxWidth()) {
             Text("Aufzeichnung löschen")
         }
-
     }
 }

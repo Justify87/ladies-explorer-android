@@ -345,6 +345,4 @@ internal class SavedSearchController(
         mutable.update { it.copy(operation = SavedOperation.Cancelling) }
         control?.cancel?.invoke()
     }
-
-
 }

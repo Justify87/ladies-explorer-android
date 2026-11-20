@@ -48,7 +48,9 @@ fn m05_native_reference_fixture() {
         ("search_runs", 3),
     ] {
         let actual: i64 = db
-            .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+            .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(actual, expected, "{table}");
     }
@@ -64,5 +66,10 @@ fn m05_native_reference_fixture() {
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .unwrap();
     assert_eq!(integrity, "ok");
-    assert!(!db.prepare("PRAGMA foreign_key_check").unwrap().exists([]).unwrap());
+    assert!(
+        !db.prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .exists([])
+            .unwrap()
+    );
 }
