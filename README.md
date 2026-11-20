@@ -39,8 +39,6 @@ cargo install cargo-ndk --version 4.1.2 --locked
 
 Der [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft bei PRs, Pushes auf main und manuellen Starts. **Core and contracts** und **Android integration** prüfen unabhängig Rust fmt/test/clippy, Quellen- und APK-Architekturverträge, Export-/Import-Fixtures, ARM64-Rust/UniFFI, Debug- und Instrumentierungstest-APK, JVM-Tests und Lint. Gradle führt die Aufgaben gemeinsam mit `--continue` aus. Cargo.lock ist maßgeblich. Instrumentierungstests werden gebaut, nicht automatisch auf einem Gerät ausgeführt.
 
-### Ausführung und Artefakte
-
 ### CI-Ausführungsmodi
 
 | Modus | Bedingung | Erwartetes Verhalten |
@@ -77,14 +75,24 @@ Optionale Diagnosewerkzeuge, ausschließlich explizit manuell (beide Inputs stan
 
 ### Lokale Prüfungen
 
-Wesentliche lokale Prüfungen:
+**CI-Scope, Architektur und noch vorhandener Legacy-Exportpfad:**
 
 ```sh
 bash -n tools/export-legacy.sh
-(cd rust && cargo fmt --all -- --check && cargo test --workspace --locked && cargo clippy --workspace --all-targets --locked)
 python3 -m unittest discover -s tools -p test_ci_scope.py
 python3 -m unittest discover -s tools -p test_check_architecture.py
 python3 tools/check_architecture.py
+```
+
+**Rust-Formatierung, Tests und Lint:**
+
+```sh
+(cd rust && cargo fmt --all -- --check && cargo test --workspace --locked && cargo clippy --workspace --all-targets --locked)
+```
+
+**Android-Build, Test-APKs, JVM-Tests und Lint:**
+
+```sh
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace --continue --profile
 ```
 
