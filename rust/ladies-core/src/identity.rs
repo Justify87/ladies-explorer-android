@@ -704,9 +704,16 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let source = core.create_person(Some("From".into())).unwrap();
         let target = core.create_person(Some("To".into())).unwrap();
-        let sid = core
-            .add_source_profile(source, "LADIES".into(), "src".into())
+        let sid = {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO source_profiles (person_id, source, external_profile_id)
+                 VALUES (?1,'LADIES','src')",
+                [source],
+            )
             .unwrap();
+            db.last_insert_rowid()
+        };
         let listing = core
             .add_listing(source, Some(sid), "LADIES".into(), "1".into(), None)
             .unwrap();
@@ -747,21 +754,28 @@ mod tests {
             .unwrap();
         assert_eq!(core.status().unwrap().person_count, 1);
         assert!(core.get_person(target).unwrap().unwrap().favorite);
-        let saved = crate::discovery::saved_people(
-            &core,
-            crate::SavedPersonKind::Favorite,
-            crate::SavedPersonSort::Date,
-            crate::SavedPersonSection::All,
-            50,
-            None,
-            None,
-        )
-        .unwrap();
-        assert_eq!(saved.total, 1);
-        assert_eq!(saved.rows[0].person_id, target);
-        assert_eq!(saved.rows[0].listing_count, 2);
+        let saved = core
+            .saved_people_window(
+                crate::SavedPersonKind::Favorite,
+                crate::SavedPersonSort::Date,
+                50,
+                50,
+            )
+            .unwrap();
+        assert_eq!(saved.regular.total, 1);
+        let recent = saved.recent.unwrap();
+        let rows = saved
+            .regular
+            .rows
+            .iter()
+            .chain(&recent.rows)
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), 1);
+        let row = rows[0];
+        assert_eq!(row.person_id, target);
+        assert_eq!(row.listing_count, 2);
         assert_eq!(
-            saved.rows[0].latest_change_type.as_deref(),
+            row.latest_change_type.as_deref(),
             Some("NEW_LISTING_FOR_PERSON")
         );
         assert_eq!(

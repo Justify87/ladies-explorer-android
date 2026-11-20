@@ -98,7 +98,8 @@ fn update(
     name: String,
     request: SearchRequest,
 ) -> Result<(), CoreError> {
-    update_with_local(core, id, name, request, None)
+    let local = load_definition(core, id.clone())?.local;
+    update_with_local(core, id, name, request, local)
 }
 
 pub(crate) fn update_with_local(
@@ -106,11 +107,9 @@ pub(crate) fn update_with_local(
     id: String,
     name: String,
     request: SearchRequest,
-    local: Option<LocalVisibility>,
+    local: LocalVisibility,
 ) -> Result<(), CoreError> {
-    if let Some(ref rules) = local {
-        validate_local(rules)?;
-    }
+    validate_local(&local)?;
     let request = source::filter::canonicalize_request(request)?;
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {
@@ -130,10 +129,9 @@ pub(crate) fn update_with_local(
         .ok_or_else(|| CoreError::InvalidInput("Saved search not found".into()))?;
     // Filter changes invalidate the old result baseline, but renaming never does.
     let previous = decode_definition(&previous)?;
-    // Imported local filters belong to the saved definition and survive source edits.
     let next = SavedSearchDefinition {
         query: request,
-        local: local.unwrap_or_else(|| previous.local.clone()),
+        local,
     };
     let changed = previous != next;
     let definition = encode_definition(&next)?;
@@ -1151,7 +1149,7 @@ mod tests {
             id.clone(),
             "Renamed".into(),
             query.clone(),
-            Some(rules.clone()),
+            rules.clone(),
         )
         .unwrap();
         let (_, renamed) = definition(&core, &id).unwrap();
@@ -1165,7 +1163,7 @@ mod tests {
             id.clone(),
             "Renamed".into(),
             query,
-            Some(changed.clone()),
+            changed.clone(),
         )
         .unwrap();
         assert_eq!(load_definition(&core, id.clone()).unwrap().local, changed);

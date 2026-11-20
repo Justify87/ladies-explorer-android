@@ -454,7 +454,7 @@ pub(crate) fn saved_window(
 }
 
 #[cfg(test)]
-pub(crate) fn saved_people(
+fn saved_people(
     core: &LadiesCore,
     kind: SavedPersonKind,
     sort: SavedPersonSort,
