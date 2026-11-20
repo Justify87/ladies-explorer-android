@@ -8,6 +8,20 @@ Lokales Android-Hobbyprojekt. KISS, evidenzbasiert, ursächliche Änderungen sta
 - [Architektur](docs/ARCHITECTURE.md), [Quelle](docs/SOURCE.md), [UI-Vertrag](docs/M05-PLAN.md), [Anforderungsinventar](docs/M05-PARITY.md); [Import](docs/DATA-IMPORT.md), [Karte](docs/MAP.md), [Diagnose](docs/DIAGNOSTICS.md), [Provenance](docs/PROVENANCE.md) bei Bedarf. [README](README.md#prüfung--ci) für Build/Testbefehle.
 - Fachverträge erhalten, historische Legacy-Gestaltung nicht gegen neuere Nutzerentscheidungen durchsetzen. Keine alten erledigten Aufgaben erneut öffnen oder Scope eigenmächtig erweitern.
 
+## Architekturvertrag
+
+`docs/ARCHITECTURE.md` beschreibt ausschließlich die gegenwärtige, gültige Systemarchitektur. Vor architekturrelevanten Arbeiten sind die betroffenen Verträge zu lesen.
+
+- Architekturgrenzen dürfen nicht eigenmächtig verändert oder abgeschwächt werden. Innerhalb dieser Grenzen arbeiten Agenten autonom.
+- Die Datei ist standardmäßig nur zu lesen. Änderungen sind ausschließlich bei autorisierten Architekturänderungen oder nachweislichem dokumentarischem Korrekturbedarf zulässig.
+- Architekturrelevante Implementierungen erfordern eine konsistente Aktualisierung im selben PR.
+- Bestehende Inhalte konsolidieren oder ersetzen; obsolete, redundante und widersprüchliche Inhalte unmittelbar entfernen.
+- Keine Planungen, Aufgaben, Entwicklungschroniken oder Arbeitsprotokolle aufnehmen.
+- Abweichungen zwischen Code und Architekturvertrag ursächlich klären, nicht durch bloße Anpassung der Dokumentation legitimieren.
+- Jede Änderung anhand des resultierenden Codes verifizieren.
+
+So viel wie nötig, so wenig wie möglich.
+
 ## Arbeitszyklus
 
 1. Aufgaben-ID, relevante P-/X-IDs, beobachtbare Kriterien, Code/Testanker und Aufrufer festlegen. Vorhandene Implementierung nutzen, konkurrierende Änderungen am selben State/API seriell bearbeiten.
