@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 
-/** Rust owns membership and filtering. The transient hide is only grid presentation. */
+/** The transient hide affects presentation, not run membership. */
 internal fun gridCards(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
     if (search.response != null) search.activeCards.filterNot { it.listingId in search.gridHiddenLikes }
     else discovery.cards
@@ -27,8 +27,7 @@ internal fun SearchUiState.restoreGridLike(listingId: Long): SearchUiState =
 internal fun nearDiscoveryEnd(lastVisible: Int, totalItems: Int): Boolean =
     lastVisible >= 0 && totalItems > 0 && lastVisible >= (totalItems - 3).coerceAtLeast(0)
 
-/** Rebuild the loaded window from Rust's current ordered cursor, not a stale first page.
- * At least one page is read, even for an initially empty window. */
+/** Always rebuild from the current cursor, including initially empty windows. */
 internal suspend fun readDiscoveryWindow(
     minimum: Int,
     read: suspend (DiscoveryCursor?) -> DiscoveryPage,
@@ -52,8 +51,7 @@ internal sealed interface DiscoveryMutationOutcome {
     data class ProjectionFailed(val feedFailed: Boolean, val detailFailed: Boolean = !feedFailed) : DiscoveryMutationOutcome
 }
 
-/** A write is never retried by recovery. A failed conditional write can also mean stale
- * membership, so the view is reconciled even on failure. */
+/** Reconcile even on conditional-write failure; never replay the write. */
 internal suspend fun writeAndProject(
     write: suspend () -> Unit,
     project: suspend () -> Unit,
@@ -84,7 +82,7 @@ private suspend fun failureOf(action: suspend () -> Unit): Exception? = try {
 }
 
 
-/** Independent local projections: a failed read cannot suppress a successful sibling. */
+/** One failed projection must not suppress a successful sibling. */
 internal suspend fun <A, B> readIndependentProjections(
     first: suspend () -> A,
     second: suspend () -> B,
@@ -112,7 +110,6 @@ internal data class DiscoveryProjection(
     val page: DiscoveryPage,
 )
 
-/** Existing independent StateFlow publication; the ViewModel retains epoch and read ownership. */
 internal class DiscoveryProjectionPublisher(
     private val _searchUiState: MutableStateFlow<SearchUiState>,
     private val _discoverState: MutableStateFlow<DiscoverUiState>,
@@ -127,8 +124,7 @@ internal class DiscoveryProjectionPublisher(
         if (projection.runId == null) onLocalWindow(projection.page.cards.size)
         _searchUiState.update { it.copy(activeCards = projection.visible) }
         val next = swipeSession.queue(projection.page.cards, active = projection.runId != null)
-        // A successful authoritative read resolves eligibility. Failed reads never
-        // consume the receipt; StateFlow's update lambda itself stays side-effect free.
+        // Consume the receipt only after a successful read, outside the retryable StateFlow update.
         val restore = swipeSession.restoredPresentation(next.firstOrNull())
         _discoverState.update {
             val mergeNotice = it.pendingMergeListingId?.let { listing ->
@@ -148,8 +144,7 @@ internal class DiscoveryProjectionPublisher(
         }
     }
 
-    // The reads share an epoch but not validity or failure. Mutation ownership
-    // is released only by its caller, never by publication of a partial view.
+    // Partial publication must not release mutation ownership.
     suspend fun project(epoch: Long): Boolean = readIndependentProjections(
         first = discoveryPage,
         second = savedPage,
@@ -174,7 +169,6 @@ internal class DiscoveryProjectionPublisher(
     )
 }
 
-/** Existing map read and epoch guard shared by refresh and resolver completion. */
 internal suspend fun projectMapOverview(
     state: MutableStateFlow<MapUiState>,
     current: () -> Boolean,

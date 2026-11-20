@@ -4,8 +4,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.unit.IntSize
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
 
-/** Inert, bounded, single outgoing visual; never contains a write token,
- * callback, person payload, or second deck. */
+/** One inert outgoing visual; no write token, callback or person payload. */
 internal data class SwipeFlight(
     val card: Pair<Long, Long>,
     val session: Long,

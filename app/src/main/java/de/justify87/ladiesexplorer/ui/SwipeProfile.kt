@@ -16,14 +16,13 @@ import kotlinx.coroutines.ensureActive
 /** A committed or cached profile exists; recovery must not repeat the source request. */
 internal class LocalProfileReadFailure(cause: Exception) : IllegalStateException(cause.message, cause)
 
-/** Source policy is context-specific; the local projection is shared with standalone. */
 internal class SwipeProfileReads(
     val cached: suspend (Long) -> ProfileResponse?,
     val source: suspend (Long) -> ProfileResponse,
     val projection: suspend (Long) -> NativeProfileProjection?,
 )
 
-/** Reuse the existing source/persistence contract, but never archive media for a swipe read. */
+/** Swipe reads never archive media. */
 internal suspend fun CoreStore.readSwipeProfile(
     listingId: Long,
     control: RequestControl,
@@ -76,17 +75,13 @@ internal suspend fun readSwipeProfile(
 internal fun sameSwipeCard(a: DiscoveryCard?, b: DiscoveryCard?): Boolean =
     a != null && b != null && a.listingId == b.listingId && a.personId == b.personId
 
-/** A read that both started and failed as current requires explicit retry
- * or a real demotion/promotion cycle. A speculative failure may retry once
- * on becoming current, but must not publish an error for a different card. */
+/** Current failure requires retry or demotion/promotion; speculative failure may retry once on promotion. */
 internal fun swipeFailureNeedsDemotion(startedCurrent: Boolean, stillCurrent: Boolean): Boolean =
     startedCurrent && stillCurrent
 
 internal data class SwipeReadPolicy(val refresh: Boolean, val allowNetwork: Boolean)
 
-/** Current active-run freshness remains explicit. Promotion reuses its slot;
- * local decks and speculation prefer the archived projection, never refresh
- * cached snapshots unnecessarily. Strict recovery never accesses the source. */
+/** Active-run freshness is explicit; speculation prefers cache and strict recovery is local-only. */
 internal fun swipeReadPolicy(
     current: Boolean, runId: Long?, listingId: Long,
     localOnly: Boolean, preferLocal: Boolean,
@@ -98,7 +93,6 @@ internal fun swipeReadPolicy(
     )
 }
 
-/** Only first two images; Coil shares the app's cache/HTTP diagnostics and suspending cancellation. */
 internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
     if (size.width <= 0 || size.height <= 0) return
     val media = profile?.media.orEmpty().filter { it.kind == "IMAGE" }
@@ -113,8 +107,7 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
     }
 }
 
-/** Bounded composition-owned cache. Every in-flight read owns a per-entry ticket.
- * Prune/reset/owner replacement makes a late delivery ineligible even without cancellation. */
+/** Per-entry tickets reject late delivery after prune, reset or owner replacement. */
 internal class SwipeProfileWindow(
     private val entries: MutableMap<Long, ProfileReadModel>,
     initialExternalRevision: Long = 0L,
@@ -135,8 +128,7 @@ internal class SwipeProfileWindow(
 
     fun isCurrent(revision: Long): Boolean = externalRevision.longValue >= revision
 
-    /** A completion from a disposed window may have persisted after this window
-     * began reading. Revoke its data, not its native execution ownership. */
+    /** A disposed window's late commit revokes replacement data, not its native execution. */
     fun applyExternalRevision(revision: Long) {
         if (isCurrent(revision) || closed) return
         invalidateSlots()
@@ -166,18 +158,14 @@ internal class SwipeProfileWindow(
         clear()
     }
 
-    /** Source persistence can change every candidate/person projection, even with
-     * the same snapshot ID. Only the read currently returning from that source
-     * may publish without a new local read. No extra network refresh is needed. */
+    /** Source persistence can invalidate all projections even with unchanged snapshot IDs; only its current read may publish. */
     private fun invalidateSlots(listingId: Long? = null, ticket: Slot? = null) {
         for ((id, slot) in slots.toMap()) {
             if (id == listingId && slot == ticket) continue
             entries.remove(id)?.let { staleProvenance[id] = it.fromArchive to it.warning }
             val next = ++nextTicket
             slots[id] = slot.copy(ticket = next)
-            // Revocation is immediate, but restarting a running effect here
-            // would cancel its native call and recursively invalidate its successor.
-            // The rejected read owns the scheduling of local recovery after drain.
+            // Revoke now; let the rejected read schedule recovery after drain to avoid recursive cancellation.
             if (id !in inFlight) invalidations[id] = next
         }
     }
@@ -207,8 +195,7 @@ internal class SwipeProfileWindow(
             val profile = read { invalidateSlots(listingId, ticket) }
             currentCoroutineContext().ensureActive()
             if (slots[listingId] != ticket) {
-                // A completed read proves local data exists, but its contents may
-                // predate another source commit. Keep only provenance for recovery.
+                // Preserve proof of local existence, not data that may predate another commit.
                 if (inFlight[listingId] == ticket && slots[listingId]?.owner == card.personId &&
                     profile.profile.listingId == listingId && profile.identity.personId == card.personId &&
                     profile.person.personId == card.personId) {

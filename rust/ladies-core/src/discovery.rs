@@ -2,8 +2,7 @@ use rusqlite::{OptionalExtension, named_params, params};
 
 use crate::{CoreError, LadiesCore, Preference, source::known_age};
 
-// Unicode base-name order: NFD, case/mark folding, German sharp-s expansion.
-// The same collation is used for ties and cursor comparisons.
+// Use the same Unicode name collation for ordering, ties and cursors.
 fn saved_name_key(name: &str) -> String {
     static MARKS: std::sync::LazyLock<regex::Regex> =
         std::sync::LazyLock::new(|| regex::Regex::new(r"\p{M}").expect("Unicode marks"));
@@ -177,8 +176,7 @@ pub struct DiscoveryPage {
     pub next_cursor: Option<DiscoveryCursor>,
 }
 
-// One representative listing per canonical person. The saved and neutral feeds
-// share the same card projection, including archive-first image references.
+// One representative per canonical person; saved and neutral feeds share archive-first images.
 const PERSON_CARDS: &str = "
     WITH ranked AS (
         SELECT listing_id, person_id,
@@ -423,7 +421,6 @@ fn saved_now(db: &rusqlite::Connection) -> Result<i64, CoreError> {
     )?)
 }
 
-// A single lock protects both sections and counts, including when expanding.
 pub(crate) fn saved_window(
     core: &LadiesCore,
     kind: SavedPersonKind,
@@ -527,8 +524,7 @@ fn saved_people_in(
         Some(time) => time,
         None => saved_now(db)?,
     };
-    // Count people, not listings, including imported people without an advert.
-    // The connection guard spans both reads so a core write cannot split them.
+    // Count persons, including unlisted imports, under one connection guard.
     let total = db.query_row(
         &format!("SELECT COUNT(*) FROM person_user_state WHERE {predicate}"),
         [],
@@ -544,8 +540,7 @@ fn saved_people_in(
         SavedPersonSort::Name => ("name", ">", "ASC", "SAVED_NAME"),
     };
     let section_predicate = section.predicate();
-    // Both watchlist sections use the same frozen time boundary, including when
-    // the user expands or pages later. Only the latest recorded change counts.
+    // Freeze the watchlist boundary across sections and pagination; only the latest change counts.
     let eligible = format!(
         "{PERSON_CARDS}, eligible AS (
            SELECT p.*, {key} AS sort_key, e.created_at AS change_at,
@@ -640,7 +635,6 @@ fn saved_people_in(
     })
 }
 
-// Search membership and order come from the executed run, not the global feed.
 pub(crate) fn active_search_cards(
     core: &LadiesCore,
     run_id: i64,
@@ -802,7 +796,6 @@ mod tests {
         let updated = active_search_cards(&core, 1, &all).unwrap();
         assert_eq!(updated[0].age.as_deref(), Some("32"));
         assert_eq!(core.profile_identity(lb).unwrap().age, updated[0].age);
-        // A direct grid mutation is conditional and does not change run membership.
         core.set_swipe_preference(la, a, Some(Preference::None), Preference::Like)
             .unwrap();
         let liked = active_search_cards(&core, 1, &all).unwrap();

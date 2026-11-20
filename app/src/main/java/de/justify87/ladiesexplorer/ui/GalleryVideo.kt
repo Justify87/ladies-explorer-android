@@ -30,8 +30,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** Only ordinary local MP4/WebM containers are handed to the player.
- * Never pass source URLs, playlist paths, or arbitrary schemes to libmpv. */
+/** Allow only local MP4/WebM playback; no URLs, playlists or other schemes. */
 internal fun videoDemuxer(header: ByteArray): String? = when {
     header.size >= 8 && header.copyOfRange(4, 8).contentEquals(byteArrayOf(102, 116, 121, 112)) -> "mov"
     header.size >= 4 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x1a, 0x45, 0xdf.toByte(), 0xa3.toByte())) -> "matroska"
@@ -49,9 +48,7 @@ private fun localVideo(file: File): LocalGalleryVideo? {
 
 private data class LocalGalleryVideo(val file: File, val demuxer: String)
 
-/** One selected, visible medium owns one cancellable display file and one player.
- * The file is not a durable archive and its lifetime is bounded by this effect.
- * Archive locations are never deleted. */
+/** The visible medium owns its temporary file and player; archive files are never deleted. */
 @Composable
 internal fun GalleryVideo(
     item: ProfileMediaItem,
@@ -75,8 +72,7 @@ internal fun GalleryVideo(
     LaunchedEffect(item, retry, visible) {
         if (!visible) return@LaunchedEffect
         snapshotFlow { playbackAllowed }.first { it }
-        // A transient action lock must not redownload a selected medium.
-        // The file remains owned only while the media is actually visible.
+        // Transient action locks must not trigger another download.
         var temporary: File? = null
         try {
             val archived = withContext(Dispatchers.IO) {
@@ -127,9 +123,7 @@ internal fun GalleryVideo(
     }
 }
 
-/** TextureView composites inside Compose clipping/transforms. Its Surface and
- * the native instance have the same owner, and are synchronously revoked on
- * disposal. Callback delivery is fenced after destroy. */
+/** TextureView supports Compose clipping; disposal revokes the Surface, player and callbacks. */
 @Composable
 private fun LocalMpvPlayer(
     video: LocalGalleryVideo, paused: Boolean, modifier: Modifier,
@@ -142,8 +136,7 @@ private fun LocalMpvPlayer(
     var owner by remember(video) { mutableStateOf<MpvSurfaceOwner?>(null) }
     var surfaceGeneration by remember(video) { mutableIntStateOf(0) }
     DisposableEffect(video, surfaceGeneration) {
-        // A recreated TextureView does not own a loaded file until its new
-        // native instance reports FILE_LOADED; never expose stale controls.
+        // Wait for the new instance's FILE_LOADED before exposing controls.
         latestLoading()
         val instance = try {
             MpvSurfaceOwner(context.applicationContext, video, { latestReady() }, { latestFailure() },
@@ -188,8 +181,7 @@ private class MpvSurfaceOwner(
 
     init {
         try {
-            // Fail closed: no player config/scripts, playlists, external media
-            // references or network protocols. Native transport remains Rust.
+            // Fail closed: disable config/scripts, external references, playlists and network access.
             listOf(
                 "config" to "no", "load-scripts" to "no", "ytdl" to "no",
                 "autoload-files" to "no", "access-references" to "no",
@@ -220,7 +212,7 @@ private class MpvSurfaceOwner(
             player.setPropertyString("force-window", "yes")
             player.setPropertyString("android-surface-size", "${width}x$height")
             player.setPropertyBoolean("pause", desiredPause)
-            // Only a private/archived local file path, never item.url.
+            // Never pass a source URL to libmpv.
             player.command(arrayOf("loadfile", source.file.absolutePath, "replace"))
         } catch (_: Exception) {
             onFailure()
@@ -231,8 +223,7 @@ private class MpvSurfaceOwner(
         if (!closed && surface != null) player.setPropertyString("android-surface-size", "${width}x$height")
     }
     override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
-        // Destroy joins the native event/render work before the Java Surface
-        // is released. Re-attachment uses a new native owner, never the old wid.
+        // Join native event/render work before releasing the Surface; never reuse the old wid.
         if (!closed) {
             close()
             onSurfaceLost()

@@ -20,7 +20,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 
-/** Real ProfileFlow with synthetic local readers, no source access or actual note/DB writes. */
+/** Real ProfileFlow with synthetic readers. */
 class ProfileRestoreDeviceTest {
     @get:Rule val rule = createComposeRule()
 

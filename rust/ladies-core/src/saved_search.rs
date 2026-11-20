@@ -191,8 +191,7 @@ fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreErro
         "filters_json",
         "max_pages",
     ];
-    // Exclusive shape dispatch: malformed native definitions cannot silently
-    // fall back to legacy defaults or discard unknown rules during serde.
+    // Reject malformed native definitions; never silently fall back to legacy defaults.
     if legacy.get("query").is_some() {
         require_keys(&legacy, &["query", "local"])?;
         require_keys(&legacy["query"], QUERY_KEYS)?;
@@ -425,8 +424,7 @@ pub struct SavedSearchWindow {
     pub searches: Vec<SavedSearchInfo>,
 }
 
-// Read an expanded prefix in one SQLite snapshot. Acknowledgement is a separate
-// revision-checked action after the UI accepts the result, not an async side effect.
+// Read prefix in one snapshot; acknowledge separately after UI acceptance using revision CAS.
 pub(crate) fn window(
     core: &LadiesCore,
     id: String,
@@ -546,8 +544,7 @@ fn results_using(
                             .unwrap_or_default()
                             .to_owned()
                     }),
-                    // A selected image owns both URLs; never pair a historical
-                    // search thumbnail with a different current local image.
+                    // Both URLs must refer to the same selected image.
                     thumbnail_url: if media_id.is_some() {
                         remote.filter(|v| !v.is_empty())
                     } else {
@@ -588,8 +585,7 @@ fn results_using(
     })
 }
 
-// Rename is deliberately independent of decoding or canonicalizing an imported
-// definition. Unsupported rules and its result baseline remain byte-identical.
+// Rename must preserve imported definition bytes and result baseline.
 pub(crate) fn rename(core: &LadiesCore, id: String, name: String) -> Result<(), CoreError> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {

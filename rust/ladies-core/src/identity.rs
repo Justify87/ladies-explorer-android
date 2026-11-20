@@ -847,8 +847,7 @@ mod tests {
             Some("Target note\n\nSource note")
         );
         assert!(core.person_note(listing, source).is_err());
-        // The exact same listing survives the merge. Old rendered owner tokens must fail
-        // at the existing native admission boundary, including CAS and note writes.
+        // The listing survives; stale owner tokens must fail CAS and note writes.
         assert!(
             core.set_swipe_preference(listing, source, None, crate::Preference::Like)
                 .is_err()
@@ -953,8 +952,7 @@ mod tests {
                 params![db.last_insert_rowid(), listing],
             )
             .unwrap();
-            // Intentionally do not refresh the cached match status: confirm must
-            // use current evidence, not a candidate that was previously rendered.
+            // Confirm against current evidence, not the cached candidate.
         }
         let expected_snapshot = snapshot_id(&core, listing);
         assert!(

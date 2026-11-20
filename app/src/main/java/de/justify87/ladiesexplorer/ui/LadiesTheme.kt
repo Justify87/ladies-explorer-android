@@ -13,7 +13,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// Legacy tokens.css: brand pink, cool neutral surfaces; text roles retain readable contrast.
 internal val ladiesLightColors = lightColorScheme(
     primary = Color(0xFFD12D7C), onPrimary = Color.White,
     primaryContainer = Color(0xFFF9DBE9), onPrimaryContainer = Color(0xFF8B174E),

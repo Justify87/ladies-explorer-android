@@ -3,7 +3,7 @@ package de.justify87.ladiesexplorer.ui
 import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.Preference
 
-/** The executed run owns membership/filtering; only deck traversal lives here. */
+/** The executed run owns membership and filtering; the deck only traverses. */
 internal data class SwipeStep(
     val listingId: Long,
     val personId: Long,
@@ -27,7 +27,7 @@ internal class SwipeSession {
     }
     val excludedPeople: List<Long> get() = history.map { canonicalOwner(it.personId) }.distinct()
 
-    /** Merge is not a Visit. Old owner-bound undo steps may not mutate the canonical person. */
+    /** Undo steps bound to an old owner cannot mutate the merged person. */
     fun reconcileMerge(source: Long, target: Long, preferredListing: Long?) {
         val affected = history.indices.filter { canonicalOwner(history[it].personId) in setOf(source, target) }
         affected.forEach { history[it] = history[it].copy(undoable = false, presentation = null) }
@@ -40,7 +40,7 @@ internal class SwipeSession {
         // Clearing a preference is a local user-state mutation, never deck traversal.
         if (step.after == Preference.NONE) return
         history.add(step)
-        // Keep at most 16 recent presentation references; traversal/undo semantics remain intact.
+        // Bound presentation history without changing traversal/undo.
         val old = history.lastIndex - 16
         if (old >= 0) history[old] = history[old].copy(presentation = null)
         restoredListingId = null
@@ -78,7 +78,6 @@ internal class SwipeSession {
     fun queue(cards: List<DiscoveryCard>, active: Boolean): List<DiscoveryCard> {
         val people = excludedPeople.toHashSet()
         val listings = history.mapTo(hashSetOf()) { it.listingId }
-        // After an identity merge, a visited listing may now have a different owner.
         cards.filter { it.listingId in listings }.forEach { people.add(it.personId) }
         val eligible = cards.filter {
             it.personId !in people && it.listingId !in listings &&
@@ -93,7 +92,7 @@ internal class SwipeSession {
 internal fun prefetchCards(cards: List<DiscoveryCard>): List<DiscoveryCard> =
     cards.drop(1).take(2)
 
-/** Non-writing deck operations remain possible when a detailed profile cannot be loaded. */
+/** Non-writing traversal remains available without a detail projection. */
 internal data class SwipeDeckToken(val runId: Long?, val session: Long)
 internal data class SwipeCardToken(val deck: SwipeDeckToken, val listingId: Long, val ownerId: Long)
 
@@ -113,7 +112,6 @@ internal fun currentSwipeTraversalCard(
 ): DiscoveryCard? = if (!currentSwipeDeck(state, searchLoading, token.deck) || state.cardToken() != token) null
     else state.cards.firstOrNull()
 
-/** A rendered action is bound to its deck context and coherent local profile. */
 internal data class SwipeActionToken(
     val runId: Long?,
     val session: Long,

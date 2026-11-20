@@ -119,7 +119,6 @@ internal fun DiscoveryGridScreen(
     }
 }
 
-/** Shared visual card: saved search results can reuse this without coupling to discovery state. */
 @Composable
 internal fun ProfileGridCard(
     name: String,

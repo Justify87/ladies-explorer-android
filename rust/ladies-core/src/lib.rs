@@ -1,5 +1,4 @@
-//! App-private Rust persistence and the typed UniFFI boundary.
-//! A person is distinct from its source profiles and individual listings.
+//! App-private Rust persistence; persons, source profiles and listings have distinct identities.
 
 mod diagnostics;
 mod discovery;
@@ -536,8 +535,7 @@ impl LadiesCore {
         })
     }
 
-    /// Keep the same SQLite connection guard for every part of the projection.
-    /// No source fetch, archive, write or global saved-search revision is involved.
+    /// Read one coherent local projection under a single connection guard; no I/O to source or writes.
     pub fn profile_projection(
         &self,
         listing_id: i64,
@@ -687,7 +685,6 @@ impl LadiesCore {
         })
     }
 
-    /// Allocate a person without assuming a relationship to other people.
     pub fn create_person(&self, display_name: Option<String>) -> Result<i64, CoreError> {
         let name = display_name
             .map(|n| n.trim().to_owned())
@@ -900,8 +897,7 @@ impl LadiesCore {
         Ok(())
     }
 
-    // A deck decision/undo must address the same canonical owner and, for undo,
-    // the exact previously committed preference in one write transaction.
+    // Validate canonical owner and expected undo preference in the same write transaction.
     pub fn set_swipe_preference(
         &self,
         listing_id: i64,

@@ -299,7 +299,6 @@ private fun NativeProfileMap(
     }
 }
 
-/** The AndroidView factory/onRelease own the native view, its lifecycle and memory callback. */
 private class LifecycleMapView(
     context: Context,
     private val lifecycle: Lifecycle,
@@ -334,7 +333,7 @@ private class LifecycleMapView(
     init {
         onCreate(null)
         context.applicationContext.registerComponentCallbacks(memoryCallbacks)
-        // Android synchronizes the new observer to its current state.
+        // addObserver synchronizes to the current lifecycle state.
         lifecycle.addObserver(observer)
     }
 

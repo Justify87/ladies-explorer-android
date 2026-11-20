@@ -492,8 +492,7 @@ fn har_entry(event: &HttpObservation) -> Value {
     let total = event
         .headers_elapsed_ms
         .saturating_add(event.body_elapsed_ms);
-    // The pre-header interval is measured, but includes connection and redirects.
-    // It is NOT a separately measured TTFB.
+    // Pre-header timing includes connection and redirects, not isolated TTFB.
     json!({
         "startedDateTime": timestamp,
         "time": total,
@@ -524,8 +523,7 @@ fn har_entry(event: &HttpObservation) -> Value {
             "blocked": -1,
             "dns": -1,
             "connect": -1,
-            // HAR requires nonnegative send/wait/receive. The observed pre-header
-            // aggregate is mapped to wait; it is NOT an isolated server TTFB.
+            // HAR wait includes the full pre-header interval, not isolated TTFB.
             "send": 0,
             "wait": event.headers_elapsed_ms,
             "receive": event.body_elapsed_ms

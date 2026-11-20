@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# CI05 one-off measurement (explicit manual diagnostic only).
-# Use a disposable checkout and the already populated read-only task cache.
-# The checked APK, production build outputs and original checkout stay intact.
+# Manual diagnostic in a disposable checkout; shared task cache is read-only.
 set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 reports="$root/build/reports/ci05"
@@ -59,8 +57,7 @@ PY
     return "$status"
 }
 
-# Restore task outputs from the same existing cache for fair comparisons.
-# Only delete generated build outputs, not configuration or dependency caches.
+# Reset generated outputs only; restore from the same task cache.
 reset_outputs() {
     rm -rf "$copy/app/build" "$copy/build"
 }
@@ -84,8 +81,7 @@ run_baseline() {
 }
 
 run_baseline baseline-first
-# Qualification is intentionally diagnostic: an unsupported configuration cache
-# is a negative result, not a reason to weaken the required normal build.
+# Unsupported configuration cache is a diagnostic result, not a reason to weaken the build.
 reset_outputs
 if run_build cc-first --configuration-cache --configuration-cache-problems=fail; then
     check_native_outputs
@@ -115,16 +111,14 @@ else
     echo 'Configuration cache incompatible in first build; leave disabled and inspect report/log.' > "$reports/decision.txt"
 fi
 
-# Use baseline mode to diagnose a typical UI edit and isolate Lint keys.
-# A comment changes source content without introducing a functional change.
+# Simulate a UI-only edit to isolate Lint cache keys.
 printf '\n// CI05 synthetic Kotlin edit\n' >> "$copy/app/src/main/java/de/justify87/ladiesexplorer/MainActivity.kt"
 reset_outputs
 run_build kotlin-edit --no-configuration-cache
 check_native_outputs
 save_kotlin_reports kotlin-edit
 
-# Rust mutation uses the already verified explicit source boundary. The
-# CI02 probe exercises actual ABI/API and ELF-content changes separately.
+# Simulate a Rust-only edit; the separate native cache probe tests content and ABI changes.
 printf '\n// CI05 synthetic Rust edit\n' >> "$copy/rust/ladies-core/src/source/filter.rs"
 reset_outputs
 run_build rust-edit --no-configuration-cache

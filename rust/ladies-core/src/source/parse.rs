@@ -740,8 +740,7 @@ mod tests {
 
     #[test]
     fn cards_accept_fkk_and_stars_profile_routes_from_debug_har() {
-        // The two cards rejected in the 2026-11-18 Leipzig HAR have valid
-        // advert IDs but profile URLs outside /sex-anzeigen/.
+        // Valid advert IDs can have profile URLs outside /sex-anzeigen/.
         let html = r#"
             <div class="card-gallery-premium ladies-card">
                 <a class="card-link" data-owg-id="14620911" data-ref-id="14620911"
@@ -889,7 +888,7 @@ mod tests {
 
     #[test]
     fn anonymized_october_har_media_shapes_keep_revision_tokens() {
-        // Synthetic IDs with URL shapes observed in the October browser archives.
+        // Synthetic IDs with observed media URL shapes.
         let html = r#"<h2 class="page-heading kuenstlername">Beispiel</h2>
             <div class="auftrag-main-thumb" data-index="0">
               <img src="https://bilder1.ladies-cdn.de/Bilder/321/12345678-F1.JPG?h=preview">

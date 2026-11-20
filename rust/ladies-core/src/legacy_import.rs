@@ -1,5 +1,4 @@
-//! Transactional import from a consistent legacy SQLite backup and archived media.
-//! The original database and user files are opened read-only and never altered.
+//! Transactional import; the original database and media are read-only.
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};

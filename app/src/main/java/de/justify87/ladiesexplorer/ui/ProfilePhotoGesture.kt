@@ -29,7 +29,7 @@ import kotlin.math.hypot
 
 internal enum class PhotoAxis { Pending, Horizontal, Vertical, Ambiguous }
 
-/** Resolve once at the platform slop. An ambiguous diagonal never becomes a decision. */
+/** Resolve at platform slop; ambiguous diagonals never commit. */
 internal fun photoAxis(dx: Float, dy: Float, slop: Float): PhotoAxis {
     if (hypot(dx, dy) <= slop) return PhotoAxis.Pending
     val x = abs(dx)
@@ -59,8 +59,7 @@ internal sealed interface PhotoGestureResult {
     data class Release(val decision: Preference?) : PhotoGestureResult
 }
 
-/** One resolver per down. The Compose coroutine delegates all axis/release
- * decisions here; there is no additional presentation gesture state. */
+/** One resolver per down event. */
 internal class PhotoGestureResolver(
     private val slop: Float,
     private val width: Float,
@@ -90,11 +89,7 @@ internal class PhotoGestureResolver(
     }
 }
 
-/**
- * Admission of a single native touch stream, shared by the entire profile
- * screen. Cancellation is sticky until the last pointer lifts. No gesture,
- * button callback, domain operation or axis decision lives here.
- */
+/** One touch stream per screen; cancellation persists until the last pointer lifts. */
 internal class ProfileTouchGate {
     var active by mutableStateOf(false)
         private set
@@ -137,9 +132,7 @@ internal class ProfileTouchGate {
     }
 }
 
-/** Initial pass is before any native clickable/scrollable. Consume only a
- * revoked stream, including its last Up, so the rail cannot independently
- * commit after a second finger has cancelled the photo. */
+/** Consume revoked streams before child clickables, including the final Up. */
 internal fun Modifier.admitProfileTouches(gate: ProfileTouchGate, eligible: () -> Boolean): Modifier =
     pointerInput(gate) {
         try {
@@ -157,8 +150,6 @@ internal fun Modifier.admitProfileTouches(gate: ProfileTouchGate, eligible: () -
         }
     }
 
-/** Existing Compose coordinates own the hit regions. Each start captures
- * actual bounds, including the native gallery targets and root position. */
 internal data class PhotoHitGeometry(val photo: Rect, val rootOrigin: Offset, val gallery: List<Rect>) {
     fun galleryAt(position: Offset): Boolean = gallery.any { it.contains(position) }
 }
@@ -180,13 +171,7 @@ private class PhotoHitRegion {
     }
 }
 
-/**
- * Native gallery clickables own taps (including TalkBack/DPAD, focus and
- * indication). This single ancestor recognizer owns horizontal drag only.
- * Initial allows it to cancel a gallery click upon horizontal lock; Main
- * identifies other native child controls; Final lets LazyColumn have the
- * first opportunity to consume vertical/ambiguous motion.
- */
+/** Native clickables own taps; this recognizer owns horizontal drags. Initial cancels clicks on lock, Main detects child controls, Final yields vertical/ambiguous motion to LazyColumn. */
 @Composable
 internal fun PhotoGestureSurface(
     owner: Any?,
@@ -215,8 +200,7 @@ internal fun PhotoGestureSurface(
                 if (touchGate != null && stamp == null) return@awaitEachGesture
                 val swipeOnDown = swipe
                 val dragOnDown = drag
-                // A consumed down is allowed only on the measured native
-                // gallery targets; retry/video/menu remain exclusive.
+                // Allow consumed downs only on measured gallery targets, not exclusive controls.
                 val main = awaitPointerEvent(PointerEventPass.Main)
                 if (main.changes.count { it.pressed } != 1 ||
                     (!gallery && main.changes.firstOrNull { it.id == down.id }?.isConsumed != false))
@@ -238,8 +222,7 @@ internal fun PhotoGestureSurface(
                             change.uptimeMillis - down.uptimeMillis, blocked)) {
                             PhotoGestureResult.Cancel -> {
                                 if (gallery) {
-                                    // Up must be consumed before the native click.
-                                    // Motion may be used by the parent scroll first.
+                                    // Consume Up before native click; let parent scrolling consume motion first.
                                     if (!change.pressed || blocked) change.consume()
                                     else awaitPointerEvent(PointerEventPass.Final).changes
                                         .firstOrNull { it.id == down.id }?.consume()
@@ -278,8 +261,7 @@ internal fun PhotoGestureSurface(
 
 @Composable
 internal fun PhotoTapTarget(label: String, modifier: Modifier, owner: Any? = null, onTap: (() -> Unit)?) {
-    // Native press/keyboard state is disposed with the very target it
-    // originated on. No click may be rebound to the next image.
+    // Dispose press state with its target so clicks cannot rebind to the next image.
     key(owner) {
         Box(modifier.semantics { contentDescription = label }
             .clickable(enabled = onTap != null, role = Role.Button) { onTap?.invoke() })

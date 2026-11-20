@@ -10,7 +10,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 
-/** Android access to the Rust database, online source service and diagnostics. */
 class CoreStore(context: Context) {
     private val appFiles = context.filesDir
     private val preferences = context.getSharedPreferences("diagnostics", Context.MODE_PRIVATE)
@@ -19,7 +18,6 @@ class CoreStore(context: Context) {
     fun replayLikes(): Boolean = explorerPreferences.getBoolean("replay_likes", true)
     fun setReplayLikes(value: Boolean) { explorerPreferences.edit().putBoolean("replay_likes", value).apply() }
     private val logger = Logger.withTag("LadiesExplorer")
-    // Only best-effort events are bounded. Control barriers are never rejected.
     private val logBridge = DiagnosticEventQueue()
     private val captureControls = Mutex()
     private val database = File(appFiles, "ladies.sqlite")
@@ -29,7 +27,6 @@ class CoreStore(context: Context) {
         }
     }
 
-    /** App-private, size-bounded log; shared only through explicit user interaction. */
     private val diagnosticExports = File(context.cacheDir, "diagnostic-exports")
 
     suspend fun diagnosticStatus(): DiagnosticStatus = withContext(Dispatchers.IO) {
@@ -58,7 +55,6 @@ class CoreStore(context: Context) {
             "$operation failed duration_ms=$durationMs type=${failure.javaClass.simpleName}"
         }
         if (failure == null) logger.i { message } else logger.e(failure) { message }
-        // The bounded bridge never blocks a Compose callback.
         logBridge.offer {
             runCatching { engine.recordKotlinEvent("ANDROID", message, false) }
         }
@@ -86,7 +82,7 @@ class CoreStore(context: Context) {
         }
     }
 
-    // Limit concurrent blocking native image requests, independently of profile/search work.
+    // Keep blocking image requests independent of profile/search work.
     private val displayImageDispatcher = Dispatchers.IO.limitedParallelism(4)
 
     suspend fun loadDisplayImage(url: String): DisplayImage = withContext(displayImageDispatcher) {
@@ -103,11 +99,9 @@ class CoreStore(context: Context) {
         }
     }
 
-    // One bounded encoded video at a time; no competing source HTTP implementation.
     private val displayVideoDispatcher = Dispatchers.IO.limitedParallelism(1)
 
-    // Process-local initialization removes abandoned temporary playback files
-    // after a crash. Never shares the durable archive directory.
+    // Clean up abandoned playback files after a crash; never touch the archive.
     private val displayVideoDirectory by lazy {
         File(context.cacheDir, "gallery-playback").apply {
             check(isDirectory || mkdirs()) { "Playback cache unavailable" }

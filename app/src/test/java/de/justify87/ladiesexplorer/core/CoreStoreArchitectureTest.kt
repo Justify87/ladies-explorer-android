@@ -6,7 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Checks compiled signatures, including inferred and suspend return types. No native instantiation. */
+/** Check compiled signatures without loading the native library. */
 class CoreStoreArchitectureTest {
     private val engineType = LadiesCore::class.java.name
     private fun containsEngine(type: Type): Boolean =
@@ -24,8 +24,7 @@ class CoreStoreArchitectureTest {
         assertTrue("ARC-03 native engine exposed: $exposed", exposed.isEmpty())
     }
 
-    // Reflection must detect inferred properties/functions and suspend generic
-    // Continuation signatures without loading the Android native library.
+    // Include inferred types and suspend Continuation signatures.
     private class BadApi(private val engine: LadiesCore) {
         fun getEngine() = engine
         suspend fun getEngineAsync() = engine

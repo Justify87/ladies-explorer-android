@@ -131,8 +131,7 @@ internal fun SavedPeopleScreen(
                     onLoadMore()
                 }
             }
-            // Keep the list mounted while re-reading a window; root and tab state
-            // are independently saved even when a detail page temporarily replaces it.
+            // Keep the list mounted during refresh to preserve root/tab scroll state.
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),

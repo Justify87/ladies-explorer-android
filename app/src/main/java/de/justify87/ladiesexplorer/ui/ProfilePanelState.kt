@@ -10,8 +10,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** Local reads are keyed by the immutable rendered projection. Scrolling away does
- * not cancel a demanded read; a new projection disposes the old reader. */
+/** Reads survive scrolling; replacing the projection cancels them. */
 internal class ProfilePanels(
     private val scope: CoroutineScope,
     private val personId: Long?,
@@ -135,7 +134,6 @@ internal class ProfilePanels(
     }
 }
 
-/** Injection seam for synthetic profile-flow tests; production still uses only CoreStore. */
 internal class ProfilePanelReads(
     val facts: suspend (Long, String) -> ProfileFacts,
     val detail: suspend (Long) -> PersonDetail,

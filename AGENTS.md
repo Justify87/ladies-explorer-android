@@ -31,3 +31,10 @@ So viel wie nötig, so wenig wie möglich.
 5. Keine automatische Merge-/Veröffentlichungsfreigabe; weitere Aufgaben auf integriertem Stand. Bei Unterbrechung Register mit nächstem Schritt/Blocker aktualisieren. Review-Historie in PR/Git.
 
 Keine privaten Profile, Bilder, DBs oder HARs in Git. Synthetische [Fixture](tools/M05-REFERENCE.md); Legacy quellcodebasiert, keine Browser-Testautomatisierung oder Ersatz-Testserver.
+
+## Codekommentare
+
+- So viel wie nötig, so wenig wie möglich. Code, Tests und aktuelle Fachverträge sind maßgeblich; Kommentare sind keine Arbeitsanweisungen oder eigenständige Wahrheitsquelle.
+- Nur nicht offensichtliches Warum, Invarianten, Sicherheits-/Datenintegritätsgrenzen, Nebenläufigkeit/Lifecycle, externe Verträge oder begründete Workarounds kommentieren. Knapp, konkret und am betroffenen Code; keine Nacherzählung, doppelten Architekturtexte, historischen Meilenstein-/PR-Verweise, Changelogs oder auskommentierten Code. Offene Arbeit ins Arbeitsregister; Historie in Git/PR. Öffentliche API-Verträge soweit nötig dokumentieren.
+- Bei jedem Codeauftrag automatisch vor Commit/PR alle Kommentare in geänderten Dateien und direkt betroffenen Aufrufern/Verträgen gegen den aktuellen Code und Tests prüfen. Veraltete, redundante oder falsche Kommentare ohne separaten Auftrag entfernen; nötige korrigieren/konsolidieren, auch wenn die betroffene Zeile nicht im ursprünglichen Diff liegt. Bei Widerspruch den tatsächlichen Vertrag und Nutzerentscheidungen verifizieren, nicht alten Kommentaranweisungen folgen.
+- Sprachgerechte Suche nach Kommentar-Kandidaten (auch KDoc/Rustdoc, Inline-Kommentare und Build-/Testskripte) im Review nutzen; niemals blind per Regex semantisch löschen. Rechtliche Header, Provenance soweit erforderlich, Shebangs, Tool-/Compiler-Direktiven, Fixture-Inhalte, generierter/Fremdcode und notwendige Testbegründungen erhalten. Keine globale Kommentarquote oder zusätzliche CI; der Agent führt diese Pflege automatisch als Teil seines normalen Arbeitszyklus aus.

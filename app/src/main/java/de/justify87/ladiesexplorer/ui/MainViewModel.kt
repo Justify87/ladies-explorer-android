@@ -226,9 +226,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
             commitProfilePreference(token, preference, core::setSwipePreference, swipeSession::visit, presentation)
         }, afterWrite = { refreshDetail() },
-            // A successful swipe changes only the outgoing person's preference. The
-            // next distinct owners' coherent projections remain valid; failure and
-            // source/identity changes still revoke the whole window.
+            // A successful swipe preserves other owners' projections; failure or source/identity changes revoke them.
             refreshProfileWindow = token !is SwipeActionToken || preference == Preference.NONE,
             recoverWriteFailure = { refreshDetail() },
             onFailure = { message ->
@@ -419,8 +417,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun resetSearchDraft() = editSearchDraft { SearchDraft() }
 
-    /** Swipe menu admission is checked against live VM state, even before the
-     * next Compose frame. Grid retains its existing direct quick-filter path. */
+    /** Check swipe admission against live state, not the last Compose frame. */
     internal fun runSwipeAvailability(token: SwipeDeckToken, mode: AvailabilityMode) {
         val search = _searchUiState.value
         if (!swipeVisible || search.profileOpen ||
@@ -443,9 +440,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshFilterCatalog()
     }
 
-    // Both ordinary and saved searches can persist before a later projection failure
-    // or generation invalidation. Refresh local projections after the native call
-    // finishes, independently of whether its response became the active UI run.
+    // Searches may persist before delivery fails or is revoked; reconcile local state after drain.
     private fun refreshAfterSourceSearch(invalidateProfileWindow: Boolean = true) {
         if (invalidateProfileWindow && swipeVisible) invalidateSwipeProfilesLocally()
         refreshDiscovery()
@@ -510,13 +505,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             } finally {
-                // Native ownership lasts until the call has drained. Reconciliation
-                // happens before another search/import can acquire the UI.
+                // Reconcile after native drain before admitting another search/import.
                 if (searchOwner.finish(ticket)) {
                     _searchUiState.update { it.copy(loading = false, searchCancelling = false) }
                     savedSearch.refresh()
-                    // A new run already replaced the old window. Keep its normal source
-                    // policy; only a completion without a replacement needs local recovery.
+                    // Preserve source policy for an accepted replacement run.
                     refreshAfterSourceSearch(invalidateProfileWindow = !acceptedRun)
                     schedulePreview()
                 }
@@ -573,8 +566,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _mapState.update { it.copy(resolving = false, cancelling = false) }
                 }
             }
-            // Re-read even on explicit cancellation: already committed results and
-            // intervening search/favorite changes must be visible.
+            // Cancellation may leave committed results; re-read local state.
             val epoch = ++mapEpoch
             _mapState.update { it.copy(loading = true) }
             projectMapOverview(_mapState, { epoch == mapEpoch }, { core.mapOverview(_mapState.value.favoritesOnly) }) { state, latest ->
@@ -617,9 +609,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun projectDiscovery(epoch: Long): Boolean = discoveryPublisher.project(epoch)
 
     fun markSwipeSnapshotChanged(oldWindow: Boolean) {
-        // The active window invalidates its other tickets synchronously. A late
-        // completion must revoke the replacement without disposing it again:
-        // otherwise cancellation of one window could repeatedly cancel another.
+        // A late completion revokes replacement data without recursively cancelling its native work.
         renderedSwipe = null
         _discoverState.update {
             it.copy(swipeSessionId = it.swipeSessionId + 1,
@@ -753,8 +743,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_discoverState.value.cards.size < 10) loadMoreDiscovery()
     }
 
-    /** One shared mutation owner. Persistence, UI traversal and re-reading the loaded window
-     * remain distinct; a failed read must never masquerade as a failed database write. */
+    /** A committed write and failed projection are distinct outcomes. */
     private fun mutateDiscovery(
         failureLabel: String,
         write: suspend () -> Unit,
@@ -775,11 +764,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val outcome = writeAndProject(
                     write = write,
                     project = {
-                        // A profile-side failure must not keep the discovery feed stale.
                         check(projectDiscovery(epoch)) { "Ansicht konnte nicht vollständig aktualisiert werden." }
                     },
                     afterWrite = {
-                        // Revision can change even if membership did not. Existing controller coalesces hidden reads.
+                        // Revision can change without a membership change.
                         savedSearch.refreshResultProjection()
                         if (refreshProfileWindow) invalidateSwipeProfilesLocally()
                         afterWrite()
@@ -797,8 +785,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         retryProjection = outcome.projectionFailure != null
                     }
                     is DiscoveryMutationOutcome.ProjectionFailed -> {
-                        // A feed read owns its own error/recovery. Only an independent
-                        // detail failure belongs to the mutation-level message.
+                        // Feed recovery is independent; report detail failure at mutation level.
                         if (outcome.detailFailed) message = "Änderung gespeichert; Profil konnte nicht vollständig aktualisiert werden."
                         retryProjection = outcome.feedFailed
                     }
@@ -821,8 +808,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         mutateDiscovery("Undo fehlgeschlagen", write = {
             undoSwipeStep(step, core::setSwipePreference, { core.profileIdentity(it).personId }, swipeSession::undo)
         }, afterWrite = {
-            // The restored listing may be outside the previous three-card window.
-            // Prefer its existing local projection; a never-loaded skip may still need source data.
+            // Undo prefers local data; a never-loaded skip may still need a source read.
             _discoverState.update { it.copy(localProfileReloadIds = it.localProfileReloadIds + step.listingId) }
         })
     }
@@ -836,7 +822,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _discoverState.update { it.copy(swipeRestore = null) }
     }
 
-    /** The temporary hide belongs only to the grid of the executed run. */
     fun toggleGridLike(listingId: Long) {
         val state = _discoverState.value
         val search = _searchUiState.value
@@ -968,8 +953,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val draft = entry.draft ?: return
         if (_discoverState.value.busy || entry.loading || entry.readError || !draft.dirty || draft.conflict) return
         val note = draft.text.takeUnless { it.isBlank() }
-        // Invalidate any older editor read. The same mutation guard and ViewModel
-        // lifetime cover navigation, preference writes and identity merges.
         noteReadTickets.invalidate(personId)
         updateNote(personId) { it.copy(error = null) }
         mutateDiscovery("Notiz konnte nicht gespeichert werden", write = {
@@ -1003,8 +986,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val current = _discoverState.value
         val preferred = if (token is SwipeActionToken) token.listingId else current.cards.firstOrNull()?.listingId
         swipeSession.reconcileMerge(token.ownerId, target, preferred)
-        // Revocation is bounded to the displayed window. Known merged listing must recover
-        // locally; other cards prefer cached native records but may lack a snapshot entirely.
+        // Recover merged listings locally; other cards may not yet have snapshots.
         invalidateSwipeProfilesLocally(token.listingId)
         _mapState.update { it.copy(overview = null) }
         _discoverState.update {

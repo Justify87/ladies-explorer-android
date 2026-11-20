@@ -1,6 +1,5 @@
 package de.justify87.ladiesexplorer.ui
 
-/** Existing swipe source completion and visibility policy; no additional projection or queue. */
 internal class SwipeProjectionInvalidation(
     private val savedSearch: () -> Unit,
     private val discovery: () -> Unit,
@@ -27,7 +26,7 @@ internal class SwipeProjectionInvalidation(
         if (mapEntered) map()
     }
 
-    /** Busy refresh is queued; a real read consumes the pending and dirty flags. */
+    /** Queue while busy; a real read consumes pending/dirty flags. */
     fun beginDiscovery(busy: Boolean): Boolean {
         pending = busy
         if (busy) return false

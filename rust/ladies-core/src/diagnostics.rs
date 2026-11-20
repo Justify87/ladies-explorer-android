@@ -229,7 +229,7 @@ impl Diagnostics {
         Ok((available, size, state.last_write_error.clone()))
     }
 
-    /// The same mutex serializes whole events, rotations, and immutable export snapshots.
+    /// Serialize events, rotations and export snapshots with one mutex.
     pub(crate) fn snapshot(&self, directory: &Path) -> io::Result<PathBuf> {
         let _state = self
             .journal

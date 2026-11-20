@@ -123,7 +123,7 @@ def generate(out, now):
         assert z.testzip() is None
         for rel, data in assets.items():
             assert z.read("assets/" + rel) == data
-    # Not a server replay: cases are inputs/expectations for future mock/device tests.
+    # Fixture inputs and expectations only; not a replay server.
     scenarios = {
         "clock": stamp(0), "viewports_dp": [360, 390, 430, 600],
         "font_scales": [1.0, 1.3], "themes": ["light", "dark"],

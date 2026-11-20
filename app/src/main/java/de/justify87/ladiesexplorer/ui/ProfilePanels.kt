@@ -53,8 +53,6 @@ internal fun rememberProfileSections(): ProfileSections = rememberSaveable(
     saver = listSaver<ProfileSections, String>(save = { it.entries }, restore = { ProfileSections(it) })
 ) { ProfileSections() }
 
-/** Shared scroll, section state, read demand and dialogs. The leading slot
- * supplies only context-specific hero/status/navigation; no second profile route. */
 @Composable
 internal fun ProfileFlow(
     state: LazyListState,
@@ -147,8 +145,7 @@ internal fun ProfileFlow(
     val keys = rows.map { it.key }
     val available = model != null
     var appliedPhotoRequest by remember { mutableIntStateOf(photoRequest) }
-    // Restoring an anchor is itself demand. Avoid restoring an offset into a
-    // temporarily short loading row or treating a not-yet-loaded listing as absent.
+    // Wait for the target row before restoring its offset.
     val recovering = scroll.recovering
     val phase = restore.phase
     val canRestore = restore.canRestore(swipeRestore)
@@ -157,7 +154,6 @@ internal fun ProfileFlow(
     LaunchedEffect(swipeRestore, terminal, busy, token) {
         if (swipeRestore != null && terminal && !busy && current()) consume(swipeRestore)
     }
-    // The same real row manifest declares both viewport and recovery demand.
     val dependency = if (canRestore) scroll.dependency(rows) else null
     val latestRows by rememberUpdatedState(rows)
     val anchorRead by rememberUpdatedState(dependency)
@@ -167,11 +163,9 @@ internal fun ProfileFlow(
             val visible = state.layoutInfo.visibleItemsInfo.map { it.key }.toSet()
             visibleProfileReads(latestRows, visible) + listOfNotNull(anchorRead)
         }.collect { reads ->
-            // A demand survives scrolling or a changing row manifest; panels coalesce
-            // it and the immutable projection owns cancellation.
+            // Demand survives scrolling; projection replacement owns cancellation.
             if (ProfileRowRead.Facts in reads) launch { panels.loadFacts(model.profile.snapshotId, filters) }
             if (ProfileRowRead.Detail in reads) launch { panels.loadDetail() }
-            // Notes already use the expanded section and admitted token.
         }
     }
     val noteState = owner?.let(notes::get) ?: NoteEditorState()
@@ -187,7 +181,6 @@ internal fun ProfileFlow(
         ProfileRowRead.Note -> noteState.readError
         null -> false
     }
-    // A single coroutine processes the actual anchor or explicit photo jump.
     LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor, readFailed,
         photoRequest, swipeRestore, phase, canRestore) {
         if (!available || (!canRestore && !terminal)) return@LaunchedEffect
@@ -308,7 +301,7 @@ private fun FieldValues(rows: List<ProfileField>) {
     FieldGrid(rows.map { it.label to it.values.joinToString(" · ") })
 }
 
-/** Promote one existing field; aliases with distinct values remain visible. */
+/** Preserve aliases with distinct values. */
 internal fun ProfileFacts.overviewAndTraits(): Pair<List<Pair<String, String>>, List<ProfileField>> {
     val promoted = traits.indexOfFirst {
         it.label.lowercase() in setOf("busen", "oberweite", "brustgröße", "brustgroesse", "brust")
@@ -436,7 +429,6 @@ private fun HistoryValues(before: String?, after: String?) {
     }
 }
 
-/** Both routes render identical inline sections in a single lazy list. */
 private fun ProfileFlowRows.profileContent(
     profile: ProfileResponse,
     identity: ProfileIdentity?,

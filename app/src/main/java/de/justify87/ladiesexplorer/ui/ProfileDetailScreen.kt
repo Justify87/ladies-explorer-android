@@ -126,7 +126,6 @@ internal fun ProfileDetailScreen(
     }
 }
 
-/** The same explicit destructive confirmation in both profile contexts. */
 @Composable
 internal fun IdentityConfirmationDialog(
     target: Long,

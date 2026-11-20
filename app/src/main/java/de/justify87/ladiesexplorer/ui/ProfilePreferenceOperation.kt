@@ -2,8 +2,7 @@ package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.Preference
 
-/** Invoked only after rendered-token admission inside the existing ViewModel mutation
- * owner. Native CAS owns the write; the deck owns traversal, not persistence. */
+/** Native CAS owns persistence; the admitted deck owns traversal. */
 internal suspend fun commitProfilePreference(
     token: ProfileIdentityToken,
     preference: Preference,
@@ -17,7 +16,7 @@ internal suspend fun commitProfilePreference(
             presentation = presentation?.takeIf { it.matches(token) }))
 }
 
-/** No session change until the native CAS or skip-owner check has succeeded. */
+/** Change session only after native CAS or skip-owner validation succeeds. */
 internal suspend fun undoSwipeStep(
     step: SwipeStep,
     write: suspend (Long, Long, Preference?, Preference) -> Preference,
