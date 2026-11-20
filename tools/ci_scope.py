@@ -13,6 +13,12 @@ DOCS = frozenset({
     b"docs/M05-PLAN.md",
     b"docs/M05-TASKS.md",
     b"docs/M05-PARITY.md",
+    b"docs/ARCHITECTURE.md",
+    b"docs/SOURCE.md",
+    b"docs/DATA-IMPORT.md",
+    b"docs/DIAGNOSTICS.md",
+    b"docs/MAP.md",
+    b"tools/M05-REFERENCE.md",
 })
 
 
