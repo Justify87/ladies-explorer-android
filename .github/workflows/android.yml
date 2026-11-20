@@ -176,8 +176,11 @@ jobs:
       - name: Verify packaged architecture contracts
         run: |
           set -- app/build/outputs/apk/debug/*.apk
-          test "$#" = 1 && test -f "$1"
-          python3 tools/check_architecture.py --apk "$1" --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          test "$#" = 1
+          test -f "$1"
+          aapt2="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)"
+          test -x "$aapt2"
+          python3 tools/check_architecture.py --apk "$1" --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 "$aapt2"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7

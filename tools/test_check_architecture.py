@@ -1,9 +1,16 @@
 import unittest
-import xml.etree.ElementTree as ET
+import subprocess
+import tempfile
+from pathlib import Path
+import sys
+from unittest.mock import patch
+import zipfile
 
 from check_architecture import (APP, BASE, STORE, VIDEO, PKG, ANDROID, source_file,
                                 wiring, tracked_paths, dependency_file,
-                                manifest_errors, provider_errors, native_errors)
+                                manifest_errors, provider_errors, native_errors,
+                                provider_resource_files, provider_reference, check_apk,
+                                check_source, LOCAL_OPTIONS)
 
 
 class SourceArchitectureTest(unittest.TestCase):
@@ -38,21 +45,32 @@ class SourceArchitectureTest(unittest.TestCase):
                 self.assertEqual([], source_file(path, code))
 
     def test_wiring_and_local_video(self):
-        app = "NetworkFetcher.Factory(RustImageNetworkClient(coreStore::loadDisplayImage))"
-        store = "private val engine: LadiesCore"
-        video = ('app.coreStore.loadDisplayVideo(url)\n'
-                 '"demuxer-lavf-o" to "protocol_whitelist=file"\n'
-                 'player.command(arrayOf("loadfile", source.file.absolutePath, "replace"))')
-        self.assertEqual([], wiring(app, store, video))
+        self.assertEqual([], wiring(GOOD_APP, GOOD_STORE, GOOD_VIDEO))
         for rule, args in (
-            ("ARC-01", ("NetworkFetcher.Factory(other)", store, video)),
-            ("ARC-01", (app + "\nNetworkFetcher.Factory(other)", store, video)),
-            ("ARC-03", (app, store.replace("private ", ""), video)),
-            ("ARC-07", (app, store, video.replace("protocol_whitelist=file", "protocol_whitelist=http"))),
-            ("ARC-07", (app, store, video.replace("source.file.absolutePath", "url"))),
-            ("ARC-07", (app, store, video + '\nplayer.command(arrayOf("loadfile", url))')),
+            ("ARC-01", ("NetworkFetcher.Factory(other)", GOOD_STORE, GOOD_VIDEO)),
+            ("ARC-01", ("// " + GOOD_APP, GOOD_STORE, GOOD_VIDEO)),
+            ("ARC-01", (GOOD_APP + "\nNetworkFetcher.Factory(other)", GOOD_STORE, GOOD_VIDEO)),
+            ("ARC-03", (GOOD_APP, GOOD_STORE.replace("private ", ""), GOOD_VIDEO)),
+            ("ARC-03", (GOOD_APP, "/* " + GOOD_STORE + " */", GOOD_VIDEO)),
+            ("ARC-07", (GOOD_APP, GOOD_STORE, GOOD_VIDEO.replace("protocol_whitelist=file", "protocol_whitelist=http"))),
+            ("ARC-07", (GOOD_APP, GOOD_STORE, GOOD_VIDEO.replace("source.file.absolutePath", "url"))),
+            ("ARC-07", (GOOD_APP, GOOD_STORE, GOOD_VIDEO + '\nplayer.command(arrayOf("loadfile", url))')),
+            ("ARC-07", (GOOD_APP, GOOD_STORE, GOOD_VIDEO.replace('player.setOptionString(name, value)', '// player.setOptionString(name, value)'))),
         ):
             self.assertIn(rule, {e[0] for e in wiring(*args)})
+        for name, value in LOCAL_OPTIONS.items():
+            pair = f'"{name}" to "{value}"'
+            for replacement in ('// ' + pair, pair.replace(f'"{value}"', '"unsafe"'), pair + '\n' + pair):
+                with self.subTest(name=name, replacement=replacement):
+                    self.assertIn("ARC-07", {e[0] for e in wiring(GOOD_APP, GOOD_STORE, GOOD_VIDEO.replace(pair, replacement))})
+        self.assertIn("ARC-07", {e[0] for e in wiring(GOOD_APP, GOOD_STORE, GOOD_VIDEO + '\nplayer.setOptionString("config", "yes")')})
+
+    def test_comments_and_multiline_scans(self):
+        ui = BASE + "ui/Example.kt"
+        self.assertEqual([], source_file(ui, '// java.net.URL\n/* nested /* LadiesCore */ WebView */\nval s = "https://example.invalid"'))
+        self.assertIn("ARC-01", {e[0] for e in source_file(ui, "NetworkFetcher\n . Factory\n (client)")})
+        self.assertIn("ARC-01", {e[0] for e in source_file(ui, 'val s = "https://example.invalid" // url\nimport java.net.URL')})
+        self.assertEqual([], wiring(GOOD_APP.replace("coreStore", "store"), GOOD_STORE.replace("engine", "nativeEngine"), GOOD_VIDEO.replace("source.file", "clip.file")))
 
     def test_dependencies_and_tracked_paths(self):
         for rule, dep in (("ARC-01", "com.squareup.okhttp3:okhttp"), ("ARC-02", "androidx.room:room-runtime"), ("ARC-06", "org.springframework:boot")):
@@ -61,6 +79,52 @@ class SourceArchitectureTest(unittest.TestCase):
         for rule, path in (("ARC-04", "app/src/main/jniLibs/arm64/libladies_core.so"), ("ARC-06", "app/src/main/assets/server.py"), ("ARC-08", "exports/ladies-http-123.har.json"), ("ARC-08", "ladies.sqlite"), ("ARC-08", "ladies_data/media/images/a.png")):
             self.assertIn(rule, {e[0] for e in tracked_paths([path])})
         self.assertEqual([], tracked_paths(["tools/m05-reference.py", "fixtures/sample.json", "app/src/test/resources/synthetic.png", "gradle/wrapper/gradle-wrapper.jar"]))
+
+
+GOOD_APP = "NetworkFetcher.Factory(RustImageNetworkClient(coreStore::loadDisplayImage))"
+GOOD_STORE = "private val engine: LadiesCore = LadiesCore(path)"
+GOOD_VIDEO = ("\n".join(f'"{name}" to "{value}"' for name, value in LOCAL_OPTIONS.items())
+              + '\nplayer.setOptionString(name, value)\napp.coreStore.loadDisplayVideo(url)\n'
+              + 'player.command(arrayOf("loadfile", source.file.absolutePath, "replace"))')
+
+
+class RealRepositoryTest(unittest.TestCase):
+    def test_complete_source_command(self):
+        script = Path(__file__).resolve().with_name("check_architecture.py")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+
+            def put(path, content):
+                file = root / path
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text(content, encoding="utf-8")
+                subprocess.run(["git", "-C", tmp, "add", "--", path], check=True)
+
+            for path, content in ((APP, GOOD_APP), (STORE, GOOD_STORE), (VIDEO, GOOD_VIDEO),
+                                  ("app/src/test/java/Example.kt", "import java.net.URL"),
+                                  ("app/src/androidTestDebug/java/Example.kt", "import android.database.sqlite.SQLiteDatabase")):
+                put(path, content)
+
+            def run():
+                return subprocess.run([sys.executable, str(script), "--root", tmp], capture_output=True, text=True)
+
+            self.assertEqual(0, run().returncode)
+            for path, code, rule in (
+                ("app/src/debug/java/Example.kt", "import java.net.URL", "ARC-01"),
+                ("app/src/release/java/Example.kt", "val database = SQLiteDatabase()", "ARC-02"),
+                ("app/src/testing/java/Example.kt", "val engine = LadiesCore(path)", "ARC-03"),
+                (APP, "// " + GOOD_APP, "ARC-01"),
+            ):
+                put(path, code)
+                result = run()
+                self.assertEqual(1, result.returncode)
+                self.assertIn(rule, result.stderr)
+                if path == APP:
+                    put(APP, GOOD_APP)
+                else:
+                    subprocess.run(["git", "-C", tmp, "rm", "-f", "--", path], check=True)
+            self.assertEqual([], check_source(root))
 
 
 MANIFEST = f"""<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{PKG}.debug">
@@ -97,11 +161,67 @@ class ApkArchitectureTest(unittest.TestCase):
             ('android:debuggable="true"', 'android:debuggable="false"'),
             ('android:exported="false"', 'android:exported="true"'),
             ('android:grantUriPermissions="true"', 'android:grantUriPermissions="false"'),
-            ('@xml/diagnostic_file_paths', '@xml/other_paths'),
             ('</application>', '<service android:name=".Hidden" android:exported="true"/></application>'),
         ):
             with self.subTest(after=after):
                 self.assertTrue(manifest_errors(MANIFEST.replace(before, after)))
+
+    def test_additional_uri_grant_provider_is_rejected(self):
+        for provider in (
+            '<provider android:name=".Other" android:exported="false" android:grantUriPermissions="true"/>',
+            '<provider android:name=".Other" android:exported="false"><grant-uri-permission android:pathPrefix="/"/></provider>',
+            '<provider android:name=".Other" android:exported="false"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/other"/></provider>',
+        ):
+            self.assertTrue(manifest_errors(MANIFEST.replace("</application>", provider + "</application>")))
+        self.assertEqual([], manifest_errors(MANIFEST.replace("</application>", '<provider android:name="androidx.startup.InitializationProvider" android:exported="false"/></application>')))
+
+    def test_provider_resource_resolution(self):
+        table = (
+            f"Package name={PKG}.debug id=7f\n"
+            "  type xml id=13 entryCount=2\n"
+            "    resource 0x7f130000 xml/diagnostic_file_paths\n"
+            "      (default) (file) res/xml/diagnostic_file_paths.xml type=XML\n"
+            "      (v31) (file) res/xml-v31/diagnostic_file_paths.xml type=XML\n"
+            "    resource 0x7f130001 xml/other\n"
+            "      (default) (file) res/xml/other.xml type=XML\n"
+        )
+        expected = ["res/xml-v31/diagnostic_file_paths.xml", "res/xml/diagnostic_file_paths.xml"]
+        for ref in ("@xml/diagnostic_file_paths", "@ref/0x7f130000", "@0x7f130000"):
+            self.assertEqual(expected, provider_resource_files(ref, table))
+        for ref in ("@xml/other", "@ref/0x7f130001", "@ref/0x12345678", None):
+            with self.assertRaises(ValueError):
+                provider_resource_files(ref, table)
+        with self.assertRaises(ValueError):
+            provider_resource_files("@ref/0x7f130000", table.replace("(file) res/xml-v31/diagnostic_file_paths.xml type=XML", "@xml/other"))
+        self.assertEqual("@xml/diagnostic_file_paths", provider_reference(MANIFEST))
+
+    def test_apk_checks_every_referenced_variant(self):
+        table = (
+            f"Package name={PKG}.debug id=7f\n"
+            "  type xml id=13 entryCount=1\n"
+            "    resource 0x7f130000 xml/diagnostic_file_paths\n"
+            "      (default) (file) res/xml/diagnostic_file_paths.xml\n"
+            "      (v31) (file) res/xml-v31/diagnostic_file_paths.xml\n"
+        )
+        manifest = MANIFEST.replace("@xml/diagnostic_file_paths", "@ref/0x7f130000")
+        with tempfile.TemporaryDirectory() as tmp:
+            apk = Path(tmp) / "sample.apk"
+            with zipfile.ZipFile(apk, "w") as archive:
+                for path in ("lib/arm64-v8a/libladies_core.so", "lib/arm64-v8a/libjnidispatch.so",
+                             "res/xml/diagnostic_file_paths.xml", "res/xml-v31/diagnostic_file_paths.xml"):
+                    archive.writestr(path, b"fixture")
+
+            def response(args, **kwargs):
+                if args[0] == "aapt2":
+                    return table
+                if args[1] == "manifest":
+                    return manifest.encode()
+                if "xml-v31" in args[4]:
+                    return PATHS.replace("diagnostic-exports/", ".").encode()
+                return PATHS.encode()
+
+            with patch("check_architecture.subprocess.check_output", side_effect=response):
+                self.assertIn("ARC-08", {e[0] for e in check_apk(apk, "apkanalyzer", "aapt2")})
 
     def test_provider_and_native_mutations(self):
         for xml in (PATHS.replace("diagnostic-exports/", "."), PATHS.replace("cache-path", "root-path"), PATHS.replace("</paths>", '<files-path name="all" path="."/></paths>')):
