@@ -1,11 +1,14 @@
 import json
+import itertools
+import os
+import textwrap
 import subprocess
 import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from ci_scope import DOCS, classify, docs_only, verified_main_run, parse_diff, native_required
+from ci_scope import DOCS, classify, docs_only, verified_main_run, parse_diff, native_required, main
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -190,6 +193,50 @@ class CiScopeTest(unittest.TestCase):
         self.assert_policy(classify(env), "full", False, True)
 
 
+    @patch("ci_scope.subprocess.check_output")
+    def test_docs_base_evidence_fallbacks(self, command):
+        for evidence in ({"workflow_runs": []}, {"workflow_runs": [run(status="in_progress"), run()]},
+                         {"workflow_runs": [run(conclusion="cancelled")]},
+                         {"workflow_runs": [run(head_sha=HEAD)]},
+                         {"workflow_runs": [run(event="pull_request")]},
+                         {"workflow_runs": [run(id=True)]}, {"workflow_runs": [None]},
+                         [], None):
+            with self.subTest(evidence=evidence):
+                command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md"),
+                                       json.dumps(evidence).encode()]
+                self.assert_policy(classify(ENV), "full", False, False)
+        command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md"),
+                               subprocess.TimeoutExpired("gh", 30)]
+        self.assert_policy(classify(ENV), "full", False, False)
+
+    @patch("ci_scope.subprocess.check_output")
+    def test_missing_invalid_event_evidence(self, command):
+        for env in (dict(ENV, BASE_SHA=""), dict(ENV, BASE_SHA="0" * 40),
+                    dict(ENV, GITHUB_SHA="not a commit"),
+                    dict(ENV, GITHUB_EVENT_NAME="push", BEFORE_SHA=""),
+                    dict(ENV, GITHUB_EVENT_NAME="push", BEFORE_SHA="0" * 40),
+                    dict(ENV, GITHUB_EVENT_NAME="unrecognized")):
+            with self.subTest(env=env):
+                self.assert_policy(classify(env), "full", True, False)
+        command.assert_not_called()
+
+    def test_actual_manual_output_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            summary = Path(directory) / "summary"
+            for native, measure in itertools.product(("true", "false"), repeat=2):
+                output.write_text("")
+                summary.write_text("")
+                env = dict(ENV, GITHUB_EVENT_NAME="workflow_dispatch",
+                           VERIFY_NATIVE_CACHE=native, MEASURE_ANDROID_BUILD=measure,
+                           GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(summary))
+                with patch.dict(os.environ, env, clear=True):
+                    main()
+                self.assertEqual(["mode=full", f"native_qualification={native}",
+                                  f"performance_measurement={measure}"],
+                                 output.read_text().splitlines())
+                self.assertIn(f"native_qualification: {native}", summary.read_text())
+                self.assertIn(f"performance_measurement: {measure}", summary.read_text())
 
 
 class RealGitPolicyTest(unittest.TestCase):
@@ -324,6 +371,209 @@ class RealGitPolicyTest(unittest.TestCase):
         self.assertEqual(("full", False, False),
                          (result.mode, result.native_qualification, result.performance_measurement))
 
+
+    def classify_pr(self, evidence):
+        # Only the remote Actions API response is substituted.
+        env = dict(ENV, BASE_SHA=self.base, GITHUB_SHA=self.git("rev-parse", "HEAD").decode().strip())
+        original = subprocess.check_output
+
+        def command(args, **kwargs):
+            if args[0] == "gh":
+                self.assertIn(f"head_sha={self.base}", args)
+                return json.dumps(evidence).encode()
+            return original(args, cwd=self.root, **kwargs)
+
+        with patch("ci_scope.subprocess.check_output", side_effect=command):
+            return classify(env)
+
+    def assert_decision(self, decision, mode, native, performance):
+        self.assertEqual((mode, native, performance),
+                         (decision.mode, decision.native_qualification, decision.performance_measurement))
+
+    def test_real_large_pr_keeps_native_path(self):
+        self.git("checkout", "-qb", "feature")
+        for number in range(301):
+            self.write(f"app/src/main/java/test/File{number:03}.kt", "// synthetic\n")
+        self.write("rust/Cargo.lock", "# synthetic lock\n")
+        self.commit("large change")
+        self.write("README.md", "updated")
+        self.commit("last commit docs")
+        self.git("checkout", "-q", "main")
+        self.git("merge", "--no-ff", "-qm", "PR merge", "feature")
+        self.assertEqual(303, len(parse_diff(self.raw_diff())))
+        self.assert_decision(self.classify_pr({"workflow_runs": [run(head_sha=self.base)]}),
+                             "full", True, False)
+
+    def test_real_pr_docs_proof_and_structural_change(self):
+        self.git("checkout", "-qb", "feature")
+        self.write("README.md", "updated")
+        self.commit("docs")
+        self.git("checkout", "-q", "main")
+        self.git("merge", "--no-ff", "-qm", "PR merge", "feature")
+        self.assert_decision(self.classify_pr({"workflow_runs": [run(head_sha=self.base)]}),
+                             "docs", False, False)
+        self.assert_decision(self.classify_pr({"workflow_runs": [run(head_sha=self.base,
+                                                                      status="in_progress")]}),
+                             "full", False, False)
+        self.git("reset", "--hard", self.base)
+        self.git("checkout", "-qb", "structural")
+        (self.root / "README.md").unlink()
+        (self.root / "README.md").symlink_to("docs/ARCHITECTURE.md")
+        self.commit("doc symlink")
+        self.git("checkout", "-q", "main")
+        self.git("merge", "--no-ff", "-qm", "PR merge", "structural")
+        self.assert_decision(self.classify_pr({"workflow_runs": [run(head_sha=self.base)]}),
+                             "full", False, False)
+
+    def test_real_push_missing_or_nonancestor_base(self):
+        self.git("checkout", "-qb", "other")
+        self.write("README.md", "different ancestor")
+        self.commit("other history")
+        other = self.git("rev-parse", "HEAD").decode().strip()
+        self.git("checkout", "-q", "main")
+        self.write("README.md", "main history")
+        self.commit("main change")
+        head = self.git("rev-parse", "HEAD").decode().strip()
+        for before in (other, "f" * 40, head):
+            with self.subTest(before=before):
+                env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
+                           BEFORE_SHA=before, GITHUB_SHA=head)
+                with patch("ci_scope.git", side_effect=self.git):
+                    self.assert_decision(classify(env), "full", True, False)
+
+    def test_real_nul_paths_unknown_and_measurement_union(self):
+        self.write("app/src/main/java/space tab\tnewline\n.kt", "// synthetic\n")
+        self.commit("NUL paths")
+        self.assert_decision(self.classify_push(), "full", False, False)
+        self.write("unknown\nfile", "synthetic")
+        self.write("tools/measure-android-build.sh", "# synthetic\n")
+        self.commit("unknown and measurement")
+        self.assert_decision(self.classify_push(), "full", True, True)
+
+
+
+class WorkflowGateTest(unittest.TestCase):
+    """Exercise actual inline shell bodies, without a duplicate gate implementation."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.workflow = (Path(__file__).resolve().parents[1] /
+                        ".github/workflows/android.yml").read_text()
+
+    def step(self, name):
+        # Narrow extraction of uniquely named steps; fail if this format changes.
+        marker = f"      - name: {name}\n"
+        self.assertEqual(1, self.workflow.count(marker))
+        lines = self.workflow.split(marker, 1)[1].splitlines()
+        end = next((i for i, line in enumerate(lines)
+                    if line.strip() and len(line) - len(line.lstrip(" ")) <= 6), len(lines))
+        return "\n".join(lines[:end])
+
+    def shell_body(self, name):
+        block = self.step(name)
+        self.assertEqual(1, block.count("        run: |\n"))
+        return textwrap.dedent(block.split("        run: |\n", 1)[1]).rstrip() + "\n"
+
+    def run_shell(self, body, env):
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory) / "summary"
+            result = subprocess.run(
+                ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", body],
+                env=dict(os.environ, **env, GITHUB_STEP_SUMMARY=str(summary)),
+                capture_output=True, text=True, timeout=10)
+            return result, summary.read_text() if summary.exists() else ""
+
+    def test_actual_scope_validation_shell(self):
+        body = self.shell_body("Validate execution policy")
+        valid = {("docs", "false", "false"), ("full", "false", "false"),
+                 ("full", "true", "false"), ("full", "false", "true"),
+                 ("full", "true", "true")}
+        for values in itertools.product(("docs", "full", "", "unknown"),
+                                        ("true", "false", "", "unknown"),
+                                        ("true", "false", "", "unknown")):
+            with self.subTest(values=values):
+                result, _ = self.run_shell(body, dict(zip(("MODE", "NATIVE", "PERFORMANCE"), values)))
+                self.assertEqual(values in valid, result.returncode == 0, result.stderr)
+
+    def test_actual_gate_valid_profiles_and_negative_mutations(self):
+        body = self.shell_body("Evaluate required CI gate")
+        valid = [dict(SCOPE_RESULT="success", MODE="docs", CORE_RESULT="skipped",
+                      ANDROID_RESULT="skipped", NATIVE_REQUIRED="false", PERFORMANCE_REQUIRED="false",
+                      NATIVE_OUTCOME="", PERFORMANCE_OUTCOME="")]
+        for native, measure in itertools.product(("true", "false"), repeat=2):
+            valid.append(dict(SCOPE_RESULT="success", MODE="full", CORE_RESULT="success",
+                              ANDROID_RESULT="success", NATIVE_REQUIRED=native,
+                              PERFORMANCE_REQUIRED=measure,
+                              NATIVE_OUTCOME="success" if native == "true" else "skipped",
+                              PERFORMANCE_OUTCOME="success" if measure == "true" else "skipped"))
+        replacements = {
+            "MODE": ("docs", "full", "", "unknown"),
+            "NATIVE_REQUIRED": ("true", "false", "", "unknown"),
+            "PERFORMANCE_REQUIRED": ("true", "false", "", "unknown"),
+        }
+        statuses = ("success", "skipped", "failure", "cancelled", "", "unknown")
+        for env in valid:
+            with self.subTest(valid=env):
+                result, summary = self.run_shell(body, env)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertIn("| Check | Expected | Actual |", summary)
+                self.assertIn("| Native cache qualification", summary)
+            for field in env:
+                for value in replacements.get(field, statuses):
+                    if value == env[field]:
+                        continue
+                    changed = dict(env, **{field: value})
+                    with self.subTest(field=field, value=value, original=env):
+                        result, _ = self.run_shell(body, changed)
+                        self.assertNotEqual(0, result.returncode, f"Accepted {changed}")
+
+    def test_actual_gate_rejects_joint_outcome_mismatches(self):
+        body = self.shell_body("Evaluate required CI gate")
+        statuses = ("success", "skipped", "failure", "cancelled", "", "unknown")
+        for native, measure in itertools.product(("true", "false"), repeat=2):
+            expected = tuple("success" if flag == "true" else "skipped"
+                             for flag in (native, measure))
+            for outcomes in itertools.product(statuses, repeat=2):
+                with self.subTest(native=native, measure=measure, outcomes=outcomes):
+                    result, _ = self.run_shell(body, dict(
+                        SCOPE_RESULT="success", MODE="full", CORE_RESULT="success",
+                        ANDROID_RESULT="success", NATIVE_REQUIRED=native, PERFORMANCE_REQUIRED=measure,
+                        NATIVE_OUTCOME=outcomes[0], PERFORMANCE_OUTCOME=outcomes[1]))
+                    self.assertEqual(outcomes == expected, result.returncode == 0, result.stderr)
+
+    def test_workflow_bindings_and_upload_order(self):
+        names = ("Build arm64 APK and device test APK, run JVM tests and Android Lint",
+                 "Verify packaged architecture contracts", "Upload debug APK",
+                 "Verify native task cache contract", "Measure Android build performance (CI05)",
+                 "Upload Gradle timing and test reports")
+        positions = [self.workflow.index(f"      - name: {name}\n") for name in names]
+        self.assertEqual(sorted(positions), positions)
+        for name in names[:3]:
+            self.assertNotIn("\n        if:", "\n" + self.step(name))
+            self.assertNotIn("continue-on-error:", self.step(name))
+        for step_name, flag in zip(names[3:5], ("native_qualification", "performance_measurement")):
+            step = self.step(step_name)
+            self.assertIn(f"id: {flag}", step)
+            self.assertIn("if: ${{ needs.scope.outputs." + flag + " == 'true' }}", step)
+            self.assertNotIn("continue-on-error:", step)
+            self.assertIn(flag + ": ${{ steps." + flag + ".outcome }}", self.workflow)
+            self.assertIn(flag + ": ${{ steps.classify.outputs." + flag + " }}", self.workflow)
+        self.assertIn("CI05_DIAGNOSTICS: ${{ needs.scope.outputs.performance_measurement }}",
+                      self.step(names[0]))
+        gate = self.step("Evaluate required CI gate")
+        self.assertIn("shell: bash", gate)
+        for variable, job, field in (
+                ("NATIVE_REQUIRED", "scope", "native_qualification"),
+                ("PERFORMANCE_REQUIRED", "scope", "performance_measurement"),
+                ("NATIVE_OUTCOME", "android", "native_qualification"),
+                ("PERFORMANCE_OUTCOME", "android", "performance_measurement")):
+            self.assertIn(variable + ": ${{ needs." + job + ".outputs." + field + " }}", gate)
+        self.assertIn("BEFORE_SHA: ${{ github.event.before }}", self.step("Classify complete event diff"))
+        self.assertIn("VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}",
+                      self.step("Classify complete event diff"))
+        self.assertIn("MEASURE_ANDROID_BUILD: ${{ inputs.measure_android_build }}",
+                      self.step("Classify complete event diff"))
+        self.assertNotIn("git diff --quiet", self.workflow)
 
 
 if __name__ == "__main__":
