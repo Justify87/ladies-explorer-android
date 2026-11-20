@@ -181,9 +181,33 @@ jobs:
           # API 37 is distributed as android-37.0; pre-install to avoid AGP first-run SDK discovery issues.
           test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
 
+      - name: Select optional CI05 diagnostics
+        id: ci05
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MEASURE_ANDROID_BUILD: ${{ inputs.measure_android_build }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            if git diff --quiet HEAD^1 HEAD -- tools/measure-android-build.sh tools/install-cargo-ndk.sh; then
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          elif [ "$MEASURE_ANDROID_BUILD" != true ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
       - name: Build arm64 APK and device test APK, run JVM tests and Android Lint
         id: gradle
-        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a -Pladies.nativeCache=true --stacktrace --continue --profile
+        env:
+          CI05_DIAGNOSTICS: ${{ steps.ci05.outputs.enabled }}
+        run: |
+          args=()
+          if [ "$CI05_DIAGNOSTICS" = true ]; then
+            args+=(--info -Dorg.gradle.caching.debug=true -Pkotlin.build.report.output=file)
+          fi
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a -Pladies.nativeCache=true --stacktrace --continue --profile "${args[@]}"
 
       - name: Verify packaged architecture contracts
         run: |
@@ -211,18 +235,8 @@ jobs:
           bash tools/verify-native-cache.sh
 
       - name: Measure Android build performance (CI05)
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          MEASURE_ANDROID_BUILD: ${{ inputs.measure_android_build }}
-        run: |
-          if [ "$EVENT_NAME" = pull_request ]; then
-            if git diff --quiet HEAD^1 HEAD -- tools/measure-android-build.sh tools/install-cargo-ndk.sh; then
-              exit 0
-            fi
-          elif [ "$MEASURE_ANDROID_BUILD" != true ]; then
-            exit 0
-          fi
-          bash tools/measure-android-build.sh
+        if: ${{ steps.ci05.outputs.enabled == 'true' }}
+        run: bash tools/measure-android-build.sh
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
@@ -240,6 +254,8 @@ jobs:
           path: |
             build/reports/profile/
             build/reports/ci05/
+            build/reports/kotlin-build/
+            app/build/reports/kotlin-build/
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
             app/build/reports/lint-results-debug.*

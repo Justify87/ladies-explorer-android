@@ -21,10 +21,10 @@ gradle.settingsEvaluated { settings ->
 GRADLE
 
 # Exercise the missing-binary and warm-install branches without touching Cargo home.
-bash "$root/tools/install-cargo-ndk.sh" "$tmp/ndk-bin" | tee "$reports/ndk-cold.log"
+/usr/bin/time -f "%e" -o "$reports/ndk-cold-seconds.txt" bash "$root/tools/install-cargo-ndk.sh" "$tmp/ndk-bin" | tee "$reports/ndk-cold.log"
 grep -Fx 'CI05: installed verified upstream cargo-ndk 4.1.2' "$reports/ndk-cold.log"
 sha256sum "$tmp/ndk-bin/"* > "$tmp/ndk-before"
-bash "$root/tools/install-cargo-ndk.sh" "$tmp/ndk-bin" | tee "$reports/ndk-warm.log"
+/usr/bin/time -f "%e" -o "$reports/ndk-warm-seconds.txt" bash "$root/tools/install-cargo-ndk.sh" "$tmp/ndk-bin" | tee "$reports/ndk-warm.log"
 grep -Fx 'CI05: reuse cargo-ndk 4.1.2' "$reports/ndk-warm.log"
 sha256sum -c "$tmp/ndk-before"
 
@@ -42,6 +42,13 @@ run_build() {
         -Pkotlin.build.report.output=file --info -Dorg.gradle.caching.debug=true \
         "$@") > "$reports/$scenario.log" 2>&1 || status=$?
     end="$(date +%s%N)"
+    # Keep the native Gradle diagnostic report even if qualification fails.
+    for dir in "$copy/build/reports/configuration-cache" "$copy/app/build/reports/configuration-cache"; do
+        if [ -d "$dir" ]; then
+            mkdir -p "$reports/$scenario-configuration-cache"
+            cp -a "$dir/." "$reports/$scenario-configuration-cache/"
+        fi
+    done
     python3 - "$scenario" "$start" "$end" "$status" <<'PY' >> "$reports/timings.tsv"
 import sys
 scenario, start, end, status = sys.argv[1:]
@@ -71,6 +78,8 @@ run_baseline() {
     reset_outputs
     run_build "$1" --no-configuration-cache
     check_native_outputs
+    grep -Fx "> Task :app:cargoBuildDebug FROM-CACHE" "$reports/$1.log"
+    grep -Fx "> Task :app:uniffiBindgenDebug FROM-CACHE" "$reports/$1.log"
     save_kotlin_reports "$1"
 }
 
