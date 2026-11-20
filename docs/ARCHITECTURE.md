@@ -51,6 +51,8 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 - `(source, external_profile_id)` und `(source, external_listing_id)` sind eindeutig; Zuordnungen nicht stillschweigend verändern.
 - Quellsnapshots, Beobachtungen und Nutzerzustand getrennt persistieren.
 
+### Native Tabellen
+
 | Bereich | Native Tabellen |
 | --- | --- |
 | Identität/Nutzerzustand | `persons`, `person_user_state`, `source_profiles`, `listings`, `person_identifiers` |
@@ -68,7 +70,7 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 - **Schemafreigabe:** Installation und interne Schemaentwicklung transaktional vor Store-Freigabe. Native v1 muss dem kanonischen Schema entsprechen; v2 einschließlich Tabellen, Indizes und Triggern validieren.
 - **Ungültige Schemata:** Fremde IDs, unerwartete unversionierte Tabellen, Schemaabweichungen oder unbekannte neuere Versionen erzeugen typisierte Fehler. Die exakt bekannte Demo mit `scaffold_notes` ist ein unterstützter technischer Migrationsfall; echte Nutzerdaten nicht implizit löschen.
 - **Connection:** `foreign_keys=ON` je Verbindung; Rust-Mutex schützt die Connection. Öffentliche Mutationen nutzen parametrisierte SQL-Anweisungen und Transaktionen.
-- **Owner-Integrität:** Person-INSERT erzeugt Nutzerstatus durch Trigger. Trigger verhindern unzulässige Personen-/Quellenzuordnung von Inseraten und Quellprofilen; Sichtungen aktualisieren die je Quelle zugehörigen `last_seen`-Zeitpunkte.
+- **Owner-Integrität:** Person-INSERT erzeugt Nutzerstatus durch Trigger. Trigger verhindern unzulässige Personen-/Quellenzuordnung von Inseraten und Quellprofilen; Sichtungen aktualisieren die je Quelle zugehörigen `last_seen_at`-Zeitpunkte.
 - **Keyset-Cursor:** `PersonCursor` über `last_seen_at`/`person_id`, `DiscoveryCursor` über Favorit/Inserat-`last_seen_at`/`listing_id`; jeweils absteigend und Seitengrößen 1–100. Suche, SavedSearch und SavedPeople besitzen eigene Fensterverträge.
 - UI enthält weder direkte SQL-Zugriffe noch eine alternative Persistenz.
 
@@ -119,7 +121,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 **Parser und Vollständigkeit:**
 - HTML-Seite 1 liefert Karten und SearchConfig. JSON-API-Folgeseiten liefern `content`, `pagination.totalPages`, `advertCount` und `distanceSearched` (String). Nach Anzeigen-ID deduplizieren.
 - Bei unbekannter HTML-Leerstruktur API-Seite-1-Recovery **nur** bei Karten und exakt bestätigtem Radius. Fehlende Metadaten können Seite 2 erfordern.
-- Explizites Nullsignal und behandelter erster HTTP-404-Fall: `partial=false`, `radius_verified=false`; kein bestätigter Delta-Nulltreffer.
+- Explizites Nullsignal beziehungsweise behandelter erster HTTP-404-Fall: `partial=false`, `radius_verified=false`. Weder daraus noch aus unbestätigter Radiusangabe einen bestätigten Delta-Nulltreffer ableiten.
 - Fehlende Radiusangabe regulärer Seiten: `partial=true`, `radius_verified=false`, `distance_searched=NULL`.
 - Radiusabweichung auf Seite 1: Fehler; später: Teilresultat.
 - Erkannter Radiusübergang ist nur bei bestätigter Vollständigkeit ein reguläres Ende. Sonst `partial`, auch bei Count-Abweichung, Seitenlimit oder fehlender erwarteter Folgeseite. Fachliche Folgen: [PRODUCT](PRODUCT.md#suche-und-filter).
@@ -343,7 +345,7 @@ Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Op
 ### Private Daten und Android-Grenzen
 
 - DB, Medien, Exporte und temporäre Player-Dateien liegen im App-Sandboxbereich; Android-Backup deaktiviert.
-- Manifest entfernt `COARSE_LOCATION`/`FINE_LOCATION`-Deklarationen von SDKs.
+- Manifest entfernt von SDKs deklarierte Berechtigungen `android.permission.ACCESS_COARSE_LOCATION` und `android.permission.ACCESS_FINE_LOCATION`.
 - Externe Aktionen ausschließlich über explizite Intents; fachliche Grenzen: [PRODUCT](PRODUCT.md).
 - Native Lizenzhinweise: [NOTICE](../NOTICE).
 
