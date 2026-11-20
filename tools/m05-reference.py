@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an isolated, synthetic Android v1-import and M05 scenario manifest.
+"""Generate an isolated, synthetic native Android v2 database and M05 scenarios.
 
 No network, private data, production DB access or third-party packages.
 """
@@ -11,7 +11,6 @@ import struct
 import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from zipfile import ZipFile, ZIP_DEFLATED
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "rust/ladies-core/src/schema.rs"
@@ -33,8 +32,10 @@ def generate(out, now):
     out.mkdir(parents=True, exist_ok=False)
     def stamp(hours):
         return (now - timedelta(hours=hours)).isoformat(timespec="seconds").replace("+00:00", "Z")
-    schema = SCHEMA.read_text(encoding="utf-8").split('pub(crate) const VERSION_1: &str = r#"', 1)[1].split('"#;', 1)[0]
-    db_path = out / "legacy.sqlite3"
+    source = SCHEMA.read_text(encoding="utf-8")
+    schema_v1 = source.split('pub(crate) const VERSION_1: &str = r#"', 1)[1].split('"#;', 1)[0]
+    schema_v2 = source.split('const VERSION_2: &str = r#"', 1)[1].split('"#;', 1)[0]
+    db_path = out / "ladies.sqlite"
     assets = {}
     profiles = []
     people = [
@@ -48,8 +49,10 @@ def generate(out, now):
         (8, "LIKE", False, "UNKNOWN", 96, "NONE"),
     ]
     with sqlite3.connect(db_path) as db:
-        db.executescript(schema)
-        db.execute("PRAGMA user_version=1")
+        db.executescript(schema_v1)
+        db.executescript(schema_v2)
+        db.execute(f"PRAGMA application_id={int('4C445850', 16)}")
+        db.execute("PRAGMA user_version=2")
         db.execute("PRAGMA foreign_keys=ON")
         for pid, pref, fav, status, hours, media in people:
             name = f"Testprofil {pid:02}"
@@ -113,16 +116,10 @@ def generate(out, now):
         assert db.execute("SELECT COUNT(*) FROM listing_snapshots").fetchone() == (18,)
         assert db.execute("SELECT COUNT(*) FROM (SELECT DISTINCT preference,favorite FROM person_user_state)").fetchone() == (6,)
     db.close()
-    bundle = out / "m05-synthetic.zip"
-    with ZipFile(bundle, "w", ZIP_DEFLATED) as z:
-        z.writestr("manifest.txt", "ladies-explorer-legacy-v1\n")
-        z.write(db_path, "legacy.sqlite3")
-        for rel, data in sorted(assets.items()):
-            z.writestr("assets/" + rel, data)
-    with ZipFile(bundle) as z:
-        assert z.testzip() is None
-        for rel, data in assets.items():
-            assert z.read("assets/" + rel) == data
+    for rel, data in sorted(assets.items()):
+        target = out / "ladies_data" / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
     # Fixture inputs and expectations only; not a replay server.
     scenarios = {
         "clock": stamp(0), "viewports_dp": [360, 390, 430, 600],
@@ -140,7 +137,7 @@ def generate(out, now):
         }
     }
     (out / "scenarios.json").write_text(json.dumps(scenarios, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"Generated {bundle} and scenarios.json: 8 persons, 9 listings, 18 snapshots, 3 search runs")
+    print(f"Generated {db_path} and scenarios.json: 8 persons, 9 listings, 18 snapshots, 3 search runs")
 
 
 if __name__ == "__main__":

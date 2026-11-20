@@ -138,32 +138,6 @@ jobs:
           python3 -m unittest discover -s tools -p test_check_architecture.py
           python3 tools/check_architecture.py
 
-      - name: Export script syntax
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: bash -n tools/export-legacy.sh
-
-      - name: Legacy export bundle round trip
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: |
-          if ! command -v sqlite3 >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y sqlite3
-          fi
-          tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
-          mkdir -p "$tmp/data dir/ladies_data/media/images"
-          printf 'sample image\n' > "$tmp/data dir/ladies_data/media/images/test.img"
-          sqlite3 "$tmp/data dir/ladies.sqlite3" \
-            "PRAGMA user_version=1;
-             CREATE TABLE media_assets(local_path TEXT);
-             CREATE TABLE listing_snapshots(raw_html_path TEXT);
-             INSERT INTO media_assets VALUES('media/images/test.img');"
-          ./tools/export-legacy.sh "$tmp/data dir" "$tmp/export.zip"
-          unzip -p "$tmp/export.zip" manifest.txt | grep -qx 'ladies-explorer-legacy-v1'
-          unzip -p "$tmp/export.zip" assets/media/images/test.img | grep -qx 'sample image'
-          unzip -p "$tmp/export.zip" legacy.sqlite3 > "$tmp/restored.sqlite3"
-          test "$(sqlite3 "$tmp/restored.sqlite3" "SELECT COUNT(*) FROM media_assets;")" = 1
-
       - name: Generate synthetic M05 reference
         id: fixture
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
@@ -179,10 +153,10 @@ jobs:
         working-directory: rust
         run: cargo test --workspace --locked
 
-      - name: Synthetic reference import
+      - name: Synthetic native database regression
         if: ${{ !cancelled() && steps.rust.outcome == 'success' && steps.fixture.outcome == 'success' }}
         working-directory: rust
-        run: M05_REFERENCE_BUNDLE="$RUNNER_TEMP/m05-reference/m05-synthetic.zip" cargo test --workspace --locked m05_reference_bundle_import -- --ignored
+        run: M05_REFERENCE_DB="$RUNNER_TEMP/m05-reference/ladies.sqlite" cargo test --workspace --locked m05_native_reference_fixture -- --ignored
 
       - name: Rust Clippy
         if: ${{ !cancelled() && steps.rust.outcome == 'success' }}

@@ -15,7 +15,6 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 - Keine Datenübernahme aus der Web-App und keine nutzerseitige Datenmigration – unabhängig von Format oder Verfahren (SQL, ZIP, Dateien, Gerätewechsel, Backup/Restore).
 - Keinen Nutzerimport, keine Ersatzmigration und kein Backup-/Restore-Verfahren zur Datenmigration vorhalten oder entwickeln.
 - Daten entstehen nativ in der Android-App. Interne, integritätserhaltende Schemaentwicklung derselben Android-Datenbank ist **keine** Nutzerdatenmigration. Diagnoseexporte sind kein Datenübernahmeverfahren.
-- Abweichender Ist-Stand und Entfernung: [ARCHITECTURE](ARCHITECTURE.md#abzulösender-legacy-import-ist-abweichung), [ROADMAP](ROADMAP.md#unabhängige-technische-bereinigung).
 
 ## Suche und Filter
 

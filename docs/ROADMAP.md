@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: DC02 – Altimport entfernen; danach T10.7 – Lifecycle-/Performance-Restreview.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: DC02-Review und Merge; danach T10.7 – Lifecycle-/Performance-Restreview.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -106,18 +106,18 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 
 ## Unabhängige technische Bereinigung
 
-### DC02 — READY · Altimport entfernen
+### DC02 — REVIEW · Altimport entfernt ([PR #52](https://github.com/Justify87/ladies-explorer-android/pull/52))
 
 **Nutzerentscheidung:** 20.11.2026; Web-App obsolet, keine Nutzerdatenmigration. **Reihenfolge:** Vor weiterer Featurearbeit.
 
 **Umfang:**
-- [ ] Bestehenden Web-App-Import einschließlich UI, ViewModel/CoreStore-/UniFFI-/Rust-Pfaden, Exportskript und ausschließlich importgebundenen Tests/CI-Schritten ursächlich entfernen.
-- [ ] Weiter benötigte synthetische Testdaten direkt nativ/test-only bereitstellen; relevante Integritätsregressionen erhalten.
+- [x] Bestehenden Web-App-Import einschließlich UI, ViewModel/CoreStore-/UniFFI-/Rust-Pfaden, Exportskript und ausschließlich importgebundenen Tests/CI-Schritten entfernen.
+- [x] Synthetische Testdaten als isolierte native v2-Datenbank bereitstellen; Integritätsregressionen erhalten.
 
 **Akzeptanz:**
-- [ ] Keine nutzerseitige Migrationsroute oder Ersatz-Importoberfläche.
-- [ ] Native Android-Schemaentwicklung und bestehende Android-Nutzerdaten unbeschädigt.
-- [ ] Technische Integrationsprüfungen im separaten Code-PR. [Produktsoll](PRODUCT.md#produktziel-und-grenzen).
+- [x] Keine nutzerseitige Migrationsroute oder Ersatz-Importoberfläche.
+- [x] Native Android-Schemaentwicklung unverändert; keine Eingriffe in bestehende Android-Nutzerdaten.
+- [x] Technische Integrationsprüfungen und grüner CI-Gate im separaten [PR #52](https://github.com/Justify87/ladies-explorer-android/pull/52), [CI #44828090537](https://github.com/Justify87/ladies-explorer-android/actions/runs/44828090537). [Produktsoll](PRODUCT.md#produktziel-und-grenzen).
 
 - [x] **DC01 — DONE:** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49) – obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
 

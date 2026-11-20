@@ -1,7 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
 import android.app.Application
-import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import de.justify87.ladiesexplorer.core.*
@@ -17,15 +16,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-enum class HomeOperation { Status, Import }
-
 data class HomeUiState(
-    val operation: HomeOperation? = HomeOperation.Status,
+    val loading: Boolean = true,
     val schemaVersion: String? = null,
     val personCount: String = "0",
     val sourceProfileCount: String = "0",
     val listingCount: String = "0",
-    val lastImport: ImportReport? = null,
     val debugLoggingEnabled: Boolean = false,
     val httpCaptureMode: CaptureMode = CaptureMode.OFF,
     val httpCaptureEntries: UInt = 0u,
@@ -36,10 +32,7 @@ data class HomeUiState(
     val diagnosticSizeBytes: Long = 0,
     val diagnosticLastError: String? = null,
     val error: String? = null,
-) {
-    val loading get() = operation != null
-    val importing get() = operation == HomeOperation.Import
-}
+)
 
 data class SavedStatusProgress(
     val total: Int = 0,
@@ -156,7 +149,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var savedStatusControl: RequestControl? = null
 
     private val searchOwner = DrainingOperation<RequestControl>()
-    private val homeOwner = DrainingOperation<HomeOperation>()
+    private val homeOwner = DrainingOperation<Unit>()
     private var homeRefreshPending = false
     private var previewControl: RequestControl? = null
     private var previewJob: Job? = null
@@ -504,7 +497,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             } finally {
-                // Reconcile after native drain before admitting another search/import.
+                // Reconcile after native drain before admitting another search.
                 if (searchOwner.finish(ticket)) {
                     _searchUiState.update { it.copy(loading = false, searchCancelling = false) }
                     savedSearch.refresh()
@@ -1001,8 +994,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             homeRefreshPending = true
             return
         }
-        val ticket = checkNotNull(homeOwner.start(HomeOperation.Status))
-        _uiState.update { it.copy(operation=HomeOperation.Status,error=null) }
+        val ticket = checkNotNull(homeOwner.start(Unit))
+        _uiState.update { it.copy(loading=true,error=null) }
         viewModelScope.launch {
             try {
                 val status = core.status()
@@ -1027,61 +1020,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _uiState.update { it.copy(error=failure.message ?: "Rust-Datenbank nicht verfügbar") }
             } finally {
                 if (homeOwner.finish(ticket)) {
-                    _uiState.update { it.copy(operation=null) }
+                    _uiState.update { it.copy(loading=false) }
                     if (homeRefreshPending) {
                         homeRefreshPending = false
                         refresh()
                     }
-                }
-            }
-        }
-    }
-
-    fun importBundle(uri: Uri) {
-        if (!canAcquireImport(searchOwner, homeOwner, _uiState.value.loading || _searchUiState.value.loading ||
-                _discoverState.value.busy || savedSearch.state.value.busy)) return
-        if (savedSearch.state.value.editor != null || savedSearch.state.value.dialog != null) {
-            _uiState.update { it.copy(error = "Gespeicherte Suchentwürfe vor dem Import speichern oder verwerfen.") }
-            return
-        }
-        if (_profileNotes.value.values.any { it.draft?.dirty == true }) {
-            _uiState.update { it.copy(error = "Ungespeicherte Notizen vor dem Import speichern oder verwerfen.") }
-            return
-        }
-        val ticket = checkNotNull(homeOwner.start(HomeOperation.Import))
-        _uiState.update { it.copy(operation=HomeOperation.Import,error=null) }
-        viewModelScope.launch {
-            var imported = false
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    val context = getApplication<Application>()
-                    val temp = File.createTempFile("ladies-migration-",".zip",context.cacheDir)
-                    try {
-                        val input = context.contentResolver.openInputStream(uri)
-                            ?: error("Das ausgewählte Archiv konnte nicht geöffnet werden")
-                        input.use { stream -> temp.outputStream().use { stream.copyTo(it) } }
-                        core.importLegacyBundle(temp)
-                    } finally {
-                        temp.delete()
-                    }
-                }
-                noteReadTickets.clear()
-                _profileNotes.value = emptyMap()
-                savedSearch.resetAfterImport()
-                _uiState.update { it.copy(lastImport=result) }
-                imported = true
-                refreshDiscovery()
-                refreshMap()
-                refreshSearchDefinitions()
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (failure: Exception) {
-                _uiState.update { it.copy(error=failure.message ?: "Datenimport fehlgeschlagen") }
-            } finally {
-                if (homeOwner.finish(ticket)) {
-                    homeRefreshPending = false
-                    _uiState.update { it.copy(operation=null) }
-                    if (imported) refresh()
                 }
             }
         }

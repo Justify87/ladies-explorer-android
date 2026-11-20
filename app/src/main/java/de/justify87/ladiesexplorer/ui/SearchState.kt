@@ -153,10 +153,6 @@ internal class DrainingOperation<T> {
     }
 }
 
-/** Native ownership is authoritative independently of UI emissions. */
-internal fun canAcquireImport(search: DrainingOperation<*>, home: DrainingOperation<*>, uiBusy: Boolean) =
-    !search.occupied && !home.occupied && !uiBusy
-
 internal sealed interface ProfileIdentityToken {
     val listingId: Long
     val ownerId: Long

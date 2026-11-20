@@ -345,12 +345,4 @@ internal class SavedSearchController(
         mutable.update { it.copy(operation = SavedOperation.Cancelling) }
         control?.cancel?.invoke()
     }
-
-    fun resetAfterImport() {
-        limits.clear()
-        refreshPending = false
-        session++
-        readTicket++
-        mutable.update { SavedSearchUiState(operation = it.operation) }
-    }
 }
