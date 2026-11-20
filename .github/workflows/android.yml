@@ -67,9 +67,11 @@ jobs:
 
       # Run independent checks even when another check fails. No failures
       # are ignored; the job and final gate still report failure.
-      - name: Verify Rust-only source HTTP boundary
+      - name: Architecture source contracts and regression tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: python3 tools/check-source-http.py
+        run: |
+          python3 -m unittest discover -s tools -p test_check_architecture.py
+          python3 tools/check_architecture.py
 
       - name: Export script syntax
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
@@ -170,6 +172,15 @@ jobs:
       - name: Build arm64 APK and device test APK, run JVM tests and Android Lint
         id: gradle
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace --continue --profile
+
+      - name: Verify packaged architecture contracts
+        run: |
+          set -- app/build/outputs/apk/debug/*.apk
+          test "$#" = 1
+          test -f "$1"
+          aapt2="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)"
+          test -x "$aapt2"
+          python3 tools/check_architecture.py --apk "$1" --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 "$aapt2"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
