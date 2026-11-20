@@ -10,7 +10,7 @@ plugins {
 // Adapted from Artefact's cargo-ndk and UniFFI variant build integration.
 // The resulting directories are Gradle outputs, never checked-in source files.
 val rustWorkspace: File = rootProject.file("rust")
-val androidMinApi = 29
+val androidMinApi = providers.gradleProperty("ladies.minApi").map(String::toInt).get()
 val rustAbis: List<String> = providers.gradleProperty("ladies.abis")
     .getOrElse("arm64-v8a,x86_64")
     .split(',')

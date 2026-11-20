@@ -27,7 +27,9 @@ cache_entries() {
             grep -E '^[0-9a-f]{32,64}$' | sort || true
     fi
 }
+test -d "$cache_dir"
 cache_entries > "$tmp/cache-before"
+test -s "$tmp/cache-before"
 
 run_native() {
     local log="$1"
@@ -104,7 +106,7 @@ grep -aFq "$source_marker" "$library"
 grep -aFq "$resource_marker" "$library"
 
 # Same SDK constant drives Android and cargo-ndk.
-sed -i 's/^val androidMinApi = 29$/val androidMinApi = 30/' "$copy/app/build.gradle.kts"
+sed -i 's/^ladies.minApi=29$/ladies.minApi=30/' "$copy/gradle.properties"
 run_native "$tmp/api.log" arm64-v8a
 require_task "$tmp/api.log" cargoBuildDebug ""
 grep -Fx 'CI02 native build: ABI=arm64-v8a API=30' "$tmp/api.log"
@@ -127,7 +129,7 @@ grep -aFq "$source_marker" "$copy/$generated/jniLibs/x86_64/libladies_core.so"
 grep -aFq "$resource_marker" "$copy/$generated/jniLibs/x86_64/libladies_core.so"
 
 # Restore only modified inputs. No synthetic package or ABI may survive.
-for path in "$config" "$catalog" "$rust_source" rust/Cargo.lock app/build.gradle.kts; do
+for path in "$config" "$catalog" "$rust_source" rust/Cargo.lock gradle.properties; do
     cp "$root/$path" "$copy/$path"
 done
 run_native "$tmp/reset.log" arm64-v8a
