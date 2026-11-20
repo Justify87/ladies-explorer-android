@@ -26,7 +26,14 @@ Diagnose (Logging, Messungen, HTTP/HAR, TXT-Export) ist integriert [#7](https://
 
 **Merge-Regel:** Mit dem Merge eines PR sind alle Geräteprüf- und Geräteabnahmeaufgaben seines integrierten Umfangs immer **DONE**. Dieselbe Regel gilt rückwirkend. Status der zugehörigen Tasks und Meilensteine im Arbeitsregister entsprechend aktualisieren; keine separaten Gerätestatus, Nachabnahmen oder Verschiebungen in spätere Meilensteine. Noch nicht implementierte Funktionen und konkrete offene Fehler bleiben reguläre Aufgaben. Die technische Prüfung bleibt Bestandteil der Umsetzung.
 
-- **READY** ausführbar; **DOING** tatsächlich in Arbeit (Branch/PR nennen); **REVIEW** zur Prüfung; **DONE** abgeschlossen; **BLOCKED** Grund und nächster Schritt; **PLANNED** abhängig/vorläufig, nicht freigegeben.
+| Status | Bedeutung |
+| --- | --- |
+| `READY` | Ausführbar |
+| `DOING` | Tatsächlich in Arbeit; Branch/PR nennen |
+| `REVIEW` | Zur Prüfung |
+| `DONE` | Abgeschlossen |
+| `BLOCKED` | Blocker und nächsten Schritt benennen |
+| `PLANNED` | Abhängig/vorläufig, nicht freigegeben |
 - Je Arbeitskontext eine Aufgabe. Main, offene PRs, Abhängigkeiten, relevante Spezifikation/Code/Tests prüfen; konkrete beobachtbare Kriterien vor Umsetzung festlegen. Kein konkurrierender Umbau am selben State.
 - Bei Unterbrechung Stand/nächsten Schritt/Blocker hier aktualisieren. Bei Abschluss Kriterien abgleichen, Beleg (PR/Commit/Test/Lauf) verlinken, Status und geänderte Fachverträge im selben PR pflegen. Erledigte Detailchecklisten zu einem Beleg verdichten; Review-Historie in PR/Git, nicht anhängen. Keine eigenmächtige Merge-/Veröffentlichungsfreigabe.
 
@@ -48,22 +55,31 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 ### T10.7 — READY · Lifecycle, Performance und Altcode
 
-Vorgänger T10.6; P03/P20–P23/P39–P44/P49–P51. PR #31 enthält bereits relevante Implementierungen; [Architektur](ARCHITECTURE.md#swipe-read-window-und-prefetch) und [Medienvertrag](ARCHITECTURE.md#persistentes-archiv-und-anzeige) prüfen, nicht neu implementieren. Code: `DiscoveryScreen.kt`, `SwipeProfile.kt`, `SwipeFlight.kt`, `ProfilePanels.kt`, `ProfilePresentation.kt`, `GalleryVideo.kt`, `MainViewModel.kt`; Tests: `SwipeProfileWindowTest`, `SwipeProfileReadTest`, `ProfilePresentationTest`, `ProfilePanelsTest`, `ProfileProjectionTest`, Rust-Medientests.
+**Abhängigkeit:** T10.6. **Referenzen:** P03/P20–P23/P39–P44/P49–P51; [Architektur](ARCHITECTURE.md#swipe-read-window-und-prefetch), [Medienvertrag](ARCHITECTURE.md#persistentes-archiv-und-anzeige).
 
-- [ ] Restreview Owner-/Run-/Snapshot-/Revision- und Lifecycle-Wechsel: Prefetch-Promotion/Pruning, Request/Retry/Cancel, Native Drain, Cache-/Note-/Facts-Invalidierung, SaveableState, unabhängige Reprojektion, Video-Surface-/Tempfile-Cleanup. Betroffene Aufrufer bis Rust/SQLite prüfen.
-- [ ] Kein stale UI, Double Write, Source-Redo nach Commit, zusätzliche Archivierung, mehr als current+2 oder zweite Queue/HTTP-/Profilimplementierung. Nur belegte Defekte ursächlich beheben und Regression sichern.
-- [ ] Technische Performanceprüfung anhand vorhandener Tests, Code und verfügbarer Diagnosebelege; keine behauptete Beschleunigung ohne Messung. Keine allgemeine M07-Optimierung.
+**Ist-Stand:** PR #31 enthält bereits relevante Implementierungen; prüfen statt neu implementieren. Code: `DiscoveryScreen.kt`, `SwipeProfile.kt`, `SwipeFlight.kt`, `ProfilePanels.kt`, `ProfilePresentation.kt`, `GalleryVideo.kt`, `MainViewModel.kt`. Tests: `SwipeProfileWindowTest`, `SwipeProfileReadTest`, `ProfilePresentationTest`, `ProfilePanelsTest`, `ProfileProjectionTest`, Rust-Medientests.
+
+**Ziel / Umfang und Akzeptanz:**
+- [ ] Restreview von Owner-/Run-/Snapshot-/Revision- und Lifecycle-Wechseln: Prefetch-Promotion/Pruning, Request/Retry/Cancel, Native Drain, Cache-/Note-/Facts-Invalidierung, SaveableState, unabhängige Reprojektion sowie Video-Surface-/Tempfile-Cleanup. Aufrufer bis Rust/SQLite prüfen.
+- [ ] Kein stale UI, Double Write, Source-Redo nach Commit, zusätzliche Archivierung, mehr als Current+2 oder zweite Queue/HTTP-/Profilimplementierung. Nur belegte Defekte ursächlich beheben und Regression sichern.
+- [ ] Technische Performance anhand vorhandener Tests, Code und verfügbarer Diagnosebelege prüfen; keine Beschleunigung ohne Messung behaupten und keine allgemeine M07-Optimierung.
 
 ### T10.8 — PLANNED · Vertikale Integration (G10.3)
 
-Vorgänger T10.7 abgeschlossen. P01–P51/X01–X11, [UI-Vertrag](DESIGN.md).
-- [ ] Alle betroffenen Einstiegspunkte (Swipe/Grid/Karte/Suche/Gespeichert inkl. gespeicherter Ergebnisse), Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
-- [ ] Vertikale Regression UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision, Fehler/Offline/Status/Radius/Pagination. Kein zweiter Pfad, Funktionsverlust oder Scope Drift. Konkrete technische Testbelege.
+**Abhängigkeit:** T10.7 abgeschlossen. **Referenzen:** P01–P51/X01–X11, [UI-Vertrag](DESIGN.md).
+
+**Ziel / Umfang und Akzeptanz:**
+- [ ] Alle betroffenen Einstiegspunkte (Swipe/Grid/Karte/Suche/Gespeichert inklusive gespeicherter Ergebnisse), Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
+- [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision, Fehler/Offline/Status/Radius/Pagination.
+- [ ] Kein zweiter Pfad, Funktionsverlust oder Scope-Drift; konkrete technische Testbelege.
 
 ### T10.9 — PLANNED · Abschluss M05.10 (G10)
 
-Vorgänger T10.8. Abschluss mit Merge.
-- [ ] T10.9: Abschlussreview, erfolgreiche ausgewählte technische Prüfungen, APK und integrierten Stand belegen, Ist-Doku aktualisieren; keine ungelösten hohen in-scope Befunde.
+**Abhängigkeit:** T10.8.
+
+**Ziel / Akzeptanz:**
+- [ ] Abschlussreview, erfolgreiche ausgewählte technische Prüfungen, APK und integrierten Stand belegen; Ist-Dokumentation aktualisieren.
+- [ ] Keine ungelösten hohen In-Scope-Befunde; Abschluss mit Merge.
 
 ## Danach – M06
 
@@ -82,7 +98,18 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 
 ## Unabhängige technische Bereinigung
 
-- [ ] **DC02 — READY:** Nutzerentscheidung 20.11.2026: Web-App obsolet, keine Nutzerdatenmigration. Vor weiterer Featurearbeit bestehenden Web-App-Import einschließlich Nutzeroberfläche, ViewModel/CoreStore-/UniFFI-/Rust-Pfaden, Exportskript und ausschließlich dazu gehörenden Tests/CI-Schritten ursächlich entfernen. Weiter benötigte synthetische Testdaten direkt nativ/test-only bereitstellen, relevante Integritätsregressionen erhalten. Keine Ersatzmigration/Importoberfläche; native Android-Schemaentwicklung und bestehende Android-Nutzerdaten nicht beschädigen. Nachweis, dass keine nutzerseitige Migrationsroute bleibt. Technische Integrationsprüfungen im separaten Code-PR. [PRODUCT](PRODUCT.md#produktziel-und-grenzen).
+### DC02 — READY · Altimport entfernen
+
+**Nutzerentscheidung:** 20.11.2026; Web-App obsolet, keine Nutzerdatenmigration. **Reihenfolge:** Vor weiterer Featurearbeit.
+
+**Umfang:**
+- [ ] Bestehenden Web-App-Import einschließlich UI, ViewModel/CoreStore-/UniFFI-/Rust-Pfaden, Exportskript und ausschließlich importgebundenen Tests/CI-Schritten ursächlich entfernen.
+- [ ] Weiter benötigte synthetische Testdaten direkt nativ/test-only bereitstellen; relevante Integritätsregressionen erhalten.
+
+**Akzeptanz:**
+- [ ] Keine nutzerseitige Migrationsroute oder Ersatz-Importoberfläche.
+- [ ] Native Android-Schemaentwicklung und bestehende Android-Nutzerdaten unbeschädigt.
+- [ ] Technische Integrationsprüfungen im separaten Code-PR. [Produktsoll](PRODUCT.md#produktziel-und-grenzen).
 
 - [x] **DC01 — DONE:** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49): obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
 
