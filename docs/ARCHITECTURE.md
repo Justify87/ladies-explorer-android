@@ -100,7 +100,7 @@ Für Medien validiert Rust bekannte HTTPS-Hosts und URL-Formen, verbietet Redire
 
 ## Oberfläche und Navigation
 
-`ShellRoute` und `LadiesApp` besitzen Root-Navigation gemäß DESIGN; Entdecken-Modi sind lokale Zustände. Standalone-Profile überlagern die Root-Navigation und behalten den tatsächlichen Ursprung. Status-/Import-Operationen und Back werden vom zuständigen Owner koordiniert. Beim Import ist Root-/Back-Navigation gesperrt; reine Status-Reads sperren sie nicht.
+`ShellRoute` und `LadiesApp` besitzen Root-Navigation gemäß DESIGN; Entdecken-Modi sind lokale Zustände. Standalone-Profile überlagern die Root-Navigation und behalten den tatsächlichen Ursprung. Status und Back werden vom zuständigen Owner koordiniert; reine Status-Reads sperren Navigation nicht. Der noch vorhandene Altimport sperrt Root/Back bis zum Abschluss.
 
 ### Suche, Entdecken und Grid
 
@@ -108,7 +108,7 @@ Für Medien validiert Rust bekannte HTTPS-Hosts und URL-Formen, verbietet Redire
 
 `SwipeSession` besitzt Traversierung und Undo-Records, keinen zweiten fachlichen Store. Skip ist rein sessionlokal; Reset startet Traversierung neu, ohne gespeicherte Präferenzen zurückzusetzen. Geste und Rail verwenden dieselbe gerenderte Admission und native CAS-Präferenzoperation. Erst bestätigte Mutation/autoritative Queue-Projektion erlaubt den nächsten Kartenwechsel. Ein Fehler nach Commit wiederholt nur Reads. Standalone-Präferenz, Neutral-Rücksetzung und Favorit erzeugen keinen Deck-Visit. Grid-Herz führt erwartungsgeprüfte LIKE/NONE- bzw. LIKE-Mutation aus; rungebundenes Präsentations-Hide bei neuem LIKE hat Rollback bei Writefehler und Reset bei neuem Run. Es ändert nicht die fachliche native Ergebnismenge und verwendet keine Swipe-Historie.
 
-`DiscoveryProjectionPublisher` hält lokale Entdecken-/Grid- und Saved-People-Projektionen aktuell; getrennte Fehlerpfade, gemeinsame Gültigkeitsprüfung. Präsenz- und Altersinformationen kommen aus vorhandener eindeutiger Quell-/Snapshot-Evidenz, ohne dekorative Profilanfragen. Karte besitzt eigene DB-weite Projektion (siehe Kartenintegration).
+`DiscoveryProjectionPublisher` hält lokale Entdecken-/Grid- und Saved-People-Projektionen aktuell; getrennte Fehlerpfade, gemeinsame Gültigkeitsprüfung. Präsenz- und Altersinformationen kommen aus vorhandener eindeutiger Quell-/Snapshot-Evidenz, ohne dekorative Profilanfragen. Karte besitzt eigene DB-weite Projektion (siehe [Karte und Sicherheitsgrenzen](#karte-und-sicherheitsgrenzen)).
 
 ### Gemeinsame Profilarchitektur
 
@@ -174,7 +174,7 @@ Recorder in bestehenden Rust-HTTP-Lesepfaden; keine weiteren Requests oder Kotli
 
 ## Karte und Sicherheitsgrenzen
 
-- Einstellungen bedienen Import, DB-/Core-Status, Replay-Likes, Debug-Logging und Diagnoseexport. Rust zeichnet seine Operationen und optional begrenzte HTTP-Evidenz auf; Kotlin liefert eigene Diagnoseereignisse über den Core. TXT/HAR-Export über app-private Cache-Dateien und den Diagnoseprovider. 
+- Einstellungen bedienen die Produktfunktionen; der noch vorhandene Altimport ist eine Soll-Abweichung (siehe oben).
 - MapLibre besitzt Karten-View und Kartenressourcen; AndroidView-Factory/onRelease und Lifecycle-Observer koordinieren genau einmal den nativen View-Lifecycle einschließlich Speicherdruck. Kamera und Auswahl bleiben über SaveableStateHolder bei Tab-/Profilwechseln erhalten. Rust liefert die DB-weite Kartenprojektion und hält Koordinatencache in `app_settings` (`map:postal:DE:…` / `map:city:DE:…`, keine separate Schema-Migration), zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg. Offline-Überblick und Auftragsstatus sind getrennt; nach Abschluss/Abbruch liest die UI genau einmal den aktuellen Bestand statt doppelter Listenübertragung. Kein eigener Prozess, WebView, Server oder Gerätestandort. 
 - Kartenstil `https://tiles.openfreemap.org/styles/liberty`; PLZ `https://api.zippopotam.us/DE/<plz>`, bei fehlender PLZ später Stadt-Fallback `https://nominatim.openstreetmap.org/search` (DE, max. ein Ergebnis, >=1,1 s Abstand auch über Aufträge hinweg, [Provider-Policy](https://operations.osmfoundation.org/policies/nominatim/)). Neun Sekunden HTTP-Timeout je Standort; bestätigte Nichttreffer sieben Tage negativ cachen, Transport-/Format-/Koordinatenfehler nicht. Kartenüberblick offline über mapOverview; ausdrückliche resolveMapLocations-Aufträge max. 15 Schlüssel, GeoJSON/Cluster, keine exakten hidden_location-Daten an Provider. Kachel-/Stil-Attribution beachten. Profilöffnung über loadProfile mit Offline-Fallback.
 - Private Datenbank, Medien, Exporte und temporäre Player-Dateien liegen im App-Sandboxbereich. Android-Backup ist deaktiviert. Manifest entfernt von SDKs deklarierte COARSE/FINE_LOCATION-Berechtigungen. Produktgrenzen gemäß PRODUCT. Externe Aktionen sind explizite Intents. Lizenzinformationen für native Bibliotheken stehen in [NOTICE](../NOTICE).

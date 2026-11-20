@@ -1,16 +1,10 @@
 # Ladies Explorer Android
 
-Native, lokal genutzte Android-App mit Kotlin, Jetpack Compose / Material 3 Expressive, Rust, UniFFI und SQLite. Die App übernimmt relevante Daten und fachliche Regeln der früheren Web-App in einen eigenständigen Android-Stack. Kein separater Server, kein Python-/Flask-/Node.js-Runtime, keine Cloud-Datenbank.
+Native, lokal genutzte Android-App mit Kotlin, Jetpack Compose / Material 3 Expressive, Rust, UniFFI und SQLite. Die App verwaltet ihren eigenen nativen Datenbestand; keine Datenübernahme aus der früheren Web-App. Kein separater Server, kein Python-/Flask-/Node.js-Runtime, keine Cloud-Datenbank.
 
-## Aktueller Funktionsumfang
+## Produkt
 
-- Entdecken (Swipe, LIKE/DISLIKE, später), native Suche und Filter, gespeicherte Suchen mit Ergebnis-Historie, Favoriten, Karte und Einstellungen.
-- Gemeinsamer vertikaler Profilfluss für Swipe und Einzelprofil mit Mediengalerie, lokalem Bildarchiv, Offline-Fallback auf gespeicherte Profile, privaten Personennotizen (lesen, bearbeiten, speichern), Änderungshistorie und explizit bestätigbaren Identitätskandidaten.
-- Native MapLibre-Karte mit groben Ortszentren und ausdrücklich gestarteter Geocodierung. Keine Nutzerdatenmigration; fachlicher Umfang in [PRODUCT](docs/PRODUCT.md).
-- Lokales Debug-/Performance-Logging und optionaler HTTP-Mitschnitt mit TXT-/HAR-Export.
-- Galerie ohne obere Bedienleiste, Medienwechsel über seitliche Tippzonen; eingebettete stumme Videos mit Autoplay/Loop und mittigem Play/Pause. Externe WhatsApp-/Originalaktionen; kein integrierter Messenger oder automatische KI-/OCR-Preisextraktion.
-
-Die frühere Web-App ist obsolet; gültiges Produktziel ist die eigenständige Android-App. Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md).
+Entdecken, Suche, Profile, Medien, Personen, gespeicherte Suchen, Karte und lokale Diagnose. Verbindlicher Funktionsumfang und Grenzen: [PRODUCT.md](docs/PRODUCT.md). Die frühere Web-App ist obsolet; gültiges Produktziel ist die eigenständige Android-App. Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md).
 
 ## Aktive Weiterentwicklung
 

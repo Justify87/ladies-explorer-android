@@ -22,13 +22,13 @@ Lokales Android-Hobbyprojekt. KISS/YAGNI, evidenzbasiert, ursächliche Änderung
 4. PR mit Aufgabenbezug, Ausgangscommit, Änderungen, konkreten Test-/Reviewbelegen, Resten und Scope-Abweichungen. Status ausschließlich im Arbeitsregister und geänderte Verträge im selben PR pflegen. Geräteprüfaufgaben nach der [Merge-Regel](docs/ROADMAP.md#pflege) abschließen; keine separate Geräteabnahme.
 5. Keine automatische Merge-/Veröffentlichungsfreigabe. Weitere Aufgaben auf integriertem Stand; bei Unterbrechung nächsten Schritt/Blocker im Register festhalten. Historie in Git/PR.
 
-Keine privaten Profile, Bilder, DBs oder HARs in Git. Synthetische Fixtures; Legacy quellcodebasiert, keine Browser-Testautomatisierung oder Ersatz-Testserver.
+Keine privaten Profile, Bilder, DBs oder HARs in Git. Synthetische Fixtures; keine Browser-Testautomatisierung oder Ersatz-Testserver.
 
 ## Laufende Bereinigung
 
 Bei jeder Änderung betroffene Implementierungen, Aufrufer, Schnittstellen, Kommentare, Tests und Dokumentation vor Commit/PR semantisch auf Notwendigkeit, Aktualität, Redundanz und Konsistenz prüfen. Abgelöste Pfade einschließlich FFI und Tests entfernen; Umfang begrenzen, größere unabhängige Befunde bei Bedarf im Arbeitsregister erfassen.
 
-- Code: notwendige Testhilfen testexklusiv halten. Dynamische Aufrufer, Framework-/FFI-Verträge, Serialisierung, Migrationen und gültige Fachverträge berücksichtigen; nicht allein aufgrund fehlender Textreferenzen löschen.
+- Code: notwendige Testhilfen testexklusiv halten. Dynamische Aufrufer, Framework-/FFI-Verträge, Serialisierung, interne Schemaentwicklung und gültige Fachverträge berücksichtigen; nicht allein aufgrund fehlender Textreferenzen löschen.
 - Kommentare (auch KDoc/Rustdoc, Inline, Skripte): nur nicht offensichtliches Warum, Invarianten, Sicherheit/Integrität, Nebenläufigkeit/Lifecycle, externe Verträge und begründete Workarounds knapp erklären. Keine Historie, Nacherzählung oder auskommentierten Code. Rechtliche Header, Provenance, Shebangs, Direktiven, Fixtures, Fremd-/generierten Code und notwendige Testbegründungen erhalten; niemals blind per Regex löschen.
 - Tests: beobachtbares Verhalten und aktuelle Verträge sichern. Rust Fachlogik/Persistenz, JVM UI-State/Orchestrierung, Instrumentierung Android-Integration, Python Architektur/CI. Redundante Prüfungen konsolidieren, Kopplung minimieren, deterministische Nebenläufigkeit, begrenzte Wartezeiten, eindeutige Fehlerursachen, einfache lokale Fixtures. Gültige Verträge nicht zur Legitimierung fehlerhafter Implementierungen abschwächen; keine realen Quellenzugriffe oder privaten Testdaten.
 - Dokumentation: Informationen an maßgeblicher Stelle pflegen, andernorts referenzieren. Obsolete Inhalte entfernen, keine parallelen Spezifikationen. Neue Dateien nur bei eigenständigem dauerhaft belegtem Informationsbedarf, nicht pro Feature. Agentenregeln nur bei belegtem dauerhaftem projektspezifischem Bedarf ergänzen; bevorzugt konsolidieren oder ersetzen. Nutzerentscheidungen und verbindliche Grenzen nicht eigenmächtig abschwächen.
