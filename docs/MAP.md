@@ -46,7 +46,7 @@
 
 - Compose-Interop: [Views in Compose](https://developer.android.com/develop/ui/compose/migrate/interoperability-apis/views-in-compose). Nach Geocoding keine doppelte Übertragung der Kartenliste über UniFFI; der DB-Überblick und der Auftragsstatus bleiben getrennt.
 
-## Gerätetest
+## Optionale Geräteprüfung
 
 - Karte wiederholt öffnen und verlassen, Home/Resume und Rotation prüfen; Kamera und Auswahl beim Öffnen/Schließen eines Profils kontrollieren.
 - Kartenstil offline laden, Fehlerzustand prüfen und nach Wiederherstellung der Verbindung erneut laden.

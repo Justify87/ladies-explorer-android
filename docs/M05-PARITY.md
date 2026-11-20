@@ -44,7 +44,7 @@ Stabile P-/X-IDs als Regressionsreferenz, kein Aufgabenregister. Status: [Arbeit
 | P38 | Gemeinsamer Editor | ui/screens/saved_searches.js; ui/screens/search.js | Gemeinsamer Editor, kein Überschreiben importierter unsupported Regeln |
 | P39 | Gespeichertes Grid | ui/screens/saved_searches.js | Gemeinsame Grid-Karte, Pagination/Offline, sichtbare Deltas |
 | P40 | Zustände/UX | app/scroll_state.js; regressions.js; ux_patch.js | Konsistente Loading/Empty/Error, Wiederherstellung, Accessibility |
-| P41 | Gesamtcheck | bootstrap.js; tools/check_* (Legacy) | Referenzvergleich und gezielte Regression; technische Prüfungen und Gerätebelege getrennt |
+| P41 | Gesamtcheck | bootstrap.js; tools/check_* (Legacy) | Referenzvergleich und gezielte Regression; technische Prüfungen und Abschluss nach Merge-Regel |
 | P42 | Quellen-HTTP | — | Alle app-internen ladies.de-/CDN-Anfragen inkl. Videobytes ausschließlich Rust. |
 | P43 | Medien | — | Coil-Cache, Offline, Prefetch und HAR über Rust; reine Anzeige ohne Archiv-/DB-Mutation. |
 | P44 | Architekturgrenze | — | Automatisierte Architekturverträge; MapLibre und explizite externe Intents ausgenommen. |

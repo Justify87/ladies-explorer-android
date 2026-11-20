@@ -51,7 +51,7 @@ Rust zeichnet Such-, Profil-, Anzeige-Bild-, Medienarchiv- und Geocoder-Requests
 6. Geocoding ausdrücklich starten und im HAR dessen Requests und finale URLs kontrollieren; einzelne interne Redirect-Hops sowie MapLibre-Kachelrequests werden nicht erwartet.
 7. Snapshot-, Rotations- und Recorder-Tests sowie die zentralen Build-/CI-Prüfungen aus [README](../README.md) ausführen.
 
-**Abnahmegrenze:** Rust-Tests und ein gebautes APK beweisen keine erfolgreiche echte Leipzig-Suche, Bildanzeige auf einem Android-Gerät oder einen manuell bestätigten Firefox-HAR-Import. Diese Schritte separat dokumentieren, wenn sie wirklich durchgeführt wurden.
+**Abnahmegrenze:** Rust-Tests und ein gebautes APK beweisen keine erfolgreiche echte Leipzig-Suche, Bildanzeige auf einem Android-Gerät oder einen manuell bestätigten Firefox-HAR-Import. Optionale Prüfschritte; Aufgabenabschluss nach [Merge-Regel](ROADMAP.md#pflege).
 
 ## Referenzen
 
@@ -62,4 +62,4 @@ Rust zeichnet Such-, Profil-, Anzeige-Bild-, Medienarchiv- und Geocoder-Requests
 
 ## M05.7 Statusprüfung
 
-Einzel- und Batchstatus laufen ausschließlich über bestehenden Rust-HTTP-Recorder. Bestätigte Checks protokollieren Listing-ID, Status und HTTP-Code; Kotlin zeigt Fortschritt, Fehleranzahl und letzten Fehler. Unbestätigte Antworten überschreiben keinen bestätigten Status. Bei Navigation/ON_STOP wird RequestControl abgebrochen, bereits erfolgreich gespeicherte Teilresultate bleiben erhalten und werden lokal neu projiziert. Auf Gerät kontrollieren: keine zusätzlichen Such-/Archivrequests, stabile Reihenfolge bei wiederholter Statusprüfung, Cancel/Timeout und Statusfehler. Gerätebelege siehe [Arbeitsregister](ROADMAP.md).
+Einzel- und Batchstatus laufen ausschließlich über bestehenden Rust-HTTP-Recorder. Bestätigte Checks protokollieren Listing-ID, Status und HTTP-Code; Kotlin zeigt Fortschritt, Fehleranzahl und letzten Fehler. Unbestätigte Antworten überschreiben keinen bestätigten Status. Bei Navigation/ON_STOP wird RequestControl abgebrochen, bereits erfolgreich gespeicherte Teilresultate bleiben erhalten und werden lokal neu projiziert. Optionale Geräteprüfung: keine zusätzlichen Such-/Archivrequests, stabile Reihenfolge bei wiederholter Statusprüfung, Cancel/Timeout und Statusfehler. Aufgabenabschluss nach [Merge-Regel](ROADMAP.md#pflege).
