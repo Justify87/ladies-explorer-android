@@ -98,28 +98,27 @@ class CiScopeTest(unittest.TestCase):
 
     @patch("ci_scope.subprocess.check_output")
     def test_pr_never_automatically_selects_diagnostics(self, command):
-        regular = (b"app/src/main/java/new.kt", b"app/src/main/res/layout/main.xml",
+        paths = (b"app/src/main/java/new.kt", b"app/src/main/res/layout/main.xml",
                    b"app/src/main/AndroidManifest.xml", b"app/src/test/java/X.java",
                    b"app/src/androidTest/java/X.kt", b"app/proguard-rules.pro",
                    b"rust/ladies-core/src/lib.rs", b"rust/ladies-core/src/source/filter_catalog.json",
                    b"tools/check_architecture.py", b"tools/test_check_architecture.py",
                    b"tools/export-legacy.sh", b"tools/m05-reference.py",
-                   b"LICENSE", b"NOTICE", b".gitignore")
-        native = (b"build.gradle.kts", b"app/build.gradle.kts", b"settings.gradle.kts",
+                   b"LICENSE", b"NOTICE", b".gitignore",
+                   b"build.gradle.kts", b"app/build.gradle.kts", b"settings.gradle.kts",
                   b"gradle.properties", b"gradle/libs.versions.toml", b"gradlew", b"gradlew.bat",
                   b"rust/Cargo.lock", b"rust/ladies-core/Cargo.toml", b"rust/ladies-core/build.rs",
                   b"rust/ladies-core/uniffi.toml", b"rust/bindgen/src/main.rs",
                   b"rust/rust-toolchain.toml", b".cargo/config.toml", b"rust/.cargo/config",
                   b"app/src/main/jniLibs/arm64-v8a/lib.so", b".github/workflows/android.yml",
                   b"tools/ci_scope.py", b"tools/test_ci_scope.py", b"tools/verify-native-cache.sh",
-                  b"unknown.bin", b"rust/ladies-core/src/unknown.sh")
-        cases = [(p, False, False) for p in regular + native]
-        cases += [(b"tools/measure-android-build.sh", False, False),
-                  (b"tools/install-cargo-ndk.sh", False, False)]
-        for path, n, m in cases:
+                  b"unknown.bin", b"rust/ladies-core/src/unknown.sh",
+                  b"tools/measure-android-build.sh", b"tools/install-cargo-ndk.sh",
+                  b"app/src/androidTest/assets/fixture.mp4")
+        for path in paths:
             with self.subTest(path=path):
                 command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(path)]
-                self.assert_policy(classify(ENV), "full", n, m)
+                self.assert_policy(classify(ENV), "full", False, False)
         command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(),
                                diff(b"README.md") + diff(b"rust/Cargo.lock") +
                                diff(b"tools/measure-android-build.sh")]
@@ -346,7 +345,7 @@ class RealGitPolicyTest(unittest.TestCase):
         self.assertEqual((mode, native, performance),
                          (decision.mode, decision.native_qualification, decision.performance_measurement))
 
-    def test_real_large_pr_keeps_native_path(self):
+    def test_complete_pr_diff_is_not_truncated(self):
         self.git("checkout", "-qb", "feature")
         for number in range(301):
             self.write(f"app/src/main/java/test/File{number:03}.kt", "// synthetic\n")
@@ -398,9 +397,9 @@ class RealGitPolicyTest(unittest.TestCase):
         self.write("app/src/main/java/space tab\tnewline\n.kt", "// synthetic\n")
         self.commit("NUL paths")
         self.assert_decision(self.classify_push(), "full", False, False)
+        self.git("reset", "--hard", self.base)
         self.write("unknown\nfile", "synthetic")
-        self.write("tools/measure-android-build.sh", "# synthetic\n")
-        self.commit("unknown and measurement")
+        self.commit("unknown path")
         self.assert_decision(self.classify_push(), "full", False, False)
 
 
@@ -598,40 +597,25 @@ class WorkflowGateTest(unittest.TestCase):
                                       "branch": "main"}, api.call_args_list[1].kwargs)
                     transfer.assert_called_once()
 
-    def test_reuse_finalizer_falls_back_without_both_successful_steps(self):
+    def test_finalizer_reuses_only_verified_upload_and_preserves_original_scope(self):
         body = self.shell_body("Finalize execution policy")
-        for restore, upload, source in itertools.product(("success", "failure", "skipped"),
-                                                         ("success", "failure", "skipped"),
-                                                         ("42", "", "unknown")):
-            with tempfile.TemporaryDirectory() as tmp, self.subTest(
-                    restore=restore, upload=upload, source=source):
-                output = Path(tmp) / "output"
-                result, _ = self.run_shell(body, dict(MODE="full", NATIVE="true",
-                    PERFORMANCE="false", SOURCE=source, RESTORE=restore, UPLOAD=upload,
-                    GITHUB_OUTPUT=str(output)))
-                self.assertEqual(0, result.returncode, result.stderr)
-                fields = dict(line.split("=", 1) for line in output.read_text().splitlines())
-                reused = restore == upload == "success" and source == "42"
-                self.assertEqual("reuse" if reused else "full", fields["mode"])
-                self.assertEqual("false" if reused else "true", fields["native_qualification"])
-                self.assertEqual("42" if reused else "", fields["reuse_source"])
-
-    def test_docs_finalizer_never_builds_on_missing_reuse(self):
-        body = self.shell_body("Finalize execution policy")
-        for restore, upload, source in itertools.product(("success", "failure", "skipped"),
-                                                         ("success", "failure", "skipped"),
-                                                         ("42", "", "unknown")):
-            with tempfile.TemporaryDirectory() as tmp, self.subTest(
-                    restore=restore, upload=upload, source=source):
-                output = Path(tmp) / "output"
-                result, _ = self.run_shell(body, dict(MODE="docs", NATIVE="false",
-                    PERFORMANCE="false", SOURCE=source, RESTORE=restore, UPLOAD=upload,
-                    GITHUB_OUTPUT=str(output)))
-                self.assertEqual(0, result.returncode, result.stderr)
-                fields = dict(line.split("=", 1) for line in output.read_text().splitlines())
-                reused = restore == upload == "success" and source == "42"
-                self.assertEqual("reuse" if reused else "docs", fields["mode"])
-                self.assertEqual("42" if reused else "", fields["reuse_source"])
+        for mode, native in (("full", "true"), ("docs", "false")):
+            for restored, uploaded, source in itertools.product(
+                    ("success", "failure", "skipped"), ("success", "failure", "skipped"),
+                    ("42", "", "unknown")):
+                with tempfile.TemporaryDirectory() as tmp, self.subTest(
+                        mode=mode, restore=restored, upload=uploaded, source=source):
+                    output = Path(tmp) / "output"
+                    result, _ = self.run_shell(body, dict(MODE=mode, NATIVE=native,
+                        PERFORMANCE="false", SOURCE=source, RESTORE=restored, UPLOAD=uploaded,
+                        GITHUB_OUTPUT=str(output)))
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    fields = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                    reused = restored == uploaded == "success" and source == "42"
+                    self.assertEqual("reuse" if reused else mode, fields["mode"])
+                    self.assertEqual("false" if reused else native, fields["native_qualification"])
+                    self.assertEqual("false", fields["performance_measurement"])
+                    self.assertEqual("42" if reused else "", fields["reuse_source"])
 
     @patch("ci_reuse.api")
     def test_source_latest_run_and_actual_qualification(self, api):

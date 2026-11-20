@@ -504,7 +504,7 @@ mod tests {
             })
             .unwrap();
         let bytes = fs::read(app.join("ladies_data").join(path)).unwrap();
-        assert_eq!(bytes, b"sample image");
+        assert_eq!(bytes.as_slice(), b"sample image");
         assert_eq!(format!("{:x}", Sha256::digest(&bytes)), digest);
         drop(db);
         assert!(matches!(
@@ -572,10 +572,13 @@ mod tests {
             let (bundle, app) = fixture(tmp.path(), missing_media, invalid_owner);
             let core =
                 LadiesCore::new(app.join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
-            assert!(matches!(
-                import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()),
-                Err(CoreError::Import(message)) if message.starts_with(reason)
-            ), "{reason}");
+            assert!(
+                matches!(
+                    import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()),
+                    Err(CoreError::Import(message)) if message.starts_with(reason)
+                ),
+                "{reason}"
+            );
             let db = core.connection().unwrap();
             assert!(!target_has_data(&db).unwrap(), "{reason}");
             assert!(!app.join("ladies_data").exists(), "{reason}");

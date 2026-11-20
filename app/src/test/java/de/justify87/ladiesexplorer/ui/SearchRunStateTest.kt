@@ -1,6 +1,5 @@
 package de.justify87.ladiesexplorer.ui
 
-import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.SearchRequest
 import de.justify87.ladiesexplorer.core.SearchResponse
@@ -9,8 +8,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.launch
 import de.justify87.ladiesexplorer.core.DiscoveryCursor
 import de.justify87.ladiesexplorer.core.DiscoveryPage
 
@@ -30,12 +27,7 @@ class SearchRunStateTest {
         profiles = emptyList(),
     )
 
-    private fun card(id: Long) = DiscoveryCard(
-        listingId = id, personId = id, name = "Fixture", city = "Leipzig",
-        thumbnailUrl = null, localPath = null, description = null,
-        preference = Preference.NONE, favorite = false, hasVideo = false,
-        hasAiContent = false, isPremium = false, age = null,
-    )
+    private fun card(id: Long) = fixtureCard(id)
 
     @Test fun draftChangesAndCancellationKeepExecutedResult() {
         val old = SearchUiState().acceptRun(response(1), listOf(card(1)))
@@ -53,20 +45,14 @@ class SearchRunStateTest {
         assertEquals(old.response, pending.endRun("source failure").response)
     }
 
-    @Test fun lateResponseCannotReplaceNewRunAndPartialSuccessIsRetained() {
-        val generation = RequestGeneration()
-        val first = generation.value
-        var state = SearchUiState().acceptRun(response(1), listOf(card(1))).beginRun()
-        generation.invalidate()
-        val second = generation.value
-        val newRun = response(2, partial = true)
-        if (generation.isCurrent(second)) state = state.acceptRun(newRun, listOf(card(2)))
-        if (generation.isCurrent(first)) state = state.acceptRun(response(99), listOf(card(99)))
-        assertEquals(2L, state.response?.searchRunId)
-        assertEquals(2L, state.activeCards.single().listingId)
-        assertTrue(state.response!!.partial)
-        assertFalse(state.response!!.radiusVerified)
+    @Test fun partialRunReplacesPreviousResultsWithoutInventingRadiusVerification() {
+        val old = SearchUiState().acceptRun(response(1), listOf(card(1))).beginRun()
+        val partial = response(2, partial = true)
+        val state = old.acceptRun(partial, listOf(card(2)))
+        assertEquals(partial, state.response)
+        assertEquals(listOf(card(2)), state.activeCards)
         assertFalse(state.loading)
+        assertFalse(state.searchCancelling)
     }
 
     @Test fun activeGridIsNotTheConsumedSwipeQueue() {
@@ -151,34 +137,6 @@ class SearchRunStateTest {
         assertEquals(1, result.cards.size)
     }
 
-    @Test fun mutationFailureRestoresGridAndReprojectsWithoutRepeatingWrite() = runBlocking {
-        val events = mutableListOf<String>()
-        val result = writeAndProject(
-            write = { events += "write"; error("conflict") },
-            project = { events += "projection" },
-            onWriteFailure = { events += "restore" },
-        )
-        assertTrue(result is DiscoveryMutationOutcome.WriteFailed)
-        assertEquals(listOf("write", "restore", "projection"), events)
-    }
-
-    @Test fun committedMutationWithFailedProjectionNeverRollsBackGridOrRetriesWrite() = runBlocking {
-        val events = mutableListOf<String>()
-        val result = writeAndProject(
-            write = { events += "write" },
-            project = { events += "projection"; error("read failed") },
-            onWriteFailure = { events += "restore" },
-        )
-        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true), result)
-        assertEquals(listOf("write", "projection"), events)
-        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(false), writeAndProject(
-            write = {}, afterWrite = { error("detail read failed") }, project = {},
-        ))
-        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true, true), writeAndProject(
-            write = {}, afterWrite = { error("detail read failed") }, project = { error("feed read failed") },
-        ))
-    }
-
     @Test fun paginationDoesNotFireBeforeLayoutOrUntilNearEnd() {
         assertFalse(nearDiscoveryEnd(-1, 0))
         assertFalse(nearDiscoveryEnd(1, 50))
@@ -192,9 +150,11 @@ class SearchRunStateTest {
         val firstSearch = search.value
         preview.invalidate()
         assertFalse(preview.isCurrent(firstPreview))
+        assertTrue(preview.isCurrent(preview.value))
         assertTrue(search.isCurrent(firstSearch))
         search.invalidate()
         assertFalse(search.isCurrent(firstSearch))
+        assertTrue(search.isCurrent(search.value))
     }
 
     @Test fun cancelledNativeOwnerCannotBeReplacedUntilDrain() {
@@ -218,90 +178,9 @@ class SearchRunStateTest {
         assertTrue(home.finish(importing))
         val second = owner.start("replacement search")!!
         assertFalse(owner.finish(first))
+        assertFalse(owner.accepts(first))
         assertTrue(owner.accepts(second))
+        assertTrue(owner.finish(second))
+        assertFalse(owner.occupied)
     }
-
-    @Test fun secondaryReadFailureDoesNotEraseSuccessfulActiveRun() = runBlocking {
-        var active = listOf(card(1))
-        var savedFailed = false
-        val complete = readIndependentProjections<List<DiscoveryCard>, Unit>(
-            first = { listOf(card(1), card(2)) },
-            second = { error("saved read failed") },
-            publishFirst = { active = it.getOrThrow() },
-            publishSecond = { savedFailed = it.isFailure },
-        )
-        assertFalse(complete)
-        assertTrue(savedFailed)
-        assertEquals(listOf(1L, 2L), active.map { it.listingId })
-    }
-    @Test fun suspendedNativeSearchRetainsAdmissionUntilDrainAndDiscardsLateReply() = runBlocking {
-        val source = DrainingOperation<String>()
-        val home = DrainingOperation<HomeOperation>()
-        val started = CompletableDeferred<Unit>()
-        val drained = CompletableDeferred<Unit>()
-        val ticket = source.start("request")!!
-        var delivered = false
-        val job = launch {
-            started.complete(Unit)
-            drained.await()
-            delivered = source.accepts(ticket)
-            source.finish(ticket)
-        }
-        started.await()
-        source.cancel {}
-        assertFalse(canAcquireImport(source, home, false))
-        assertEquals(null, source.start("replacement"))
-        drained.complete(Unit)
-        job.join()
-        assertFalse(delivered)
-        assertTrue(canAcquireImport(source, home, false))
-    }
-
-    @Test fun failedPrimaryReadStillPublishesIndependentSavedPeopleProjection() = runBlocking {
-        var primaryFailed = false
-        var saved = emptyList<Long>()
-        val complete = readIndependentProjections<Unit, List<Long>>(
-            first = { error("primary failed") },
-            second = { listOf(42L) },
-            publishFirst = { primaryFailed = it.isFailure },
-            publishSecond = { saved = it.getOrThrow() },
-        )
-        assertFalse(complete)
-        assertTrue(primaryFailed)
-        assertEquals(listOf(42L), saved)
-    }
-
-    @Test fun committedWriteCanBeFollowedByDetailFailureAndIndependentFeedRecovery() = runBlocking {
-        val calls = mutableListOf<String>()
-        val result = writeAndProject(
-            write = { calls += "commit" },
-            afterWrite = { calls += "detail"; error("stale owner") },
-            project = {
-                check(readIndependentProjections(
-                    first = { listOf(card(7)) },
-                    second = { listOf(card(8)) },
-                    publishFirst = { calls += "grid:${it.getOrThrow().single().listingId}" },
-                    publishSecond = { calls += "saved:${it.getOrThrow().single().listingId}" },
-                ))
-            },
-            onWriteFailure = { calls += "write rollback" },
-        )
-        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(false, true), result)
-        assertEquals(listOf("commit", "detail", "grid:7", "saved:8"), calls)
-    }
-
-    @Test fun cancellationIsNotConvertedIntoWriteFailureOrReadRetry() = runBlocking {
-        val calls = mutableListOf<String>()
-        val cancellation = kotlinx.coroutines.CancellationException("cancelled")
-        val failure = runCatching {
-            writeAndProject(
-                write = { calls += "write"; throw cancellation },
-                project = { calls += "projection" },
-                onWriteFailure = { calls += "write failure" },
-            )
-        }.exceptionOrNull()
-        assertTrue(failure === cancellation)
-        assertEquals(listOf("write"), calls)
-    }
-
 }

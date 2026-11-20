@@ -51,9 +51,10 @@ class StandaloneProfileOperationsTest {
                 newArchiveControl = { Control().also(controls::add) },
                 cancelArchive = { it.cancelled++; calls += "cancel" },
                 confirmIdentityMatch = { listing, expectedOwner, expectedSnapshot, target ->
-                    check(owner == expectedOwner)
-                    check(cached?.snapshotId == expectedSnapshot)
-                    calls += "confirm:$listing:$target"; commit(listing, target)
+                    calls += "confirm:$listing:$target"
+                    check(owner == expectedOwner) { "fixture owner conflict" }
+                    check(cached?.snapshotId == expectedSnapshot) { "fixture snapshot conflict" }
+                    commit(listing, target)
                 },
                 newSourceControl = { Control().also(sourceControls::add) },
                 cancelSource = { it.cancelled++ },
@@ -221,9 +222,9 @@ class StandaloneProfileOperationsTest {
         assertNotEquals(old, f.search.value.detailIdentityToken())
         assertTrue(f.tickets.isCurrent(1L, ticket))
         assertEquals(setOf(1L, 2L, 3L), f.notes.value.keys)
-        assertEquals(listOf("profile:4", "project:1", "saved", "map"), f.calls)
+        assertEquals(listOf("confirm:4:2", "profile:4", "project:1", "saved", "map"), f.calls)
         assertFalse(f.discovery.value.busy)
-        assertNotNull(f.search.value.actionError)
+        assertEquals("fixture owner conflict", f.search.value.actionError)
     }
 
     @Test fun lateDetailSuccessAndFailureCannotReplaceNewerProjection() = runBlocking {

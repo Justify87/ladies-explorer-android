@@ -58,6 +58,7 @@ class ProfileProjectionTest {
         assertTrue(state.value.cards.isEmpty())
         assertEquals("grid read failed", state.value.error)
         assertEquals(page, state.value.savedPage)
+        assertTrue(search.value.activeCards.isEmpty())
         failDiscovery = false
         failSaved = true
         assertFalse(publisher.project(1L))
@@ -66,6 +67,22 @@ class ProfileProjectionTest {
         assertNull(state.value.error)
         assertNull(state.value.savedPage)
         assertEquals("saved read failed", state.value.savedError)
+
+        val run = SearchResponse(
+            SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}", 10u),
+            defaultLocalVisibility(), 3L, "Leipzig", 20u, 1u, 1u, 1u, false, false, true, emptyList(),
+        )
+        search.value = search.value.acceptRun(run, listOf(fixtureCard(1L)))
+        val activePublisher = DiscoveryProjectionPublisher(search, state, SwipeSession(), { epoch },
+            { error("active run must not alter local window") },
+            { DiscoveryProjection(3L, listOf(fixtureCard(7L)), DiscoveryPage(listOf(fixtureCard(7L)), null)) },
+            { error("saved read failed") },
+        )
+        assertFalse(activePublisher.project(1L))
+        assertEquals(run, search.value.response)
+        assertEquals(listOf(fixtureCard(7L)), search.value.activeCards)
+        assertEquals(listOf(7L), state.value.cards.map { it.listingId })
+        search.value = SearchUiState()
 
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
@@ -181,5 +198,66 @@ class ProfileProjectionTest {
         val projected = state.cards.map { it.copy(preference = native) }
         assertEquals(projected, deck.queue(projected, active = false))
         assertEquals(1, writes)
+    }
+
+    @Test fun mutationFailureRestoresGridAndReprojectsWithoutRepeatingWrite() = runBlocking {
+        val events = mutableListOf<String>()
+        val result = writeAndProject(
+            write = { events += "write"; error("conflict") },
+            project = { events += "projection" },
+            onWriteFailure = { events += "restore" },
+        )
+        assertTrue(result is DiscoveryMutationOutcome.WriteFailed)
+        assertEquals(listOf("write", "restore", "projection"), events)
+    }
+
+    @Test fun committedMutationWithFailedProjectionNeverRollsBackGridOrRetriesWrite() = runBlocking {
+        val events = mutableListOf<String>()
+        val result = writeAndProject(
+            write = { events += "write" },
+            project = { events += "projection"; error("read failed") },
+            onWriteFailure = { events += "restore" },
+        )
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true), result)
+        assertEquals(listOf("write", "projection"), events)
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(false), writeAndProject(
+            write = {}, afterWrite = { error("detail read failed") }, project = {},
+        ))
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true, true), writeAndProject(
+            write = {}, afterWrite = { error("detail read failed") }, project = { error("feed read failed") },
+        ))
+    }
+
+    @Test fun committedWriteCanBeFollowedByDetailFailureAndIndependentFeedRecovery() = runBlocking {
+        val calls = mutableListOf<String>()
+        val result = writeAndProject(
+            write = { calls += "commit" },
+            afterWrite = { calls += "detail"; error("stale owner") },
+            project = {
+                check(readIndependentProjections(
+                    first = { listOf(fixtureCard(7)) },
+                    second = { listOf(fixtureCard(8)) },
+                    publishFirst = { calls += "grid:${it.getOrThrow().single().listingId}" },
+                    publishSecond = { calls += "saved:${it.getOrThrow().single().listingId}" },
+                ))
+            },
+            onWriteFailure = { calls += "write rollback" },
+        )
+        assertEquals(DiscoveryMutationOutcome.ProjectionFailed(false, true), result)
+        assertEquals(listOf("commit", "detail", "grid:7", "saved:8"), calls)
+    }
+
+    @Test fun cancellationIsNotConvertedIntoWriteFailureOrReadRetry() = runBlocking {
+        val calls = mutableListOf<String>()
+        val cancellation = kotlinx.coroutines.CancellationException("cancelled")
+        val failure = runCatching {
+            writeAndProject(
+                write = { calls += "write"; throw cancellation },
+                project = { calls += "projection" },
+                onWriteFailure = { calls += "write failure" },
+            )
+        }.exceptionOrNull()
+        assertTrue(failure === cancellation)
+        assertEquals(listOf("write"), calls)
     }
 }

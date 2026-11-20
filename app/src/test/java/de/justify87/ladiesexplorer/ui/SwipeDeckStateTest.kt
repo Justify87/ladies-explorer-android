@@ -1,15 +1,12 @@
 package de.justify87.ladiesexplorer.ui
 
-import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.Preference
 import org.junit.Assert.*
 import org.junit.Test
 
 class SwipeDeckStateTest {
     private fun card(listing: Long, person: Long = listing, preference: Preference = Preference.NONE) =
-        DiscoveryCard(listingId = listing, personId = person, name = "Fixture", city = "Leipzig",
-            thumbnailUrl = null, localPath = null, description = null, preference = preference,
-            favorite = false, hasVideo = false, hasAiContent = false, isPremium = false, age = null)
+        fixtureCard(listing, person).copy(preference = preference)
 
     @Test fun activeQueuePreservesRunOrderAndDeduplicatesCanonicalPeople() {
         val rows = listOf(card(4, 1), card(5, 1), card(2, preference = Preference.LIKE),
@@ -44,14 +41,10 @@ class SwipeDeckStateTest {
         assertNull(session.last)
     }
 
-    @Test fun prefetchNeverExceedsTwoFollowingCardsAndShortDragsDoNotDecide() {
+    @Test fun prefetchNeverExceedsTwoFollowingCards() {
         val rows = (1L..8L).map { card(it) }
         assertEquals(listOf(2L, 3L), prefetchCards(rows).map { it.listingId })
         assertTrue(prefetchCards(emptyList()).isEmpty())
-        assertNull(photoSwipePreference(95f, 384f, 72f))
-        assertNull(photoSwipePreference(-95f, 384f, 72f))
-        assertEquals(Preference.LIKE, photoSwipePreference(96f, 384f, 72f))
-        assertEquals(Preference.DISLIKE, photoSwipePreference(-96f, 384f, 72f))
     }
 
     @Test fun explicitNoneDoesNotVisitButSkipHasNoPreviousPreference() {

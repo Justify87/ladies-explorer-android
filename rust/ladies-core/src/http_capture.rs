@@ -670,23 +670,38 @@ mod tests {
             &root.path().join("ladies.sqlite").to_string_lossy(),
         ));
         recorder.set_mode(CaptureMode::Metadata);
+        recorder.record(sample());
         let writer = Arc::clone(&recorder);
         let job = thread::spawn(move || {
-            for _ in 0..200 {
-                writer.record(sample());
+            for n in 0..200 {
+                let mut event = sample();
+                event.url = format!("https://www.ladies.de/fixture/{n}");
+                writer.record(event);
             }
         });
-        for _ in 0..10 {
-            if recorder.status().entries > 0 {
-                let har: Value = serde_json::from_slice(
-                    &fs::read(recorder.export(root.path()).unwrap()).unwrap(),
-                )
-                .unwrap();
-                assert!(har["log"]["entries"].as_array().is_some());
+        let mut previous = 1;
+        let mut verify = || {
+            let har: Value = serde_json::from_slice(
+                &fs::read(recorder.export(root.path()).unwrap()).unwrap(),
+            )
+            .unwrap();
+            let entries = har["log"]["entries"].as_array().unwrap();
+            assert!((previous..=201).contains(&entries.len()));
+            for (n, entry) in entries.iter().skip(1).enumerate() {
+                assert_eq!(
+                    entry["request"]["url"],
+                    format!("https://www.ladies.de/fixture/{n}")
+                );
             }
+            previous = entries.len();
+            previous
+        };
+        for _ in 0..10 {
+            verify();
         }
         job.join().unwrap();
-        assert_eq!(recorder.status().entries, 200);
+        assert_eq!(verify(), 201);
+        assert_eq!(recorder.status().entries, 201);
         assert_eq!(recorder.status().mode, CaptureMode::Metadata);
     }
 

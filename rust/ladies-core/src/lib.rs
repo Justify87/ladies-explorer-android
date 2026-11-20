@@ -1475,8 +1475,14 @@ mod swipe_preference_tests {
             Err(CoreError::IdentityConflict(reason))
                 if reason == "Präferenz inzwischen geändert; Undo nicht möglich."
         ));
-        assert_eq!(core.get_person(person).unwrap().unwrap().preference, Preference::Like);
-        assert_eq!(core.get_person(other).unwrap().unwrap().preference, Preference::None);
+        assert_eq!(
+            core.get_person(person).unwrap().unwrap().preference,
+            Preference::Like
+        );
+        assert_eq!(
+            core.get_person(other).unwrap().unwrap().preference,
+            Preference::None
+        );
         assert_eq!(
             core.set_swipe_preference(listing, person, Some(Preference::Like), Preference::Dislike)
                 .unwrap(),
