@@ -50,14 +50,14 @@ Nur APKs mit grünem **build**-Gate als vollständig CI-validiert verwenden. Das
 
 ### Build-Caches und optionale Diagnose
 
-Gradle Enhanced Caching und getrennte Host-/Android-Rust-Caches werden verwendet; externe Fork-PRs schreiben nicht in die Caches. SDK/NDK werden nur bei fehlender oder ungültiger Installation nachinstalliert. Der Gradle Configuration Cache bleibt im regulären Build deaktiviert.
+Gradle Enhanced Caching und getrennte Host-/Android-Rust-Caches werden verwendet. Der Host-Job nutzt `Swatinem/rust-cache`; Android nutzt `actions/cache/restore` und `actions/cache/save`, getrennt nach effektivem Rust-/Host-Compiler, NDK/API und Build-/Cargo-Konfiguration. Der Fallback bleibt auf dieselbe native Toolchain beschränkt. Nur nach erfolgreichem Build und mit vorhandenen Android-Release- und Host-Debug-Abhängigkeiten wird ein fehlender Cache gespeichert; Cargo entfernt zuvor die eigenen Workspace-Artefakte. Unbenutzte vorinstallierte Rust-Versionen sind kein Android-Cache-Input. Externe Fork-PRs schreiben nicht in die Caches. SDK/NDK werden nur bei fehlender oder ungültiger Installation nachinstalliert. Der Gradle Configuration Cache bleibt im regulären Build deaktiviert.
 
 `cargoBuild<Variant>` und `uniffiBindgen<Variant>` nutzen bei `-Pladies.nativeCache=true` auf kontrollierten GitHub-hosted Linux-X64-Runnern den Gradle-Task-Output-Cache. Eingaben umfassen Rust-Workspace/Ressourcen, Lockfile, Toolchain, definierte Umgebung, Compiler-/Linker-/libc-Versionen, Rust-Targets, relevante NDK/API/ABI-/Generatoridentitäten und für Bindings die tatsächlichen Bibliotheksbytes. Die Runner-Image-Version ist nur Aktivierungsvoraussetzung, kein Cache-Key; unveränderte Tool-Versionsstrings können Änderungen an Host-Headern/Systembibliotheken nicht vollständig abbilden. Bei Verdacht `-Pladies.nativeCache=false` verwenden. Lokal bzw. in unkontrollierter Umgebung bleibt normale Cargo-Wiederverwendung ohne Gradle-Output-Cache/UP-TO-DATE für diese Tasks erhalten. Maßgeblich ist [app/build.gradle.kts](app/build.gradle.kts).
 
 Optionale Diagnosewerkzeuge, ausschließlich explizit manuell (beide Inputs standardmäßig false):
 
 - `verify_native_cache=true`: [Native Cache-Probe](tools/verify-native-cache.sh) mit separatem Checkout, Wiederherstellung, Bytevergleich und Input-Invalidierungen; gemeinsamer Probe-Cache schreibgeschützt.
-- `measure_android_build=true`: [Build-Messung](tools/measure-android-build.sh) mit Cache-Key-Diagnostik, Kotlin-/Gradle-Berichten und isoliertem Configuration-Cache-Experiment.
+- `measure_android_build=true`: [Build-Messung](tools/measure-android-build.sh) mit Gradle-Cache-Key- und Cargo-Fingerprint-Diagnostik, Kotlin-/Gradle-Berichten und isoliertem Configuration-Cache-Experiment.
 
 Wesentliche lokale Prüfungen:
 
