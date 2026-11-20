@@ -16,42 +16,67 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
+  scope:
+    name: CI scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      mode: ${{ steps.classify.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify scope policy
+        run: python3 -m unittest discover -s tools -p test_ci_scope.py
+      - name: Classify complete PR merge diff
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/ci_scope.py
+
+  core:
+    name: Core and contracts
+    needs: scope
+    if: ${{ needs.scope.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-
-      - name: Java 21
-        uses: actions/setup-java@v6
+        id: checkout
         with:
-          distribution: temurin
-          java-version: "21"
+          persist-credentials: false
 
-      - uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: basic
-          # PR-scoped cache writes matter for repeated commits before merging to main.
-          cache-read-only: false
-
-      - name: Rust 1.99 with Android arm64 target
+      - name: Rust 1.99 host toolchain
+        id: rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.99.0"
-          targets: aarch64-linux-android
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
+          key: ci-host
           workspaces: rust -> target
+          save-if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
 
+      # Run independent checks even when another check fails. No failures
+      # are ignored; the job and final gate still report failure.
       - name: Verify Rust-only source HTTP boundary
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: python3 tools/check-source-http.py
 
       - name: Export script syntax
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: bash -n tools/export-legacy.sh
 
       - name: Legacy export bundle round trip
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: |
           if ! command -v sqlite3 >/dev/null; then
             sudo apt-get update -qq
@@ -73,18 +98,65 @@ jobs:
           test "$(sqlite3 "$tmp/restored.sqlite3" "SELECT COUNT(*) FROM media_assets;")" = 1
 
       - name: Generate synthetic M05 reference
+        id: fixture
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: python3 tools/m05-reference.py "$RUNNER_TEMP/m05-reference" --clock 2026-11-18T12:00:00+00:00
 
-      - name: Rust unit tests and formatting
+      - name: Rust formatting
+        if: ${{ !cancelled() && steps.rust.outcome == 'success' }}
         working-directory: rust
-        run: |
-          cargo fmt --all -- --check
-          cargo test --workspace --locked
-          M05_REFERENCE_BUNDLE="$RUNNER_TEMP/m05-reference/m05-synthetic.zip" cargo test --workspace --locked m05_reference_bundle_import -- --ignored
+        run: cargo fmt --all -- --check
+
+      - name: Rust unit tests
+        if: ${{ !cancelled() && steps.rust.outcome == 'success' }}
+        working-directory: rust
+        run: cargo test --workspace --locked
+
+      - name: Synthetic reference import
+        if: ${{ !cancelled() && steps.rust.outcome == 'success' && steps.fixture.outcome == 'success' }}
+        working-directory: rust
+        run: M05_REFERENCE_BUNDLE="$RUNNER_TEMP/m05-reference/m05-synthetic.zip" cargo test --workspace --locked m05_reference_bundle_import -- --ignored
 
       - name: Rust Clippy
+        if: ${{ !cancelled() && steps.rust.outcome == 'success' }}
         working-directory: rust
         run: cargo clippy --workspace --all-targets --locked
+
+  android:
+    name: Android integration
+    needs: scope
+    if: ${{ needs.scope.outputs.mode == 'full' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          # Public repository; enhanced caching evaluation. Set basic here
+          # to roll back if the provider is incompatible.
+          cache-provider: enhanced
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+
+      - name: Rust 1.99 with Android arm64 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.0"
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ci-android-arm64
+          workspaces: rust -> target
+          save-if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
@@ -96,7 +168,8 @@ jobs:
           test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
 
       - name: Build arm64 APK and device test APK, run JVM tests and Android Lint
-        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace
+        id: gradle
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace --continue --profile
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
@@ -104,3 +177,53 @@ jobs:
           name: ladies-explorer-android-arm64-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
+
+      - name: Upload Gradle timing and test reports
+        if: ${{ !cancelled() && (steps.gradle.outcome == 'success' || steps.gradle.outcome == 'failure') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-ci-reports
+          path: |
+            build/reports/profile/
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Keep the historical check name. A skipped dependency is not green,
+  # except for an explicitly proven docs-only PR.
+  build:
+    name: build
+    needs: [scope, core, android]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate required CI gate
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          MODE: ${{ needs.scope.outputs.mode }}
+          CORE_RESULT: ${{ needs.core.result }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+        run: |
+          {
+            echo "### Required CI gate"
+            echo ""
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Scope ($MODE) | $SCOPE_RESULT |"
+            echo "| Core and contracts | $CORE_RESULT |"
+            echo "| Android integration | $ANDROID_RESULT |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$SCOPE_RESULT" = success
+          case "$MODE" in
+            full)
+              test "$CORE_RESULT" = success && test "$ANDROID_RESULT" = success
+              ;;
+            docs)
+              test "$CORE_RESULT" = skipped && test "$ANDROID_RESULT" = skipped
+              ;;
+            *) exit 1 ;;
+          esac
