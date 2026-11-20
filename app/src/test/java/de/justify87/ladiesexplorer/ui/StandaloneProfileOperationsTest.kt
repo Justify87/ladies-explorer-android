@@ -69,8 +69,9 @@ class StandaloneProfileOperationsTest {
         )
         suspend fun idle() {
             withTimeout(10_000) {
+                val waiter = currentCoroutineContext().job
                 while (true) {
-                    val children = scope.coroutineContext[Job]!!.children.toList()
+                    val children = scope.coroutineContext.job.children.filter { it !== waiter }.toList()
                     if (children.isEmpty()) break
                     children.joinAll()
                 }
