@@ -4,9 +4,13 @@ Die App ist eine eigenständige lokale Android-Anwendung mit einer APK. Kotlin/C
 
 ## Verbindliche Grenzen
 
-Architekturgrenzen (einschließlich ARC-01–08) sind die fachliche Datenhoheit des Rust-Core und seiner SQLite-Persistenz, die typisierte generierte UniFFI-Grenze, Kotlin/Compose für UI und Lifecycle, die unten definierte Netzwerk-, Medien- und Sicherheitsgrenze sowie die Trennung von fachlichem Commit, UI-Admission und tatsächlichem Operationsende. Keine zweite fachliche Queue, Datenbank, Profilimplementierung oder Quellen-HTTP-Schicht. Generierte Bindings nicht manuell ändern. Verbindliche Integritäts- und fachliche Verträge bleiben erhalten.
+**Verbindliche technische Invarianten (einschließlich ARC-01–08):**
+- Rust-Core und seine SQLite-Persistenz besitzen fachliche Datenhoheit. Kotlin/Compose verantwortet UI und Lifecycle; die generierte, typisierte UniFFI-Grenze verbindet beide.
+- Die unten beschriebenen Netzwerk-, Medien- und Sicherheitsgrenzen gelten für alle betroffenen Pfade.
+- Fachlicher Commit, UI-Admission und tatsächliches Ende einer nativen Operation sind getrennt.
+- Keine zweite fachliche Queue, Datenbank, Profilimplementierung oder Quellen-HTTP-Schicht. Generierte Bindings nicht manuell ändern; Integritäts- und Fachverträge erhalten.
 
-Die folgenden Komponenten, Klassen und Datenflüsse beschreiben den gegenwärtigen Stand und sind innerhalb dieser Grenzen refaktorierbar. Keine erzwungene ViewModel-/Gradle-Modularisierung ohne Bedarf. Umgang mit Änderungen: [AGENTS](../AGENTS.md#architektur--und-designvertrag). UI-/UX-Ziele: [DESIGN](DESIGN.md); fachliche Anforderungen: [PRODUCT](PRODUCT.md).
+**Refaktorierbarer Ist-Stand:** Die folgenden Komponenten, Klassen und Datenflüsse beschreiben die gegenwärtige Implementierung, keine erzwungene ViewModel-/Gradle-Modularisierung. Verbindliche Grenzen bleiben unverändert. Umgang mit Änderungen: [AGENTS](../AGENTS.md#architektur--und-designvertrag); fachliches Soll: [PRODUCT](PRODUCT.md); UI-/UX-Soll: [DESIGN](DESIGN.md).
 
 ## Systemübersicht
 
@@ -41,7 +45,13 @@ Codepfade: [Android](../app/src/main/java/de/justify87/ladiesexplorer), [Rust](.
 
 ## Domäne und Persistenz
 
-Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-identität-und-historie). `(source, external_profile_id)` und `(source, external_listing_id)` sind eindeutig; Zuordnungen werden nicht stillschweigend geändert. Quellsnapshots, Beobachtungen und Nutzerzustand werden getrennt persistiert.
+### Identität und Quellenhoheit
+
+Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-identität-und-historie).
+- `(source, external_profile_id)` und `(source, external_listing_id)` sind eindeutig; Zuordnungen nicht stillschweigend verändern.
+- Quellsnapshots, Beobachtungen und Nutzerzustand getrennt persistieren.
+
+### Native Tabellen
 
 | Bereich | Native Tabellen |
 | --- | --- |
@@ -56,22 +66,45 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 
 ### SQLite-Vertrag
 
-- App-private Datenbank `filesDir/ladies.sqlite`, `user_version = 2`, `application_id = 0x4C445850` (LDXP). Eigenständige Android-Datenbank; keine nutzerseitige Datenübernahme gemäß [PRODUCT](PRODUCT.md#produktziel-und-grenzen).
-- Schema-Installation und Migration erfolgen vor Freigabe des Stores transaktional. Native v1 muss dem kanonischen Schema entsprechen; v2 wird einschließlich Tabellen, Indizes und Triggern validiert. Fremde IDs, unerwartete unversionierte Tabellen, Schemaabweichungen und unbekannte neuere Versionen liefern typisierte Fehler. Die exakt bekannte technische Demo mit `scaffold_notes` ist ein unterstützter Migrationsfall; echte Nutzerdaten werden nicht implizit gelöscht.
-- `foreign_keys=ON` je Verbindung; Rust-Mutex schützt die Connection. Öffentliche Mutationen verwenden parametrisierte SQL-Anweisungen und Transaktionen. Person-INSERT erzeugt den Nutzerstatus per Trigger; Trigger verhindern unzulässige Personen-/Quellenzuordnung von Inseraten und Quellprofilen. Sichtungen aktualisieren die zugehörigen last_seen-Zeitpunkte entsprechend ihrer Quelle.
-- `PersonCursor` paginiert über `last_seen_at` und `person_id`; `DiscoveryCursor` über Favorit, Inserat-`last_seen_at` und `listing_id`, jeweils absteigend und mit Seitengrößen 1–100. Such-, Saved-Search- und Saved-People-Fenster besitzen eigene fachliche Verträge. UI besitzt keine SQL- oder alternative Persistenzlogik.
+- **Ablage/Identität:** App-private Datenbank `filesDir/ladies.sqlite`; `user_version = 2` und `application_id = 0x4C445850` (LDXP). Eigenständiger Android-Datenbestand ohne nutzerseitige Übernahme gemäß [PRODUCT](PRODUCT.md#produktziel-und-grenzen).
+- **Schemafreigabe:** Installation und interne Schemaentwicklung transaktional vor Store-Freigabe. Native v1 muss dem kanonischen Schema entsprechen; v2 einschließlich Tabellen, Indizes und Triggern validieren.
+- **Ungültige Schemata:** Fremde IDs, unerwartete unversionierte Tabellen, Schemaabweichungen oder unbekannte neuere Versionen erzeugen typisierte Fehler. Die exakt bekannte Demo mit `scaffold_notes` ist ein unterstützter technischer Migrationsfall; echte Nutzerdaten nicht implizit löschen.
+- **Connection:** `foreign_keys=ON` je Verbindung; Rust-Mutex schützt die Connection. Öffentliche Mutationen nutzen parametrisierte SQL-Anweisungen und Transaktionen.
+- **Owner-Integrität:** Person-INSERT erzeugt Nutzerstatus durch Trigger. Trigger verhindern unzulässige Personen-/Quellenzuordnung von Inseraten und Quellprofilen; Sichtungen aktualisieren die je Quelle zugehörigen `last_seen_at`-Zeitpunkte.
+- **Keyset-Cursor:** `PersonCursor` über `last_seen_at`/`person_id`, `DiscoveryCursor` über Favorit/Inserat-`last_seen_at`/`listing_id`; jeweils absteigend und Seitengrößen 1–100. Suche, SavedSearch und SavedPeople besitzen eigene Fensterverträge.
+- UI enthält weder direkte SQL-Zugriffe noch eine alternative Persistenz.
 
 ### Abzulösender Legacy-Import (Ist-Abweichung)
 
-**Ist-Abweichung vom [Produktsoll](PRODUCT.md#produktziel-und-grenzen):** Einstellungen/Dateiauswahl → MainViewModel → CoreStore.importLegacyBundle → UniFFI → `legacy_import.rs`; `tools/export-legacy.sh` und CI-/Fixture-Tests referenzieren den Altpfad. Suche und Import sind gegenseitig exklusiv; Home-Status und Import teilen einen Owner, Statusrefresh wird koalesziert und verdeckt keinen Importfehler. Root/Back sind während des Imports gesperrt, betroffene ungespeicherte Notizentwürfe geschützt. Bis zur Entfernung gelten bestehende Sicherheitsinvarianten: nur leere DB, transaktional, strikte native-v1-Tabellen-/Spaltenprüfung, Fremdschlüssel/Owner und Medien-SHA-256 prüfen, ungültiges Archiv/fehlende Dateien ohne Überschreiben oder Teilimport ablehnen. Historische Definitionsformate werden in `saved_search.rs` strikt dekodiert; fachliche Sperrregel gemäß [PRODUCT](PRODUCT.md#gespeicherte-suchen). Kein Nutzungs- oder Erweiterungsauftrag. Entfernung und Umstellung benötigter synthetischer Tests: [DC02](ROADMAP.md#unabhängige-technische-bereinigung).
+**Ist-Abweichung vom [Produktsoll](PRODUCT.md#produktziel-und-grenzen), keine Nutzungsempfehlung:**
+- Vorhandener Pfad: Einstellungen/Dateiauswahl → `MainViewModel` → `CoreStore.importLegacyBundle` → UniFFI → `legacy_import.rs`. `tools/export-legacy.sh` und bestehende CI-/Fixture-Tests referenzieren diesen Altpfad.
+- Suche und Import sind gegenseitig exklusiv. Home-Status und Import teilen einen Owner; Statusrefresh wird koalesziert, ohne Importfehler zu verdecken.
+- Während des Imports bleiben Root/Back gesperrt; betroffene ungespeicherte Notizentwürfe sind geschützt.
+
+**Bis zur tatsächlichen Entfernung verbindliche Schutzregeln:**
+- Nur in leere DB importieren, vollständig transaktional; native-v1-Tabellen und -Spalten strikt prüfen.
+- Fremdschlüssel, Owner und Medien-SHA-256 prüfen. Ungültiges Archiv oder fehlende Dateien ohne Überschreiben und ohne Teilimport ablehnen.
+- Historische Definitionsformate in `saved_search.rs` strikt dekodieren; fachliche Sperre gemäß [PRODUCT](PRODUCT.md#gespeicherte-suchen).
+
+Kein Auftrag zur Erweiterung oder Nutzerdatenmigration. Entfernung und native synthetische Tests: [DC02](ROADMAP.md#unabhängige-technische-bereinigung).
 
 ### Historisierung und Identitätsoperation
 
-Profilabrufe speichern Snapshot, PROFILE-Beobachtung und tatsächliche Feld-/Medienänderungen transaktional. Fingerprints berücksichtigen die Kategorie; identische Inhalte erzeugen Beobachtungen, keine falschen Änderungen. Rückkehr zu früherem Inhalt aktiviert dessen Snapshot und erzeugt den tatsächlichen Übergang vom bis dahin aktiven Snapshot.
+**Snapshots und Übergänge:**
+- Profilabrufe speichern Snapshot, PROFILE-Beobachtung und tatsächliche Feld-/Medienänderungen in **einer Transaktion**.
+- Fingerprints berücksichtigen die Kategorie; identische Inhalte erzeugen Beobachtungen, keine künstlichen Änderungen.
+- Rückkehr zu früherem Inhalt aktiviert dessen Snapshot und dokumentiert den echten Übergang vom vorher aktiven Snapshot.
 
-Telefonnummer (normalisiert), Quellprofil-ID und 64-bit-dHash liefern Kandidatenevidenz. Bildhash-Abstand bis 8 kann Evidenz sein; unabhängige Bildpaare werden eindeutig gepaart, Gleichstand erzeugt keinen bevorzugten Kandidaten. Bereits fremd zugeordnete Quellprofil-IDs bleiben erhalten; der Konflikt wird dedupliziert als Evidenz erfasst. Keine automatische Zusammenführung.
+**Evidenz und Kandidaten:**
+- Normalisierte Telefonnummer, Quellprofil-ID und 64-bit-dHash liefern Kandidatenevidenz.
+- Bildhash-Abstand bis 8 kann Evidenz sein; unabhängige Bildpaare eindeutig paaren, Gleichstand nicht bevorzugen.
+- Fremd zugeordnete Quellprofil-IDs bleiben erhalten; Konflikt dedupliziert als Evidenz protokollieren. Keine automatische Zusammenführung.
 
-Der gemeinsame explizite Identitätsvorgang bindet Listing, erwarteten Source-Owner, gerenderten Kontext und Kandidat. Rust validiert Besitzer und aktuelle Evidenz innerhalb der Transaktion. Rust verweigert widersprüchliche explizite LIKE/DISLIKE- oder `repeat_interest`-Werte atomar; `NONE` bzw. `UNKNOWN` übernehmen den jeweils bekannten Wert, Favoriten werden per OR vereinigt und nichtleere gespeicherte Notizen zusammengeführt. UI-Admission schützt betroffene ungespeicherte Entwürfe; übrige fachliche Merge-Bedingungen gemäß [PRODUCT](PRODUCT.md#personen-identität-und-historie). Nutzerzustand, Inserate, Quellprofile, Kennungen, Begegnungen und Historie bleiben erhalten. Historische Personen-IDs in `identity_events` bleiben nach einem Merge erhalten. Nach erfolgreichem Commit werden betroffene lokale Projektionen, Entwürfe, Dialoge und Swipe-Slots invalidiert bzw. neu gelesen. Keine Wiederholung der Mutation bei einem Readfehler.
+**Expliziter Merge / native Commit-Autorität:**
+1. Gemeinsamer Identitätsvorgang bindet Listing, erwarteten Source-Owner, gerenderten Kontext und Kandidat. UI-Admission schützt betroffene ungespeicherte Entwürfe.
+2. Rust validiert Owner und aktuelle Evidenz in **derselben Transaktion**. Widersprüchliche explizite LIKE-/DISLIKE- oder `repeat_interest`-Werte verhindern den Merge atomar; weitere Fachbedingungen: [PRODUCT](PRODUCT.md#personen-identität-und-historie).
+3. `NONE` beziehungsweise `UNKNOWN` übernehmen den bekannten Wert; Favoriten werden per OR vereinigt und nichtleere gespeicherte Notizen zusammengeführt. Nutzerzustand, Inserate, Quellprofile, Kennungen, Begegnungen und Historie bleiben erhalten; historische Personen-IDs in `identity_events` bestehen fort.
+4. Nach bestätigt erfolgreichem Commit betroffene lokale Projektionen, Entwürfe, Dialoge und Swipe-Slots invalidieren beziehungsweise neu lesen. Bei anschließendem Readfehler die Mutation **nicht** wiederholen.
 
 ## Quellzugriff und Medien
 
@@ -81,19 +114,38 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 
 ### Externe Datenquelle und Parservertrag
 
-Rust-Module `source/filter.rs`, `network.rs`, `parse.rs`, `storage.rs`: Filter-/URL-Kanonisierung, HTTP, Parsing, transaktionale Speicherung. Cookie-Jar, HTTPS, eigener Redirect-Handler (max. fünf, Host-Allowlist), 25 s pro Request, 8 MiB Antwortlimit, 350 ms Pagination-Pause. RequestControl prüft Abbruch vor/in Suchtransaktion und vor Commit; vor Commit Rollback, bestätigte Commits bleiben. Blockierende Requests können bis Timeout laufen.
+**Transport und Admission:** `source/filter.rs`, `network.rs`, `parse.rs` und `storage.rs` übernehmen Filter-/URL-Kanonisierung, HTTP, Parsing und transaktionale Speicherung.
+- Cookie-Jar, HTTPS, eigener Redirect-Handler mit maximal fünf Redirects und Host-Allowlist; 25 s pro Request, 8 MiB Antwortlimit und 350 ms Pagination-Pause.
+- `RequestControl` prüft Cancel vor/in der Suchtransaktion und vor Commit: davor Rollback; bestätigte Commits bleiben bestehen. Blockierende Requests können bis Timeout laufen.
 
-- HTML-Seite 1 liefert Karten/SearchConfig; JSON-API späterer Seiten content, pagination.totalPages, advertCount, distanceSearched (String). Unbekannte HTML-Leerstruktur: API-Seite-1-Recovery nur mit Karten und exakt bestätigtem Radius; fehlende Metadaten können Seite 2 erfordern. Deduplizieren nach Anzeigen-ID. Explizites Nullsignal bzw. behandelter erster HTTP-404-Fall (partial=false, radius_verified=false). Fehlende Radiusangabe regulärer Seiten: partial=true, radius_verified=false, distance_searched=NULL. Radiusabweichung erster Seite Fehler, später Teilresultat; erkannter Radiusübergang nur bei bestätigter Vollständigkeit reguläres Ende, sonst partial (auch Count-Abweichung, Seitenlimit, fehlende erwartete Folgeseite). Fachliche Konsequenzen: [PRODUCT](PRODUCT.md#suche-und-filter).
-- Filterkatalog kanonisiert Gruppen/Aliase/Slugs, Orts-API-Schlüssel case-insensitiv mit lokalem Slug-Fallback. Preview gleicher geprüfter Seite-1-Abruf mit Fallback, 350 ms Debounce, Cancel und Generation, keine Persistenz. Häufige Filter aus search_runs, kein zusätzlicher Store.
-- Nur lokal bekannte Inserate; HTTPS, erlaubte Hosts/Präfixe /sex-anzeigen/, /fkk-saunaclubs/, /stars/, kanonische www-URL, keine freie Benutzer-URL. HTML-ID bei Vorhandensein gegen erwartete ID prüfen. Parser löst relative/protokollrelative/CSS-Medienreferenzen auf, bewahrt Reihenfolge, A- vor F-Variante gleicher Foto-ID; Revisionsparameter und 18+-/Sterne-Marker erhalten. Such-/API-/Profilstruktur und CDN-Varianten durch frühere lokale HARs und synthetische Regressionen belegt; frische Sitzung/Alters-/Cloudflare-Freigabe daraus nicht ableiten. Selektoren/Klassifikationen nur mit neuer Evidenz ändern, keine privaten HARs in Git.
-- Statusantworten und Delta-Commit nutzen unten beschriebene Owner-/Versionsprüfungen. Statusbatch sequenziell, 350 ms Pause, Cancel bei Navigation/ON_STOP oder Aktion; keine Inhalts-/Archivoperation. Fachliche Semantik in PRODUCT.
+**Parser und Vollständigkeit:**
+- HTML-Seite 1 liefert Karten und SearchConfig. JSON-API-Folgeseiten liefern `content`, `pagination.totalPages`, `advertCount` und `distanceSearched` (String). Nach Anzeigen-ID deduplizieren.
+- Bei unbekannter HTML-Leerstruktur API-Seite-1-Recovery **nur** bei Karten und exakt bestätigtem Radius. Fehlende Metadaten können Seite 2 erfordern.
+- Explizites Nullsignal beziehungsweise behandelter erster HTTP-404-Fall: `partial=false`, `radius_verified=false`. Weder daraus noch aus unbestätigter Radiusangabe einen bestätigten Delta-Nulltreffer ableiten.
+- Fehlende Radiusangabe regulärer Seiten: `partial=true`, `radius_verified=false`, `distance_searched=NULL`.
+- Radiusabweichung auf Seite 1: Fehler; später: Teilresultat.
+- Erkannter Radiusübergang ist nur bei bestätigter Vollständigkeit ein reguläres Ende. Sonst `partial`, auch bei Count-Abweichung, Seitenlimit oder fehlender erwarteter Folgeseite. Fachliche Folgen: [PRODUCT](PRODUCT.md#suche-und-filter).
 
+**Filter und Vorschau:**
+- Filterkatalog kanonisiert Gruppen, Aliase und Slugs; Orts-API-Schlüssel case-insensitiv mit lokalem Slug-Fallback.
+- Preview nutzt denselben geprüften Seite-1-Abruf mit Fallback, 350 ms Debounce, Cancel und Generation; keinerlei Persistenz.
+- Häufige Filter kommen aus `search_runs`, ohne weiteren Store.
+
+**Zulässiger Profilabruf:**
+- Nur lokal bekannte Inserate, HTTPS, erlaubte Hosts/Präfixe `/sex-anzeigen/`, `/fkk-saunaclubs/`, `/stars/` und kanonische www-URL; keine frei eingegebene URL.
+- Vorhandene HTML-ID gegen erwartete ID prüfen. Relative, protokollrelative und CSS-Medienreferenzen auflösen, Reihenfolge bewahren; A- vor F-Variante derselben Foto-ID, Revisionsparameter sowie 18+-/Sterne-Marker erhalten.
+- Such-/API-/Profilstruktur und CDN-Varianten durch frühere lokale HARs und synthetische Regressionen belegt. Keine frische Sitzung/Alters-/Cloudflare-Freigabe daraus ableiten. Selektoren und Klassifikationen nur mit neuer Evidenz ändern; keine privaten HARs in Git.
+
+**Statuschecks:** Statusantworten und Delta-Commit verwenden Owner-/Versionsprüfungen unter [Gespeicherte Personen und Suchen](#gespeicherte-personen-und-suchen). Statusbatch sequenziell, mit 350 ms Pause und Cancel bei Navigation/`ON_STOP` oder Aktion; keine Inhalts-/Archivoperation. Fachliche Statussemantik in [PRODUCT](PRODUCT.md#gespeicherte-personen).
 
 ### Persistentes Archiv und Anzeige
 
-App-private Bilder liegen unter `ladies_data/media/images/`. SHA-256 dedupliziert Dateien; JPEG/PNG/WebP/GIF-Dimensionen und Pixelbudget werden vor vollständiger Dekodierung geprüft. Der 64-bit-dHash verwendet Legacy-kompatiblen Links-/Rechtsvergleich mit LANCZOS. Archivierung ist ein separater Vorgang nach dem Snapshot; Fehler/Cancel löschen keine gespeicherten Profildaten oder bereits archivierten Dateien. Medienrevision und lokale Existenz steuern Wiederverwendung. Videoreferenzen werden standardmäßig ohne permanentes Videoarchiv gespeichert; die eingebettete Wiedergabe nutzt eine vorhandene Archivdatei oder eine temporäre lokale Anzeigedatei. Ein opt-in-Archivierungspfad existiert im Rust-API.
+**Archiv und Snapshots:**
+- App-private Bilder: `ladies_data/media/images/`. SHA-256-Deduplizierung; JPEG/PNG/WebP/GIF-Dimensionen und Pixelbudget vor voller Dekodierung prüfen. Der 64-bit-dHash verwendet Legacy-kompatiblen Links-/Rechtsvergleich mit LANCZOS.
+- Archivierung folgt dem Snapshot als **separater** Vorgang. Fehler oder Cancel entfernen keine gespeicherten Profildaten oder bereits archivierten Dateien. Medienrevision und lokale Existenz steuern Wiederverwendung.
+- Videoreferenzen werden standardmäßig ohne dauerhaftes Videoarchiv gespeichert; Wiedergabe über vorhandene Archivdatei oder temporäre lokale Anzeigedatei. Ein opt-in-Archivierungspfad existiert im Rust-API.
 
-Für Medien validiert Rust bekannte HTTPS-Hosts und URL-Formen, verbietet Redirects und begrenzt Ressourcen: Bilder 12 MiB, Videos 48 MiB, 24 Mio. Bildpixel, 80 Referenzen je Archivaufruf, 15 s Request- und 150 s Archivgesamtbudget. Details: [media.rs](../rust/ladies-core/src/media.rs).
+**Medienabrufgrenzen:** Rust prüft bekannte HTTPS-Hosts und URL-Formen, verbietet Redirects und begrenzt Ressourcen auf Bilder 12 MiB, Videos 48 MiB, 24 Mio. Bildpixel, 80 Referenzen pro Archivaufruf, 15 s pro Request und 150 s Gesamtbudget fürs Archiv. [media.rs](../rust/ladies-core/src/media.rs).
 
 - **Bilder:** Coil 3 nutzt lokale Archivdateien zuerst, dann Remote-Fallback über `coil-network-core → RustImageNetworkClient → CoreStore.loadDisplayImage → UniFFI → Rust`. Vier gleichzeitige blockierende Bildanzeigeabrufe sind über den IO-Dispatcher begrenzt. Coil besitzt URL-/Revisionsschlüssel, Memory-/Disk-Cache, Dekodierung und Zusammenführung identischer Cache-Anforderungen; UniFFI überträgt begrenzte kodierte Bytes. Fehler führen zu sichtbaren Platzhaltern. Reine Anzeige archiviert nicht und schreibt nicht in SQLite.
 - **Videos:** `GalleryVideo` bindet Player, Medium und lokale Datei an den sichtbaren Galerieeintrag und RESUMED-Lifecycle. Archivdatei zuerst, sonst `CoreStore.loadDisplayVideo → UniFFI → media::display_video` mit Rust-Host-, Größen-, Timeout-, HAR- und Cancel-Vertrag. Eigener IO-Dispatcher mit Parallelität 1. Validierte MP4/WebM-Datei im App-Cache; kein neuer Archiv-/DB-Eintrag. libmpv erhält ausschließlich einen lokalen Pfad, erzwungener lavf-Container und `protocol_whitelist=file` als lavf-Option; `access-references=no`, `config=no`, `load-scripts=no`, `ytdl=no` und `autoload-files=no` sperren externe Referenzen, Konfiguration, Skripte, URL-Helfer und automatisch geladene Begleitdateien. Wiedergabeverhalten gemäß DESIGN; Hardwaredecoder soweit verfügbar. Player stoppt außerhalb der gültigen sichtbaren Projektion bzw. bei Lifecycle-/Busy-Wechsel. Surface-Freigabe nach nativer Zerstörung; erneuter Surface-Owner nur bei weiterhin gültigem Medium. Temp-Dateien werden auch bei Cancel bereinigt; verwaiste Dateien beim ersten Zugriff nach Prozessneustart entfernt.
@@ -104,79 +156,198 @@ Für Medien validiert Rust bekannte HTTPS-Hosts und URL-Formen, verbietet Redire
 
 ### Suche, Entdecken und Grid
 
-`MainViewModel` hält den Filter-Snapshot des ausgeführten Runs getrennt vom Entwurf. Rust liefert `activeSearchCards` in Positions-/ID-Reihenfolge mit aktuellen Owner-/Präferenz-/Favoritenzuordnungen; Grid liest diese aktive Ergebnismenge und nicht die bereits konsumierte Swipe-Queue. Der neutrale Startbestand verwendet Präferenz NONE. Im aktiven Run entscheidet das native Filterergebnis zusammen mit sessionlokaler Traversierung und Replay-Likes-Policy über zulässige Swipe-Cards. Fachliches Verhalten: [PRODUCT](PRODUCT.md#entdecken-und-entscheidungen).
+**Run und Sichtbarkeit:**
+- `MainViewModel` trennt Filter-Snapshot des **ausgeführten** Runs vom Entwurf.
+- Rust liefert `activeSearchCards` in Positions-/ID-Reihenfolge mit aktuellen Owner-/Präferenz-/Favoritenzuordnungen. Grid liest diese aktive Ergebnismenge, **nicht** die bereits konsumierte Swipe-Queue.
+- Neutraler Startbestand verwendet Präferenz `NONE`. Im aktiven Run bestimmen natives Filterergebnis, sessionlokale Traversierung und Replay-Likes-Policy gemeinsam zulässige Swipe-Karten. Fachvertrag: [PRODUCT](PRODUCT.md#entdecken-und-entscheidungen).
 
-`SwipeSession` besitzt Traversierung und Undo-Records, keinen zweiten fachlichen Store. Geste und Rail verwenden dieselbe gerenderte Admission und native CAS-Präferenzoperation; die Queue-Projektion ist autoritativ. Grid-Herz führt erwartungsgeprüfte LIKE/NONE- bzw. LIKE-Mutation aus; das rungebundene Präsentations-Hide wird bei neuem Run zurückgesetzt, ändert nicht die native Ergebnismenge und verwendet keine Swipe-Historie. Fachliche Entscheidungs- und Fehlersemantik gemäß PRODUCT und [Operationsmodell](#operations--und-konsistenzmodell).
+**Entscheidung und Grid-Hide:**
+- `SwipeSession` hält Traversierung/Undo-Records, keinen zweiten fachlichen Store.
+- Geste und Rail teilen dieselbe gerenderte Admission und native CAS-Präferenzoperation; Queue-Projektion ist autoritativ.
+- Grid-Herz führt eine erwartungsgeprüfte LIKE/NONE- beziehungsweise LIKE-Mutation aus. Das rungebundene temporäre Hide wird bei neuem Run zurückgesetzt, verändert weder native Ergebnismenge noch Swipe-Historie.
+- Fehler, Commit und Kontext: [Operationsmodell](#operations--und-konsistenzmodell) und PRODUCT.
 
-`DiscoveryProjectionPublisher` hält lokale Entdecken-/Grid- und Saved-People-Projektionen aktuell; getrennte Fehlerpfade, gemeinsame Gültigkeitsprüfung. Präsenz- und Altersinformationen kommen aus vorhandener eindeutiger Quell-/Snapshot-Evidenz, ohne dekorative Profilanfragen. Karte besitzt eigene DB-weite Projektion (siehe [Karte und Sicherheitsgrenzen](#karte-und-sicherheitsgrenzen)).
+**Unabhängige Projektionen:**
+- `DiscoveryProjectionPublisher` aktualisiert lokale Entdecken-/Grid- und Saved-People-Projektionen mit getrennter Fehlerbehandlung und gemeinsamer Gültigkeitsprüfung.
+- Präsenz/Alter aus vorhandener eindeutiger Quellen-/Snapshot-Evidenz, keine dekorativen Profilanfragen.
+- Karte hat eigene DB-weite Projektion: [Karte und Sicherheitsgrenzen](#karte-und-sicherheitsgrenzen).
 
 ### Gemeinsame Profilarchitektur
 
-`NativeProfileProjection` liest Profil, kanonische Identität, Person, Medien, Historie und Kandidaten unter demselben SQLite-Guard. `ProfileReadModel` bindet diese Projektion, Herkunft/Fehler und lokale Revision. Swipe und Standalone teilen den lokalen Lese- und Präsentationsvertrag, behalten jedoch unterschiedliche Quell-/Archiv-Lebenszyklen:
+**Datenhoheit und Render-Modell:**
+- `NativeProfileProjection` liest Profil, kanonische Identität, Person, Medien, Historie und Kandidaten unter **demselben SQLite-Guard**.
+- `ProfileReadModel` bindet Projektion, Herkunft/Fehler und lokale Revision. Swipe und Standalone teilen den lokalen Lese-/Präsentationsvertrag, aber nicht denselben Quellen-/Archiv-Lebenszyklus.
+- Standalone: `StandaloneProfileOperations` liest frische Quelldaten; bei Fehler aktiven lokalen Snapshot samt Medien mit Herkunft/Warnung zeigen. Erfolgreiche Abrufe dürfen separaten Archivvorgang auslösen; Offline-Fallback löst keinen erneuten Netzarchivvorgang aus.
+- Swipe: höchstens aktuelles plus zwei Folgeprofile ohne zusätzliche Archivierung; Current-/Prefetch-Vertrag unten.
 
-- Standalone: `StandaloneProfileOperations` liest aktuelle Quelldaten, nutzt bei Fehler den aktiven lokalen Snapshot samt Medien und zeigt die Herkunft/Warnung. Erfolgreiche Profilabrufe können den separaten Archivvorgang auslösen; bei Offline-Fallback kein erneutes Archivieren aus dem Netz.
-- Swipe: maximal aktuelles plus zwei folgende Profile, ohne zusätzliche Archivierung. Quellenabruf und lokaler Fallback folgen dem Current-/Prefetch-Vertrag unten.
+**Oberfläche und sichtbarkeitsgebundene Reads:**
+- `ProfileShell`/`ProfileFlow` teilen Profiloberfläche, erhalten separate Navigations-/Operationskontexte. [DESIGN](DESIGN.md#profile-und-medien) bestimmt sichtbare Inhalte.
+- `ProfileHeroLayout` berechnet adaptives Budget aus gemessenen Constraints, Insets und Leisten. Headeridentität folgt realer Lazy-Geometrie, Decision Rail hat Menü-Fallback; Status/Busy dürfen Viewport nicht unkontrolliert verschieben.
+- `ProfilePanels`, `ProfilePanelReads` in `ProfilePanelState.kt` und `ProfileFlowRows` steuern lokale Reads nach Sichtbarkeit/Bedarf.
+- Facts und PersonDetail werden nur für gültiges Listing/Owner/Snapshot/Filter/Revision wiederverwendet. Analyse, Historie und Vergleich erzeugen **keine** zusätzlichen Quellrequests durch bloße Darstellung; Snapshotvergleich prüft Owner und Listingzuordnung.
 
-`ProfileShell` und `ProfileFlow` bilden die gemeinsame Profiloberfläche; Swipe und Standalone behalten ihre jeweiligen Navigations-/Operationskontexte. Sichtbare Gestaltungs- und Informationsanforderungen: [DESIGN](DESIGN.md#profile-und-medien).
-
-`ProfileHeroLayout` berechnet aus tatsächlichen Constraints, Insets und Leisten das adaptive Hero-Budget. Die Header-Identität wird anhand realer Lazy-Geometrie übergeben; die Decision Rail besitzt einen Menü-Fallback. Status und Busy sollen den Viewport nicht unkontrolliert verschieben. Galerie- und Hero-Ziele stehen in [DESIGN](DESIGN.md#profile-und-medien).
-
-`ProfilePanels` und `ProfilePanelReads` (in `ProfilePanelState.kt`) sowie `ProfileFlowRows` steuern sichtbarkeits-/bedarfsgebundene lokale Reads. Facts und PersonDetail werden je gültigem Listing/Owner/Snapshot/Filter/Revision wiederverwendet; Analyse/Historie und Vergleich erzeugen keine zusätzlichen Quellenabrufe durch die Darstellung. Snapshotvergleich prüft Besitzer und Inseratzuordnung. Notiz-Reads/Retry haben einen gemeinsamen projektionsgebundenen Job; Entwürfe und Tickets sind ownergebunden im ViewModel und bleiben bei Navigation/Rotation erhalten (nicht über Prozessende). Speichern ist transaktionaler Vergleich von aktuellem Besitzer und erwartetem Text, schreibt nur private_note und updated_at. Konflikte explizit auflösen; Merge schützt betroffene ungespeicherte Entwürfe.
+**Notiz / Konflikt und Lifecycle:**
+- Notiz-Reads/Retry besitzen einen gemeinsamen projektionsgebundenen Job. Entwürfe und Tickets sind im ViewModel ownergebunden, über Navigation/Rotation, **nicht** Prozessende erhalten.
+- Speichern vergleicht transaktional aktuellen Besitzer und erwarteten Text, schreibt ausschließlich `private_note` und `updated_at`.
+- Notizkonflikte explizit auflösen; Identitäts-Merge blockiert bei betroffenen ungespeicherten Entwürfen.
 
 ### Gesten, Präsentation und Undo
 
-`PhotoGestureResolver` klassifiziert den gemeinsamen Hero-Pointer-Stream nach Android-Touch-Slop, gemessenen Grenzen und dominanter Achse; Schwellen und sichtbares Gestenverhalten siehe [DESIGN](DESIGN.md#gesten-und-präsentation). Native Clickables besitzen seitliche Galerie-Taps, Fokus und Semantik; interaktive Kindziele haben Vorrang. Horizontaler Lock wird übernommen, vertikales Scrollen der LazyColumn überlassen. Mehrfinger, Fokus-/Geometrie-/Kontextwechsel, Pause, Back, Cancel oder widerrufene Touch-Intention verhindern den Commit. `ProfileTouchGate` widerruft den gesamten Touch-Stream bis zum letzten Up; Semantik-/Tastaturaktionen bleiben nativ. Standalone nutzt Galerie-Taps ohne Swipe-Entscheidung.
+**Gesten-Admission:**
+- `PhotoGestureResolver` klassifiziert denselben Hero-Pointer-Stream anhand Android-Touch-Slop, gemessener Grenzen und dominanter Achse; [Schwellen/Interaktion](DESIGN.md#gesten-und-präsentation).
+- Native Clickables besitzen Galerie-Taps, Fokus und Semantik; interaktive Kindziele haben Vorrang. Horizontaler Lock übernimmt den Stream; vertikales Scrollen bleibt bei der LazyColumn.
+- Mehrfinger, Fokus-/Geometrie-/Kontextwechsel, Pause, Back, Cancel oder widerrufene Touch-Intention verhindern den Commit.
+- `ProfileTouchGate` widerruft gesamten Touch-Stream bis zum letzten Up; Semantik-/Tastaturaktionen bleiben nativ. Standalone: Galerie-Taps ohne Swipe-Entscheidung.
 
-`SwipeFlight` ist nur ein inert gerenderter visueller Übergang, keine optimistische Queue oder fachliche Mutation. Drag bleibt bis Admission/autoritativer Antwort sichtbar; ausgehendes Bild animiert im stabilen Viewport, neuer Profilfluss behält seine Geometrie. Kurzes begrenztes Warten auf Dekodierung und ehrlicher Cache-Fallback; keine künstlichen Snapshots für ungeeignete Medien oder Detailscrollzustände. Während des Flight sind entsprechende Eingaben kurz gesperrt, die fachliche Admission bleibt maßgeblich.
+**Flight ist nur Präsentation:**
+- `SwipeFlight` rendert einen **inerten** visuellen Übergang, keine optimistische Queue oder fachliche Mutation.
+- Drag bis Admission und autoritativer Antwort sichtbar. Ausgehendes Bild im stabilen Viewport animieren, neuen Profilfluss mit stabiler Geometrie.
+- Begrenztes Warten auf Dekodierung mit ehrlichem Cache-Fallback. Keine künstlichen Snapshots für ungeeignete Medien oder Detailscrollzustände.
+- Während Flight betreffende Eingaben kurz sperren; fachliche Admission bleibt maßgeblich.
 
-`ProfilePresentation` hält Medien-ID/Index, stabile Row-Keys/Offset und Sektionen getrennt vom fachlichen Read-Model. `SwipeSession` speichert höchstens 16 jüngere Präsentationsreferenzen zu Undo-fähigen Visits, gebunden an Run/Listing/Owner/Snapshot/Filter. Ältere oder unpassende Referenzen fallen kontrolliert zurück. Ein Undo-Receipt wird einmalig nach gültiger Anwendung oder eindeutig nicht passendem Kontext konsumiert; bei Readfehler bleibt es erhalten. Leeres/abweichendes autoritatives Deck verwirft unpassendes Receipt; Rail bleibt bei leerem Deck für gültiges Undo verfügbar.
+**Präsentationszustand und Undo:**
+- `ProfilePresentation` hält Medien-ID/Index, stabile Row-Keys/Offset und Sektionen **getrennt** vom fachlichen Read-Model.
+- `SwipeSession` speichert höchstens 16 jüngere Präsentationsreferenzen zu Undo-fähigen Visits, gebunden an Run/Listing/Owner/Snapshot/Filter. Ältere/unpassende Referenzen kontrolliert zurückfallen lassen.
+- Undo-Receipt einmalig nach gültiger Anwendung oder eindeutig unpassendem Kontext konsumieren; bei Readfehler erhalten. Leeres/abweichendes autoritatives Deck verwirft unpassendes Receipt; Rail bei leerem Deck bleibt für gültiges Undo erreichbar.
 
-`ProfileRestoreCoordinator` koordiniert den Wiederherstellungsauftrag, nicht die tatsächlichen Medien-/Scroll-/Sektionsowner. Row-Manifest dient als stabile Schlüsselgrundlage und Datenbedarfsquelle; bei Änderung von Snapshot/Filter wird der Schlüssel geprüft und Pixeloffset auf sicheren Zeilenanfang bzw. gültige Größe begrenzt. Medien-ID hat Vorrang vor begrenztem Index. Kein zusätzlicher Quellenabruf oder dauerhafter UI-Profilcache für Wiederherstellung. Reset hat eine eigenständige Präsentationsgeneration.
+**Restore und Invalidierung:**
+- `ProfileRestoreCoordinator` koordiniert Auftrag, besitzt **nicht** Medien-/Scroll-/Sektionszustand.
+- Row-Manifest ist stabile Schlüsselgrundlage und Datenbedarfsquelle. Bei Snapshot-/Filterwechsel Schlüssel prüfen und Pixeloffset auf sicheren Zeilenanfang beziehungsweise gültige Größe begrenzen; Medien-ID vor begrenztem Index.
+- Kein zusätzlicher Quellenabruf oder dauerhafter UI-Profilcache fürs Restore. Reset erhält eigene Präsentationsgeneration.
 
 ### Swipe-Read-Window und Prefetch
 
-`DiscoveryScreen`, `SwipeProfileWindow` und `SwipeProfileReads` halten maximal Current+2 Slots, jeweils an Listing, erwarteten Owner und Ticket/Revision gebunden. Jeder Slot besitzt einen stabilen Effect und RequestControl. Ein Mutex serialisiert Profilreads; Promotion eines laufenden gültigen Prefetch erhält dessen Auftrag statt abzubrechen und neu zu starten. Busy erzeugt keinen neuen Slot. Pruning, Lifecycle-/Route-/Owner-/Revisionswiderruf entziehen alte Tickets. Verspätete native Commits aktualisieren betroffene lokale Projektionen unabhängig von UI-Annahme.
+**Fenster und Owner:** `DiscoveryScreen`, `SwipeProfileWindow` und `SwipeProfileReads` halten **maximal Current+2 Slots**.
+- Jeder Slot bindet Listing, erwarteten Owner und Ticket/Revision; stabiler Effect und `RequestControl` pro Slot.
+- Mutex serialisiert Profilreads; Promotion eines **gültigen laufenden** Prefetch übernimmt denselben Auftrag statt Cancel und Quellen-Neustart.
+- Busy erzeugt keinen neuen Slot. Pruning, Lifecycle-/Route-/Owner-/Revisionswiderruf entziehen alte Tickets.
+- Verspätete native Commits aktualisieren abhängige lokale Projektionen **unabhängig** von UI-Admission; Publikation nur im gültigen Kontext gemäß [Operationsmodell](#operations--und-konsistenzmodell).
 
-Lokaler archivierter Bestand liest lokal zuerst. Aktuelle erstmalige Freshness und spekulative Cache-first-Reads sind getrennte Policies. Fehler spekulativer Reads warten auf Promotion; lokaler Reprojektionsfehler löst keinen zweiten Source-Read aus. Coil-Warming ist pro Slot, Revision und tatsächlicher Hero-Pixelgröße begrenzt, mit Crop-Skalierung. Kein zweiter Mediencache, keine automatische Archivierung.
+**Read-/Cache-Policy:**
+- Lokal archivierten Bestand zuerst lokal lesen. Erstmalige Current-Freshness und spekulative Cache-first-Reads sind unterschiedliche Policies.
+- Fehler spekulativer Reads bis Promotion halten; lokaler Reprojektionsfehler löst **keinen** zweiten Source-Read aus.
+- Coil-Warming pro Slot, Revision und tatsächlicher Hero-Pixelgröße mit Crop-Skalierung begrenzen.
+- Kein zweiter Mediencache und keine automatische Archivierung.
 
 ## Gespeicherte Personen und Suchen
 
 ### Personen und Status
 
-Rust `saved_people_window` projiziert Favoriten, Likes und Dislikes anhand stabiler Personen-IDs. Recent (Produktzeitfenster) und Regular mit Counts entstehen für Favoriten/Datum unter demselben SQLite-Guard und derselben Zeitgrenze. Bei Nachladen wird ein kohärentes erweitertes Fenster neu gelesen. Kotlin hält nur Kapazität, Auswahl und Scrollzustand. Keyset-Cursor bindet Auswahl, Zeitgrenze und SQLite-total_changes-Revision. Namenssortierung mit NFD, Case-/Mark-Folding und ß/ss; keine vollständige CLDR-Kollation. Metadaten fallen deterministisch auf vorhandene Daten zurück. Relisting behält den fachlichen Ereigniszeitpunkt.
+- `saved_people_window` in Rust projiziert Favoriten, Likes und Dislikes nach stabiler Personen-ID.
+- Recent (Produktzeitfenster) und Regular samt Favoriten-/Datum-Counts entstehen unter demselben SQLite-Guard und Zeitanker. Nachladen liest ein kohärentes erweitertes Fenster; Kotlin hält nur Kapazität, Auswahl und Scrollzustand.
+- Keyset-Cursor bindet Auswahl, Zeitgrenze und SQLite-`total_changes`-Revision. Namenssortierung mit NFD, Case-/Mark-Folding und ß/ss (keine vollständige CLDR-Kollation). Metadaten fallen deterministisch auf vorhandene Daten zurück; Relisting behält fachlichen Ereigniszeitpunkt.
 
-Suche, Profil und explizite Einzel-/Batchstatuschecks nutzen denselben Rust-Statusübergang. Status-only schreibt Statuszeit, Status und Beobachtung, bei bestätigtem Wechsel Ereignis; keine Inhalts-/Personenreihenfolge oder Medieningestion. Vor Commit prüft Rust transaktional Owner, URL, Advert-ID und Beobachtungsrevision; explizite Checks verlangen sowohl vor I/O als auch beim Commit weiterhin gespeicherte LADIES-Mitgliedschaft (Favorit oder Präferenz ungleich NONE). Gültige Suchkarten sind positive ACTIVE-Beobachtungen. Fachliche Statussemantik: [PRODUCT](PRODUCT.md#gespeicherte-personen). `SavedPeopleState` hält Fenster und sequenziellen Statusablauf; Cancel bei Navigation/ON_STOP, bereits gespeicherte Teilresultate bleiben und werden lokal projiziert.
+**Statusoperation:**
+1. Suche, Profil und explizite Einzel-/Batchchecks nutzen denselben Rust-Statusübergang.
+2. Explizite Checks benötigen **vor I/O und erneut beim Commit** gültige gespeicherte LADIES-Mitgliedschaft (Favorit oder Präferenz ungleich `NONE`).
+3. Rust prüft vor Commit transaktional Owner, URL, Advert-ID und Beobachtungsrevision.
+4. Nur bestätigte Beobachtungen – einschließlich gültiger Suchkarten als positiver `ACTIVE`-Beleg – aktualisieren Status und Statuszeit; Status-only schreibt Beobachtung und bei bestätigtem Wechsel ein Ereignis, aber keine Inhalts-/Personenreihenfolge oder Medieningestion.
+5. `SavedPeopleState` hält Fenster und sequenziellen Statusablauf. Navigation/`ON_STOP` cancelt; bereits gespeicherte Teilergebnisse bleiben und werden lokal reprojiziert.
+
+Fachliche Fälle/Fehler: [PRODUCT](PRODUCT.md#gespeicherte-personen).
 
 ### Gespeicherte Suchen
 
-`SavedSearchController` besitzt Liste, Template-Session, Editor, Dialoge, Ergebnisfenster und Operationen. Regulärer Suchentwurf und gespeicherte Definition nutzen denselben typisierten `SearchDraft` und Filtereditor, JSON nur an Core-Schnittstellen. Rust besitzt validierte Definition, Mitgliedschaft des letzten vollständigen Laufs, Delta/Membership-Historie und revisionierte Rename-/Ack-Operation. Unveränderte Definitionen bleiben byte-identisch; `SearchDraft.from(query, local)` und Update mit beiden typisierten Anteilen erhalten unterstützte lokale Filter bei reinen Quellenparameteränderungen. `saved_search.rs` erfasst vor dem Quellabruf ID, rohe `filters_json` und `definition_version`. Nur vollständige radiusbestätigte Ergebnisse aktualisieren die Mitgliedschaft; vor Änderung der Basis werden Existenz, unveränderte Definition und Version in derselben SQLite-Transaktion erneut geprüft, Cancel auch vor Commit. Geänderte/gelöschte Definition oder Abbruch verhindern alte Deltas, nicht bereits erfolgte reguläre Suchcommits. `last_attempt_at`/`last_error` für unvollständige Läufe und Quellfehler werden nur bei derselben ID, Version und Definitionsbytes geschrieben (kein Fehlerübertrag auf eine geänderte Definition; Cancel-Prüfung davor). Lokale Profilmetadaten werden mit dem Ergebnisfenster kohärent projiziert. Keyset-Cursor bindet Such-ID und prozesslokale SQLite-total_changes-Revision (keine Profilrevision).
+**Zuständigkeiten:** `SavedSearchController` besitzt Liste, Template-Session, Editor, Dialoge, Ergebnisfenster und Operationen. Rust besitzt validierte Definitionen, Mitgliedschaft des letzten vollständigen Laufs, Delta-/Membership-Historie sowie revisionierte Rename-/Ack-Operationen.
+- Regulärer Entwurf und gespeicherte Definition verwenden denselben typisierten `SearchDraft`/Filtereditor; JSON nur an Core-Schnittstellen.
+- Unveränderte Definitionen bleiben byte-identisch. `SearchDraft.from(query, local)` und Updates mit beiden typisierten Anteilen erhalten unterstützte lokale Filter bei reinen Quellenparameteränderungen.
 
-Sichtbare Fenster werden nach relevanten nativen Abschlüssen lokal aktualisiert, unsichtbare als dirty markiert; Änderungen während eines Reads werden zusammengefasst. List-/Window-/Actionfehler sind unabhängig; Retry liest die bestehende Fenstertiefe, keine fremden stale Aktionen. Explizites Ack gemäß [PRODUCT](PRODUCT.md#gespeicherte-suchen) verwendet die gerenderte Revision. UI-Admission und Rust-CAS verhindern Ack eines neueren Fensters; Fehler erfordern neuen Read, niemals automatischen Write-Retry. Bereits zugelassene Ack-Operation kann nach ON_STOP drainieren.
+**Ausführung und Delta-Commit:**
+1. `saved_search.rs` erfasst **vor dem Quellabruf** Such-ID, rohe `filters_json`-Definitionsbytes und `definition_version`.
+2. Nur ein vollständiges **radiusbestätigtes** Ergebnis darf die gespeicherte Mitgliedschaft aktualisieren. Teilresultate und unbestätigte Nulltreffer schreiben kein Delta.
+3. **In derselben SQLite-Transaktion unmittelbar vor dem Delta-Commit** Existenz der Such-ID, byte-identische Definition und unveränderte Version erneut prüfen; Cancel nochmals vor Commit prüfen.
+4. Geänderte/gelöschte Definition oder Cancel verhindern alte Deltas, **nicht** bereits bestätigte reguläre Suchcommits.
+
+**Versuch/Fehler/Abbruch:**
+- `last_attempt_at`/`last_error` für unvollständige Läufe und Quellenfehler nur mit **derselben ID, Version und Definitionsbytes** speichern; Cancel vorher prüfen. Fehler einer alten Definition dürfen nicht auf eine neue gelangen.
+- Eine fehlgeschlagene Aktion veröffentlicht kein Ergebnis für einen fremden Kontext.
+
+**Fenster, Revision und Quittierung:**
+- Lokale Profilmetadaten zusammen mit dem Ergebnisfenster kohärent projizieren. Keyset-Cursor bindet Such-ID und prozesslokale SQLite-`total_changes`-Revision, **nicht** die Profilrevision.
+- Nach relevantem nativen Abschluss sichtbare Fenster lokal aktualisieren, unsichtbare als dirty markieren; Änderungen während eines Reads zusammenfassen.
+- List-/Window-/Actionfehler unabhängig halten. Retry liest die bestehende Fenstertiefe; keine stale Aktionen gegen fremden Kontext.
+- Explizites Ack nach [PRODUCT](PRODUCT.md#gespeicherte-suchen) bindet die **gerenderte Revision**. UI-Admission und Rust-CAS verhindern ein Ack gegen ein neueres Fenster; bei Fehler neu lesen, nie den Write automatisch wiederholen.
+- Bereits zugelassene Ack-Operation darf nach `ON_STOP` bis zum tatsächlichen Abschluss drainieren. Weitere gemeinsame Grenzen: [Operationsmodell](#operations--und-konsistenzmodell).
 
 ## Operations- und Konsistenzmodell
 
-Datenhoheit, Render-/Admission-Gültigkeit und tatsächliches Ende einer nativen Operation sind getrennte Verantwortlichkeiten.
+Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Operationsende sind getrennt. **Rust ist Commit-Autorität.**
 
-- `RequestControl` wird pro nativer Operation verwendet. Cancel signalisiert Rust, invalidiert überholte UI-Publikation und verhindert weitere Arbeit, soweit kooperativ möglich. Vor Suchpersistenz und gespeicherten Deltas prüft Rust Cancel auch vor dem SQLite-Commit. Der laufende blockierende Transport kann bis Timeout dauern.
-- `DrainingOperation` hält den nativen Owner bis zum tatsächlichen Abschluss, unabhängig von Navigation oder verworfener UI-Antwort. Suche bleibt bis Drain loading.
-- Rendered Tokens binden Kontext/Run-/Decksession oder Standalone-Session, Listing, erwarteten Owner, Snapshot-/Projektionsrevision und fachliche erwartete Werte. UI-Callbacks werden zur Admission gegen den aktuellen Zustand geprüft. Rust ist Commit-Autorität; erwartete Besitzer/Präferenz/Favorit/Notiz/Evidenz werden nativ geprüft. Kein Check-then-write-Ersatz in UI.
-- Ein erfolgreich gespeicherter Write wird genau einmal als solcher behandelt. Writefehler und nachfolgender Readfehler unterscheiden sich; Retry nach Commit ist eine lokale Reprojektion. Kein stilles Wiederholen fachlicher Mutationen oder Quellenabruf allein zum Wiederherstellen der UI.
-- Reprojektion betrifft die tatsächlich abhängigen lokalen Fenster (Profil/Notiz, Entdecken/Grid, SavedPeople, SavedSearch, Map, Home). Unabhängige Reads behalten ihre eigenen Erfolgs-/Fehlerzustände; sichtbare gültige Resultate werden publiziert, verdeckte Fenster nach Bedarf dirty. Alte Ergebnisse dürfen keine Aktionen für einen anderen Owner freigeben. Reine erfolgreiche Swipe-Entscheidung invalidiert nicht pauschal andere Personenprofile; tatsächliche Quell-/Identitätsänderungen oder Fehler widerrufen betroffene Slots.
-- Archivierung und bestätigter Merge koordinieren Cancel/Drain und aktuellen Besitzer; native Transaktionen sichern die Integrität. Kein implizites Gelesen-Ack, kein fachlicher Write durch Layout oder Navigation.
+| Phase | Vertrag |
+| --- | --- |
+| Admission | Gerenderte Tokens binden Kontext, Run-/Deck- oder Standalone-Session, Listing, erwarteten Owner, Snapshot-/Projektionsrevision und erwartete Fachwerte. UI-Callbacks gegen aktuellen Zustand prüfen. |
+| Native Operation | `RequestControl` je Operation; Cancel signalisiert Rust und entzieht überholter UI die Publikationsberechtigung. Kooperativ weitere Arbeit stoppen, vor Suchpersistenz und gespeicherten Deltas auch vor SQLite-Commit prüfen. Blockierender Transport darf bis Timeout laufen. |
+| Drain | `DrainingOperation` hält nativen Owner bis **tatsächlich** abgeschlossen, auch bei Navigation oder verworfener Antwort. Suche bleibt bis Drain loading. |
+| Commit | Rust prüft erwartete Besitzer, Präferenz, Favorit, Notiz und Evidenz nativ. UI-seitiges Check-then-write ersetzt keinen CAS-/Transaktionsschutz. |
+| Publikation | Nur gültige Resultate an ihren aktuellen Owner publizieren; sichtbare abhängige Fenster lokal reprojizieren, unsichtbare dirty markieren. Unabhängige Reads behalten eigene Erfolgs-/Fehlerzustände. |
 
-Weitere Kontextinvarianten: Skip/Undo/Reset/Replay bleiben an den gültigen Deck-/Owner-Kontext gebunden; Skip-Undo schreibt nicht in SQLite, alte Steps werden nach Merge nicht auf neue Owner übertragen. Reset/Replay widerrufen alte Callback-/Step-Generationen. Gerenderte Kontakt-, Medien-, Menü- und Vergleichsaktionen dürfen nicht auf einen anderen Owner/Session übergehen. Notizentwürfe werden nicht still auf andere Owner umgedeutet oder rebased. Snapshotvergleich ist explizit und prüft das gültige Snapshot-Paar; alte Dialoge werden invalidiert. Es gibt keinen unbeschränkten SaveableState pro Profil. Bei Merge aktuelles Listing soweit zulässig erhalten, andernfalls sauberer Kontextwechsel; keine zusätzliche Swipe- oder Undo-Aktion.
+**Nach Commit und bei Fehler:**
+- Bestätigten Write genau einmal als solchen behandeln. Writefehler und anschließenden Readfehler unterscheiden; nach Commit ausschließlich **lokal** reprojizieren.
+- Keine fachliche Mutation oder Quellenanfrage stillschweigend erneut auslösen, nur um einen UI-Read zu reparieren.
+- Abhängige lokale Fenster sind Profil/Notiz, Entdecken/Grid, SavedPeople, SavedSearch, Karte und Home. Alte Resultate dürfen nie Aktionen für einen anderen Owner freigeben.
+- Ein reiner erfolgreicher Swipe invalidiert nicht pauschal andere Personenprofile. Tatsächliche Quell-/Identitätsänderungen oder Fehler widerrufen betroffene Slots.
+
+**Kontext- und Lifecycle-Invarianten:**
+- Archivierung und bestätigter Merge koordinieren Cancel/Drain und aktuellen Besitzer; Integrität durch native Transaktionen.
+- Skip/Undo/Reset/Replay nur im gültigen Deck-/Owner-Kontext. Skip-Undo ohne SQLite-Write; alte Schritte nach Merge nicht auf neue Owner übertragen. Reset/Replay widerrufen alte Callback-/Step-Generationen.
+- Kontakt-, Medien-, Menü- und Vergleichsaktionen bleiben an die gerenderte Owner-/Session gebunden. Notizentwürfe nicht still umdeuten oder rebasen; Snapshotvergleich prüft das gültige Paar, alte Dialoge invalidieren.
+- Kein unbegrenzter SaveableState pro Profil. Nach Merge aktuelles Listing möglichst erhalten, sonst sauberer Kontextwechsel; kein zusätzlicher Swipe-/Undo-Schritt.
+- Layout und Navigation erzeugen weder implizites Gelesen-Ack noch einen fachlichen Write.
 
 ## Diagnoseinfrastruktur
 
-Rust-Tracing pro LadiesCore (kein global an erste DB gebundener Dispatch), Kermit über UniFFI in dieselbe app-private `filesDir/diagnostics/ladies-debug.log`, synchronisierte Senke ca. 1,5 MB, Rotation Rest ca. 700 KB. Monotonic Instant bzw. elapsedRealtimeNanos; INFO Gesamtdauern, DEBUG Teilphasen; keine HTTP-Antwortbodies im allgemeinen Log. Vollständige geeignete Textantworten ausschließlich in ausdrücklich aktivierter HTTP-Textaufzeichnung. Eine separate persistierte JSONL-Sitzung `filesDir/diagnostics/ladies-http.jsonl`, max. 2 MiB Textbody (ganz auslassen bei Überschreitung), 25 MiB Sitzung, Stopp bei Limit/Schreibfehler. Unvollständiges letztes Ereignis beim Neustart entfernen und melden; beschädigtes mittleres Ereignis verhindert Export. Neustart deaktiviert Capture, Löschen entfernt Sitzung.
+### Logs und Zeitmessung
 
-Recorder in bestehenden Rust-HTTP-Lesepfaden; keine weiteren Requests oder Kotlin-HTTP-Bridge. Quellenredirects separat ohne Body; Medienredirects verboten; Geocoder folgt intern, nur finale URL/aggregierte Headerzeit sichtbar. MapLibre und externe Intents außerhalb. Coil-Cachetreffer keine Requests, keine Medienbytes im HAR. HAR 1.2 mit echten aggregierten Zeiten und _diagnostics für Auslassungen, Fehler und finale URL. Maskierung Cookies/Auth-/Token-Header, sensitive Queryparameter, URL-Credentials, Fehler-URLs, Redirect/Referer; Textantworten weiter sensibel. SAF zum Speichern, FileProvider ausschließlich unveränderliche app-private Cache-Snapshots, Original unzugänglich, >48 h alte Snapshots beim nächsten Export entfernen. Statuschecks loggen Listing-ID, bestätigten Status, HTTP-Code. Modi in [PRODUCT](PRODUCT.md#einstellungen-und-lokale-diagnose), Auswertung in [README](../README.md#lokale-diagnose).
+- Rust-Tracing je `LadiesCore`, **kein** global an erste DB gebundener Dispatch; Kermit über UniFFI in dieselbe app-private `filesDir/diagnostics/ladies-debug.log`.
+- Synchronisierte Log-Senke circa 1,5 MB, Rotationsrest circa 700 KB. Monotonic `Instant` beziehungsweise `elapsedRealtimeNanos`.
+- INFO enthält Gesamtdauern, DEBUG Teilphasen; keine HTTP-Antwortbodies im allgemeinen Log. Geeignete vollständige Textantworten nur bei ausdrücklich aktivierter HTTP-Textaufzeichnung.
+
+### HTTP-Aufzeichnung und Ausfallsicherheit
+
+- Separate persistierte JSONL-Sitzung unter `filesDir/diagnostics/ladies-http.jsonl`. Textbody max. 2 MiB (bei Überschreitung vollständig weglassen), Sitzung max. 25 MiB; bei Limit oder Schreibfehler stoppen.
+- Unvollständiges letztes Ereignis beim Neustart entfernen **und melden**. Beschädigtes mittleres Ereignis blockiert Export.
+- Neustart deaktiviert Capture; Löschen entfernt Sitzung.
+- Recorder in vorhandenen Rust-HTTP-Lesepfaden, ohne weitere Requests oder Kotlin-HTTP-Bridge.
+- Quellenredirects separat ohne Body, Medienredirects verboten; Geocoder folgt intern, sichtbar sind finale URL und aggregierte Headerzeit. MapLibre und externe Intents außerhalb.
+- Coil-Cachetreffer sind keine Requests; Medienbytes nicht im HAR. Statuschecks protokollieren Listing-ID, bestätigten Status und HTTP-Code.
+
+### HAR, Maskierung und Export
+
+- HAR 1.2 verwendet reale aggregierte Zeiten und `_diagnostics` für Auslassungen, Fehler und finale URL.
+- Cookies/Auth-/Token-Header, sensitive Queryparameter, URL-Credentials sowie Fehler-URLs, Redirect/Referer maskieren. Auch maskierte Textantworten können sensibel sein.
+- Export per SAF; FileProvider nur für unveränderliche app-private Cache-Snapshots, Original nicht zugänglich. Snapshots älter als 48 h beim nächsten Export löschen.
+- Capture-Modi: [PRODUCT](PRODUCT.md#einstellungen-und-lokale-diagnose). Analyse: [README](../README.md#lokale-diagnose).
 
 ## Karte und Sicherheitsgrenzen
 
-- MapLibre besitzt Karten-View und Kartenressourcen; AndroidView-Factory/onRelease und Lifecycle-Observer koordinieren genau einmal den nativen View-Lifecycle einschließlich Speicherdruck. Kamera und Auswahl bleiben über SaveableStateHolder bei Tab-/Profilwechseln erhalten. Rust liefert die DB-weite Kartenprojektion und hält Koordinatencache in `app_settings` (`map:postal:DE:…` / `map:city:DE:…`, keine separate Schema-Migration), zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg. Offline-Überblick und Auftragsstatus sind getrennt; nach Abschluss/Abbruch liest die UI genau einmal den aktuellen Bestand statt doppelter Listenübertragung. Kein eigener Prozess, WebView, Server oder Gerätestandort. 
-- Kartenstil `https://tiles.openfreemap.org/styles/liberty`; PLZ `https://api.zippopotam.us/DE/<plz>`, bei fehlender PLZ später Stadt-Fallback `https://nominatim.openstreetmap.org/search` (DE, max. ein Ergebnis, >=1,1 s Abstand auch über Aufträge hinweg, [Provider-Policy](https://operations.osmfoundation.org/policies/nominatim/)). Neun Sekunden HTTP-Timeout je Standort; bestätigte Nichttreffer sieben Tage negativ cachen, Transport-/Format-/Koordinatenfehler nicht. Kartenüberblick offline über mapOverview; `resolveMapLocations`-Aufträge gemäß [PRODUCT](PRODUCT.md#karte), GeoJSON/Cluster, keine exakten hidden_location-Daten an Provider. Kachel-/Stil-Attribution beachten. Profilöffnung über loadProfile mit Offline-Fallback.
-- Private Datenbank, Medien, Exporte und temporäre Player-Dateien liegen im App-Sandboxbereich. Android-Backup ist deaktiviert. Manifest entfernt von SDKs deklarierte COARSE/FINE_LOCATION-Berechtigungen. Produktgrenzen gemäß PRODUCT. Externe Aktionen sind explizite Intents. Lizenzinformationen für native Bibliotheken stehen in [NOTICE](../NOTICE).
+### Projektion, Karte und Lifecycle
+
+- MapLibre verantwortet Karten-View und Ressourcen. AndroidView-Factory/`onRelease` und Lifecycle-Observer koordinieren **einmal** den nativen View-Lifecycle einschließlich Speicherdruck.
+- Kamera und Auswahl bleiben im `SaveableStateHolder` über Tab-/Profilwechsel erhalten.
+- Rust liefert die DB-weite Kartenprojektion und hält Koordinatencache in `app_settings` (`map:postal:DE:…` / `map:city:DE:…`, ohne separate Schema-Migration), zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg.
+- Offline-Überblick und Auftragsstatus getrennt. Nach Abschluss/Abbruch liest UI **einmal** aktuellen Bestand statt doppelter Listenübertragung.
+- Kein eigener Prozess, WebView, Server oder Gerätestandort.
+
+### Standortauflösung und Provider
+
+| Zweck | Anbieter / Bedingung |
+| --- | --- |
+| Kartenstil | `https://tiles.openfreemap.org/styles/liberty` |
+| Deutsche PLZ | `https://api.zippopotam.us/DE/<plz>` |
+| Fehlende PLZ / späterer Stadt-Fallback | `https://nominatim.openstreetmap.org/search`, DE, maximal ein Ergebnis und mindestens 1,1 s Abstand auch über mehrere Aufträge; [Provider-Policy](https://operations.osmfoundation.org/policies/nominatim/) |
+
+- Neun Sekunden HTTP-Timeout pro Standort.
+- Bestätigte Nichttreffer sieben Tage negativ cachen; Transport-, Format- oder Koordinatenfehler **nicht**.
+- Offline-Überblick über `mapOverview`; `resolveMapLocations`-Aufträge gemäß [PRODUCT](PRODUCT.md#karte).
+- GeoJSON/Cluster; keine exakten `hidden_location`-Daten an Provider. Kachel-/Stil-Attribution beachten.
+- Profilöffnung über `loadProfile` mit Offline-Fallback.
+
+### Private Daten und Android-Grenzen
+
+- DB, Medien, Exporte und temporäre Player-Dateien liegen im App-Sandboxbereich; Android-Backup deaktiviert.
+- Manifest entfernt von SDKs deklarierte Berechtigungen `android.permission.ACCESS_COARSE_LOCATION` und `android.permission.ACCESS_FINE_LOCATION`.
+- Externe Aktionen ausschließlich über explizite Intents; fachliche Grenzen: [PRODUCT](PRODUCT.md).
+- Native Lizenzhinweise: [NOTICE](../NOTICE).
 
 ## Automatisierte Architekturverträge
 
@@ -193,4 +364,11 @@ Recorder in bestehenden Rust-HTTP-Lesepfaden; keine weiteren Requests oder Kotli
 | ARC-07 | GalleryVideo als lokaler libmpv-Adapter, Rust-Download, lokaler loadfile-Pfad, file-Protokollrestriktion, keine Konfiguration/Skripte/externen Referenzen/automatischen Begleitdateien; vorhandene JVM-/Rust-Vertragstests bleiben. |
 | ARC-08 | Bekannte private Export-/DB-/Archivpfade nicht eingecheckt. Gebautes Debug-APK: Backup aus, Internet und MapLibre-Netz-/WLAN-Status zulässig, keine Geräte-Standortberechtigungen (SDK-Deklarationen per Manifest-Merge entfernt), begründete Exports (Launcher, Debug-Compose-Hosts, DUMP-geschützter AndroidX ProfileInstaller), einziger URI-freigebender Diagnoseprovider mit einzigem Cache-Unterverzeichnis; Referenz aus kompiliertem APK über Ressourcentabelle aufgelöst, sämtliche XML-Konfigurationen geprüft. |
 
-Die Prüfungen sind konservative Regressionen, keine vollständige Kotlin-Typ-/Datenflussanalyse, Sicherheits-Sandbox oder Aussage über beliebige private Inhalte und SDK-Laufzeitverhalten. APK-Regeln beziehen sich auf tatsächlich gebautes ARM64-Debug-APK. Build-/Testkommandos und Ausführung: [README](../README.md#prüfung--ci). Fachliche Unit- und Regressionstests liegen in Rust, Android JVM und den vorhandenen nativen Instrumentierungstests. Spezifische Profil-/Projektionsregressionen nach Betroffenheit: 0/1/200+ Cards, 0/1/12/80 Medien, partial/unverified, Offline/Timeout, Gesten und betroffene Aktionen, Cancel/Late Write, Identitäts-/Notizkonflikte, SavedSearch-Ack und unabhängige Reprojektion; keine zusätzlichen Quellenrequests durch Präsentation. Kartenregressionen: Identitäts-Deduplizierung, Favoriten, Offline-Cache, PLZ/Stadt-Fallback und Cancel/Lease bei erneutem Start. Der Architekturvertrag enthält keine Aufgabenstände oder Abnahmechronik.
+**Prüfgrenzen:**
+- Konservative Regressionen, **keine** vollständige Kotlin-Typ-/Datenflussanalyse, Sicherheits-Sandbox oder Aussage über beliebige private Inhalte und SDK-Laufzeitverhalten.
+- APK-Regeln gelten für das **tatsächlich gebaute ARM64-Debug-APK**. Build-/Testkommandos: [README](../README.md#prüfung--ci). Fachliche Unit-/Regressionstests in Rust, Android JVM und vorhandenen nativen Instrumentierungstests.
+
+**Gezielte Regression nach Betroffenheit:**
+- Profil/Projektion: 0/1/200+ Cards, 0/1/12/80 Medien, partial/unverified, Offline/Timeout, Gesten/Aktionen, Cancel/Late Write, Identitäts-/Notizkonflikte, SavedSearch-Ack und unabhängige Reprojektion. Darstellung darf keine zusätzlichen Quellrequests auslösen.
+- Karte: Identitäts-Deduplizierung, Favoriten, Offline-Cache, PLZ-/Stadt-Fallback und Cancel/Lease beim Neustart.
+- Architekturvertrag enthält keine Aufgabenstände oder Abnahmechronik.

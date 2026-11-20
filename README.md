@@ -16,9 +16,12 @@ Technische Architektur und Grenzen: [ARCHITECTURE.md](docs/ARCHITECTURE.md). Gra
 
 ## Build und Installation
 
-Voraussetzungen: Java 21, Android SDK Platform 37.0 (SDK-Paket `platforms;android-37.0`), NDK 29.0.14206865, Rust 1.99.0, cargo-ndk 4.1.2. Maßgebliche Build-Konfiguration: [Gradle-App-Build](app/build.gradle.kts), [Android-Versionen](gradle/libs.versions.toml), [Rust-Toolchain](rust/rust-toolchain.toml), [CI-Workflow](.github/workflows/android.yml). Android Studio kann das Repository direkt öffnen.
+### Voraussetzungen
 
-macOS/Linux:
+- Java 21, Android SDK Platform 37.0 (Paket `platforms;android-37.0`), NDK 29.0.14206865, Rust 1.99.0 und cargo-ndk 4.1.2.
+- Maßgebliche Konfiguration: [Gradle-App-Build](app/build.gradle.kts), [Android-Versionen](gradle/libs.versions.toml), [Rust-Toolchain](rust/rust-toolchain.toml), [CI-Workflow](.github/workflows/android.yml). Android Studio kann das Repository direkt öffnen.
+
+### Lokaler Debug-Build (macOS/Linux)
 
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android
@@ -26,41 +29,70 @@ cargo install cargo-ndk --version 4.1.2 --locked
 ./gradlew :app:assembleDebug -Pladies.abis=arm64-v8a
 ```
 
-APK unter `app/build/outputs/apk/debug/`. Für Entwickler ohne lokale Android-/Rust-Toolchain stellt [GitHub Actions](https://github.com/Justify87/ladies-explorer-android/actions) nach erfolgreichem Build das Artefakt `ladies-explorer-android-arm64-debug` bereit. Debug hat eine eigene Application-ID; Debug- und Release-Varianten können damit getrennt installiert werden. Für x86_64-Emulatoren die passende ABI bauen.
+### APK und Installation
+
+- Ausgabe: `app/build/outputs/apk/debug/`. Für x86_64-Emulatoren die passende ABI bauen.
+- Ohne lokale Android-/Rust-Toolchain: [GitHub Actions](https://github.com/Justify87/ladies-explorer-android/actions) stellt nach erfolgreichem Build `ladies-explorer-android-arm64-debug` bereit.
+- Debug besitzt eine eigene Application-ID; Debug und Release lassen sich getrennt installieren.
 
 ## Prüfung / CI
 
 Der [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft bei PRs, Pushes auf main und manuellen Starts. **Core and contracts** und **Android integration** prüfen unabhängig Rust fmt/test/clippy, Quellen- und APK-Architekturverträge, Export-/Import-Fixtures, ARM64-Rust/UniFFI, Debug- und Instrumentierungstest-APK, JVM-Tests und Lint. Gradle führt die Aufgaben gemeinsam mit `--continue` aus. Cargo.lock ist maßgeblich. Instrumentierungstests werden gebaut, nicht automatisch auf einem Gerät ausgeführt.
 
-### Ausführung und Artefakte
+### CI-Ausführungsmodi
 
-- `full`: Standard für Änderungen mit möglichen Build-/Testauswirkungen, manuelle Starts und nicht zuverlässig nachweisbare Änderungsumfänge.
-- `docs`: Vollständig verifizierte Änderungen ausschließlich an regulären `.md`-Dateien im Repository-Wurzelverzeichnis, unter `docs/` oder direkt unter `tools/` (auch AGENTS, neue/gelöschte/umbenannte Dateien). PRs gegen main und verifizierte main-Pushes überspringen Core und Android. Keine Abhängigkeit von vorheriger CI oder APK-Verfügbarkeit. Markdown in Build-Input-Verzeichnissen, gemischte Diffs und Typ-/Moduswechsel bleiben Full-CI.
-- `reuse`: Bei nachgewiesenem Zwei-Parent-Merge desselben Repositories mit identischem geprüftem Git-Tree, exakter Basis und erfolgreichem jüngstem PR-CI-Lauf übernimmt main das geprüfte APK. Bei Docs-Merges kann das APK des verifizierten Basislaufs optional erneut veröffentlicht werden. [ci_reuse.py](tools/ci_reuse.py) prüft Run/Versuch, Repository, Ereignis, Tree/Parents, Gates/Jobs/Steps und APK-SHA-256. Fehlende oder ungültige Evidenz bzw. Transferfehler lassen den ursprünglichen Scope bestehen: bei Codeänderungen Full-CI, bei reinen Docs kein Build.
+| Modus | Bedingung | Erwartetes Verhalten |
+| --- | --- | --- |
+| `full` | Build-/Test-relevante Änderung, manueller Start oder nicht sicher verifizierbarer Änderungsumfang | Core- und Android-Prüfungen ausführen |
+| `docs` | Vollständig verifizierter reiner Diff regulärer `.md`-Dateien im Repository-Root, unter `docs/` oder direkt unter `tools/`; PR gegen `main` oder verifizierter `main`-Push | Core und Android überspringen; kein vorausgehendes APK/CI nötig |
+| `reuse` | Verifizierter Zwei-Parent-Merge desselben Repositories mit identischem geprüftem Git-Tree, exakter Basis und erfolgreichem jüngstem PR-CI-Lauf | Geprüftes APK auf `main` wiederverwenden |
 
-Der Scope-Job und abschließende Check **build** laufen immer. Das Gate verlangt die tatsächlich erwarteten Job-/Step-Ergebnisse einschließlich ausdrücklich übersprungener Prüfungen und erfolgreicher APK-Wiederveröffentlichung. Überholte PR-Läufe werden abgebrochen; main und manuelle Läufe nicht pauschal.
+- `docs` erfasst auch geänderte, neue, gelöschte und umbenannte erlaubte Markdown-Dateien. Markdown in Build-Input-Verzeichnissen, gemischte Diffs und Typ-/Moduswechsel erfordern `full`.
+- Bei Docs-Merges kann das APK des verifizierten Basislaufs optional neu veröffentlicht werden.
+- [ci_reuse.py](tools/ci_reuse.py) verifiziert Run/Versuch, Repository, Ereignis, Tree/Parents, Gates/Jobs/Steps und APK-SHA-256. Fehlende/ungültige Evidenz oder Transferfehler erhalten den ursprünglichen Scope: `full` für Code, `docs` ohne Build für reine Dokumentation.
 
-Nur APKs mit grünem **build**-Gate als vollständig CI-validiert verwenden. Das Artefakt `ladies-explorer-android-arm64-debug` wird nach regulärem Gradle-Build und APK-Architekturprüfung bereitgestellt (PR: 7 Tage, main: 30 Tage); es kann bereits vor dem finalen Gate oder trotz späterer Fehler verfügbar sein. Bei Wiederverwendung wird das APK erneut hochgeladen, Berichte bleiben im Quelllauf. `android-ci-reports` enthält verfügbare Gradle-Profile, JVM-/Lint-Berichte und ausgewählte Diagnosedaten (7 Tage). Reine Docs-Läufe ohne wiederverwendbares Artefakt erzeugen kein APK; das zuletzt erfolgreich gebaute APK bleibt im ursprünglichen Lauf verfügbar, solange dessen Aufbewahrungsfrist nicht abgelaufen ist.
+### Gate und Artefakte
 
-### Build-Caches und optionale Diagnose
+- Scope-Job und abschließendes `build`-Gate laufen immer. Das Gate prüft alle erwarteten Job-/Step-Ergebnisse, ausdrücklich übersprungene Prüfungen und gegebenenfalls erfolgreiche APK-Wiederveröffentlichung.
+- Überholte PR-Läufe werden abgebrochen; `main`- und manuelle Läufe nicht pauschal.
+- **Nur APKs mit grünem `build`-Gate sind vollständig CI-validiert.** Ein bereits hochgeladenes Artefakt allein beweist das nicht.
+- `ladies-explorer-android-arm64-debug` entsteht nach regulärem Gradle-Build und APK-Architekturprüfung; Aufbewahrung: PR 7 Tage, `main` 30 Tage. Ein Upload kann dem finalen Gate vorausgehen oder bei späteren Fehlern dennoch existieren.
+- Bei `reuse` wird das APK erneut hochgeladen; Berichte bleiben im ursprünglichen Lauf. `android-ci-reports` enthält verfügbare Gradle-Profile, JVM-/Lint-Berichte und ausgewählte Diagnose (7 Tage).
+- `docs` ohne wiederverwendbares Artefakt erzeugt kein APK; das letzte erfolgreiche APK bleibt nur solange im Quelllauf verfügbar, wie dessen Aufbewahrung läuft.
+
+### Build-Caches
 
 Gradle Enhanced Caching und getrennte Host-/Android-Rust-Caches werden verwendet. Der Host-Job nutzt `Swatinem/rust-cache`; Android nutzt `actions/cache/restore` und `actions/cache/save`, getrennt nach effektivem Rust-/Host-Compiler, NDK/API und Build-/Cargo-Konfiguration. Der Fallback bleibt auf dieselbe native Toolchain beschränkt. Nur nach erfolgreichem Build und mit vorhandenen Android-Release- und Host-Debug-Abhängigkeiten wird ein fehlender Cache gespeichert; Cargo entfernt zuvor die eigenen Workspace-Artefakte. Unbenutzte vorinstallierte Rust-Versionen sind kein Android-Cache-Input. Externe Fork-PRs schreiben nicht in die Caches. SDK/NDK werden nur bei fehlender oder ungültiger Installation nachinstalliert. Der Gradle Configuration Cache bleibt im regulären Build deaktiviert.
 
 `cargoBuild<Variant>` und `uniffiBindgen<Variant>` nutzen bei `-Pladies.nativeCache=true` auf kontrollierten GitHub-hosted Linux-X64-Runnern den Gradle-Task-Output-Cache. Eingaben umfassen Rust-Workspace/Ressourcen, Lockfile, Toolchain, definierte Umgebung, Compiler-/Linker-/libc-Versionen, Rust-Targets, relevante NDK/API/ABI-/Generatoridentitäten und für Bindings die tatsächlichen Bibliotheksbytes. Die Runner-Image-Version ist nur Aktivierungsvoraussetzung, kein Cache-Key; unveränderte Tool-Versionsstrings können Änderungen an Host-Headern/Systembibliotheken nicht vollständig abbilden. Bei Verdacht `-Pladies.nativeCache=false` verwenden. Lokal bzw. in unkontrollierter Umgebung bleibt normale Cargo-Wiederverwendung ohne Gradle-Output-Cache/UP-TO-DATE für diese Tasks erhalten. Maßgeblich ist [app/build.gradle.kts](app/build.gradle.kts).
+
+### Optionale CI-Diagnose
 
 Optionale Diagnosewerkzeuge, ausschließlich explizit manuell (beide Inputs standardmäßig false):
 
 - `verify_native_cache=true`: [Native Cache-Probe](tools/verify-native-cache.sh) mit separatem Checkout, Wiederherstellung, Bytevergleich und Input-Invalidierungen; gemeinsamer Probe-Cache schreibgeschützt.
 - `measure_android_build=true`: [Build-Messung](tools/measure-android-build.sh) mit Gradle-Cache-Key- und Cargo-Fingerprint-Diagnostik, Kotlin-/Gradle-Berichten und isoliertem Configuration-Cache-Experiment.
 
-Wesentliche lokale Prüfungen:
+### Lokale Prüfungen
+
+**CI-Scope, Architektur und noch vorhandener Legacy-Exportpfad:**
 
 ```sh
 bash -n tools/export-legacy.sh
-(cd rust && cargo fmt --all -- --check && cargo test --workspace --locked && cargo clippy --workspace --all-targets --locked)
 python3 -m unittest discover -s tools -p test_ci_scope.py
 python3 -m unittest discover -s tools -p test_check_architecture.py
 python3 tools/check_architecture.py
+```
+
+**Rust-Formatierung, Tests und Lint:**
+
+```sh
+(cd rust && cargo fmt --all -- --check && cargo test --workspace --locked && cargo clippy --workspace --all-targets --locked)
+```
+
+**Android-Build, Test-APKs, JVM-Tests und Lint:**
+
+```sh
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace --continue --profile
 ```
 
@@ -70,7 +102,10 @@ Eine grüne CI beweist keine funktionierende reale Website-Suche oder native Ger
 
 ## Lokale Diagnose
 
-Unter Einstellungen → Diagnose INFO/DEBUG-Log bzw. HTTP-Aufzeichnung bewusst aktivieren; TXT/HAR speichern oder teilen. Firefox DevTools → Netzwerk → HAR importieren. Headerzeit umfasst Verbindung/Redirects, keine isolierte Serverwartezeit oder TTFB; HAR bildet sie aggregiert als wait ab, DNS/TCP/TLS-Einzelphasen nicht erfunden. Pagination-Pause keine Parserzeit, Cachetreffer keine Requests. Messungen mit Ausgangscommit, Operation und Bedingungen belegen. Keine privaten Profile, Antworten, HARs oder Logs in Git.
+- Unter Einstellungen → Diagnose INFO/DEBUG-Log oder HTTP-Aufzeichnung bewusst aktivieren; TXT/HAR speichern oder teilen. Firefox DevTools → Netzwerk → HAR importieren.
+- Headerzeit umfasst Verbindung und Redirects, nicht isolierte Serverwartezeit/TTFB. HAR stellt sie aggregiert als `wait` dar; DNS-/TCP-/TLS-Einzelphasen nicht erfinden.
+- Pagination-Pause ist keine Parserzeit; Cachetreffer erzeugen keine Requests.
+- Messungen mit Ausgangscommit, Operation und Bedingungen belegen. Keine privaten Profile, Antworten, HARs oder Logs in Git.
 
 ## Synthetische Testdaten
 

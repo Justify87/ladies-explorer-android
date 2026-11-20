@@ -4,48 +4,140 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ## Produktziel und Grenzen
 
-Auf einem Gerät Profile, Suchergebnisse, Personen, Medien, persönliche Entscheidungen und Historie verwalten. Kein separates Backend, Synchronisierungsdienst, integrierter Messenger, automatische Nachrichten/Anrufe, KI-Bildanalyse, automatische OCR-/KI-Preiserfassung oder erfundene Daten.
+**Zweck:** Auf einem Gerät Profile, Suchergebnisse, Personen, Medien, persönliche Entscheidungen und Historie verwalten.
 
-**Verbindliche Nutzerentscheidung vom 20.11.2026:** Die frühere Web-App ist obsolet. Keine Datenübernahme aus der Web-App und keine nutzerseitige Datenmigration, unabhängig von Format oder Verfahren (SQL, ZIP, Dateien, Gerätewechsel, Backup/Restore). Kein Nutzerimport, keine Ersatzmigration und kein Backup-/Restore-Verfahren zur Datenmigration vorhalten oder entwickeln. Daten entstehen nativ in der Android-App. Interne integritätserhaltende Schemaentwicklung derselben Android-Datenbank ist keine Nutzerdatenmigration. Diagnoseexporte sind kein Datenübernahmeverfahren. Abweichender Ist-Stand und Entfernung: [ARCHITECTURE](ARCHITECTURE.md#abzulösender-legacy-import-ist-abweichung), [ROADMAP](ROADMAP.md#unabhängige-technische-bereinigung).
+**Nicht Bestandteil:**
+- Separates Backend oder Synchronisierungsdienst; integrierter Messenger oder automatische Nachrichten/Anrufe.
+- KI-Bildanalyse, automatische OCR-/KI-Preiserfassung oder erfundene Daten.
+
+**Verbindliche Nutzerentscheidung vom 20.11.2026:** Die frühere Web-App ist obsolet.
+
+- Keine Datenübernahme aus der Web-App und keine nutzerseitige Datenmigration – unabhängig von Format oder Verfahren (SQL, ZIP, Dateien, Gerätewechsel, Backup/Restore).
+- Keinen Nutzerimport, keine Ersatzmigration und kein Backup-/Restore-Verfahren zur Datenmigration vorhalten oder entwickeln.
+- Daten entstehen nativ in der Android-App. Interne, integritätserhaltende Schemaentwicklung derselben Android-Datenbank ist **keine** Nutzerdatenmigration. Diagnoseexporte sind kein Datenübernahmeverfahren.
+- Abweichender Ist-Stand und Entfernung: [ARCHITECTURE](ARCHITECTURE.md#abzulösender-legacy-import-ist-abweichung), [ROADMAP](ROADMAP.md#unabhängige-technische-bereinigung).
 
 ## Suche und Filter
 
-- Ort, Rubrik, Radius 5/10/20/30/50/70/100 km, Alters-/Größenbereich, Treffpunkt, Kategorien, Merkmale, Services, Seitenlimit 1–50; Werte gemäß belegtem Quellkatalog. Alle/Jetzt/Heute kanonisch, nur Schnellwahl im Header führt unmittelbar Suche aus. Top 5 aus tatsächlich abgeschlossenen Suchläufen, dedupliziert je Lauf, stabil sortiert, Rubrik zählt; Vorschau/bloße Auswahl zählen nicht, definierte Standardwerte ausgenommen.
-- Aktiver Suchlauf und Filterentwurf getrennt. Vorschau abbrechbar, leichtgewichtig, keine Speicherung von Suchläufen, Inseraten, Beobachtungen oder Medien. Quellzahl von lokal sichtbaren Treffern unterscheiden; Vorschau-Count nur bei bestätigtem Radius und belastbarer Quellzahl (nicht kleiner als die Anzahl erkannter Karten), sonst unbekannt statt null, auch beim unbestätigten 404. Erfolg öffnet Entdecken, Fehler/Abbruch erhalten letzten aktiven Lauf.
-- Keine automatische Radiusaufweitung; unbekannte Struktur kein Nulltreffer. Explizite Radiusabweichung auf erster Seite Fehler, später bestätigte Karten als Teilresultat. Fehlende Radiusbestätigung/unvollständige Pagination: Teilresultat, keine bestätigte Entfernung oder vollständige Ergebnismenge vortäuschen. Erster HTTP-404-Sonderfall leer, aber nicht radiusbestätigt, kein bestätigter Nulltreffer für Deltas. Reguläre Teilresultate speicherbar, Abbruch/nicht als Teilresultat gültiger Fehler kein Erfolg.
-- Lokale Filter: nur Fotos/Video, Likes/Dislikes ausblenden, ALL/AI/NATURAL ausschließlich auf vorhandenen Markern. STUDIO/FACEAPP/Business ohne belastbare Daten nicht unterstützt; keine URL-Heuristik. Replay-Likes und Hide-Likes unterscheiden; normale und gespeicherte Suche verwenden gleiche Sichtbarkeitsregeln.
+### Parameter und Top 5
+
+- Suchparameter: Ort, Rubrik, Radius 5/10/20/30/50/70/100 km, Alters-/Größenbereich, Treffpunkt, Kategorien, Merkmale, Services und Seitenlimit 1–50; Werte gemäß belegtem Quellkatalog.
+- Alle/Jetzt/Heute werden kanonisch abgebildet. Nur die Schnellwahl im Header führt unmittelbar eine Suche aus.
+- Top 5: tatsächlich abgeschlossene Suchläufe zählen, pro Lauf dedupliziert und stabil sortiert; Rubrik zählt mit. Vorschau und bloße Auswahl zählen nicht, definierte Standardwerte ausgenommen.
+
+### Aktive Suche, Vorschau und Vollständigkeit
+
+- Aktiven Suchlauf und Filterentwurf trennen.
+- Vorschau ist abbrechbar und leichtgewichtig; sie speichert weder Suchläufe noch Inserate, Beobachtungen oder Medien.
+- Quellzahl und lokal sichtbare Treffer unterscheiden. Vorschau-Count nur bei bestätigtem Radius und belastbarer Quellzahl (mindestens die Zahl erkannter Karten) zeigen; andernfalls **unbekannt**, nicht null – auch bei unbestätigtem 404.
+- Erfolgreiche Suche öffnet Entdecken. Fehler oder Abbruch erhalten den letzten aktiven Lauf.
+- Radius niemals automatisch aufweiten; unbekannte Quellstruktur ist kein Nulltreffer.
+- Explizite Radiusabweichung auf Seite 1 ist ein Fehler. Tritt sie später auf, können bestätigte Karten als Teilresultat bleiben.
+- Fehlende Radiusbestätigung oder unvollständige Pagination ist ein Teilresultat, keine bestätigte Entfernung oder vollständige Ergebnismenge.
+- Erster HTTP-404-Sonderfall ist leer, aber nicht radiusbestätigt; kein bestätigter Nulltreffer für Deltas.
+- Reguläre Teilresultate dürfen gespeichert werden; Abbruch und Fehler ohne gültiges Teilresultat sind **kein** Sucherfolg.
+
+### Lokale Filter
+
+- Unterstützt: nur Fotos/Video, Likes/Dislikes ausblenden sowie ALL/AI/NATURAL **nur** auf vorhandenen Markern.
+- STUDIO/FACEAPP/Business sind ohne belastbare Daten nicht unterstützt; keine URL-Heuristik.
+- Replay-Likes und Hide-Likes unterscheiden. Normale und gespeicherte Suche verwenden identische Sichtbarkeitsregeln.
 
 ## Entdecken und Entscheidungen
 
-- Swipe und Grid sind verschiedene Ansichten derselben ausgeführten Ergebnismenge, kein Vermischen mit neutralem, sichtbar lokalem Startbestand ohne aktiven Lauf. Stabile Reihenfolge und eindeutige Inserate; Moduswechsel ohne neue Suche, gültige Position erhalten.
-- Like/Dislike und Favorit unabhängig. Geste/Buttons gleiche fachliche Entscheidung, erst bestätigte Entscheidung erlaubt Weitergehen. Später bleibt sessionlokal. Undo stellt vorherigen vollständigen Präferenzzustand und gültigen Deckschritt wieder her; Präsentationswiederherstellung gemäß [DESIGN](DESIGN.md#gesten-und-präsentation). Reset/Replay starten Traversierung neu, keine persistierten Entscheidungen löschen. Standalone-Präferenz, Neutral-Rücksetzung, Favorit keine Deck-Visits.
-- Grid direktes Like ohne Profilöffnung; neu gelikte Inserate nur im aktiven Grid temporär ausblenden, bei Writefehler zurücknehmen. Technische Kontext- und Commit-Sicherheit: [ARCHITECTURE](ARCHITECTURE.md#operations--und-konsistenzmodell).
+- Swipe und Grid sind zwei Ansichten **derselben ausgeführten Ergebnismenge**. Den neutralen, sichtbar lokalen Startbestand nicht mit einem aktiven Lauf vermischen.
+- Eindeutige Inserate und stabile Reihenfolge; Moduswechsel startet keine neue Suche und erhält die gültige Position.
+- Like/Dislike und Favorit sind unabhängig. Geste und Buttons lösen dieselbe fachliche Entscheidung aus. Erst die bestätigte Entscheidung erlaubt Weitergehen.
+- Später bleibt sessionlokal.
+- Undo stellt den vorherigen **vollständigen** Präferenzzustand und den gültigen Deckschritt wieder her; Präsentationswiederherstellung siehe [DESIGN](DESIGN.md#gesten-und-präsentation).
+- Reset/Replay starten Traversierung neu, ohne persistierte Entscheidungen zu löschen.
+- Standalone-Präferenz, Neutral-Rücksetzung und Favorit erzeugen keine Deck-Visits.
+- Grid erlaubt Like direkt ohne Profilöffnung. Neu gelikte Inserate werden **nur im aktiven Grid** temporär ausgeblendet; bei Writefehler wird das Ausblenden zurückgenommen.
+- Technische Kontext- und Commit-Sicherheit: [ARCHITECTURE](ARCHITECTURE.md#operations--und-konsistenzmodell).
 
 ## Profile, Medien und Kontakte
 
-- Gemeinsamer Profilumfang in Swipe/Standalone: Identität, Name/Alter/Ort, belegte Verfügbarkeit/Status, Öffnungszeiten, Merkmale, Beschreibung, Dienste, Filterbelege (Ja/Nein/Unbekannt), Präferenz/Favorit, Medien, Kontakte, Analyse, Notizen, Verlauf, Snapshotvergleich, verknüpfte Anzeigen. Alle vorhandenen Informationen erreichbar, keine erfundenen Werte.
-- Galerie in Quellreihenfolge; lokale archivierte Medien zuerst, Remote-Fallback; Fehler/Platzhalter. Reine Anzeige verändert Archiv und Datenbestand nicht. Eingebettete Videos und Darstellungsmodi gemäß [DESIGN](DESIGN.md#profile-und-medien). Verknüpfte Anzeigen externe Original-URLs. Telefon, WhatsApp, Originalprofil nur ausdrücklich ausgelöst, keine automatischen Aktionen.
-- Neu/bekannt, Video, Aktivität nur auf Evidenz; Vergleich ausdrücklich, keine künstlichen Scores oder Datenfelder nur für Mockups.
+- Swipe und Standalone zeigen den gemeinsamen Profilumfang: Identität, Name/Alter/Ort, belegte Verfügbarkeit/Status, Öffnungszeiten, Merkmale, Beschreibung, Dienste, Filterbelege (Ja/Nein/Unbekannt), Präferenz/Favorit, Medien, Kontakte, Analyse, Notizen, Verlauf, Snapshotvergleich und verknüpfte Anzeigen.
+- Alle tatsächlich vorhandenen Informationen bleiben erreichbar; fehlende Werte nicht erfinden.
+- Galerie in Quellreihenfolge. Lokale archivierte Medien zuerst, dann Remote-Fallback; bei Fehler Platzhalter.
+- Reine Anzeige verändert weder Archiv noch Datenbestand. Eingebettete Videos und Darstellungsmodi nach [DESIGN](DESIGN.md#profile-und-medien).
+- Verknüpfte Anzeigen verwenden externe Original-URLs. Telefon, WhatsApp und Originalprofil nur durch ausdrückliche Nutzerhandlung; keine automatischen Aktionen.
+- Neu/bekannt, Video und Aktivität nur anhand von Evidenz. Vergleich ausdrücklich auslösen; keine künstlichen Scores oder Datenfelder für Mockups.
 
 ## Personen, Identität und Historie
 
-Eine Person kann mehrere Quellprofile/Inserate besitzen. Präferenz, Favorit und Notiz gehören der Person; Quellenbeobachtungen und Nutzerzustand getrennt. Historie zeigt reale Übergänge, keine künstlichen Änderungen gleicher Inhalte. Identitätskandidaten auf vorhandener Evidenz; keine automatische Zusammenführung oder freier manueller Merge/Split. Explizite Bestätigung in beiden Profilkontexten zeigt Konsequenzen; fehlende Evidenz, manuell getrennte Inserate, widersprüchliche explizite LIKE/DISLIKE- oder Wiederholungsinteresse-Entscheidungen (vor erneutem Merge ausdrücklich auflösen) oder ungespeicherte Notizen betroffener Personen blockieren Merge. Daten und historische Zuordnungen bewahren; aktuelles Listing möglichst erhalten, sonst gültiger Kontext mit Hinweis; kein Undo-Step. Personennotiz getrennt von Begegnungsnotiz, Konflikte ausdrücklich lösen, keine stillen Überschreibungen/Umdeutung von Entwürfen.
+- Eine Person kann mehrere Quellprofile und Inserate besitzen. Präferenz, Favorit und Notiz gehören der **Person**; Quellenbeobachtungen und Nutzerzustand bleiben getrennt.
+- Historie zeigt reale Übergänge; identische Inhalte erzeugen keine künstlichen Änderungen.
+- Identitätskandidaten basieren auf vorhandener Evidenz. Kein automatisches Zusammenführen, kein freier manueller Merge/Split.
+- Explizite Merge-Bestätigung in **beiden** Profilkontexten zeigt die Konsequenzen.
+
+**Merge blockieren:**
+- Fehlende Evidenz oder manuell getrennte Inserate.
+- Widersprüchliche explizite LIKE-/DISLIKE- oder Wiederholungsinteresse-Entscheidungen: vor einem neuen Merge-Versuch ausdrücklich auflösen.
+- Ungespeicherte Notizen betroffener Personen.
+
+**Nach bestätigtem Merge:**
+- Daten und historische Zuordnungen erhalten. Aktuelles Listing möglichst halten, andernfalls in gültigen Kontext mit Hinweis wechseln; kein Undo-Step.
+- Personennotiz bleibt getrennt von Begegnungsnotiz. Notizkonflikte ausdrücklich lösen; keine stillen Überschreibungen oder Umdeutung von Entwürfen.
 
 ## Gespeicherte Personen
 
-Favoriten/Likes/Dislikes mit korrekten Personen, Counts, Datum-/Namenssortierung und Watchlist „Neu & geändert“ (36 h, zunächst drei, ausklappbar, keine Duplikate). Einzel-/Batchstatusprüfung mit Fortschritt, Abbruch und Teilfehlern. Explizite Checks nur bei weiterhin gespeicherter Mitgliedschaft. Nur bestätigte Quellenbeobachtung ändert Status: gültige Suchkarten bestätigen ACTIVE; direkte same-path 404/410 bestätigen UNAVAILABLE; erkannte 200-Detailseite mit erwarteter ID ACTIVE; unterstützte Detailseite ohne ID kann Inhalte liefern, aber UNKNOWN, explizite Prüfung zählt als Fehler. Falsche ID/Pfad, Prüfseite, Timeout oder Transportfehler sind keine Inaktivität. Statuszeit = letzte bestätigte Quellenbeobachtung, Status-only ändert nicht Inhalts-/Personenreihenfolge oder archivierte Medien. Abbruch erhält bestätigte Teilresultate.
+- Favoriten/Likes/Dislikes mit korrekter Personenzuordnung, Counts und Datum-/Namenssortierung.
+- Watchlist „Neu & geändert“: 36 h, zuerst drei Einträge, ausklappbar und ohne Duplikate.
+- Explizite Einzel-/Batchstatusprüfung zeigt Fortschritt, Abbruch und Teilfehler; sie ist nur bei **weiterhin gültiger gespeicherter LADIES-Mitgliedschaft** zulässig.
+
+| Quellenbeobachtung | Fachlicher Status / Wirkung |
+| --- | --- |
+| Gültige Suchkarte | Bestätigt `ACTIVE` |
+| Erkannte 200-Detailseite mit erwarteter ID | Bestätigt `ACTIVE` |
+| Direkte 404/410-Antwort auf demselben Profilpfad | Bestätigt `UNAVAILABLE` |
+| Unterstützte Detailseite ohne ID | Kann Inhalte liefern, Status bleibt `UNKNOWN`; explizite Prüfung zählt als Fehler |
+| Falsche ID/Pfad, Prüfseite, Timeout oder Transportfehler | **Kein** Beweis für Inaktivität und kein bestätigter `UNAVAILABLE`-Wechsel |
+
+- Nur bestätigte Quellenbeobachtungen ändern Status; Statuszeit ist die letzte bestätigte Quellenbeobachtung.
+- Status-only ändert weder Inhalts-/Personenreihenfolge noch archivierte Medien.
+- Abbruch erhält bereits bestätigte Teilresultate.
 
 ## Gespeicherte Suchen
 
-Definitionen erstellen, bearbeiten, laden, ausführen, umbenennen, löschen; gemeinsame Filter/Editor. Unterstützte lokale Filter bleiben bei Änderungen der Quellenparameter sichtbar und unverändert, sofern nicht ausdrücklich bearbeitet. Umbenennen erhält Ergebnisbasis/Historie, inhaltliche Änderung setzt Basis zurück. Erster vollständiger radiusbestätigter Lauf bildet Basis ohne künstliche Neu-Treffer. Nur spätere vollständige bestätigte Läufe erzeugen Mitgliedschaftsänderungen; Teilresultate/unbestätigtes 404 keine falschen Entfernungen. Stabile Inserat-ID, Treffer offline/paginiert, kein 1.000-Treffer-Limit. Nicht unterstützte Definitionen sichtbar kennzeichnen; Ausführung und inhaltliche Bearbeitung gesperrt, keine stille Änderung der Definition. Vorhandene Ergebnisse öffnen, umbenennen, löschen und ausdrücklich quittieren bleiben möglich. Neuigkeiten nur ausdrücklich als gelesen markieren; Öffnen, Reload, Pagination, Rückkehr, andere Mutationen quittieren nichts. Keine veralteten Deltas, Fehlermeldungen oder Aktionen gegen geänderte Definition; technischer Vertrag in [ARCHITECTURE](ARCHITECTURE.md#gespeicherte-suchen).
+### Definition und Bearbeitung
+
+- Definitionen erstellen, bearbeiten, laden, ausführen, umbenennen und löschen; gemeinsamer Filter/Editor.
+- Unterstützte lokale Filter bleiben bei Änderung **nur** der Quellenparameter sichtbar und unverändert, sofern nicht ausdrücklich bearbeitet.
+- Umbenennen erhält Ergebnisbasis und Historie; inhaltliche Änderung setzt die Basis zurück.
+- Nicht unterstützte Definitionen sichtbar kennzeichnen. Ausführung und inhaltliche Bearbeitung sind gesperrt, Definition niemals stillschweigend ändern.
+- Vorhandene Ergebnisse öffnen, umbenennen, löschen und ausdrücklich quittieren bleiben möglich.
+
+### Ergebnisbasis und Mitgliedschaft
+
+- Der erste **vollständige, radiusbestätigte** Lauf bildet die Basis ohne künstliche Neu-Treffer.
+- Nur spätere vollständige bestätigte Läufe verändern die Mitgliedschaft. Teilresultate und unbestätigte 404 dürfen keine falschen Entfernungen auslösen.
+- Ergebnisse nach stabiler Inserat-ID, offline und paginiert; kein 1.000-Treffer-Limit.
+
+### Neuigkeiten, Revision und Fehler
+
+- Neuigkeiten werden **nur durch ausdrückliche Quittierung** als gelesen markiert; Öffnen, Reload, Pagination, Rückkehr oder andere Mutationen quittieren nichts.
+- Keine veralteten Deltas, Fehlermeldungen oder Aktionen gegen eine inzwischen geänderte Definition.
+- Version, Definitionsbytes, Commit-, Fehler- und Ack-Grenzen: [ARCHITECTURE](ARCHITECTURE.md#gespeicherte-suchen).
 
 ## Karte
 
-DB-weiter Bestand, alle Profile oder nur Favoriten, aktuelles Inserat pro Person. Ungefähre deutsche PLZ-Zentren, sonst Stadtzentren; keine Ersatzkoordinaten, GPS-/Gerätestandort oder exakten Adressen/anderen privaten Profilinformationen an Geocoder. Marker keine Treffpunkte oder Navigationsziele; nicht auflösbare Orte ohne Marker. Profile am selben Ort gemeinsam auswählen. Standortauflösung nur ausdrücklich, max. 15 verschiedene Schlüssel je Lauf, Abbruch nach laufender Anfrage, keine konkurrierenden Läufe; vorübergehend fehlgeschlagene Schlüssel hinter unversuchte stellen. Teilergebnisse und Koordinaten offline verfügbar, Kacheln cacheabhängig. Kein automatisches Geocoding, manuelle Marker, Routing, Treffpunkte oder Offline-Kachelpakete.
+- DB-weiter Bestand: alle Profile oder nur Favoriten; aktuelles Inserat je Person.
+- Ungefähre deutsche PLZ-Zentren, ansonsten Stadtzentren. Keine Ersatzkoordinaten; GPS/Gerätestandort, exakte Adressen oder andere private Profilinformationen niemals an Geocoder geben.
+- Marker sind keine Treffpunkte/Navigationsziele. Nicht auflösbare Orte bleiben ohne Marker; gleich positionierte Profile lassen sich gemeinsam auswählen.
+- Standortauflösung nur ausdrücklich, höchstens 15 unterschiedliche Schlüssel pro Lauf und keine konkurrierenden Läufe. Abbruch nach laufender Anfrage.
+- Vorübergehend fehlgeschlagene Schlüssel hinter unversuchte stellen. Teilergebnisse und Koordinaten sind offline verfügbar; Kacheln cacheabhängig.
+- Ausgeschlossen: automatisches Geocoding, manuelle Marker, Routing, Treffpunkte und Offline-Kachelpakete.
 
 ## Einstellungen und lokale Diagnose
 
-DB-/Core-Status, Replay-Likes und lokale Diagnose, keine Telemetrie. INFO, optional DEBUG (kein TRACE), reale Operations-/Netzwerk-/Verarbeitungszeiten, sichtbare Fehler, TXT-Export. HTTP-Aufzeichnung bewusst: Aus (Standard nach jedem Neustart), Metadaten oder zusätzlich geeignete Textantworten. Eine begrenzte Sitzung bleibt erhalten; Löschen entfernt sie und schaltet Aufnahme aus. HAR 1.2 speicher-/teilbar, reale Werte und erkennbare Auslassungen/Fehler, keine erfundenen Einzelzeiten. Keine Medienbodies, zusätzlichen Requests, Replay, Mitschnitt fremder Apps, Proxy oder MapLibre-Kacheln. Vertrauliche Header/Parameter maskieren, übrige Inhalte können personenbezogen sein; nur bewusster Export, keine automatische Weitergabe. Technische Grenzen: [ARCHITECTURE](ARCHITECTURE.md#diagnoseinfrastruktur).
+- DB-/Core-Status, Replay-Likes und lokale Diagnose; keine Telemetrie.
+- INFO und optional DEBUG, **kein TRACE**. Reale Operations-/Netzwerk-/Verarbeitungszeiten, sichtbare Fehler und TXT-Export.
+- HTTP-Aufzeichnung ausschließlich bewusst: **Aus** (Standard nach jedem Neustart), Metadaten oder zusätzlich geeignete Textantworten.
+- Eine begrenzte Sitzung bleibt erhalten; Löschen entfernt sie und schaltet Aufnahme aus. HAR 1.2 ist speicher-/teilbar mit realen Werten und erkennbaren Auslassungen/Fehlern, ohne erfundene Einzelzeiten.
+- Keine Medienbodies, zusätzlichen Requests, Replay, Mitschnitt fremder Apps, Proxy oder MapLibre-Kacheln.
+- Vertrauliche Header und Parameter maskieren. Übrige Inhalte können personenbezogen sein: nur bewusster Export, keine automatische Weitergabe.
+- Technische Grenzen: [ARCHITECTURE](ARCHITECTURE.md#diagnoseinfrastruktur).
 
 ## Weitere Produktgrenzen
 

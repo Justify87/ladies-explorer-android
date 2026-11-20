@@ -4,9 +4,18 @@ Lokales Android-Hobbyprojekt. KISS/YAGNI, evidenzbasiert, ursächliche Änderung
 
 ## Einstieg und maßgebliche Quellen
 
-- [Arbeitsregister](docs/ROADMAP.md): einzige Aufgaben-/Statusquelle. Main, offene PRs, Abhängigkeiten und Akzeptanz prüfen; keine erledigten Aufgaben erneut öffnen oder Scope eigenmächtig erweitern.
-- [Architektur](docs/ARCHITECTURE.md): technische Grenzen und Ist-System. [Design](docs/DESIGN.md): UI/UX. [Produkt](docs/PRODUCT.md): Features, fachliches Soll und Grenzen. Vor Änderungen die jeweils betroffenen Produkt-, Architektur- und Designverträge lesen; weitere Informationen nur bei Bedarf.
-- [README](README.md#prüfung--ci) für Build/Test, Diagnose und synthetische Fixtures; [NOTICE](NOTICE) und [LICENSE](LICENSE) für Herkunft/Lizenzen.
+Die betroffenen Verträge gezielt nach der Aufgabe lesen; keine pauschale Volllektüre.
+
+| Dokument | Maßgebliche Zuständigkeit | Wann lesen |
+| --- | --- | --- |
+| [ROADMAP](docs/ROADMAP.md) | Einziges Register für Aufgaben, Status, Abhängigkeiten und Abnahme | Vor Aufgabenwahl: `main`, offene PRs, Status und Akzeptanz prüfen; erledigte Aufgaben nicht wiedereröffnen |
+| [PRODUCT](docs/PRODUCT.md) | Verbindliches fachliches Soll und Produktgrenzen | Bei geändertem Fachverhalten |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | Aktuelle technische Architektur, Invarianten und Grenzen | Bei Code-, Schnittstellen- oder Persistenzänderungen |
+| [DESIGN](docs/DESIGN.md) | UI-/UX-Verträge und flexible Richtwerte | Bei sichtbaren oder interaktiven Änderungen |
+| [README](README.md#prüfung--ci) | Build, Tests, CI, Diagnose und Fixtures | Für passende Prüfungen und Betrieb |
+| [NOTICE](NOTICE) / [LICENSE](LICENSE) | Herkunft und Lizenzen | Bei Lizenz- oder Distributionsfragen |
+
+Vor Änderungen die jeweils betroffenen Produkt-, Architektur- und Designverträge lesen; weitere Informationen nur bei Bedarf.
 
 ## Architektur- und Designvertrag
 
@@ -31,7 +40,9 @@ Bei jeder Änderung betroffene Implementierungen, Aufrufer, Schnittstellen, Komm
 - Code: notwendige Testhilfen testexklusiv halten. Dynamische Aufrufer, Framework-/FFI-Verträge, Serialisierung, interne Schemaentwicklung und gültige Fachverträge berücksichtigen; nicht allein aufgrund fehlender Textreferenzen löschen.
 - Kommentare (auch KDoc/Rustdoc, Inline, Skripte): nur nicht offensichtliches Warum, Invarianten, Sicherheit/Integrität, Nebenläufigkeit/Lifecycle, externe Verträge und begründete Workarounds knapp erklären. Keine Historie, Nacherzählung oder auskommentierten Code. Rechtliche Header, Provenance, Shebangs, Direktiven, Fixtures, Fremd-/generierten Code und notwendige Testbegründungen erhalten; niemals blind per Regex löschen.
 - Tests: beobachtbares Verhalten und aktuelle Verträge sichern. Rust Fachlogik/Persistenz, JVM UI-State/Orchestrierung, Instrumentierung Android-Integration, Python Architektur/CI. Redundante Prüfungen konsolidieren, Kopplung minimieren, deterministische Nebenläufigkeit, begrenzte Wartezeiten, eindeutige Fehlerursachen, einfache lokale Fixtures. Gültige Verträge nicht zur Legitimierung fehlerhafter Implementierungen abschwächen; keine realen Quellenzugriffe oder privaten Testdaten.
-- Dokumentation: Informationen an maßgeblicher Stelle pflegen, andernorts referenzieren. Obsolete Inhalte entfernen, keine parallelen Spezifikationen. Neue Dateien nur bei eigenständigem dauerhaft belegtem Informationsbedarf, nicht pro Feature. Agentenregeln nur bei belegtem dauerhaftem projektspezifischem Bedarf ergänzen; bevorzugt konsolidieren oder ersetzen. Nutzerentscheidungen und verbindliche Grenzen nicht eigenmächtig abschwächen.
+- Dokumentation: Jede Aussage an einer maßgeblichen Stelle pflegen; andere Dateien verlinken statt Verträge zu duplizieren. Veraltete, widersprüchliche und redundante Aussagen im betroffenen PR bereinigen.
+- Schreibweise: pro Abschnitt ein Thema, kurze atomare Regeln mit Subjekt, Geltungsbedingung und Konsequenz; Fehler/Cancel/Ausnahmen explizit, wo relevant. Verbindliche Regeln, Richtwerte und refaktorierbaren Ist-Stand unterscheidbar halten. Präzise Abschnittslinks und Codebezeichner in `Backticks`; Tabellen nur für echte Zuordnungen/Entscheidungen, nummerierte Listen für Abläufe. Eine H1 je Datei, H2/H3 nach Themen; keine starren Templates oder Kürzung zulasten gültiger Verträge.
+- Neue Dokumente nur bei eigenständigem dauerhaft belegtem Informationsbedarf, nicht pro Feature. Agentenregeln nur bei dauerhaftem projektspezifischem Bedarf ergänzen, möglichst vorhandene ersetzen. Nutzerentscheidungen und verbindliche Grenzen nicht eigenmächtig abschwächen.
 
 ## Prüfungen und CI
 
