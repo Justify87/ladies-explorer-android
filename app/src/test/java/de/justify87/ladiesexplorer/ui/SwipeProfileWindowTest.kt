@@ -39,15 +39,54 @@ class SwipeProfileWindowTest {
         val finish = CompletableDeferred<Unit>()
         var reads = 0
         val pending = launch {
-            cache.prefetch(b) { reads++; started.complete(Unit); finish.await(); fixtureSwipe(2L) }
+            cache.prefetch(b) {
+                reads++
+                started.complete(Unit)
+                finish.await()
+                fixtureSwipe(b.listingId, b.personId)
+            }
         }
         started.await()
         cache.retain(listOf(b, c, next))
         finish.complete(Unit)
         pending.join()
-        assertEquals(2L, cache[b]?.profile?.listingId)
+        assertEquals(b.listingId, cache[b]?.profile?.listingId)
+        assertEquals(b.personId, cache[b]?.identity?.personId)
+        assertEquals(b.personId, cache[b]?.person?.personId)
         cache.prefetch(b) { error("promoted projection must be reused") }
         assertEquals(1, reads)
+    }
+
+    @Test fun promotedSlotRejectsProjectionForDifferentOwner() = runBlocking {
+        val entries = mutableMapOf<Long, ProfileReadModel>()
+        val cache = SwipeProfileWindow(entries)
+        val a = fixtureCard(1L)
+        val b = fixtureCard(2L)
+        cache.retain(listOf(a, b))
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        var rejected = false
+        val pending = launch {
+            try {
+                cache.prefetch(b) {
+                    started.complete(Unit)
+                    finish.await()
+                    fixtureSwipe(b.listingId, a.personId)
+                }
+            } catch (_: IllegalStateException) {
+                rejected = true
+            }
+        }
+        started.await()
+        cache.retain(listOf(b))
+        finish.complete(Unit)
+        pending.join()
+        assertTrue(rejected)
+        assertNull(cache[b])
+        assertFalse(entries.containsKey(b.listingId))
+        assertEquals(b.personId, cache.readCurrent(b) {
+            fixtureSwipe(b.listingId, b.personId)
+        }?.identity?.personId)
     }
 
     @Test fun sameListingOwnerChangeInvalidatesOldSnapshotAndContact() = runBlocking {
