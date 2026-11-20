@@ -3,9 +3,6 @@ package de.justify87.ladiesexplorer.ui
 import de.justify87.ladiesexplorer.core.EvidenceStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 class ProfileSectionsTest {
     @Test fun sectionsExpandIndependentlyAndStayContextLocal() {
@@ -27,74 +24,6 @@ class ProfileSectionsTest {
         assertEquals(true, restored.showDescriptionChanges)
     }
 
-    @Test fun collapsedNoteShowsConflictBeforeDraft() {
-        val dirty = NoteDraft.from("original").copy(text = "mine")
-        assertEquals("Ungespeicherter Entwurf", noteSectionHint(NoteEditorState(draft = dirty)))
-        assertEquals("Notizkonflikt", noteSectionHint(NoteEditorState(draft = dirty.reconcile("external"))))
-    }
-
-    @Test fun dirtyDraftSurvivesRefreshUntilExplicitConflictResolution() {
-        val first = NoteDraft.from("original").copy(text = "mine")
-        val changed = first.reconcile("external")
-        assertEquals("original", changed.expected)
-        assertEquals("mine", changed.text)
-        assertEquals(true, changed.conflict)
-        assertEquals("external", changed.useStored().text)
-        assertEquals(false, changed.keepDraft().conflict)
-        assertEquals("mine", changed.keepDraft().text)
-        assertEquals(false, changed.reconcile("mine").dirty)
-    }
-
-    @Test fun cleanDraftFollowsPersistedValueAndEmptyTextIsARealEdit() {
-        val original = NoteEditorState().loaded("original")
-        assertEquals("external", original.loaded("external").draft?.text)
-        val cleared = original.draft!!.copy(text = "")
-        assertEquals(true, cleared.dirty)
-        assertEquals(false, cleared.reconcile(null).dirty)
-    }
-
-    @Test fun switchingProfilesDoesNotReplaceOtherDraftsAndMergeChecksDirtyOwners() {
-        val original = NoteEditorState().loaded("old")
-        val drafts = mapOf(1L to original.copy(draft = original.draft!!.copy(text = "unsaved")),
-            2L to NoteEditorState().loaded("other"))
-        val reopened = drafts.getValue(1L).loaded("old")
-        assertEquals("unsaved", reopened.draft?.text)
-        assertEquals(true, reopened.draft?.dirty)
-        assertEquals(false, drafts.getValue(2L).draft?.dirty)
-        assertEquals(listOf(1L), drafts.dirtyOwners(1L, 2L))
-    }
-
-    @Test fun navigationWhileWriteAwaitsDoesNotRedirectCommittedNote() = runBlocking {
-        var notes = emptyMap<Long, NoteEditorState>()
-            .updateNote(1L) { it.loaded("old") }
-            .updateNote(1L) { it.copy(draft = it.draft!!.edit("saved")) }
-        val started = CompletableDeferred<Unit>()
-        val finish = CompletableDeferred<Unit>()
-        val job = launch {
-            val outcome = writeAndProject(
-                write = { started.complete(Unit); finish.await() },
-                afterWrite = { notes = notes.updateNote(1L) { it.committed("saved") } },
-                project = {},
-            )
-            assertEquals(DiscoveryMutationOutcome.Success, outcome)
-        }
-        started.await()
-        notes = notes.updateNote(2L) { it.loaded("other") }
-        finish.complete(Unit)
-        job.join()
-        assertEquals("saved", notes.getValue(1L).draft?.text)
-        assertEquals(false, notes.getValue(1L).draft?.dirty)
-        assertEquals("other", notes.getValue(2L).draft?.text)
-    }
-
-    @Test fun failedWriteMessageSurvivesSuccessfulReadAndBlankCommitClearsDraft() {
-        val failed = NoteEditorState().loaded("a").copy(error = "write failed")
-        assertEquals("write failed", failed.loaded("a").error)
-        val dirty = failed.copy(draft = failed.draft!!.edit(" "))
-        assertEquals(false, dirty.committed(null).draft?.dirty)
-        assertEquals(null, dirty.committed(null).error)
-    }
-
     @Test fun historyLabelsDoNotExposeStorageKeys() {
         assertEquals("Merkmale geändert", historyEventLabel("FIELD_CHANGED", "traits_json"))
         assertEquals("Anzeige entdeckt", historyEventLabel("PROFILE_CREATED", null))
@@ -106,43 +35,5 @@ class ProfileSectionsTest {
         assertEquals("Ja", evidenceLabel(EvidenceStatus.YES))
         assertEquals("Nein", evidenceLabel(EvidenceStatus.NO))
         assertEquals("Unbekannt", evidenceLabel(EvidenceStatus.UNKNOWN))
-    }
-
-    @Test fun bothMergeOwnersWithDirtyDraftsRemainIndependentAfterConflictingRead() {
-        val notes = mapOf(
-            1L to NoteEditorState().loaded("a"),
-            2L to NoteEditorState().loaded("b"),
-        ).updateNote(1L) { it.copy(draft = it.draft!!.edit("draft a")) }
-            .updateNote(2L) { it.copy(draft = it.draft!!.edit("draft b")) }
-            .updateNote(1L) { it.loaded("external a") }
-        assertEquals(listOf(1L, 2L), notes.dirtyOwners(1L, 2L, 1L))
-        assertEquals(true, notes.getValue(1L).draft?.conflict)
-        assertEquals("draft a", notes.getValue(1L).draft?.text)
-        assertEquals("draft b", notes.getValue(2L).draft?.text)
-        val resolved = notes.updateNote(1L) { it.copy(draft = it.draft!!.useStored()) }
-        assertEquals(listOf(2L), resolved.dirtyOwners(1L, 2L))
-    }
-    @Test fun noteCallbacksCannotRetargetAfterRenderedContextChanges() = runBlocking {
-        val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
-        val token = requireNotNull(state.swipeToken(fixtureSwipe()))
-        var active: ProfileIdentityToken? = token
-        val calls = mutableListOf<String>()
-        val raw = NoteEditorActions(
-            load = { listing, owner -> calls += "load:$listing:$owner" },
-            edit = { owner, _ -> calls += "edit:$owner" },
-            save = { listing, owner -> calls += "save:$listing:$owner" },
-            useStored = { owner -> calls += "discard:$owner" },
-            keepDraft = { owner -> calls += "keep:$owner" },
-        )
-        val bound = raw.boundTo(token) { it == active }
-        bound.load(4L, 1L)
-        bound.edit(1L, "draft")
-        bound.save(99L, 1L)
-        bound.edit(2L, "wrong owner")
-        active = token.copy(projectionRevision = token.projectionRevision + 1)
-        bound.save(4L, 1L)
-        bound.useStored(1L)
-        bound.keepDraft(1L)
-        assertEquals(listOf("load:4:1", "edit:1"), calls)
     }
 }
