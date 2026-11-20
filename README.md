@@ -8,13 +8,13 @@ Native, lokal genutzte Android-App mit Kotlin, Jetpack Compose / Material 3 Expr
 - Profildetails mit Mediengalerie, lokalem Bildarchiv, Offline-Fallback auf gespeicherte Profile, Änderungshistorie und explizit bestätigbaren Identitätskandidaten.
 - Lokaler Import vorhandener Web-App-Daten, native MapLibre-Karte mit groben Ortszentren und ausdrücklich gestarteter Geocodierung.
 - Lokales Debug-/Performance-Logging und optionaler HTTP-Mitschnitt mit TXT-/HAR-Export.
-- Externe Video-/WhatsApp-Intents; kein integrierter Messenger oder automatische KI-/OCR-Preisextraktion.
+- Eingebettete stumme Galerie-Videos, externe WhatsApp-/Originalaktionen; kein integrierter Messenger oder automatische KI-/OCR-Preisextraktion.
 
-Der Code ist keine vollständig abgenommene Web-App-Ablösung. Offene Anforderungen (u. a. Notizen, Begegnungen und Gesamtintegration), Planabweichungen und Geräteabnahme stehen im [Roadmap-Index](docs/ROADMAP.md); die operative M05-Planung ist dort verlinkt.
+Der Code ist keine vollständig abgenommene Web-App-Ablösung. Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md). Personennotizen sind bereits vorhanden.
 
 ## Aktive Weiterentwicklung
 
-M05 ist zur vollständigen Frontend-Parität wieder geöffnet. Nächsten ausführbaren Schritt dem [Aufgabenregister](docs/M05-TASKS.md) entnehmen; M06/M07 nicht vorziehen. Einstieg für Agenten: [AGENTS.md](AGENTS.md).
+Den nächsten ausführbaren Schritt dem [Arbeitsregister](docs/ROADMAP.md) entnehmen. Einstieg für Agenten: [AGENTS.md](AGENTS.md).
 
 ## Architektur
 
@@ -93,10 +93,9 @@ Format, Voraussetzungen, Ausschlüsse und Integrität: [DATA-IMPORT.md](docs/DAT
 | [DATA-IMPORT.md](docs/DATA-IMPORT.md) | Legacy-Export und Import |
 | [DIAGNOSTICS.md](docs/DIAGNOSTICS.md) | Lokale Logs, Messungen, HTTP-Mitschnitt, Export und Prüfschritte |
 | [MAP.md](docs/MAP.md) | Karte, Geocoding, Cache, Lifecycle und Abnahme |
-| [ROADMAP.md](docs/ROADMAP.md) | Implementierungsplan, Soll/Ist und offene Anforderungen |
-| [M05-PLAN.md](docs/M05-PLAN.md) | Aktives M05-Soll, Design, Architektur, Scope und Abnahme |
-| [M05-PARITY.md](docs/M05-PARITY.md) | Legacy-/Native-Paritätsmatrix mit stabilen Anforderungs-IDs |
-| [M05-TASKS.md](docs/M05-TASKS.md) | Operative Aufgaben, Abhängigkeiten, Status, Review-Gates |
+| [ROADMAP.md](docs/ROADMAP.md) | Einziges Arbeits- und Fortschrittsregister |
+| [M05-PLAN.md](docs/M05-PLAN.md) | Gültiger UI-/Profilvertrag und Regressionsanforderungen |
+| [M05-PARITY.md](docs/M05-PARITY.md) | Fach-/UX-Anforderungsinventar mit stabilen IDs |
 | [AGENTS.md](AGENTS.md) | Ausführungs-Harness für Agenten |
 | [PROVENANCE.md](docs/PROVENANCE.md) | Artefact-Referenz und Codeherkunft |
 
