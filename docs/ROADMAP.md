@@ -82,7 +82,7 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 
 ## Unabhängige technische Bereinigung
 
-- [ ] **DC01 — ACTIVE:** Dead-Code-Bereinigung: obsolete Fassaden und native Exporte, Testgrenzen und Folgereferenzen prüfen. Gültigen `PersonCursor`-Vertrag erhalten. Technische Abnahme und Gesamt-Review einschließlich der Fixture-/Produktionsregressionen noch offen; danach nur konkrete Restfunde weiterverfolgen. Aktive Mutationspfade, M06-Datenverträge und CI-Optimierung nicht ohne konkreten Anlass umbauen.
+- [ ] **DC01 — REVIEW (DONE mit Merge):** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49): obsolete Fassaden und native Exporte, Testgrenzen und redundante Fixture-Logik bereinigt; `PersonCursor`-Vertrag erhalten. Abschluss nach erfolgreicher technischer Prüfung und Merge. Nachlauf nur bei konkreten Restbefunden aus Compiler/Lint, Abhängigkeiten oder dynamischen Einstiegen. Personenbezogene Saved-People-Mutationen sind aktiv; Read/Write-Semantik nur bei konkretem Anlass separat prüfen. M06-Datenverträge und CI-Optimierungen unverändert.
 
 ## Unabhängiger Klärungspunkt
 

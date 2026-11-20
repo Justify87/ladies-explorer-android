@@ -910,7 +910,8 @@ mod tests {
         assert_eq!(core.status().unwrap().person_count, 2);
         let person_id = first.profiles[0].person_id;
         core.set_favorite(person_id, true).unwrap();
-        core.set_preference(person_id, crate::Preference::Like).unwrap();
+        core.set_preference(person_id, crate::Preference::Like)
+            .unwrap();
         let again = save_cards(&core, vec![card("101", "Anna new")]);
         assert_eq!(again.profiles[0].listing_id, first.profiles[0].listing_id);
         assert_eq!(again.profiles[0].person_id, person_id);
@@ -964,7 +965,14 @@ mod tests {
             } else {
                 save_cards(&core, vec![card("101", "Anna")]);
             }
-            assert!(core.get_person(person).unwrap().unwrap().last_seen_at.as_str() > OLD);
+            assert!(
+                core.get_person(person)
+                    .unwrap()
+                    .unwrap()
+                    .last_seen_at
+                    .as_str()
+                    > OLD
+            );
             let db = core.connection().unwrap();
             let (listing_seen, profile_seen): (String, String) = db
                 .query_row(

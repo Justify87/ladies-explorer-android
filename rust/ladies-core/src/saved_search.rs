@@ -1158,14 +1158,7 @@ mod tests {
             hide_likes: true,
             ..rules
         };
-        update_with_local(
-            &core,
-            id.clone(),
-            "Renamed".into(),
-            query,
-            changed.clone(),
-        )
-        .unwrap();
+        update_with_local(&core, id.clone(), "Renamed".into(), query, changed.clone()).unwrap();
         assert_eq!(load_definition(&core, id.clone()).unwrap().local, changed);
         assert_eq!(definition(&core, &id).unwrap().1, initial + 1);
     }
