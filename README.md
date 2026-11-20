@@ -36,14 +36,21 @@ APK unter `app/build/outputs/apk/debug/`. Für Entwickler ohne lokale Android-/R
 
 ## Prüfung / CI
 
-Der einzelne [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft für PRs, Pushes auf main und manuelle Starts. Er prüft den Legacy-Exporter (Bash-Syntax und synthetischer ZIP/SQLite-Roundtrip), Rust-Formatierung, gelockte Workspace-Tests, Clippy, den Android-arm64-Build, JVM-Unit-Tests und Android Lint und veröffentlicht das Debug-APK. Die CI-Konfiguration ist maßgeblich; Rust-Abhängigkeiten werden über Cargo.lock reproduziert.
+Der [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft für PRs (einschließlich neuer Commits), Pushes auf main und manuelle Starts. Die beiden Prüflinien **Core and contracts** (HTTP-Grenze, Export-/Import-Fixtures, Rust fmt/test/clippy) und **Android integration** (ARM64-Rust/UniFFI, Debug- und Instrumentierungstest-APK, JVM-Tests und Lint) laufen unabhängig. Gradle `--continue` und getrennte Rust-Prüfschritte melden möglichst viele unabhängige Fehler pro Lauf. Rust-Abhängigkeiten werden über Cargo.lock reproduziert.
+
+Der abschließende Check **build** behält den bisherigen Namen und ist nur erfolgreich, wenn alle erwarteten Prüfungen erfolgreich sind. Reine Inhaltsänderungen in den explizit zugelassenen Dokumenten (README, ROADMAP, M05-PLAN/-TASKS/-PARITY) dürfen die beiden Prüflinien nur auslassen, wenn der vollständige PR-Merge-Diff ausschließlich diese Änderungen enthält und der jüngste main-Push-CI-Lauf für exakt den Basiscommit erfolgreich ist. Fehlender Nachweis, gemischte PRs, neue/geänderte Pfade außerhalb der Allowlist, main und manuelle Starts führen zur Full-CI. Ein reiner Dokumentationslauf ist kein neuer APK- oder Meilenstein-Nachweis.
+
+Nur APKs aus Läufen mit grünem **build**-Gate als vollständig validiert verwenden; der unabhängig ausgeführte Android-Job kann ein APK auch bei fehlgeschlagenem Core-Job bereitstellen. Das bisherige APK-Artefakt bleibt unter `ladies-explorer-android-arm64-debug` verfügbar (7 Tage bei PRs, 30 Tage auf main). `android-ci-reports` enthält verfügbare Gradle-Profile, JVM-Test- und Lint-Berichte für 7 Tage, auch bei fehlgeschlagenem Gradle-Schritt.
+
+Gradle Enhanced Caching wird für das öffentliche Repository erprobt (Rückfall: `cache-provider: basic`); Host- und Android-Rust-Cache haben getrennte Schlüssel, externe Fork-PRs schreiben nicht in die Caches. Vergleich von kalten/warmen Läufen anhand der CI-Schrittzeiten und Gradle-Profilberichte; keine angenommene Beschleunigung ohne Messung. Eigene Rust-/UniFFI-Task-Output-Caches und Geräteausführung sind nicht Bestandteil dieser Workflow-Optimierung.
 
 Wesentliche lokale Prüfungen:
 
 ```sh
 bash -n tools/export-legacy.sh
 (cd rust && cargo fmt --all -- --check && cargo test --workspace --locked && cargo clippy --workspace --all-targets --locked)
-./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace
+python3 -m unittest discover -s tools -p test_ci_scope.py
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace --continue --profile
 ```
 
 Eine grüne CI beweist keinen erfolgreichen Import realer Daten, keine funktionierende Website-Suche oder native Geräte-UX. Reale Android-Abnahme separat nach [ROADMAP.md](docs/ROADMAP.md); nach Installation unter Einstellungen Datenbankstatus (Schema v2) kontrollieren.
