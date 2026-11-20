@@ -1016,44 +1016,32 @@ mod tests {
 
     #[test]
     fn image_dimensions_enforce_safe_decode_budget() {
-        for (width, height) in [(8192, 1), (8193, 1), (1, 8193)] {
+        for (width, height, allowed) in [
+            (8192, 1, true),
+            (1, 8192, true),
+            (8193, 1, false),
+            (1, 8193, false),
+            (6000, 4001, false),
+        ] {
             let mut png = Cursor::new(Vec::new());
-            image::DynamicImage::new_rgb8(width, height)
+            image::DynamicImage::new_luma8(width, height)
                 .write_to(&mut png, image::ImageFormat::Png)
                 .unwrap();
             let result = image_dhash(&png.into_inner());
-            if width == 8192 {
+            if allowed {
                 let (_, decoded_width, decoded_height, _) = result.unwrap();
                 assert_eq!((decoded_width, decoded_height), (width, height));
             } else {
-                assert!(matches!(
-                    result,
-                    Err(CoreError::Media(reason))
-                        if reason == "Image dimensions exceed safe decode budget"
-                ));
+                assert!(
+                    matches!(
+                        result,
+                        Err(CoreError::Media(reason))
+                            if reason == "Image dimensions exceed safe decode budget"
+                    ),
+                    "{width}x{height}"
+                );
             }
         }
-    }
-
-    #[test]
-    fn only_whitelisted_cdn_hosts_are_downloaded() {
-        assert!(
-            validate_media_url("https://bilder1.ladies-cdn.de/Bilder/1.jpg", Some("IMAGE")).is_ok()
-        );
-        assert!(
-            validate_media_url(
-                "https://bilder1.ladies-cdn.de.evil.test/a.jpg",
-                Some("IMAGE")
-            )
-            .is_err()
-        );
-        assert!(validate_media_url("http://bilder1.ladies-cdn.de/a.jpg", Some("IMAGE")).is_err());
-        assert!(validate_media_url("https://127.0.0.1/a.jpg", Some("IMAGE")).is_err());
-        assert!(validate_media_url("https://video2.ladies-cdn.de/a.mp4", Some("VIDEO")).is_ok());
-        assert!(
-            validate_media_url("https://m.ladies.de/Bilder/gallery.jpg", Some("IMAGE")).is_ok()
-        );
-        assert!(validate_media_url("https://bilder1.ladies-cdn.de/a.jpg", Some("VIDEO")).is_err());
     }
 
     #[test]

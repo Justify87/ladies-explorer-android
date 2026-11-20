@@ -1059,7 +1059,7 @@ mod tests {
     }
 
     #[test]
-    fn november_location_api_uses_title_case_keys() {
+    fn location_api_uses_title_case_keys() {
         let client = Mock::default().with(
             "https://www.ladies.de/api/location?searchString=Leipzi&searchAddAlleRegionen=false",
             200,
@@ -1071,7 +1071,7 @@ mod tests {
     }
 
     #[test]
-    fn november_har_card_and_search_config_shapes_are_supported() {
+    fn cards_and_search_config_accept_observed_source_markup() {
         // Synthetic data preserving observed HTML and metadata shapes.
         let html = r#"<div class="card-gallery-premium ladies-card top-teaser">
             <a class="card-link" data-owg-id="9988" data-ref-id="9988"

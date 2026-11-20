@@ -683,7 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn november_debug_radius_transition_is_not_an_advert_card() {
+    fn radius_transition_placeholder_is_not_an_advert_card() {
         let html = r#"<div hidden id="page-section-8" data-page="8"></div>
 <h3>5 Anzeigen im Umkreis bis 20 km</h3>
 <div property="advertCard" prefix="globals: globals" class="card-gallery-standard affiliate-card ladies-card">
@@ -739,19 +739,19 @@ mod tests {
     }
 
     #[test]
-    fn cards_accept_fkk_and_stars_profile_routes_from_debug_har() {
-        // Valid advert IDs can have profile URLs outside /sex-anzeigen/.
+    fn cards_accept_fkk_and_stars_profile_routes() {
+        // Synthetic identifiers; observed profile routes outside /sex-anzeigen/.
         let html = r#"
             <div class="card-gallery-premium ladies-card">
-                <a class="card-link" data-owg-id="14620911" data-ref-id="14620911"
-                   href="/fkk-saunaclubs/fkk-leipzig"></a>
-                <span class="card-name">FKK Leipzig</span>
+                <a class="card-link" data-owg-id="420001" data-ref-id="420001"
+                   href="/fkk-saunaclubs/fixture-club"></a>
+                <span class="card-name">Fixture Club</span>
                 <span class="card-city">Leipzig</span>
             </div>
             <div class="card-gallery-standard ladies-card">
-                <a class="card-link" data-owg-id="13778337" data-ref-id="13778337"
-                   href="/stars/melissadeluxe-978145"></a>
-                <span class="card-name">MelissaDeluxe</span>
+                <a class="card-link" data-owg-id="420002" data-ref-id="420002"
+                   href="/stars/fixture-star-420002"></a>
+                <span class="card-name">Fixture Star</span>
                 <span class="card-city">Leipzig</span>
             </div>
             <div class="ladies-card">
@@ -761,16 +761,16 @@ mod tests {
         "#;
         let cards = parse_cards(html);
         assert_eq!(cards.len(), 3);
-        assert_eq!(cards[0].advert_id, "14620911");
+        assert_eq!(cards[0].advert_id, "420001");
         assert_eq!(
             cards[0].profile_url,
-            "https://www.ladies.de/fkk-saunaclubs/fkk-leipzig"
+            "https://www.ladies.de/fkk-saunaclubs/fixture-club"
         );
         assert_eq!(cards[0].category, "fkk saunaclubs");
-        assert_eq!(cards[1].advert_id, "13778337");
+        assert_eq!(cards[1].advert_id, "420002");
         assert_eq!(
             cards[1].profile_url,
-            "https://www.ladies.de/stars/melissadeluxe-978145"
+            "https://www.ladies.de/stars/fixture-star-420002"
         );
         assert_eq!(cards[1].category, "stars");
         assert_eq!(cards[2].category, "huren hostessen");
@@ -785,12 +785,12 @@ mod tests {
                 "https://www.ladies.de/sex-anzeigen/huren-hostessen/test-42",
             ),
             (
-                "/fkk-saunaclubs/fkk-leipzig",
-                "https://www.ladies.de/fkk-saunaclubs/fkk-leipzig",
+                "/fkk-saunaclubs/fixture-club",
+                "https://www.ladies.de/fkk-saunaclubs/fixture-club",
             ),
             (
-                "https://m.ladies.de/stars/melissadeluxe-978145?from=search",
-                "https://www.ladies.de/stars/melissadeluxe-978145",
+                "https://m.ladies.de/stars/fixture-star-420002?from=search",
+                "https://www.ladies.de/stars/fixture-star-420002",
             ),
         ] {
             assert_eq!(valid_profile_url(input).as_deref(), Some(expected));
@@ -887,7 +887,7 @@ mod tests {
     }
 
     #[test]
-    fn anonymized_october_har_media_shapes_keep_revision_tokens() {
+    fn gallery_media_shapes_keep_revision_tokens() {
         // Synthetic IDs with observed media URL shapes.
         let html = r#"<h2 class="page-heading kuenstlername">Beispiel</h2>
             <div class="auftrag-main-thumb" data-index="0">
