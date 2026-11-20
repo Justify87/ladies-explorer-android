@@ -6,11 +6,11 @@ Native, lokal genutzte Android-App mit Kotlin, Jetpack Compose / Material 3 Expr
 
 - Entdecken (Swipe, LIKE/DISLIKE, später), native Suche und Filter, gespeicherte Suchen mit Ergebnis-Historie, Favoriten, Karte und Einstellungen.
 - Gemeinsamer vertikaler Profilfluss für Swipe und Einzelprofil mit Mediengalerie, lokalem Bildarchiv, Offline-Fallback auf gespeicherte Profile, privaten Personennotizen (lesen, bearbeiten, speichern), Änderungshistorie und explizit bestätigbaren Identitätskandidaten.
-- Lokaler Import vorhandener Web-App-Daten, native MapLibre-Karte mit groben Ortszentren und ausdrücklich gestarteter Geocodierung.
+- Native MapLibre-Karte mit groben Ortszentren und ausdrücklich gestarteter Geocodierung. Keine Nutzerdatenmigration; fachlicher Umfang in [PRODUCT](docs/PRODUCT.md).
 - Lokales Debug-/Performance-Logging und optionaler HTTP-Mitschnitt mit TXT-/HAR-Export.
 - Galerie ohne obere Bedienleiste, Medienwechsel über seitliche Tippzonen; eingebettete stumme Videos mit Autoplay/Loop und mittigem Play/Pause. Externe WhatsApp-/Originalaktionen; kein integrierter Messenger oder automatische KI-/OCR-Preisextraktion.
 
-Der Code ist keine vollständig abgenommene Web-App-Ablösung. Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md).
+Die frühere Web-App ist obsolet; gültiges Produktziel ist die eigenständige Android-App. Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md).
 
 ## Aktive Weiterentwicklung
 
@@ -72,35 +72,35 @@ python3 tools/check_architecture.py
 
 Die CI prüft die in [ARCHITECTURE.md](docs/ARCHITECTURE.md#automatisierte-architekturverträge) beschriebenen Architekturverträge im bestehenden Core-Job und am tatsächlich erzeugten ARM64-Debug-APK vor dem Upload. Lokal nach dem Build: `python3 tools/check_architecture.py --apk app/build/outputs/apk/debug/app-debug.apk --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 /pfad/zum/sdk/build-tools/version/aapt2`. Keine zusätzlichen Runner oder Frameworks; die statischen Prüfungen sind keine vollständige semantische Analyse oder Sicherheits-Sandbox. Die kompilierte CoreStore-API wird zusätzlich im bestehenden JVM-Test geprüft; APK-Ressourcenreferenzen werden über die AAPT2-Tabelle aufgelöst und alle zugehörigen XML-Dateien validiert.
 
-Eine grüne CI beweist keinen erfolgreichen Import realer Daten, keine funktionierende Website-Suche oder native Geräte-UX. Geräteprüfaufgaben werden nach der [Merge-Regel](docs/ROADMAP.md#pflege) abgeschlossen; nach Installation unter Einstellungen Datenbankstatus (Schema v2) kontrollieren.
+Eine grüne CI beweist keine funktionierende reale Website-Suche oder native Geräte-UX. Geräteprüfaufgaben werden nach der [Merge-Regel](docs/ROADMAP.md#pflege) abgeschlossen; nach Installation unter Einstellungen Datenbankstatus (Schema v2) kontrollieren.
 
-## Datenübernahme
+## Lokale Diagnose
 
-Einmaliges lokales Exportarchiv aus der bisherigen Web-App erzeugen und unter Einstellungen über die Android-Dateiauswahl importieren:
+Unter Einstellungen → Diagnose INFO/DEBUG-Log bzw. HTTP-Aufzeichnung bewusst aktivieren; TXT/HAR speichern oder teilen. Firefox DevTools → Netzwerk → HAR importieren. Headerzeit umfasst Verbindung/Redirects, keine isolierte Serverwartezeit oder TTFB; HAR bildet sie aggregiert als wait ab, DNS/TCP/TLS-Einzelphasen nicht erfunden. Pagination-Pause keine Parserzeit, Cachetreffer keine Requests. Messungen mit Ausgangscommit, Operation und Bedingungen belegen. Keine privaten Profile, Antworten, HARs oder Logs in Git.
+
+## Synthetische Testdaten
+
+Bis zur Entfernung des obsoleten Importpfads verwendet die bestehende CI ein internes natives v1-Fixture (keine Nutzerdaten, keine Migrationsempfehlung):
 
 ```sh
-./tools/export-legacy.sh /pfad/zur/ladies-webapp/data ~/Downloads/ladies-export.zip
+python3 tools/m05-reference.py /tmp/m05-reference --clock 2026-11-18T12:00:00+00:00
+(cd rust && M05_REFERENCE_BUNDLE=/tmp/m05-reference/m05-synthetic.zip cargo test --workspace --locked m05_reference_bundle_import -- --ignored)
 ```
 
-Format, Voraussetzungen, Ausschlüsse und Integrität: [DATA-IMPORT.md](docs/DATA-IMPORT.md). Exportarchive, private Profile und Diagnose-Rohdaten niemals in GitHub einchecken.
+Acht künstliche Personen, neun Inserate, 18 Snapshots, Präferenz-/Favorit-Kombinationen, geometrische Medien, example.invalid; aktuelle Watchlist: Uhrzeit weglassen. Zielverzeichnis neu, keine echten Daten überschreiben. Test-only; Generator und Importtest bei Entfernung des Altpfads auf direkte synthetische native Testdaten umstellen (ROADMAP). Regressionen nach Risiko: 0/1/200+ Cards, 0/1/12/80 Medien, partial/unverified, Offline/Timeout, betroffene Aktionen, Cancel/Late Write, Identitäts-/Notizkonflikte, SavedSearch-Ack und unabhängige Reprojektion. Visuelle Prüfvorgaben in DESIGN; keine zusätzliche Pflicht-Geräteprüfung. Keine realen Quellen-/Geocoderzugriffe in automatisierten Tests, keine generierten personenbezogenen Dateien in Git.
 
 ## Dokumentation
 
 | Dokument | Zuständigkeit |
 | --- | --- |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Native Architektur, SQLite, Identität, Historie, Medien, UI-Datenflüsse |
-| [SOURCE.md](docs/SOURCE.md) | Quellen-/Suchvertrag, Filter, Pagination, Parser, gespeicherte Suchen und belegte HAR-Erkenntnisse |
-| [DATA-IMPORT.md](docs/DATA-IMPORT.md) | Legacy-Export und Import |
-| [DIAGNOSTICS.md](docs/DIAGNOSTICS.md) | Lokale Logs, Messungen, HTTP-Mitschnitt, Export und Prüfschritte |
-| [MAP.md](docs/MAP.md) | Karte, Geocoding, Cache, Lifecycle und Abnahme |
 | [ROADMAP.md](docs/ROADMAP.md) | Einziges Arbeits- und Fortschrittsregister |
 | [DESIGN.md](docs/DESIGN.md) | Übergreifender UI-/UX- und Designvertrag |
-| [REQUIREMENTS.md](docs/REQUIREMENTS.md) | Fachliche Anforderungen und stabile Regressions-IDs |
+| [PRODUCT.md](docs/PRODUCT.md) | Produkt, Features, fachliches Soll und Grenzen |
 | [AGENTS.md](AGENTS.md) | Ausführungs-Harness für Agenten |
-| [PROVENANCE.md](docs/PROVENANCE.md) | Artefact-Referenz und Codeherkunft |
 
 Bei fachlichen Änderungen die zuständige Dokumentation im selben PR aktualisieren. Historische Meilensteinberichte sind über Git verfügbar. Keine zusätzlichen parallelen Spezifikationen.
 
 ## Lizenz
 
-Apache-2.0; [LICENSE](LICENSE), [NOTICE](NOTICE). Die technische Build-Basis wurde selektiv aus Artefact adaptiert, nicht dessen Features; siehe [PROVENANCE.md](docs/PROVENANCE.md).
+Apache-2.0; [LICENSE](LICENSE), [NOTICE](NOTICE). Attribution und noch zu klärende native Weiterverteilungspflichten stehen in NOTICE und [ROADMAP](docs/ROADMAP.md#unabhängiger-klärungspunkt).

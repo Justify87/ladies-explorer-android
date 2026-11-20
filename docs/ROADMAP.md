@@ -1,12 +1,12 @@
 # Arbeits- und Fortschrittsregister
 
-Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen. Stand: 20.11.2026, [main 4a085ed7](https://github.com/Justify87/ladies-explorer-android/commit/4a085ed7c76299ad0d7f4b732110f59a58c4ecd0).
+Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.7 – Lifecycle-/Performance-Restreview.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: DC02 – Altimport entfernen; danach T10.7 – Lifecycle-/Performance-Restreview.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
-Eigenständige lokale Android-App auf einem Gerät; relevante Web-App-Daten und fachliche Regeln erhalten. [Architektur](ARCHITECTURE.md), [Quelle](SOURCE.md), [UI-/Designvertrag](DESIGN.md), [Anforderungen](REQUIREMENTS.md) sind Spezifikationen, keine parallelen Backlogs.
+[PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md) und [DESIGN](DESIGN.md) sind die maßgeblichen Verträge, keine parallelen Backlogs.
 
 ## Fortschritt
 
@@ -67,25 +67,27 @@ Vorgänger T10.8. Abschluss mit Merge.
 
 ## Danach – M06
 
-Erst nach G10 und Nutzerauftrag. Schema `rust/ladies-core/src/schema.rs` (encounters, encounter_services, price_lists, price_items) und Legacy-Import vorhanden, keine daraus abgeleitete vollständige UI.
-- [ ] **M06.1 — PLANNED:** Begegnungen/Besuche, Service-Details, Gesamt-/Sympathiebewertung, private Begegnungsnotiz/Preisangaben: tatsächliche Daten/API und Legacy-Soll abgleichen, fehlenden nativen Bearbeitungsumfang festlegen und umsetzen. Personennotiz getrennt; Persistenz-/Import-/Identitätsintegrität prüfen.
-- [ ] **M06.2 — PLANNED / Scope bestätigen:** manuelle Preislisten/-historie/letzter Preis gegen Legacy/Schema/Import abgleichen; nur bestätigten UI-Umfang umsetzen, keine automatische Extraktion.
+Erst nach G10 und Nutzerauftrag. Schema `rust/ladies-core/src/schema.rs` (encounters, encounter_services, price_lists, price_items) vorhanden, keine daraus abgeleitete vollständige UI.
+- [ ] **M06.1 — PLANNED:** Begegnungen/Besuche, Service-Details, Gesamt-/Sympathiebewertung, private Begegnungsnotiz/Preisangaben: tatsächliche Daten/API und Legacy-Soll abgleichen, fehlenden nativen Bearbeitungsumfang festlegen und umsetzen. Personennotiz getrennt; Persistenz-/Identitätsintegrität prüfen.
+- [ ] **M06.2 — PLANNED / Scope bestätigen:** manuelle Preislisten/-historie/letzter Preis gegen fachlichen Bedarf und Schema abgleichen; nur bestätigten UI-Umfang umsetzen, keine automatische Extraktion.
 - [ ] **M06.3 — PLANNED / Scope bestätigen:** globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, Karten-/Geocoding-Erweiterungen gegen Hauptplan abgleichen; keine Implementierung ohne Nutzerentscheidung. Vorhandene Karte/SavedSearch/WhatsApp nicht erneut entwickeln.
 - [ ] **M06.4 — PLANNED:** bestätigte neue Funktionen integriert prüfen und mit Merge abschließen.
 
 ## Später – M07
 
 Nach M06 bzw. ausdrücklich freigegebenem Umfang.
-- [ ] **M07.1 — PLANNED:** technische Gesamtintegration und Stabilität der App anhand vorhandener automatisierter Regressionen, Code und konkreter Fehlerbefunde prüfen: Import, Suche, gespeicherte Suchen, Profile/Medien/Identität, Karte, Lifecycle, Offline und Diagnose. Keine Wiedereröffnung bereits abgeschlossener Geräteprüfaufgaben.
-- [ ] **M07.2 — PLANNED / Scope bestätigen:** tatsächlichen Export-/Backup-/Restore-Bedarf Android-Datenbank/Medien abgleichen (Legacy-Export vorhanden, kein Android-Backup-Nachweis); nur freigegebenen Umfang mit Integritäts-/Wiederherstellungstest umsetzen.
+- [ ] **M07.1 — PLANNED:** technische Gesamtintegration und Stabilität der App anhand vorhandener automatisierter Regressionen, Code und konkreter Fehlerbefunde prüfen: Suche, gespeicherte Suchen, Profile/Medien/Identität, Karte, Lifecycle, Offline und Diagnose. Keine Wiedereröffnung bereits abgeschlossener Geräteprüfaufgaben.
+- [ ] **M07.2 — PLANNED / Scope bestätigen:** etwaigen lokalen Backup-/Exportbedarf separat klären; keine nutzerseitige Datenübernahme, Import-/Restore-Migration oder Gerätewechselmigration gemäß PRODUCT. Keine Implementierung ohne ausdrückliche Freigabe.
 - [ ] **M07.3 — PLANNED:** abschließende Produkt-/Release-Reife, bekannte Restfehler und Distribution gegen bestätigten Scope prüfen; keine Veröffentlichung ohne Auftrag.
 
 ## Unabhängige technische Bereinigung
+
+- [ ] **DC02 — READY:** Nutzerentscheidung 20.11.2026: Web-App obsolet, keine Nutzerdatenmigration. Vor weiterer Featurearbeit bestehenden Web-App-Import einschließlich Nutzeroberfläche, ViewModel/CoreStore-/UniFFI-/Rust-Pfaden, Exportskript und ausschließlich dazu gehörenden Tests/CI-Schritten ursächlich entfernen. Weiter benötigte synthetische Testdaten direkt nativ/test-only bereitstellen, relevante Integritätsregressionen erhalten. Keine Ersatzmigration/Importoberfläche; native Android-Schemaentwicklung und bestehende Android-Nutzerdaten nicht beschädigen. Nachweis, dass keine nutzerseitige Migrationsroute bleibt. Technische Integrationsprüfungen im separaten Code-PR. [PRODUCT](PRODUCT.md#produktziel-und-grenzen).
 
 - [x] **DC01 — DONE:** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49): obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
 
 ## Unabhängiger Klärungspunkt
 
-- [ ] **L01 — READY:** libmpv/FFmpeg-AAR-Lizenz, konkret enthaltene Bibliotheken/ABIs, Corresponding Source und Weiterverteilungspflichten auch für bereits öffentlich verfügbare Debug-Artefakte klären. [PROVENANCE](PROVENANCE.md), [NOTICE](../NOTICE). Keine Lizenzfreigabe oder Behauptung eines Rechtsverstoßes alleine aus Wrapper-Lizenz; vor weiterer öffentlicher Distribution klären.
+- [ ] **L01 — READY:** libmpv/FFmpeg-AAR-Lizenz, konkret enthaltene Bibliotheken/ABIs, Corresponding Source und Weiterverteilungspflichten auch für bereits öffentlich verfügbare Debug-Artefakte klären. [NOTICE](../NOTICE). Keine Lizenzfreigabe oder Behauptung eines Rechtsverstoßes alleine aus Wrapper-Lizenz; vor weiterer öffentlicher Distribution klären.
 
 Frühere operative Register/Belege bleiben im [Git-Stand vor der Konsolidierung](https://github.com/Justify87/ladies-explorer-android/tree/c6114a6f51b2c2ce99e986efd939ab9115708b70/docs) nachvollziehbar. Neue Aufgaben ausschließlich hier.

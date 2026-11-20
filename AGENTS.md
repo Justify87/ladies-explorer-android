@@ -5,14 +5,14 @@ Lokales Android-Hobbyprojekt. KISS/YAGNI, evidenzbasiert, ursächliche Änderung
 ## Einstieg und maßgebliche Quellen
 
 - [Arbeitsregister](docs/ROADMAP.md): einzige Aufgaben-/Statusquelle. Main, offene PRs, Abhängigkeiten und Akzeptanz prüfen; keine erledigten Aufgaben erneut öffnen oder Scope eigenmächtig erweitern.
-- [Architektur](docs/ARCHITECTURE.md): technische Grenzen und Ist-System. [Design](docs/DESIGN.md): UI/UX. [Anforderungen](docs/REQUIREMENTS.md): fachliche Anforderungen und stabile P-/X-IDs. Neuere Nutzerentscheidungen gelten vor historischer Legacy-Gestaltung.
-- Bei Bedarf [Quelle](docs/SOURCE.md), [Import](docs/DATA-IMPORT.md), [Karte](docs/MAP.md), [Diagnose](docs/DIAGNOSTICS.md), [Provenance](docs/PROVENANCE.md), [README](README.md#prüfung--ci) für Build/Test und [Fixture](tools/M05-REFERENCE.md).
+- [Architektur](docs/ARCHITECTURE.md): technische Grenzen und Ist-System. [Design](docs/DESIGN.md): UI/UX. [Produkt](docs/PRODUCT.md): Features, fachliches Soll und Grenzen. Vor Änderungen die jeweils betroffenen Produkt-, Architektur- und Designverträge lesen; weitere Informationen nur bei Bedarf.
+- [README](README.md#prüfung--ci) für Build/Test, Diagnose und synthetische Fixtures; [NOTICE](NOTICE) und [LICENSE](LICENSE) für Herkunft/Lizenzen.
 
 ## Architektur- und Designvertrag
 
 - ARCHITECTURE.md ist die einzige maßgebliche Quelle technischer Architekturvorgaben. Verbindliche Grenzen oder Schutzprüfungen nur ausdrücklich autorisiert ändern; Verstöße ursächlich beheben, nicht durch Dokumentationsänderungen legitimieren.
 - Innerhalb der Grenzen autonome Implementierungsentscheidungen und Refactorings. Architekturkonforme Änderungen der Ist-Beschreibung und belegte Dokumentationskorrekturen sind zulässig; im selben PR gegen resultierenden Code und Prüfungen verifizieren. Keine Planung, Aufgabenstände oder Chronik in ARCHITECTURE.md.
-- DESIGN.md ist maßgeblich für UI/UX. Verbindliche UX-Entscheidungen erhalten; Richtwerte und Detailgestaltung innerhalb dieser Grenzen bedarfsgerecht anpassen.
+- PRODUCT.md und DESIGN.md beschreiben das gültige fachliche und gestalterische Soll. Verbindliche Entscheidungen erhalten; Richtwerte und Details autonom anpassen.
 
 ## Arbeitszyklus
 
@@ -31,7 +31,7 @@ Bei jeder Änderung betroffene Implementierungen, Aufrufer, Schnittstellen, Komm
 - Code: notwendige Testhilfen testexklusiv halten. Dynamische Aufrufer, Framework-/FFI-Verträge, Serialisierung, Migrationen und gültige Fachverträge berücksichtigen; nicht allein aufgrund fehlender Textreferenzen löschen.
 - Kommentare (auch KDoc/Rustdoc, Inline, Skripte): nur nicht offensichtliches Warum, Invarianten, Sicherheit/Integrität, Nebenläufigkeit/Lifecycle, externe Verträge und begründete Workarounds knapp erklären. Keine Historie, Nacherzählung oder auskommentierten Code. Rechtliche Header, Provenance, Shebangs, Direktiven, Fixtures, Fremd-/generierten Code und notwendige Testbegründungen erhalten; niemals blind per Regex löschen.
 - Tests: beobachtbares Verhalten und aktuelle Verträge sichern. Rust Fachlogik/Persistenz, JVM UI-State/Orchestrierung, Instrumentierung Android-Integration, Python Architektur/CI. Redundante Prüfungen konsolidieren, Kopplung minimieren, deterministische Nebenläufigkeit, begrenzte Wartezeiten, eindeutige Fehlerursachen, einfache lokale Fixtures. Gültige Verträge nicht zur Legitimierung fehlerhafter Implementierungen abschwächen; keine realen Quellenzugriffe oder privaten Testdaten.
-- Dokumentation: Informationen an maßgeblicher Stelle pflegen, andernorts referenzieren. Obsolete Inhalte entfernen, keine parallelen Spezifikationen. Agentenregeln nur bei belegtem dauerhaftem projektspezifischem Bedarf ergänzen; bevorzugt konsolidieren oder ersetzen. Nutzerentscheidungen und verbindliche Grenzen nicht eigenmächtig abschwächen.
+- Dokumentation: Informationen an maßgeblicher Stelle pflegen, andernorts referenzieren. Obsolete Inhalte entfernen, keine parallelen Spezifikationen. Neue Dateien nur bei eigenständigem dauerhaft belegtem Informationsbedarf, nicht pro Feature. Agentenregeln nur bei belegtem dauerhaftem projektspezifischem Bedarf ergänzen; bevorzugt konsolidieren oder ersetzen. Nutzerentscheidungen und verbindliche Grenzen nicht eigenmächtig abschwächen.
 
 ## Prüfungen und CI
 
