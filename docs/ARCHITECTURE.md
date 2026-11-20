@@ -231,28 +231,83 @@ Fachliche Fälle/Fehler: [PRODUCT](PRODUCT.md#gespeicherte-personen).
 
 ## Operations- und Konsistenzmodell
 
-Datenhoheit, Render-/Admission-Gültigkeit und tatsächliches Ende einer nativen Operation sind getrennte Verantwortlichkeiten.
+Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Operationsende sind getrennt. **Rust ist Commit-Autorität.**
 
-- `RequestControl` wird pro nativer Operation verwendet. Cancel signalisiert Rust, invalidiert überholte UI-Publikation und verhindert weitere Arbeit, soweit kooperativ möglich. Vor Suchpersistenz und gespeicherten Deltas prüft Rust Cancel auch vor dem SQLite-Commit. Der laufende blockierende Transport kann bis Timeout dauern.
-- `DrainingOperation` hält den nativen Owner bis zum tatsächlichen Abschluss, unabhängig von Navigation oder verworfener UI-Antwort. Suche bleibt bis Drain loading.
-- Rendered Tokens binden Kontext/Run-/Decksession oder Standalone-Session, Listing, erwarteten Owner, Snapshot-/Projektionsrevision und fachliche erwartete Werte. UI-Callbacks werden zur Admission gegen den aktuellen Zustand geprüft. Rust ist Commit-Autorität; erwartete Besitzer/Präferenz/Favorit/Notiz/Evidenz werden nativ geprüft. Kein Check-then-write-Ersatz in UI.
-- Ein erfolgreich gespeicherter Write wird genau einmal als solcher behandelt. Writefehler und nachfolgender Readfehler unterscheiden sich; Retry nach Commit ist eine lokale Reprojektion. Kein stilles Wiederholen fachlicher Mutationen oder Quellenabruf allein zum Wiederherstellen der UI.
-- Reprojektion betrifft die tatsächlich abhängigen lokalen Fenster (Profil/Notiz, Entdecken/Grid, SavedPeople, SavedSearch, Map, Home). Unabhängige Reads behalten ihre eigenen Erfolgs-/Fehlerzustände; sichtbare gültige Resultate werden publiziert, verdeckte Fenster nach Bedarf dirty. Alte Ergebnisse dürfen keine Aktionen für einen anderen Owner freigeben. Reine erfolgreiche Swipe-Entscheidung invalidiert nicht pauschal andere Personenprofile; tatsächliche Quell-/Identitätsänderungen oder Fehler widerrufen betroffene Slots.
-- Archivierung und bestätigter Merge koordinieren Cancel/Drain und aktuellen Besitzer; native Transaktionen sichern die Integrität. Kein implizites Gelesen-Ack, kein fachlicher Write durch Layout oder Navigation.
+| Phase | Vertrag |
+| --- | --- |
+| Admission | Gerenderte Tokens binden Kontext, Run-/Deck- oder Standalone-Session, Listing, erwarteten Owner, Snapshot-/Projektionsrevision und erwartete Fachwerte. UI-Callbacks gegen aktuellen Zustand prüfen. |
+| Native Operation | `RequestControl` je Operation; Cancel signalisiert Rust und entzieht überholter UI die Publikationsberechtigung. Kooperativ weitere Arbeit stoppen, vor Suchpersistenz und gespeicherten Deltas auch vor SQLite-Commit prüfen. Blockierender Transport darf bis Timeout laufen. |
+| Drain | `DrainingOperation` hält nativen Owner bis **tatsächlich** abgeschlossen, auch bei Navigation oder verworfener Antwort. Suche bleibt bis Drain loading. |
+| Commit | Rust prüft erwartete Besitzer, Präferenz, Favorit, Notiz und Evidenz nativ. UI-seitiges Check-then-write ersetzt keinen CAS-/Transaktionsschutz. |
+| Publikation | Nur gültige Resultate an ihren aktuellen Owner publizieren; sichtbare abhängige Fenster lokal reprojizieren, unsichtbare dirty markieren. Unabhängige Reads behalten eigene Erfolgs-/Fehlerzustände. |
 
-Weitere Kontextinvarianten: Skip/Undo/Reset/Replay bleiben an den gültigen Deck-/Owner-Kontext gebunden; Skip-Undo schreibt nicht in SQLite, alte Steps werden nach Merge nicht auf neue Owner übertragen. Reset/Replay widerrufen alte Callback-/Step-Generationen. Gerenderte Kontakt-, Medien-, Menü- und Vergleichsaktionen dürfen nicht auf einen anderen Owner/Session übergehen. Notizentwürfe werden nicht still auf andere Owner umgedeutet oder rebased. Snapshotvergleich ist explizit und prüft das gültige Snapshot-Paar; alte Dialoge werden invalidiert. Es gibt keinen unbeschränkten SaveableState pro Profil. Bei Merge aktuelles Listing soweit zulässig erhalten, andernfalls sauberer Kontextwechsel; keine zusätzliche Swipe- oder Undo-Aktion.
+**Nach Commit und bei Fehler:**
+- Bestätigten Write genau einmal als solchen behandeln. Writefehler und anschließenden Readfehler unterscheiden; nach Commit ausschließlich **lokal** reprojizieren.
+- Keine fachliche Mutation oder Quellenanfrage stillschweigend erneut auslösen, nur um einen UI-Read zu reparieren.
+- Abhängige lokale Fenster sind Profil/Notiz, Entdecken/Grid, SavedPeople, SavedSearch, Karte und Home. Alte Resultate dürfen nie Aktionen für einen anderen Owner freigeben.
+- Ein reiner erfolgreicher Swipe invalidiert nicht pauschal andere Personenprofile. Tatsächliche Quell-/Identitätsänderungen oder Fehler widerrufen betroffene Slots.
+
+**Kontext- und Lifecycle-Invarianten:**
+- Archivierung und bestätigter Merge koordinieren Cancel/Drain und aktuellen Besitzer; Integrität durch native Transaktionen.
+- Skip/Undo/Reset/Replay nur im gültigen Deck-/Owner-Kontext. Skip-Undo ohne SQLite-Write; alte Schritte nach Merge nicht auf neue Owner übertragen. Reset/Replay widerrufen alte Callback-/Step-Generationen.
+- Kontakt-, Medien-, Menü- und Vergleichsaktionen bleiben an die gerenderte Owner-/Session gebunden. Notizentwürfe nicht still umdeuten oder rebasen; Snapshotvergleich prüft das gültige Paar, alte Dialoge invalidieren.
+- Kein unbegrenzter SaveableState pro Profil. Nach Merge aktuelles Listing möglichst erhalten, sonst sauberer Kontextwechsel; kein zusätzlicher Swipe-/Undo-Schritt.
+- Layout und Navigation erzeugen weder implizites Gelesen-Ack noch einen fachlichen Write.
 
 ## Diagnoseinfrastruktur
 
-Rust-Tracing pro LadiesCore (kein global an erste DB gebundener Dispatch), Kermit über UniFFI in dieselbe app-private `filesDir/diagnostics/ladies-debug.log`, synchronisierte Senke ca. 1,5 MB, Rotation Rest ca. 700 KB. Monotonic Instant bzw. elapsedRealtimeNanos; INFO Gesamtdauern, DEBUG Teilphasen; keine HTTP-Antwortbodies im allgemeinen Log. Vollständige geeignete Textantworten ausschließlich in ausdrücklich aktivierter HTTP-Textaufzeichnung. Eine separate persistierte JSONL-Sitzung `filesDir/diagnostics/ladies-http.jsonl`, max. 2 MiB Textbody (ganz auslassen bei Überschreitung), 25 MiB Sitzung, Stopp bei Limit/Schreibfehler. Unvollständiges letztes Ereignis beim Neustart entfernen und melden; beschädigtes mittleres Ereignis verhindert Export. Neustart deaktiviert Capture, Löschen entfernt Sitzung.
+### Logs und Zeitmessung
 
-Recorder in bestehenden Rust-HTTP-Lesepfaden; keine weiteren Requests oder Kotlin-HTTP-Bridge. Quellenredirects separat ohne Body; Medienredirects verboten; Geocoder folgt intern, nur finale URL/aggregierte Headerzeit sichtbar. MapLibre und externe Intents außerhalb. Coil-Cachetreffer keine Requests, keine Medienbytes im HAR. HAR 1.2 mit echten aggregierten Zeiten und _diagnostics für Auslassungen, Fehler und finale URL. Maskierung Cookies/Auth-/Token-Header, sensitive Queryparameter, URL-Credentials, Fehler-URLs, Redirect/Referer; Textantworten weiter sensibel. SAF zum Speichern, FileProvider ausschließlich unveränderliche app-private Cache-Snapshots, Original unzugänglich, >48 h alte Snapshots beim nächsten Export entfernen. Statuschecks loggen Listing-ID, bestätigten Status, HTTP-Code. Modi in [PRODUCT](PRODUCT.md#einstellungen-und-lokale-diagnose), Auswertung in [README](../README.md#lokale-diagnose).
+- Rust-Tracing je `LadiesCore`, **kein** global an erste DB gebundener Dispatch; Kermit über UniFFI in dieselbe app-private `filesDir/diagnostics/ladies-debug.log`.
+- Synchronisierte Log-Senke circa 1,5 MB, Rotationsrest circa 700 KB. Monotonic `Instant` beziehungsweise `elapsedRealtimeNanos`.
+- INFO enthält Gesamtdauern, DEBUG Teilphasen; keine HTTP-Antwortbodies im allgemeinen Log. Geeignete vollständige Textantworten nur bei ausdrücklich aktivierter HTTP-Textaufzeichnung.
+
+### HTTP-Aufzeichnung und Ausfallsicherheit
+
+- Separate persistierte JSONL-Sitzung unter `filesDir/diagnostics/ladies-http.jsonl`. Textbody max. 2 MiB (bei Überschreitung vollständig weglassen), Sitzung max. 25 MiB; bei Limit oder Schreibfehler stoppen.
+- Unvollständiges letztes Ereignis beim Neustart entfernen **und melden**. Beschädigtes mittleres Ereignis blockiert Export.
+- Neustart deaktiviert Capture; Löschen entfernt Sitzung.
+- Recorder in vorhandenen Rust-HTTP-Lesepfaden, ohne weitere Requests oder Kotlin-HTTP-Bridge.
+- Quellenredirects separat ohne Body, Medienredirects verboten; Geocoder folgt intern, sichtbar sind finale URL und aggregierte Headerzeit. MapLibre und externe Intents außerhalb.
+- Coil-Cachetreffer sind keine Requests; Medienbytes nicht im HAR. Statuschecks protokollieren Listing-ID, bestätigten Status und HTTP-Code.
+
+### HAR, Maskierung und Export
+
+- HAR 1.2 verwendet reale aggregierte Zeiten und `_diagnostics` für Auslassungen, Fehler und finale URL.
+- Cookies/Auth-/Token-Header, sensitive Queryparameter, URL-Credentials sowie Fehler-URLs, Redirect/Referer maskieren. Auch maskierte Textantworten können sensibel sein.
+- Export per SAF; FileProvider nur für unveränderliche app-private Cache-Snapshots, Original nicht zugänglich. Snapshots älter als 48 h beim nächsten Export löschen.
+- Capture-Modi: [PRODUCT](PRODUCT.md#einstellungen-und-lokale-diagnose). Analyse: [README](../README.md#lokale-diagnose).
 
 ## Karte und Sicherheitsgrenzen
 
-- MapLibre besitzt Karten-View und Kartenressourcen; AndroidView-Factory/onRelease und Lifecycle-Observer koordinieren genau einmal den nativen View-Lifecycle einschließlich Speicherdruck. Kamera und Auswahl bleiben über SaveableStateHolder bei Tab-/Profilwechseln erhalten. Rust liefert die DB-weite Kartenprojektion und hält Koordinatencache in `app_settings` (`map:postal:DE:…` / `map:city:DE:…`, keine separate Schema-Migration), zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg. Offline-Überblick und Auftragsstatus sind getrennt; nach Abschluss/Abbruch liest die UI genau einmal den aktuellen Bestand statt doppelter Listenübertragung. Kein eigener Prozess, WebView, Server oder Gerätestandort. 
-- Kartenstil `https://tiles.openfreemap.org/styles/liberty`; PLZ `https://api.zippopotam.us/DE/<plz>`, bei fehlender PLZ später Stadt-Fallback `https://nominatim.openstreetmap.org/search` (DE, max. ein Ergebnis, >=1,1 s Abstand auch über Aufträge hinweg, [Provider-Policy](https://operations.osmfoundation.org/policies/nominatim/)). Neun Sekunden HTTP-Timeout je Standort; bestätigte Nichttreffer sieben Tage negativ cachen, Transport-/Format-/Koordinatenfehler nicht. Kartenüberblick offline über mapOverview; `resolveMapLocations`-Aufträge gemäß [PRODUCT](PRODUCT.md#karte), GeoJSON/Cluster, keine exakten hidden_location-Daten an Provider. Kachel-/Stil-Attribution beachten. Profilöffnung über loadProfile mit Offline-Fallback.
-- Private Datenbank, Medien, Exporte und temporäre Player-Dateien liegen im App-Sandboxbereich. Android-Backup ist deaktiviert. Manifest entfernt von SDKs deklarierte COARSE/FINE_LOCATION-Berechtigungen. Produktgrenzen gemäß PRODUCT. Externe Aktionen sind explizite Intents. Lizenzinformationen für native Bibliotheken stehen in [NOTICE](../NOTICE).
+### Projektion, Karte und Lifecycle
+
+- MapLibre verantwortet Karten-View und Ressourcen. AndroidView-Factory/`onRelease` und Lifecycle-Observer koordinieren **einmal** den nativen View-Lifecycle einschließlich Speicherdruck.
+- Kamera und Auswahl bleiben im `SaveableStateHolder` über Tab-/Profilwechsel erhalten.
+- Rust liefert die DB-weite Kartenprojektion und hält Koordinatencache in `app_settings` (`map:postal:DE:…` / `map:city:DE:…`, ohne separate Schema-Migration), zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg.
+- Offline-Überblick und Auftragsstatus getrennt. Nach Abschluss/Abbruch liest UI **einmal** aktuellen Bestand statt doppelter Listenübertragung.
+- Kein eigener Prozess, WebView, Server oder Gerätestandort.
+
+### Standortauflösung und Provider
+
+| Zweck | Anbieter / Bedingung |
+| --- | --- |
+| Kartenstil | `https://tiles.openfreemap.org/styles/liberty` |
+| Deutsche PLZ | `https://api.zippopotam.us/DE/<plz>` |
+| Fehlende PLZ / späterer Stadt-Fallback | `https://nominatim.openstreetmap.org/search`, DE, maximal ein Ergebnis und mindestens 1,1 s Abstand auch über mehrere Aufträge; [Provider-Policy](https://operations.osmfoundation.org/policies/nominatim/) |
+
+- Neun Sekunden HTTP-Timeout pro Standort.
+- Bestätigte Nichttreffer sieben Tage negativ cachen; Transport-, Format- oder Koordinatenfehler **nicht**.
+- Offline-Überblick über `mapOverview`; `resolveMapLocations`-Aufträge gemäß [PRODUCT](PRODUCT.md#karte).
+- GeoJSON/Cluster; keine exakten `hidden_location`-Daten an Provider. Kachel-/Stil-Attribution beachten.
+- Profilöffnung über `loadProfile` mit Offline-Fallback.
+
+### Private Daten und Android-Grenzen
+
+- DB, Medien, Exporte und temporäre Player-Dateien liegen im App-Sandboxbereich; Android-Backup deaktiviert.
+- Manifest entfernt `COARSE_LOCATION`/`FINE_LOCATION`-Deklarationen von SDKs.
+- Externe Aktionen ausschließlich über explizite Intents; fachliche Grenzen: [PRODUCT](PRODUCT.md).
+- Native Lizenzhinweise: [NOTICE](../NOTICE).
 
 ## Automatisierte Architekturverträge
 
@@ -269,4 +324,11 @@ Recorder in bestehenden Rust-HTTP-Lesepfaden; keine weiteren Requests oder Kotli
 | ARC-07 | GalleryVideo als lokaler libmpv-Adapter, Rust-Download, lokaler loadfile-Pfad, file-Protokollrestriktion, keine Konfiguration/Skripte/externen Referenzen/automatischen Begleitdateien; vorhandene JVM-/Rust-Vertragstests bleiben. |
 | ARC-08 | Bekannte private Export-/DB-/Archivpfade nicht eingecheckt. Gebautes Debug-APK: Backup aus, Internet und MapLibre-Netz-/WLAN-Status zulässig, keine Geräte-Standortberechtigungen (SDK-Deklarationen per Manifest-Merge entfernt), begründete Exports (Launcher, Debug-Compose-Hosts, DUMP-geschützter AndroidX ProfileInstaller), einziger URI-freigebender Diagnoseprovider mit einzigem Cache-Unterverzeichnis; Referenz aus kompiliertem APK über Ressourcentabelle aufgelöst, sämtliche XML-Konfigurationen geprüft. |
 
-Die Prüfungen sind konservative Regressionen, keine vollständige Kotlin-Typ-/Datenflussanalyse, Sicherheits-Sandbox oder Aussage über beliebige private Inhalte und SDK-Laufzeitverhalten. APK-Regeln beziehen sich auf tatsächlich gebautes ARM64-Debug-APK. Build-/Testkommandos und Ausführung: [README](../README.md#prüfung--ci). Fachliche Unit- und Regressionstests liegen in Rust, Android JVM und den vorhandenen nativen Instrumentierungstests. Spezifische Profil-/Projektionsregressionen nach Betroffenheit: 0/1/200+ Cards, 0/1/12/80 Medien, partial/unverified, Offline/Timeout, Gesten und betroffene Aktionen, Cancel/Late Write, Identitäts-/Notizkonflikte, SavedSearch-Ack und unabhängige Reprojektion; keine zusätzlichen Quellenrequests durch Präsentation. Kartenregressionen: Identitäts-Deduplizierung, Favoriten, Offline-Cache, PLZ/Stadt-Fallback und Cancel/Lease bei erneutem Start. Der Architekturvertrag enthält keine Aufgabenstände oder Abnahmechronik.
+**Prüfgrenzen:**
+- Konservative Regressionen, **keine** vollständige Kotlin-Typ-/Datenflussanalyse, Sicherheits-Sandbox oder Aussage über beliebige private Inhalte und SDK-Laufzeitverhalten.
+- APK-Regeln gelten für das **tatsächlich gebaute ARM64-Debug-APK**. Build-/Testkommandos: [README](../README.md#prüfung--ci). Fachliche Unit-/Regressionstests in Rust, Android JVM und vorhandenen nativen Instrumentierungstests.
+
+**Gezielte Regression nach Betroffenheit:**
+- Profil/Projektion: 0/1/200+ Cards, 0/1/12/80 Medien, partial/unverified, Offline/Timeout, Gesten/Aktionen, Cancel/Late Write, Identitäts-/Notizkonflikte, SavedSearch-Ack und unabhängige Reprojektion. Darstellung darf keine zusätzlichen Quellrequests auslösen.
+- Karte: Identitäts-Deduplizierung, Favoriten, Offline-Cache, PLZ-/Stadt-Fallback und Cancel/Lease beim Neustart.
+- Architekturvertrag enthält keine Aufgabenstände oder Abnahmechronik.
