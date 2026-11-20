@@ -159,3 +159,21 @@ SwipeFlight: nur ein inert gebundener visueller Übergang, gerendertes altes Fot
 Die Player-Surface wird erst nach nativeDestroy freigegeben. Ein Surfaceverlust startet bei weiterhin sichtbarem Medium einen neuen Playerowner. Temp-Dateien in separatem Prozesscache-Verzeichnis, verwaiste Dateien bei erster Nutzung nach Prozessneustart entfernt; Cancel-Cleanup in NonCancellable IO. Flight friert medien-/scrollbezogene Eingaben kurz ein, ohne einen zweiten Entscheidungseinstieg.
 
 T10.7 Read-Owner: die drei tatsächlich im Fenster behaltenen Listing-/Owner-Slots besitzen je ein RequestControl und stabilen Effect. Ein serienbegrenzendes Mutex-Gate verhindert konkurrierende Profilquellenabrufe; Promotion behält den bestehenden Auftrag, Busy startet keinen neuen Slot. Prune/Revision/Route/Owner-Change canceln, späte native Source-Commits entziehen unverändert die anderen Tickets. Cache-Warming separat je Slot/Revision/realem Hero-Maß. Lokal-first für archivierten lokalen Bestand; aktive erstmalige Current-Freshness und speculative cache-first bleiben getrennt. Fehlgeschlagene spekulative Reads warten auf Promotion; lokale Reprojektionsfehler erlauben keinen zweiten Source-Read. Keine zweite Queue/Domain-/DB-Schicht.
+
+
+## Automatisierte Architekturverträge (CI04)
+
+Die bestehenden Verantwortlichkeiten werden durch `tools/check_architecture.py` und dessen Regressionstests überprüft. Die neuere Beschreibung der lokalen libmpv-Galerie oben ist gegenüber historischer externer Videowiedergabe maßgeblich; keine Änderung abgeschlossener Meilensteine.
+
+| Regel | Prüfbarer Vertrag |
+| --- | --- |
+| ARC-01 | App-eigener Quellen-HTTP nur im Rust-Core; genau ein Coil-Netzwerkadapter über CoreStore; MapLibre-Kartenressourcen und explizite externe Intents zulässig. |
+| ARC-02 | Keine direkten SQLite-/Room-/SQL-APIs oder entsprechenden direkten Abhängigkeiten in Android-Produktionscode. Rust-Tests sichern die fachlichen Persistenzverträge. |
+| ARC-03 | Private LadiesCore-Engine nur in CoreStore, UI darf generierte Datentypen und RequestControl sowie CoreStore verwenden. |
+| ARC-04 | Generierte UniFFI-Engine-Quellen und native Engine-Binaries nicht eingecheckt; ARM64-Engine/JNA tatsächlich im Debug-APK. |
+| ARC-05 | Core-Infrastruktur importiert/referenziert nicht die UI oder Compose-UI. |
+| ARC-06 | Keine alternative app-eigene HTTP-/JNI-/JNA-Fachbrücke oder zusätzliche Server-/Runtime-Implementierung; legitime vorhandene SDKs bleiben. |
+| ARC-07 | GalleryVideo als lokaler libmpv-Adapter, Rust-Download, lokaler loadfile-Pfad und file-Protokollrestriktion; vorhandene JVM-/Rust-Vertragstests bleiben. |
+| ARC-08 | Bekannte private Export-/DB-/Archivpfade nicht eingecheckt. Gebautes Debug-APK: Backup aus, begründete Berechtigungen/Exports (Launcher, Debug-Compose-Hosts, DUMP-geschützter AndroidX ProfileInstaller), privater Diagnoseprovider mit einzigem Cache-Unterverzeichnis. |
+
+Die Prüfungen sind konservative statische Regressionen, keine vollständige Kotlin-Typ-/Datenflussanalyse, keine Sandbox und kein Nachweis für beliebigen privaten Inhalt. APK-Prüfung mit Android SDK apkanalyzer und ZIP-Verzeichnis vor Upload; keine Aussage zur tatsächlichen Gerätewiedergabe, zu Release-APKs oder zum Verhalten aller SDKs. Änderungen an prüfbaren Verträgen benötigen begründetes Review; keine automatische Baseline-Freigabe. Bestehende CI01-Dokumentationsausnahme bleibt auf Inhaltsänderungen expliziter Dateien mit validiertem Basiscommit begrenzt; Prüfregeln selbst erzwingen Full-CI.
