@@ -5,7 +5,6 @@ mod discovery;
 mod history;
 mod http_capture;
 mod identity;
-mod legacy_import;
 mod map;
 mod media;
 mod media_url;
@@ -13,6 +12,8 @@ mod operation;
 mod profile_detail;
 mod saved_search;
 mod schema;
+#[cfg(test)]
+mod reference_fixture;
 mod source;
 
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -36,8 +37,6 @@ pub enum CoreError {
     InvalidInput(String),
     #[error("Unsupported local database schema version {0}")]
     UnsupportedSchema(u32),
-    #[error("Legacy import failed: {0}")]
-    Import(String),
     #[error("Ladies source request or parsing failed: {0}")]
     Source(String),
     #[error("Media archive error: {0}")]
@@ -56,7 +55,7 @@ impl From<rusqlite::Error> for CoreError {
 
 impl From<std::io::Error> for CoreError {
     fn from(error: std::io::Error) -> Self {
-        Self::Import(error.to_string())
+        Self::Storage(error.to_string())
     }
 }
 
@@ -127,16 +126,6 @@ pub struct PersonPage {
 }
 
 type RawPerson = (i64, Option<String>, String, i64, u32, String);
-
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct ImportReport {
-    pub persons: u32,
-    pub listings: u32,
-    pub source_profiles: u32,
-    pub saved_searches: u32,
-    pub manual_price_lists: u32,
-    pub media_files: u32,
-}
 
 pub use discovery::{
     DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow,
@@ -223,33 +212,6 @@ impl LadiesCore {
             media_root,
             geocoding: Mutex::new(map::GeocodeState::default()),
         }))
-    }
-
-    pub fn import_legacy_bundle(
-        &self,
-        bundle_path: String,
-        app_files_directory: String,
-    ) -> Result<ImportReport, CoreError> {
-        self.diagnostics
-            .event("IMPORT", "Legacy data import requested");
-        let result = self
-            .diagnostics
-            .timed("IMPORT", "import_legacy_bundle", || {
-                legacy_import::import_bundle(self, &bundle_path, &app_files_directory)
-            });
-        match &result {
-            Ok(report) => self.diagnostics.event(
-                "IMPORT",
-                format!(
-                    "Import completed: persons={} listings={} media={}",
-                    report.persons, report.listings, report.media_files
-                ),
-            ),
-            Err(error) => self
-                .diagnostics
-                .event("IMPORT", format!("Import failed: {error}")),
-        }
-        result
     }
 
     pub fn record_kotlin_event(&self, component: String, message: String, detailed: bool) {
