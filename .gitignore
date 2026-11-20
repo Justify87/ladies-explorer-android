@@ -17,9 +17,20 @@ rust/target/
 # Tool caches
 .cxx/
 .kotlin/
+__pycache__/
+*.pyc
 
 # Private migration bundles and exported databases
 *ladies-export*.zip
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
+
+# Private Android diagnostics and HTTP captures
+ladies-debug-*.txt
+ladies-http-*.json
+*.har
+*.har.json
+
+# Generated synthetic import bundle
+m05-synthetic.zip
