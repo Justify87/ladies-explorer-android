@@ -1,15 +1,16 @@
-import json
 import itertools
+import json
+import hashlib
 import os
 import textwrap
-from ci_reuse import verify_proof, merged_pr, verify_jobs, latest_run
+from ci_reuse import verify_proof, merged_pr, verify_jobs, latest_run, restore
 import subprocess
 import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from ci_scope import DOCS, classify, docs_only, verified_main_run, parse_diff, main
+from ci_scope import classify, docs_only, parse_diff, main
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -24,70 +25,41 @@ def diff(path, status=b"M", old=b"100644", new=b"100644"):
     return b":" + old + b" " + new + b" abcdef0 1234567 " + status + b"\0" + path + b"\0"
 
 
-def run(**changes):
-    return dict({"head_sha": BASE, "head_branch": "main", "event": "push",
-                 "status": "completed", "conclusion": "success", "id": 42}, **changes)
-
-
 class CiScopeTest(unittest.TestCase):
-    def test_allowlist_only(self):
-        docs = diff(b"README.md") + diff(b"docs/M05-TASKS.md")
-        self.assertTrue(docs_only(docs))
-        for raw in (b"", docs[:-1], docs + diff(b"app/src/main/Main.kt"),
-                    diff(b"docs/new.md"), diff(b"README.md", b"A"),
-                    diff(b"README.md", b"D"), diff(b"README.md", new=b"100755"),
-                    diff(b"README.md", b"T", new=b"120000"),
-                    docs + diff(b".github/workflows/android.yml"),
-                    docs + diff(b"AGENTS.md"), docs + diff(b"rust/Cargo.lock")):
-            with self.subTest(raw=raw):
-                self.assertFalse(docs_only(raw))
-
-    def test_explicit_documentation_policy(self):
-        expected = {
-            b"README.md",
-            b"docs/ROADMAP.md",
-            b"docs/M05-PLAN.md",
-            b"docs/M05-TASKS.md",
-            b"docs/M05-PARITY.md",
-            b"docs/ARCHITECTURE.md",
-            b"docs/SOURCE.md",
-            b"docs/DATA-IMPORT.md",
-            b"docs/DIAGNOSTICS.md",
-            b"docs/MAP.md",
-            b"tools/M05-REFERENCE.md",
-        }
-        self.assertEqual(expected, DOCS)
-        for path in expected:
-            with self.subTest(path=path):
-                self.assertTrue(docs_only(diff(path)))
-        self.assertTrue(docs_only(b"".join(diff(path) for path in sorted(expected))))
-        for path in (b"AGENTS.md", b"docs/PROVENANCE.md", b".gitignore",
-                     b"LICENSE", b"NOTICE", b"docs/unknown.md", b"tools/m05-reference.py",
-                     b"app/src/main/README.md", b"rust/README.md", b"tools/other.md"):
+    def test_documentation_paths_and_regular_modes(self):
+        paths = (b"README.md", b"AGENTS.md", b"docs/PROVENANCE.md",
+                 b"docs/new.md", b"docs/nested/guide.md", b"tools/M05-REFERENCE.md",
+                 b"tools/other.md", b"CHANGELOG.md")
+        for path in paths:
+            for status, old, new in ((b"M", b"100644", b"100644"),
+                                     (b"A", b"000000", b"100644"),
+                                     (b"D", b"100644", b"000000")):
+                with self.subTest(path=path, status=status):
+                    self.assertTrue(docs_only(diff(path, status, old, new)))
+        for path in (b"app/src/main/assets/help.md", b"rust/README.md",
+                     b"gradle/README.md", b"tools/m05-reference.py",
+                     b"docs/input.json", b"LICENSE", b"NOTICE", b".gitignore",
+                     b".github/workflows/android.yml"):
             with self.subTest(path=path):
                 self.assertFalse(docs_only(diff(path)))
                 self.assertFalse(docs_only(diff(b"README.md") + diff(path)))
-
-    def test_exact_latest_success(self):
-        self.assertEqual(42, verified_main_run({"workflow_runs": [run()]}, BASE))
-        for changes in ({"head_sha": HEAD}, {"head_branch": "dev"},
-                        {"event": "pull_request"}, {"status": "in_progress"},
-                        {"conclusion": "failure"}, {"conclusion": "cancelled"}):
-            with self.subTest(changes=changes):
-                self.assertIsNone(verified_main_run({"workflow_runs": [run(**changes), run()]}, BASE))
-        self.assertIsNone(verified_main_run({"workflow_runs": []}, BASE))
+        for raw in (b"", diff(b"README.md")[:-1],
+                    diff(b"README.md", new=b"100755"),
+                    diff(b"README.md", b"T", new=b"120000"),
+                    diff(b"docs/symlink.md", b"A", b"000000", b"120000"),
+                    diff(b"docs/submodule.md", b"A", b"000000", b"160000")):
+            self.assertFalse(docs_only(raw))
 
     @patch("ci_scope.subprocess.check_output")
-    def test_full_merge_diff_and_verified_base(self, command):
+    def test_full_merge_diff_docs_needs_no_remote_evidence(self, command):
         command.side_effect = [
             f"{MERGE} {BASE} {HEAD}\n".encode(),
-            diff(b"README.md"),
-            json.dumps({"workflow_runs": [run()]}).encode(),
+            diff(b"README.md") + diff(b"AGENTS.md") + diff(b"docs/PROVENANCE.md"),
         ]
-        self.assertEqual("docs", classify(ENV)[0])
+        self.assertEqual("docs", classify(ENV).mode)
+        self.assertEqual(2, command.call_count)
         self.assertEqual(("git", "diff", "--raw", "-z", "--no-renames", BASE, "HEAD"),
                          tuple(command.call_args_list[1].args[0]))
-        self.assertIn(f"head_sha={BASE}", command.call_args_list[2].args[0])
 
     @patch("ci_scope.subprocess.check_output")
     def test_mixed_history_never_skips(self, command):
@@ -97,16 +69,14 @@ class CiScopeTest(unittest.TestCase):
         self.assertEqual(2, command.call_count)
 
     @patch("ci_scope.subprocess.check_output")
-    def test_missing_evidence_defaults_full(self, command):
+    def test_unverified_diff_defaults_full(self, command):
         for outputs in ([f"{MERGE} {HEAD}\n".encode()],
                         [f"{MERGE} {HEAD} {BASE}\n".encode()],
-                        [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md"),
-                         subprocess.CalledProcessError(1, "gh")],
-                        [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md"), b"not json"],
-                        [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md"),
-                         json.dumps({"workflow_runs": [run(conclusion="failure")]}).encode()]):
+                        [f"{MERGE} {BASE} {HEAD}\n".encode(), b"incomplete"],
+                        [f"{MERGE} {BASE} {HEAD}\n".encode(),
+                         subprocess.CalledProcessError(1, "git")]):
             command.side_effect = outputs
-            self.assertEqual("full", classify(ENV)[0])
+            self.assertEqual("full", classify(ENV).mode)
 
     @patch("ci_scope.subprocess.check_output")
     def test_main_manual_and_other_base_are_full(self, command):
@@ -127,14 +97,6 @@ class CiScopeTest(unittest.TestCase):
         self.assertEqual(2, command.call_count)
 
     @patch("ci_scope.subprocess.check_output")
-    def test_docs_proof_failure_distinct_from_bad_diff(self, command):
-        command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md"),
-                               json.dumps({"workflow_runs": [run(conclusion="failure")]}).encode()]
-        self.assert_policy(classify(ENV), "full", False, False)
-        command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), b"incomplete"]
-        self.assert_policy(classify(ENV), "full", False, False)
-
-    @patch("ci_scope.subprocess.check_output")
     def test_pr_never_automatically_selects_diagnostics(self, command):
         regular = (b"app/src/main/java/new.kt", b"app/src/main/res/layout/main.xml",
                    b"app/src/main/AndroidManifest.xml", b"app/src/test/java/X.java",
@@ -142,7 +104,7 @@ class CiScopeTest(unittest.TestCase):
                    b"rust/ladies-core/src/lib.rs", b"rust/ladies-core/src/source/filter_catalog.json",
                    b"tools/check_architecture.py", b"tools/test_check_architecture.py",
                    b"tools/export-legacy.sh", b"tools/m05-reference.py",
-                   b"AGENTS.md", b"docs/PROVENANCE.md", b"LICENSE", b"NOTICE", b".gitignore")
+                   b"LICENSE", b"NOTICE", b".gitignore")
         native = (b"build.gradle.kts", b"app/build.gradle.kts", b"settings.gradle.kts",
                   b"gradle.properties", b"gradle/libs.versions.toml", b"gradlew", b"gradlew.bat",
                   b"rust/Cargo.lock", b"rust/ladies-core/Cargo.toml", b"rust/ladies-core/build.rs",
@@ -150,7 +112,7 @@ class CiScopeTest(unittest.TestCase):
                   b"rust/rust-toolchain.toml", b".cargo/config.toml", b"rust/.cargo/config",
                   b"app/src/main/jniLibs/arm64-v8a/lib.so", b".github/workflows/android.yml",
                   b"tools/ci_scope.py", b"tools/test_ci_scope.py", b"tools/verify-native-cache.sh",
-                  b"unknown.md", b"rust/ladies-core/src/unknown.sh")
+                  b"unknown.bin", b"rust/ladies-core/src/unknown.sh")
         cases = [(p, False, False) for p in regular + native]
         cases += [(b"tools/measure-android-build.sh", False, False),
                   (b"tools/install-cargo-ndk.sh", False, False)]
@@ -209,22 +171,6 @@ class CiScopeTest(unittest.TestCase):
         command.side_effect = [MERGE.encode(), b"", diff(b"tools/measure-android-build.sh")]
         self.assert_policy(classify(env), "full", False, False)
 
-
-    @patch("ci_scope.subprocess.check_output")
-    def test_docs_base_evidence_fallbacks(self, command):
-        for evidence in ({"workflow_runs": []}, {"workflow_runs": [run(status="in_progress"), run()]},
-                         {"workflow_runs": [run(conclusion="cancelled")]},
-                         {"workflow_runs": [run(head_sha=HEAD)]},
-                         {"workflow_runs": [run(event="pull_request")]},
-                         {"workflow_runs": [run(id=True)]}, {"workflow_runs": [None]},
-                         [], None):
-            with self.subTest(evidence=evidence):
-                command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md"),
-                                       json.dumps(evidence).encode()]
-                self.assert_policy(classify(ENV), "full", False, False)
-        command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md"),
-                               subprocess.TimeoutExpired("gh", 30)]
-        self.assert_policy(classify(ENV), "full", False, False)
 
     @patch("ci_scope.subprocess.check_output")
     def test_missing_invalid_event_evidence(self, command):
@@ -313,7 +259,7 @@ class RealGitPolicyTest(unittest.TestCase):
         self.git("merge", "--no-ff", "-qm", "PR merge", "feature")
         self.assertFalse(docs_only(self.raw_diff()))
 
-    def test_real_non_content_changes_require_full_ci(self):
+    def test_real_documentation_add_delete_rename_and_special_modes(self):
         path = self.root / "README.md"
 
         def symlink():
@@ -332,7 +278,8 @@ class RealGitPolicyTest(unittest.TestCase):
                 self.git("reset", "--hard", self.base)
                 change()
                 self.commit(name)
-                self.assertFalse(docs_only(self.raw_diff()))
+                self.assertEqual(name in {"add", "delete", "rename"},
+                                 docs_only(self.raw_diff()))
 
     def test_gitignore_protects_exports_without_hiding_generic_fixtures(self):
         ignore = Path(__file__).resolve().parents[1] / ".gitignore"
@@ -380,7 +327,7 @@ class RealGitPolicyTest(unittest.TestCase):
         self.write("README.md", "updated")
         self.commit("docs")
         result = self.classify_push()
-        self.assertEqual(("full", False, False),
+        self.assertEqual(("docs", False, False),
                          (result.mode, result.native_qualification, result.performance_measurement))
         self.assertEqual("docs", result.reuse_candidate)
         self.write("app/src/main/java/New.kt", "new source")
@@ -390,18 +337,9 @@ class RealGitPolicyTest(unittest.TestCase):
                          (result.mode, result.native_qualification, result.performance_measurement))
 
 
-    def classify_pr(self, evidence):
-        # Only the remote Actions API response is substituted.
+    def classify_pr(self):
         env = dict(ENV, BASE_SHA=self.base, GITHUB_SHA=self.git("rev-parse", "HEAD").decode().strip())
-        original = subprocess.check_output
-
-        def command(args, **kwargs):
-            if args[0] == "gh":
-                self.assertIn(f"head_sha={self.base}", args)
-                return json.dumps(evidence).encode()
-            return original(args, cwd=self.root, **kwargs)
-
-        with patch("ci_scope.subprocess.check_output", side_effect=command):
+        with patch("ci_scope.git", side_effect=self.git):
             return classify(env)
 
     def assert_decision(self, decision, mode, native, performance):
@@ -419,20 +357,17 @@ class RealGitPolicyTest(unittest.TestCase):
         self.git("checkout", "-q", "main")
         self.git("merge", "--no-ff", "-qm", "PR merge", "feature")
         self.assertEqual(303, len(parse_diff(self.raw_diff())))
-        self.assert_decision(self.classify_pr({"workflow_runs": [run(head_sha=self.base)]}),
+        self.assert_decision(self.classify_pr(),
                              "full", False, False)
 
-    def test_real_pr_docs_proof_and_structural_change(self):
+    def test_real_pr_docs_and_special_mode(self):
         self.git("checkout", "-qb", "feature")
         self.write("README.md", "updated")
         self.commit("docs")
         self.git("checkout", "-q", "main")
         self.git("merge", "--no-ff", "-qm", "PR merge", "feature")
-        self.assert_decision(self.classify_pr({"workflow_runs": [run(head_sha=self.base)]}),
+        self.assert_decision(self.classify_pr(),
                              "docs", False, False)
-        self.assert_decision(self.classify_pr({"workflow_runs": [run(head_sha=self.base,
-                                                                      status="in_progress")]}),
-                             "full", False, False)
         self.git("reset", "--hard", self.base)
         self.git("checkout", "-qb", "structural")
         (self.root / "README.md").unlink()
@@ -440,7 +375,7 @@ class RealGitPolicyTest(unittest.TestCase):
         self.commit("doc symlink")
         self.git("checkout", "-q", "main")
         self.git("merge", "--no-ff", "-qm", "PR merge", "structural")
-        self.assert_decision(self.classify_pr({"workflow_runs": [run(head_sha=self.base)]}),
+        self.assert_decision(self.classify_pr(),
                              "full", False, False)
 
     def test_real_push_missing_or_nonancestor_base(self):
@@ -610,6 +545,59 @@ class WorkflowGateTest(unittest.TestCase):
         self.assertIsNone(merged_pr("owner/repo", current, BASE))
 
 
+    def test_docs_restore_uses_only_verified_base_apk(self):
+        repository = "owner/repo"
+        repo = {"full_name": repository}
+        current = {"commit": MERGE, "tree": "d" * 40, "parents": [BASE, HEAD]}
+        base = {"commit": BASE, "tree": "e" * 40, "parents": []}
+        pr = {"merge_commit_sha": MERGE, "merged_at": "2026-11-20T12:00:00Z",
+              "base": {"ref": "main", "repo": repo},
+              "head": {"sha": HEAD, "repo": repo}}
+        source = {"id": 42, "run_attempt": 2, "head_sha": BASE, "head_branch": "main",
+                  "event": "push", "status": "completed", "conclusion": "success",
+                  "path": ".github/workflows/android.yml", "repository": repo,
+                  "head_repository": repo}
+        jobs = [{"name": name, "conclusion": "success"} for name in
+                ("CI scope", "Core and contracts", "Android integration", "build")]
+        env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
+                   BEFORE_SHA=BASE, REUSE_CANDIDATE="docs",
+                   GITHUB_RUN_ID="43", GITHUB_RUN_ATTEMPT="1")
+        data = b"synthetic APK"
+        proof = {"version": 1, **base, "event": "push", "repository": repository,
+                 "run": 42, "attempt": 2,
+                 "apk": {"name": "app-debug.apk", "sha256": hashlib.sha256(data).hexdigest()}}
+
+        for valid in (True, False):
+            with tempfile.TemporaryDirectory() as tmp, self.subTest(valid=valid):
+                directory = Path(tmp)
+
+                def download(args, **kwargs):
+                    self.assertEqual(["gh", "run", "download", "42", "--repo", repository,
+                                      "--name", "ladies-explorer-android-arm64-debug",
+                                      "--dir", tmp], args)
+                    (directory / "app-debug.apk").write_bytes(data if valid else b"wrong APK")
+                    (directory / "ci-proof.json").write_text(json.dumps(proof))
+
+                with patch("ci_reuse.snapshot", side_effect=lambda commit="HEAD":
+                           current if commit == "HEAD" else base), \
+                     patch("ci_reuse.api", side_effect=[[pr], {"workflow_runs": [source]},
+                                                       {"jobs": jobs}]) as api, \
+                     patch("ci_reuse.subprocess.run", side_effect=download) as transfer:
+                    if valid:
+                        self.assertEqual(42, restore(directory, env))
+                        result = json.loads((directory / "ci-proof.json").read_text())
+                        self.assertEqual({**current, "source_run": 42, "run": 43,
+                                          "attempt": 1, "event": "push", "repository": repository,
+                                          "version": 1, "apk": proof["apk"]}, result)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "source proof"):
+                            restore(directory, env)
+                        self.assertEqual(proof, json.loads((directory / "ci-proof.json").read_text()))
+                    self.assertEqual(3, api.call_count)
+                    self.assertEqual({"head_sha": BASE, "event": "push", "per_page": 1,
+                                      "branch": "main"}, api.call_args_list[1].kwargs)
+                    transfer.assert_called_once()
+
     def test_reuse_finalizer_falls_back_without_both_successful_steps(self):
         body = self.shell_body("Finalize execution policy")
         for restore, upload, source in itertools.product(("success", "failure", "skipped"),
@@ -626,6 +614,23 @@ class WorkflowGateTest(unittest.TestCase):
                 reused = restore == upload == "success" and source == "42"
                 self.assertEqual("reuse" if reused else "full", fields["mode"])
                 self.assertEqual("false" if reused else "true", fields["native_qualification"])
+                self.assertEqual("42" if reused else "", fields["reuse_source"])
+
+    def test_docs_finalizer_never_builds_on_missing_reuse(self):
+        body = self.shell_body("Finalize execution policy")
+        for restore, upload, source in itertools.product(("success", "failure", "skipped"),
+                                                         ("success", "failure", "skipped"),
+                                                         ("42", "", "unknown")):
+            with tempfile.TemporaryDirectory() as tmp, self.subTest(
+                    restore=restore, upload=upload, source=source):
+                output = Path(tmp) / "output"
+                result, _ = self.run_shell(body, dict(MODE="docs", NATIVE="false",
+                    PERFORMANCE="false", SOURCE=source, RESTORE=restore, UPLOAD=upload,
+                    GITHUB_OUTPUT=str(output)))
+                self.assertEqual(0, result.returncode, result.stderr)
+                fields = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                reused = restore == upload == "success" and source == "42"
+                self.assertEqual("reuse" if reused else "docs", fields["mode"])
                 self.assertEqual("42" if reused else "", fields["reuse_source"])
 
     @patch("ci_reuse.api")

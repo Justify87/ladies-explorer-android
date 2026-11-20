@@ -1,7 +1,7 @@
 """Reuse only a successful checked APK of the exact integrated Git tree.
 
 Same-repository two-parent PR merges only; no downloaded files are executed.
-Missing or ambiguous evidence always falls back to full CI.
+Missing or ambiguous evidence prevents reuse; the verified diff selects docs or full CI.
 """
 import hashlib
 import json
@@ -139,16 +139,15 @@ def restore(directory, env):
     pr = merged_pr(repository, current, before)
     if pr is None:
         raise ValueError("not an exact same-repository PR merge")
-    pr_run = latest_run(repository, pr["head"]["sha"], "pull_request")
     candidate = env["REUSE_CANDIDATE"]
     if candidate == "docs":
-        # Only allowlisted docs can reuse the exact verified base.
+        # Verified documentation-only changes may reuse the exact checked base.
         run = latest_run(repository, before, "push")
         expected = snapshot(before)
         expected_commit = before
         flags = None
     elif candidate == "merge":
-        run = pr_run
+        run = latest_run(repository, pr["head"]["sha"], "pull_request")
         expected = current
         expected_commit = None
         flags = (env["NATIVE_REQUIRED"], env["PERFORMANCE_REQUIRED"])
@@ -183,7 +182,7 @@ def main():
     except (OSError, ValueError, KeyError, TypeError, AttributeError,
             subprocess.SubprocessError) as exc:
         shutil.rmtree(directory, ignore_errors=True)
-        print(f"Reuse unavailable ({type(exc).__name__}): full CI fallback.")
+        print(f"Reuse unavailable ({type(exc).__name__}); keep the original execution policy.")
         return
     with open(env["GITHUB_OUTPUT"], "a") as output:
         output.write(f"source_run={source}\n")
