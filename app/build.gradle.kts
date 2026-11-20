@@ -10,6 +10,7 @@ plugins {
 // Adapted from Artefact's cargo-ndk and UniFFI variant build integration.
 // The resulting directories are Gradle outputs, never checked-in source files.
 val rustWorkspace: File = rootProject.file("rust")
+val androidMinApi = 29
 val rustAbis: List<String> = providers.gradleProperty("ladies.abis")
     .getOrElse("arm64-v8a,x86_64")
     .split(',')
@@ -68,16 +69,31 @@ fun nativeToolVersion(vararg command: String): Provider<String> =
         setEnvironment(nativeEnvironment)
     }.standardOutput.asText.map { it.trim() }
 
-val nativeIdentity = if (nativeCacheEnabled) {
-    val cargoVersion = nativeToolVersion(cargoExecutable, "--version", "--verbose")
-    val rustVersion = nativeToolVersion("rustc", "--version", "--verbose")
-    val ndkVersion = nativeToolVersion(cargoExecutable, "ndk", "--version")
-    val targets = nativeToolVersion("rustup", "target", "list", "--installed")
+// Gradle outputs remain partitioned by runner image and installed targets.
+// Cargo fingerprints use actual compiler/linker versions, not image labels.
+val compilerIdentity = if (nativeCacheEnabled) {
+    val versions = listOf(
+        nativeToolVersion(cargoExecutable, "--version", "--verbose"),
+        nativeToolVersion("rustc", "--version", "--verbose"),
+        nativeToolVersion("cc", "--version"),
+        nativeToolVersion("c++", "--version"),
+        nativeToolVersion("ld", "--version"),
+        nativeToolVersion("ldd", "--version"),
+    )
     providers.provider {
-        listOf(runnerImage, System.getProperty("os.name"), System.getProperty("os.arch"),
-            cargoVersion.get(), rustVersion.get(), ndkVersion.get(), targets.get()).joinToString("\n")
+        (listOf(System.getProperty("os.name"), System.getProperty("os.arch")) +
+            versions.map { it.get() }).joinToString("\n")
     }
 } else providers.provider { "uncontrolled Cargo environment" }
+
+val nativeOutputIdentity = if (nativeCacheEnabled) {
+    val targets = nativeToolVersion("rustup", "target", "list", "--installed")
+    providers.provider { runnerImage + "\n" + targets.get() }
+} else providers.provider { "uncontrolled host" }
+
+val ndkCliIdentity = if (nativeCacheEnabled) {
+    nativeToolVersion(cargoExecutable, "ndk", "--version")
+} else providers.provider { "uncontrolled cargo-ndk" }
 
 abstract class NativeCargoTask : DefaultTask() {
     @get:Inject abstract val executors: ExecOperations
@@ -85,6 +101,7 @@ abstract class NativeCargoTask : DefaultTask() {
     @get:Internal abstract val workspace: DirectoryProperty
     @get:Input abstract val controlled: Property<Boolean>
     @get:Input abstract val toolIdentity: Property<String>
+    @get:Input abstract val outputHostIdentity: Property<String>
     @get:Input abstract val toolEnvironment: MapProperty<String, String>
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:IgnoreEmptyDirectories
     abstract val sources: ConfigurableFileCollection
@@ -108,10 +125,9 @@ abstract class NativeCargoTask : DefaultTask() {
             workingDir(root)
             if (controlled.get()) {
                 setEnvironment(toolEnvironment.get())
-                // Force Cargo fingerprints to change when the hosted toolchain
-                // changes, even if restored target artifacts are present.
+                // Preserve Cargo dependency reuse across image-only changes, while
+                // invalidating compiled artifacts on effective compiler/NDK changes.
                 val identity = (toolIdentity.get() + "\n" + cargo.get() + "\n" +
-                    toolEnvironment.get().toSortedMap().entries.joinToString("\n") + "\n" +
                     extraIdentity).toByteArray(Charsets.UTF_8)
                 val digest = MessageDigest.getInstance("SHA-256")
                     .digest(identity).joinToString("") { "%02x".format(it) }
@@ -131,6 +147,7 @@ abstract class NativeCargoTask : DefaultTask() {
 abstract class BuildRustForAndroid : NativeCargoTask() {
     // Absolute NDK install location partitions toolchains, not source roots.
     @get:Input abstract val ndkDirectory: Property<String>
+    @get:Input abstract val ndkCliVersion: Property<String>
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val ndkMetadata: RegularFileProperty
     @get:Input abstract val abis: ListProperty<String>
@@ -140,11 +157,13 @@ abstract class BuildRustForAndroid : NativeCargoTask() {
     fun compile() {
         val output = freshOutput()
         val ndk = File(ndkDirectory.get())
+        logger.lifecycle("CI02 native build: ABI=${abis.get().joinToString(",")} API=${minApi.get()}")
         runCargo(
             listOf("ndk") + abis.get().flatMap { listOf("-t", it) } +
                 listOf("--platform", minApi.get().toString(), "-o", output.absolutePath,
                     "build", "--release", "--locked", "-p", "ladies-core", "--lib"),
-            ndk, ndk.absolutePath + "\n" + ndkMetadata.get().asFile.readText() + "\napi=" + minApi.get(),
+            ndk, ndkCliVersion.get() + "\n" + ndk.absolutePath + "\n" +
+                ndkMetadata.get().asFile.readText() + "\napi=" + minApi.get(),
         )
         check(abis.get().all { output.resolve("$it/libladies_core.so").let { f -> f.isFile && f.length() > 0 } }) {
             "Missing compiled Rust library for one or more selected ABIs"
@@ -179,7 +198,8 @@ fun NativeCargoTask.configureNativeInputs() {
     cargo.set(cargoExecutable)
     workspace.set(rustWorkspace)
     controlled.set(nativeCacheEnabled)
-    toolIdentity.set(nativeIdentity)
+    toolIdentity.set(compilerIdentity)
+    outputHostIdentity.set(nativeOutputIdentity)
     toolEnvironment.set(nativeEnvironment)
     sources.from(nativeSources)
 }
@@ -191,7 +211,7 @@ android {
 
     defaultConfig {
         applicationId = "de.justify87.ladiesexplorer"
-        minSdk = 29
+        minSdk = androidMinApi
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
@@ -223,7 +243,8 @@ androidComponents {
             ndkDirectory.set(androidComponents.sdkComponents.ndkDirectory.map { it.asFile.absolutePath })
             ndkMetadata.set(androidComponents.sdkComponents.ndkDirectory.map { it.file("source.properties") })
             abis.set(rustAbis)
-            minApi.set(29)
+            minApi.set(androidMinApi)
+            ndkCliVersion.set(ndkCliIdentity)
             outputDir.set(layout.buildDirectory.dir("generated/rust/" + variant.name + "/jniLibs"))
         }
         val bindings = tasks.register<GenerateUniffiKotlin>("uniffiBindgen" + capitalized) {
