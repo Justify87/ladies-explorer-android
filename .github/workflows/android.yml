@@ -299,7 +299,14 @@ jobs:
           if [ "$CI05_DIAGNOSTICS" = true ]; then
             args+=(--info -Dorg.gradle.caching.debug=true -Pkotlin.build.report.output=file)
           fi
-          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a -Pladies.nativeCache=true --stacktrace --continue --profile "${args[@]}"
+          set -o pipefail
+          log="$RUNNER_TEMP/android-gradle-build.log"
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a -Pladies.nativeCache=true --stacktrace --continue --profile --console=plain "${args[@]}" | tee "$log"
+          if grep -Fxq '> Task :app:cargoBuildDebug' "$log" &&
+             grep -Fxq '> Task :app:uniffiBindgenDebug' "$log" &&
+             ! grep -Fq 'CI02: native task output cache disabled' "$log"; then
+            echo "native_dependencies_built=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Verify packaged architecture contracts
         run: |
@@ -329,25 +336,26 @@ jobs:
 
       - name: Prepare compiled Rust dependency cache
         id: prepare_rust_cache
-        if: ${{ steps.rust_cache.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ steps.gradle.outputs.native_dependencies_built == 'true' && steps.rust_cache.outputs.cache-hit != 'true' && steps.rust_cache.outputs.cache-primary-key != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         continue-on-error: true
         working-directory: rust
         run: |
           set -euo pipefail
           # Gradle can restore both outputs without compiling anything. Never save an empty target cache.
+          cargo clean --offline --locked --release --target aarch64-linux-android -p ladies-core
+          cargo clean --offline --locked -p ladies-core-bindgen
           for deps in target/aarch64-linux-android/release/deps target/debug/deps; do
             if [ ! -d "$deps" ] || [ -z "$(find "$deps" -name '*.rlib' -type f -print -quit)" ]; then
               echo "Compiled dependencies unavailable; skip saving."
               exit 0
             fi
           done
-          cargo clean --offline --locked --release --target aarch64-linux-android -p ladies-core
-          cargo clean --offline --locked -p ladies-core-bindgen
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Save Android Rust dependencies
         if: ${{ steps.prepare_rust_cache.outcome == 'success' && steps.prepare_rust_cache.outputs.ready == 'true' }}
         uses: actions/cache/save@v5
+        continue-on-error: true
         with:
           path: |
             ~/.cargo/registry
