@@ -1,7 +1,9 @@
 import itertools
+import json
+import hashlib
 import os
 import textwrap
-from ci_reuse import verify_proof, merged_pr, verify_jobs, latest_run
+from ci_reuse import verify_proof, merged_pr, verify_jobs, latest_run, restore
 import subprocess
 import tempfile
 from pathlib import Path
@@ -542,6 +544,59 @@ class WorkflowGateTest(unittest.TestCase):
         api.return_value = [dict(pr, merge_commit_sha=BASE)]
         self.assertIsNone(merged_pr("owner/repo", current, BASE))
 
+
+    def test_docs_restore_uses_only_verified_base_apk(self):
+        repository = "owner/repo"
+        repo = {"full_name": repository}
+        current = {"commit": MERGE, "tree": "d" * 40, "parents": [BASE, HEAD]}
+        base = {"commit": BASE, "tree": "e" * 40, "parents": []}
+        pr = {"merge_commit_sha": MERGE, "merged_at": "2026-11-20T12:00:00Z",
+              "base": {"ref": "main", "repo": repo},
+              "head": {"sha": HEAD, "repo": repo}}
+        source = {"id": 42, "run_attempt": 2, "head_sha": BASE, "head_branch": "main",
+                  "event": "push", "status": "completed", "conclusion": "success",
+                  "path": ".github/workflows/android.yml", "repository": repo,
+                  "head_repository": repo}
+        jobs = [{"name": name, "conclusion": "success"} for name in
+                ("CI scope", "Core and contracts", "Android integration", "build")]
+        env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
+                   BEFORE_SHA=BASE, REUSE_CANDIDATE="docs",
+                   GITHUB_RUN_ID="43", GITHUB_RUN_ATTEMPT="1")
+        data = b"synthetic APK"
+        proof = {"version": 1, **base, "event": "push", "repository": repository,
+                 "run": 42, "attempt": 2,
+                 "apk": {"name": "app-debug.apk", "sha256": hashlib.sha256(data).hexdigest()}}
+
+        for valid in (True, False):
+            with tempfile.TemporaryDirectory() as tmp, self.subTest(valid=valid):
+                directory = Path(tmp)
+
+                def download(args, **kwargs):
+                    self.assertEqual(["gh", "run", "download", "42", "--repo", repository,
+                                      "--name", "ladies-explorer-android-arm64-debug",
+                                      "--dir", tmp], args)
+                    (directory / "app-debug.apk").write_bytes(data if valid else b"wrong APK")
+                    (directory / "ci-proof.json").write_text(json.dumps(proof))
+
+                with patch("ci_reuse.snapshot", side_effect=lambda commit="HEAD":
+                           current if commit == "HEAD" else base), \
+                     patch("ci_reuse.api", side_effect=[[pr], {"workflow_runs": [source]},
+                                                       {"jobs": jobs}]) as api, \
+                     patch("ci_reuse.subprocess.run", side_effect=download) as transfer:
+                    if valid:
+                        self.assertEqual(42, restore(directory, env))
+                        result = json.loads((directory / "ci-proof.json").read_text())
+                        self.assertEqual({**current, "source_run": 42, "run": 43,
+                                          "attempt": 1, "event": "push", "repository": repository,
+                                          "version": 1, "apk": proof["apk"]}, result)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "source proof"):
+                            restore(directory, env)
+                        self.assertEqual(proof, json.loads((directory / "ci-proof.json").read_text()))
+                    self.assertEqual(3, api.call_count)
+                    self.assertEqual({"head_sha": BASE, "event": "push", "per_page": 1,
+                                      "branch": "main"}, api.call_args_list[1].kwargs)
+                    transfer.assert_called_once()
 
     def test_reuse_finalizer_falls_back_without_both_successful_steps(self):
         body = self.shell_body("Finalize execution policy")

@@ -139,7 +139,6 @@ def restore(directory, env):
     pr = merged_pr(repository, current, before)
     if pr is None:
         raise ValueError("not an exact same-repository PR merge")
-    pr_run = latest_run(repository, pr["head"]["sha"], "pull_request")
     candidate = env["REUSE_CANDIDATE"]
     if candidate == "docs":
         # Verified documentation-only changes may reuse the exact checked base.
@@ -148,7 +147,7 @@ def restore(directory, env):
         expected_commit = before
         flags = None
     elif candidate == "merge":
-        run = pr_run
+        run = latest_run(repository, pr["head"]["sha"], "pull_request")
         expected = current
         expected_commit = None
         flags = (env["NATIVE_REQUIRED"], env["PERFORMANCE_REQUIRED"])
