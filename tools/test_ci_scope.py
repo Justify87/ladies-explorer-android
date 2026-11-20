@@ -5,14 +5,14 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from ci_scope import DOCS, classify, docs_only, verified_main_run
+from ci_scope import DOCS, classify, docs_only, verified_main_run, parse_diff, native_required
 
 BASE = "a" * 40
 HEAD = "b" * 40
 MERGE = "c" * 40
 ENV = {
     "GITHUB_EVENT_NAME": "pull_request", "BASE_REF": "main",
-    "BASE_SHA": BASE, "GITHUB_REPOSITORY": "owner/repo",
+    "BASE_SHA": BASE, "GITHUB_SHA": MERGE, "GITHUB_REPOSITORY": "owner/repo",
 }
 
 
@@ -107,10 +107,88 @@ class CiScopeTest(unittest.TestCase):
     @patch("ci_scope.subprocess.check_output")
     def test_main_manual_and_other_base_are_full(self, command):
         for env in (dict(ENV, GITHUB_EVENT_NAME="push"),
-                    dict(ENV, GITHUB_EVENT_NAME="workflow_dispatch"),
-                    dict(ENV, BASE_REF="dev")):
+                    dict(ENV, GITHUB_EVENT_NAME="workflow_dispatch")):
             self.assertEqual("full", classify(env)[0])
         command.assert_not_called()
+
+
+    def assert_policy(self, decision, mode, native, measure):
+        self.assertEqual((mode, native, measure),
+                         (decision.mode, decision.native_qualification, decision.performance_measurement))
+
+    @patch("ci_scope.subprocess.check_output")
+    def test_non_main_base_full_with_verified_paths(self, command):
+        command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md")]
+        self.assert_policy(classify(dict(ENV, BASE_REF="dev")), "full", False, False)
+        self.assertEqual(2, command.call_count)
+
+    @patch("ci_scope.subprocess.check_output")
+    def test_docs_proof_failure_distinct_from_bad_diff(self, command):
+        command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md"),
+                               json.dumps({"workflow_runs": [run(conclusion="failure")]}).encode()]
+        self.assert_policy(classify(ENV), "full", False, False)
+        command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), b"incomplete"]
+        self.assert_policy(classify(ENV), "full", True, False)
+
+    @patch("ci_scope.subprocess.check_output")
+    def test_pr_matrix_and_union(self, command):
+        regular = (b"app/src/main/java/new.kt", b"app/src/main/res/layout/main.xml",
+                   b"app/src/main/AndroidManifest.xml", b"app/src/test/java/X.java",
+                   b"app/src/androidTest/java/X.kt", b"app/proguard-rules.pro",
+                   b"rust/ladies-core/src/lib.rs", b"rust/ladies-core/src/source/filter_catalog.json",
+                   b"tools/check_architecture.py", b"tools/test_check_architecture.py",
+                   b"tools/export-legacy.sh", b"tools/m05-reference.py",
+                   b"AGENTS.md", b"docs/PROVENANCE.md", b"LICENSE", b"NOTICE", b".gitignore")
+        native = (b"build.gradle.kts", b"app/build.gradle.kts", b"settings.gradle.kts",
+                  b"gradle.properties", b"gradle/libs.versions.toml", b"gradlew", b"gradlew.bat",
+                  b"rust/Cargo.lock", b"rust/ladies-core/Cargo.toml", b"rust/ladies-core/build.rs",
+                  b"rust/ladies-core/uniffi.toml", b"rust/bindgen/src/main.rs",
+                  b"rust/rust-toolchain.toml", b".cargo/config.toml", b"rust/.cargo/config",
+                  b"app/src/main/jniLibs/arm64-v8a/lib.so", b".github/workflows/android.yml",
+                  b"tools/ci_scope.py", b"tools/test_ci_scope.py", b"tools/verify-native-cache.sh",
+                  b"unknown.md", b"rust/ladies-core/src/unknown.sh")
+        cases = [(p, False, False) for p in regular] + [(p, True, False) for p in native]
+        cases += [(b"tools/measure-android-build.sh", False, True),
+                  (b"tools/install-cargo-ndk.sh", True, True)]
+        for path, n, m in cases:
+            with self.subTest(path=path):
+                command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(path)]
+                self.assert_policy(classify(ENV), "full", n, m)
+        command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(),
+                               diff(b"README.md") + diff(b"rust/Cargo.lock") +
+                               diff(b"tools/measure-android-build.sh")]
+        self.assert_policy(classify(ENV), "full", True, True)
+
+    def test_manual_inputs_independent(self):
+        for n in (True, False):
+            for m in (True, False):
+                env = dict(ENV, GITHUB_EVENT_NAME="workflow_dispatch",
+                           VERIFY_NATIVE_CACHE=str(n).lower(), MEASURE_ANDROID_BUILD=str(m).lower())
+                self.assert_policy(classify(env), "full", n, m)
+        with self.assertRaises(ValueError):
+            classify(dict(ENV, GITHUB_EVENT_NAME="workflow_dispatch", VERIFY_NATIVE_CACHE="yes"))
+
+    def test_raw_diff_malformed_and_special_modes(self):
+        for raw in (b"", diff(b"README.md")[:-1], diff(b"README.md") * 2,
+                    diff(b"../README.md"), diff(b"README.md", b"R"),
+                    diff(b"README.md", old=b"000000")):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                parse_diff(raw)
+        self.assertTrue(native_required(parse_diff(diff(b"app/src/main/java/X.kt",
+                                                       new=b"100755"))[0]))
+        self.assertFalse(native_required(parse_diff(diff(b"README.md", new=b"100755"))[0]))
+
+    @patch("ci_scope.subprocess.check_output")
+    def test_push_head_and_ancestry_required(self, command):
+        env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
+                   BEFORE_SHA=BASE)
+        command.side_effect = [MERGE.encode(), subprocess.CalledProcessError(1, "git")]
+        self.assert_policy(classify(env), "full", True, False)
+        command.side_effect = [HEAD.encode()]
+        self.assert_policy(classify(env), "full", True, False)
+        command.side_effect = [MERGE.encode(), b"", diff(b"tools/measure-android-build.sh")]
+        self.assert_policy(classify(env), "full", False, True)
+
 
 
 
@@ -211,6 +289,41 @@ class RealGitPolicyTest(unittest.TestCase):
                 self.assertEqual(1, subprocess.run(
                     ["git", "check-ignore", "--no-index", "-q", "--", path],
                     cwd=self.root, timeout=30).returncode)
+
+
+    def classify_push(self):
+        env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
+                   BEFORE_SHA=self.base, GITHUB_SHA=self.git("rev-parse", "HEAD").decode().strip())
+        with patch("ci_scope.git", side_effect=self.git):
+            return classify(env)
+
+    def test_real_multicommit_push_and_rename(self):
+        self.write("tools/install-cargo-ndk.sh", "installer")
+        self.commit("native and measurement")
+        self.write("README.md", "updated")
+        self.commit("docs")
+        result = self.classify_push()
+        self.assertEqual(("full", True, True),
+                         (result.mode, result.native_qualification, result.performance_measurement))
+        self.git("reset", "--hard", self.base)
+        self.git("mv", "app/build.gradle.kts", "README2.md")
+        self.commit("rename build contract")
+        result = self.classify_push()
+        self.assertEqual(("full", True, False),
+                         (result.mode, result.native_qualification, result.performance_measurement))
+
+    def test_real_push_docs_and_new_code(self):
+        self.write("README.md", "updated")
+        self.commit("docs")
+        result = self.classify_push()
+        self.assertEqual(("full", False, False),
+                         (result.mode, result.native_qualification, result.performance_measurement))
+        self.write("app/src/main/java/New.kt", "new source")
+        self.commit("code")
+        result = self.classify_push()
+        self.assertEqual(("full", False, False),
+                         (result.mode, result.native_qualification, result.performance_measurement))
+
 
 
 if __name__ == "__main__":
