@@ -19,8 +19,8 @@ Der Test ist bewusst opt-in (erfordert das erzeugte Archiv) und wird in CI expli
 ## Abnahmeverfahren
 
 - Android: APK aus dem festgelegten Ausgangscommit bauen/installieren, ZIP über Einstellungen importieren, Offline-Feed, Suche, Details, gespeicherte Suchen und Karte öffnen. Screenshots bei 360/390/430/600 dp, normal/erhöht skalierter Schrift und hell/dunkel; Route, Zustand, UTC-Zeit und APK-SHA notieren. Fehlende Daten und bestehende UI-Lücken sind ausdrücklich Teil der Baseline.
-- Legacy: statischer Vergleich des fixierten Quellstands (Templates, CSS, Router, State, Bootstrap und nachträgliche JS-Erweiterungen) anhand der Paritätsmatrix. Kein Browser-Testwerkzeug, keine Browser-Testautomatisierung und kein nachgebauter Legacy-Testserver.
-- Je P-ID: erwartete Sichtbarkeit, Reihenfolge, Zustand und Gesten anhand der Matrix vergleichen; Screenshot/Protokoll mit Fixture-ID, Viewport, Commit und Ergebnis ergänzen. 0/1/viele/partial/unverified und Stale/Cancel sind zusätzlich Mock-Transport-Szenarien, nicht allein durch den Import nachgewiesen.
+- Legacy: statischer Vergleich des fixierten Quellstands (Templates, CSS, Router, State, Bootstrap und nachträgliche JS-Erweiterungen) anhand des [Anforderungsinventars](../docs/M05-PARITY.md). Kein Browser-Testwerkzeug, keine Browser-Testautomatisierung und kein nachgebauter Legacy-Testserver.
+- Je P-ID: erwartete Sichtbarkeit, Reihenfolge, Zustand und Gesten anhand des Anforderungsinventars vergleichen; Screenshot/Protokoll mit Fixture-ID, Viewport, Commit und Ergebnis ergänzen. 0/1/viele/partial/unverified und Stale/Cancel sind zusätzlich Mock-Transport-Szenarien, nicht allein durch den Import nachgewiesen.
 - Visuelle Geräteprüfung manuell; nicht durchgeführte Prüfungen ausdrücklich DEVICE_PENDING. Keine automatisierten Browser-Referenzscreens erforderlich.
 
-Befehle und Zustände im Aufgabenregister dokumentieren. Generierte ZIP/DB/JSON und Screenshots nicht in Git einchecken.
+Befehle und Ergebnisse im PR verlinken; Status ausschließlich im [Arbeitsregister](../docs/ROADMAP.md). Generierte ZIP/DB/JSON und Screenshots nicht in Git einchecken.
