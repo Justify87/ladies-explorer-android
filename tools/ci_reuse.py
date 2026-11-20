@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import sys
 
-from ci_scope import docs_only, git, oid
+from ci_scope import git, oid
 
 ARTIFACT = "ladies-explorer-android-arm64-debug"
 PROOF = "ci-proof.json"
@@ -90,6 +90,31 @@ def latest_run(repository, sha, event):
     return run
 
 
+
+def verify_jobs(repository, run, flags):
+    jobs = api(f"repos/{repository}/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs",
+               per_page=100)["jobs"]
+    by_name = {job["name"]: job for job in jobs}
+    if len(by_name) != len(jobs):
+        raise ValueError("ambiguous source jobs")
+    if any(by_name[name]["conclusion"] != "success" for name in ("CI scope", "build")):
+        raise ValueError("source gate did not pass")
+    core, android = (by_name[name]["conclusion"] for name in ("Core and contracts", "Android integration"))
+    if flags is None and core == android == "skipped":
+        # A previously verified main reuse is valid base evidence for docs.
+        return
+    if core != "success" or android != "success":
+        raise ValueError("source full CI did not pass")
+    if flags is not None:
+        steps = {step["name"]: step["conclusion"]
+                 for step in by_name["Android integration"]["steps"]}
+        for name, required in zip(("Verify native task cache contract",
+                                   "Measure Android build performance (CI05)"), flags):
+            if required not in {"true", "false"} or steps.get(name) != (
+                    "success" if required == "true" else "skipped"):
+                raise ValueError("source qualification did not match required checks")
+
+
 def verify_proof(proof, run, expected_tree, expected_parents, expected_commit, apk,
                  flags=None):
     if not (proof["version"] == 1 and proof["tree"] == expected_tree
@@ -115,18 +140,21 @@ def restore(directory, env):
     if pr is None:
         raise ValueError("not an exact same-repository PR merge")
     pr_run = latest_run(repository, pr["head"]["sha"], "pull_request")
-    raw = git("diff", "--raw", "-z", "--no-renames", before, "HEAD")
-    if docs_only(raw):
+    candidate = env["REUSE_CANDIDATE"]
+    if candidate == "docs":
         # CI01 permits strictly allowlisted docs to reuse the exact green base.
         run = latest_run(repository, before, "push")
         expected = snapshot(before)
         expected_commit = before
         flags = None
-    else:
+    elif candidate == "merge":
         run = pr_run
         expected = current
         expected_commit = None
         flags = (env["NATIVE_REQUIRED"], env["PERFORMANCE_REQUIRED"])
+    else:
+        raise ValueError("unverified diff classification")
+    verify_jobs(repository, run, flags)
     subprocess.run(["gh", "run", "download", str(run["id"]), "--repo", repository,
                     "--name", ARTIFACT, "--dir", str(directory)], check=True, timeout=60)
     proof_path = directory / PROOF
@@ -160,7 +188,8 @@ def main():
     with open(env["GITHUB_OUTPUT"], "a") as output:
         output.write(f"source_run={source}\n")
     with open(env["GITHUB_STEP_SUMMARY"], "a") as summary:
-        summary.write(f"Verified prior APK and CI: run {source}; no rebuild required.\n")
+        url = f"{env['GITHUB_SERVER_URL']}/{env['GITHUB_REPOSITORY']}/actions/runs/{source}"
+        summary.write(f"Verified previous [CI run {source}]({url}); reuse requires successful APK upload.\n")
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
       native_qualification: ${{ steps.classify.outputs.native_qualification }}
@@ -60,11 +61,12 @@ jobs:
 
       - name: Try verified merge reuse
         id: restore
-        if: ${{ github.event_name == 'push' && steps.initial.outputs.mode == 'full' }}
+        if: ${{ github.event_name == 'push' && steps.initial.outputs.mode == 'full' && (steps.initial.outputs.reuse_candidate == 'docs' || steps.initial.outputs.reuse_candidate == 'merge') }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE_SHA: ${{ github.event.before }}
+          REUSE_CANDIDATE: ${{ steps.initial.outputs.reuse_candidate }}
           NATIVE_REQUIRED: ${{ steps.initial.outputs.native_qualification }}
           PERFORMANCE_REQUIRED: ${{ steps.initial.outputs.performance_measurement }}
         run: python3 tools/ci_reuse.py restore "$RUNNER_TEMP/ci-reused-apk"
@@ -91,7 +93,7 @@ jobs:
           RESTORE: ${{ steps.restore.outcome }}
           UPLOAD: ${{ steps.reuse_upload.outcome }}
         run: |
-          if [ "$RESTORE" = success ] && [ "$UPLOAD" = success ] && [[ "$SOURCE" =~ ^[1-9][0-9]*$ ]]; then
+          if [ "$MODE" = full ] && [[ "$NATIVE" =~ ^(true|false)$ ]] && [[ "$PERFORMANCE" =~ ^(true|false)$ ]] && [ "$RESTORE" = success ] && [ "$UPLOAD" = success ] && [[ "$SOURCE" =~ ^[1-9][0-9]*$ ]]; then
             MODE=reuse
             NATIVE=false
             PERFORMANCE=false
@@ -343,7 +345,7 @@ jobs:
             if [ "$MODE" = docs ] || [ "$MODE" = reuse ]; then
               echo "| Core and contracts | skipped | $CORE_RESULT |"
               echo "| Android integration | skipped | $ANDROID_RESULT |"
-              echo "| Native cache qualification | not required | ${NATIVE_OUTCOME:-no step (job skipped)} |"
+              echo "| Native cache qualification | not run again | ${NATIVE_OUTCOME:-no step (job skipped)} |"
               echo "| Performance measurement | not run again | ${PERFORMANCE_OUTCOME:-no step (job skipped)} |"
               if [ "$MODE" = reuse ]; then
                 echo "| Verified source run | ${REUSE_SOURCE:-missing} | APK upload: ${REUSE_UPLOAD:-missing} |"

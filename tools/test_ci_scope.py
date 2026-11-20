@@ -2,7 +2,7 @@ import json
 import itertools
 import os
 import textwrap
-from ci_reuse import verify_proof, merged_pr
+from ci_reuse import verify_proof, merged_pr, verify_jobs, latest_run
 import subprocess
 import tempfile
 from pathlib import Path
@@ -234,7 +234,7 @@ class CiScopeTest(unittest.TestCase):
                 with patch.dict(os.environ, env, clear=True):
                     main()
                 self.assertEqual(["mode=full", f"native_qualification={native}",
-                                  f"performance_measurement={measure}"],
+                                  f"performance_measurement={measure}", "reuse_candidate=none"],
                                  output.read_text().splitlines())
                 self.assertIn(f"native_qualification: {native}", summary.read_text())
                 self.assertIn(f"performance_measurement: {measure}", summary.read_text())
@@ -366,6 +366,7 @@ class RealGitPolicyTest(unittest.TestCase):
         result = self.classify_push()
         self.assertEqual(("full", False, False),
                          (result.mode, result.native_qualification, result.performance_measurement))
+        self.assertEqual("docs", result.reuse_candidate)
         self.write("app/src/main/java/New.kt", "new source")
         self.commit("code")
         result = self.classify_push()
@@ -588,6 +589,52 @@ class WorkflowGateTest(unittest.TestCase):
         self.assertIsNone(merged_pr("owner/repo", current, BASE))
         api.return_value = [dict(pr, merge_commit_sha=BASE)]
         self.assertIsNone(merged_pr("owner/repo", current, BASE))
+
+
+    def test_reuse_finalizer_falls_back_without_both_successful_steps(self):
+        body = self.shell_body("Finalize execution policy")
+        for restore, upload, source in itertools.product(("success", "failure", "skipped"),
+                                                         ("success", "failure", "skipped"),
+                                                         ("42", "", "unknown")):
+            with tempfile.TemporaryDirectory() as tmp, self.subTest(
+                    restore=restore, upload=upload, source=source):
+                output = Path(tmp) / "output"
+                result, _ = self.run_shell(body, dict(MODE="full", NATIVE="true",
+                    PERFORMANCE="false", SOURCE=source, RESTORE=restore, UPLOAD=upload,
+                    GITHUB_OUTPUT=str(output)))
+                self.assertEqual(0, result.returncode, result.stderr)
+                fields = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                reused = restore == upload == "success" and source == "42"
+                self.assertEqual("reuse" if reused else "full", fields["mode"])
+                self.assertEqual("false" if reused else "true", fields["native_qualification"])
+                self.assertEqual("42" if reused else "", fields["reuse_source"])
+
+    @patch("ci_reuse.api")
+    def test_source_latest_run_and_actual_qualification(self, api):
+        repo = {"full_name": "owner/repo"}
+        run_info = {"id": 42, "run_attempt": 2, "head_sha": HEAD, "event": "pull_request",
+                    "status": "completed", "conclusion": "success",
+                    "path": ".github/workflows/android.yml", "repository": repo,
+                    "head_repository": repo}
+        api.return_value = {"workflow_runs": [run_info]}
+        self.assertEqual(run_info, latest_run("owner/repo", HEAD, "pull_request"))
+        for changed in (dict(status="in_progress"), dict(conclusion="failure"),
+                        dict(head_repository={"full_name": "fork/repo"}), dict(head_sha=BASE)):
+            api.return_value = {"workflow_runs": [dict(run_info, **changed), run_info]}
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                latest_run("owner/repo", HEAD, "pull_request")
+        jobs = [{"name": name, "conclusion": "success"} for name in
+                ("CI scope", "Core and contracts", "Android integration", "build")]
+        jobs[2]["steps"] = [{"name": "Verify native task cache contract", "conclusion": "success"},
+                            {"name": "Measure Android build performance (CI05)", "conclusion": "skipped"}]
+        api.return_value = {"jobs": jobs}
+        verify_jobs("owner/repo", run_info, ("true", "false"))
+        for flags in (("false", "false"), ("true", "true")):
+            with self.subTest(flags=flags), self.assertRaises(ValueError):
+                verify_jobs("owner/repo", run_info, flags)
+        jobs[3]["conclusion"] = "failure"
+        with self.assertRaises(ValueError):
+            verify_jobs("owner/repo", run_info, ("true", "false"))
 
     def test_workflow_bindings_and_upload_order(self):
         names = ("Build arm64 APK and device test APK, run JVM tests and Android Lint",

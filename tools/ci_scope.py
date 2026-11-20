@@ -44,6 +44,7 @@ class Decision(NamedTuple):
     reason: str
     native_qualification: bool
     performance_measurement: bool
+    reuse_candidate: str = "none"
 
 
 def parse_diff(raw):
@@ -185,11 +186,13 @@ def classify(env):
             ], timeout=30))
             run_id = verified_main_run(response, base)
             if run_id is not None:
-                return Decision("docs", f"Documentation-only PR; full main CI evidence: run {run_id}, SHA {base}.", False, False)
+                return Decision("docs", f"Documentation-only PR; verified main CI evidence: run {run_id}, SHA {base}.", False, False)
         except DIFF_ERRORS + (KeyError, TypeError, AttributeError):
             pass
         return Decision("full", "No successful latest main push CI for the exact docs base.", False, False)
-    return Decision("full", "Verified event diff; full CI with selected additional qualifications.", native, measure)
+    candidate = ("docs" if is_docs_only(changes) else "merge") if event == "push" else "none"
+    return Decision("full", "Verified event diff; full CI with selected additional qualifications.",
+                    native, measure, candidate)
 
 
 def main():
@@ -197,7 +200,8 @@ def main():
     print(decision.reason)
     fields = (('mode', decision.mode),
               ('native_qualification', str(decision.native_qualification).lower()),
-              ('performance_measurement', str(decision.performance_measurement).lower()))
+              ('performance_measurement', str(decision.performance_measurement).lower()),
+              ('reuse_candidate', decision.reuse_candidate))
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for name, value in fields:
             output.write(f"{name}={value}\n")
