@@ -60,7 +60,7 @@ jobs:
 
       - name: Try verified merge reuse
         id: restore
-        if: ${{ github.event_name == 'push' && steps.initial.outputs.mode == 'full' && (steps.initial.outputs.reuse_candidate == 'docs' || steps.initial.outputs.reuse_candidate == 'merge') }}
+        if: ${{ github.event_name == 'push' && ((steps.initial.outputs.mode == 'docs' && steps.initial.outputs.reuse_candidate == 'docs') || (steps.initial.outputs.mode == 'full' && steps.initial.outputs.reuse_candidate == 'merge')) }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,7 +96,7 @@ jobs:
             docs:false:false|full:false:false|full:true:false|full:false:true|full:true:true) ;;
             *) echo "Invalid or incomplete CI policy" >&2; exit 1 ;;
           esac
-          if [ "$MODE" = full ] && [ "$RESTORE" = success ] && [ "$UPLOAD" = success ] && [[ "$SOURCE" =~ ^[1-9][0-9]*$ ]]; then
+          if [ "$RESTORE" = success ] && [ "$UPLOAD" = success ] && [[ "$SOURCE" =~ ^[1-9][0-9]*$ ]]; then
             MODE=reuse
             NATIVE=false
             PERFORMANCE=false
@@ -318,7 +318,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Preserve the required check name; only proven docs-only PRs may skip its dependency.
+  # Keep the required check for all events, including documentation-only changes.
   build:
     name: build
     needs: [scope, core, android]

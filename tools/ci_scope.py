@@ -1,16 +1,9 @@
 """Central CI event policy; expensive cache qualification is manual only."""
-import json
 import os
 import re
 import subprocess
 from typing import NamedTuple
 
-DOCS = frozenset({
-    b"README.md", b"docs/ROADMAP.md", b"docs/M05-PLAN.md",
-    b"docs/M05-TASKS.md", b"docs/M05-PARITY.md", b"docs/ARCHITECTURE.md",
-    b"docs/SOURCE.md", b"docs/DATA-IMPORT.md", b"docs/DIAGNOSTICS.md",
-    b"docs/MAP.md", b"tools/M05-REFERENCE.md",
-})
 OID = re.compile(r"[0-9a-f]{40}")
 RAW_OID = re.compile(rb"[0-9a-f]{7,64}")
 MODES = {b"000000", b"100644", b"100755", b"120000", b"160000"}
@@ -60,30 +53,31 @@ def parse_diff(raw):
     return changes
 
 
+def is_documentation_path(path):
+    # Keep Markdown under app/, rust/, Gradle and other build-input trees in full CI.
+    return path.endswith(b".md") and (
+        b"/" not in path or path.startswith(b"docs/") or
+        (path.startswith(b"tools/") and path.count(b"/") == 1)
+    )
+
+
 def is_docs_only(changes):
-    return bool(changes) and all(c.path in DOCS and c.status == b"M" and
-                                 c.old_mode == c.new_mode == b"100644" for c in changes)
+    return bool(changes) and all(
+        is_documentation_path(c.path) and
+        (c.status, c.old_mode, c.new_mode) in {
+            (b"M", b"100644", b"100644"),
+            (b"A", b"000000", b"100644"),
+            (b"D", b"100644", b"000000"),
+        } for c in changes
+    )
 
 
 def docs_only(raw):
-    """Retain the existing CI01 allowlist and fail-closed structural checks."""
+    """Only regular Markdown in documentation locations; fail closed on invalid diffs."""
     try:
         return is_docs_only(parse_diff(raw))
     except ValueError:
         return False
-
-
-def verified_main_run(response, base):
-    # Only the latest main push for this exact base supplies reusable evidence.
-    runs = response.get("workflow_runs", [])
-    if not runs:
-        return None
-    run = runs[0]
-    if (run.get("head_sha") == base and run.get("head_branch") == "main"
-            and run.get("event") == "push" and run.get("status") == "completed"
-            and run.get("conclusion") == "success" and type(run.get("id")) is int):
-        return run["id"]
-    return None
 
 
 def git(*args):
@@ -126,25 +120,14 @@ def classify(env):
     if event not in {"pull_request", "push"}:
         return Decision("full", "Unknown event; conservative full CI.", False, False)
     try:
-        base, changes = event_diff(env, event)
+        _, changes = event_diff(env, event)
     except DIFF_ERRORS:
         return Decision("full", "Could not verify complete event diff; full CI required.", False, False)
-    if event == "pull_request" and env.get("BASE_REF") == "main" and is_docs_only(changes):
-        try:
-            response = json.loads(subprocess.check_output([
-                "gh", "api", "--method", "GET",
-                f"repos/{env['GITHUB_REPOSITORY']}/actions/workflows/android.yml/runs",
-                "-f", f"head_sha={base}", "-f", "branch=main",
-                "-f", "event=push", "-f", "per_page=1",
-            ], timeout=30))
-            run_id = verified_main_run(response, base)
-            if run_id is not None:
-                return Decision("docs", f"Documentation-only PR; verified main CI evidence: run {run_id}, SHA {base}.", False, False)
-        except DIFF_ERRORS + (KeyError, TypeError, AttributeError):
-            pass
-        return Decision("full", "No successful latest main push CI for the exact docs base.", False, False)
-    candidate = ("docs" if is_docs_only(changes) else "merge") if event == "push" else "none"
-    return Decision("full", "Verified event diff; routine full CI.", False, False, candidate)
+    if is_docs_only(changes) and (event == "push" or env.get("BASE_REF") == "main"):
+        return Decision("docs", "Verified documentation-only diff; no build inputs changed.",
+                        False, False, "docs" if event == "push" else "none")
+    return Decision("full", "Verified event diff; routine full CI.", False, False,
+                    "merge" if event == "push" else "none")
 
 
 def main():
