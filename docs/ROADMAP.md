@@ -6,7 +6,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen. Stand:
 
 ## Ziel und Grenzen
 
-Eigenständige lokale Android-App auf einem Gerät: technische Grenzen gemäß [Architektur](ARCHITECTURE.md). Relevante Web-App-Daten und Regeln erhalten; kein Server/Flask/Python-Runtime, Messenger, Synchronisierungsdienst, automatische KI-/OCR-Preisextraktion oder fachfremde Artefact-Funktionen. [Architektur](ARCHITECTURE.md), [Quelle](SOURCE.md), [UI-/Designvertrag](DESIGN.md), [Anforderungen](REQUIREMENTS.md) sind Spezifikationen, keine parallelen Backlogs.
+Eigenständige lokale Android-App auf einem Gerät; relevante Web-App-Daten und fachliche Regeln erhalten. [Architektur](ARCHITECTURE.md), [Quelle](SOURCE.md), [UI-/Designvertrag](DESIGN.md), [Anforderungen](REQUIREMENTS.md) sind Spezifikationen, keine parallelen Backlogs.
 
 ## Fortschritt
 

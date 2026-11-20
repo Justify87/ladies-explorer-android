@@ -11,7 +11,7 @@ Lokales Android-Hobbyprojekt. KISS/YAGNI, evidenzbasiert, ursächliche Änderung
 ## Architektur- und Designvertrag
 
 - ARCHITECTURE.md ist die einzige maßgebliche Quelle technischer Architekturvorgaben. Verbindliche Grenzen oder Schutzprüfungen nur ausdrücklich autorisiert ändern; Verstöße ursächlich beheben, nicht durch Dokumentationsänderungen legitimieren.
-- Innerhalb der Grenzen autonome Implementierungsentscheidungen und Refactorings. Architekturkonforme Änderungen der Ist-Beschreibung und belegte Dokumentationskorrekturen sind zulässig; im selben PR gegen resultierenden Code und Prüfungen verifizieren.
+- Innerhalb der Grenzen autonome Implementierungsentscheidungen und Refactorings. Architekturkonforme Änderungen der Ist-Beschreibung und belegte Dokumentationskorrekturen sind zulässig; im selben PR gegen resultierenden Code und Prüfungen verifizieren. Keine Planung, Aufgabenstände oder Chronik in ARCHITECTURE.md.
 - DESIGN.md ist maßgeblich für UI/UX. Verbindliche UX-Entscheidungen erhalten; Richtwerte und Detailgestaltung innerhalb dieser Grenzen bedarfsgerecht anpassen.
 
 ## Arbeitszyklus

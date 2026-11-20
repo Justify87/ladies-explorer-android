@@ -1,6 +1,6 @@
 # Anforderungen und fachliche Parität
 
-Stabile P-/X-IDs als Regressionsreferenz, kein Aufgabenregister. Status: [Arbeitsregister](ROADMAP.md); detaillierter [UI-/Designvertrag](DESIGN.md). Legacy-Referenz [9c514af6](https://github.com/Justify87/ladies-webapp/tree/9c514af6ce3659089807fefd4ed5040599975a5a). Vollständige historische Quell-/Testanker siehe [ursprüngliche Matrix](https://github.com/Justify87/ladies-explorer-android/blob/c6114a6f51b2c2ce99e986efd939ab9115708b70/docs/M05-PARITY.md). Keine alte Abnahme wieder öffnen; neuere native Darstellung ersetzt widersprechende Legacy-Gestaltung.
+Stabile P-/X-IDs als Regressionsreferenz, kein Aufgabenregister. Status: [Arbeitsregister](ROADMAP.md); technische Verträge: [ARCHITECTURE](ARCHITECTURE.md); detaillierter [UI-/Designvertrag](DESIGN.md). Legacy-Referenz [9c514af6](https://github.com/Justify87/ladies-webapp/tree/9c514af6ce3659089807fefd4ed5040599975a5a). Vollständige historische Quell-/Testanker siehe [ursprüngliche Matrix](https://github.com/Justify87/ladies-explorer-android/blob/c6114a6f51b2c2ce99e986efd939ab9115708b70/docs/M05-PARITY.md). Keine alte Abnahme wieder öffnen; neuere native Darstellung ersetzt widersprechende Legacy-Gestaltung.
 
 | ID | Bereich | Legacy-Referenz | Anforderung / maßgeblicher Vertrag |
 | --- | --- | --- | --- |
@@ -77,7 +77,7 @@ Stabile P-/X-IDs als Regressionsreferenz, kein Aufgabenregister. Status: [Arbeit
 | X10 | Automatische Radiusaufweitung | Bewusst abweichender aktueller SOURCE-Vertrag P11; keine Rücknahme. |
 | X11 | Browser-Smartphone-Simulation, synthetische Statusleiste | Native Systemleisten P02. |
 
-STUDIO/FACEAPP/Business ohne belastbare Daten bleiben sichtbar nicht unterstützt; keine neue Klassifikation oder automatische Radiusaufweitung. Historische Abweichung akzeptiert. Gespeicherte Suchen: ausschließlich explizites Gelesen-Ack, keine automatische Markierung beim Öffnen. Karte: tatsächlichen DB-weiten Datenbezug kennzeichnen. [Fachverträge](ARCHITECTURE.md).
+STUDIO/FACEAPP/Business ohne belastbare Daten bleiben sichtbar nicht unterstützt; keine neue Klassifikation oder automatische Radiusaufweitung. Historische Abweichung akzeptiert. Gespeicherte Suchen: ausschließlich explizites Gelesen-Ack, keine automatische Markierung beim Öffnen. Karte: tatsächlichen DB-weiten Datenbezug kennzeichnen. [Architektur](ARCHITECTURE.md).
 
 ## Fachliche Präzisierungen
 
@@ -85,7 +85,7 @@ STUDIO/FACEAPP/Business ohne belastbare Daten bleiben sichtbar nicht unterstütz
 - Entscheidung erst nach bestätigtem Ergebnis; Skip bleibt sessionlokal, Reset löscht keine persistierten Präferenzen; Standalone/Neutral/Favorit sind keine Deck-Visits. Favorit unabhängig; Grid-Like ohne Profilöffnung, temporäres Ausblenden auf aktiven Lauf begrenzt, bei Writefehler Rücknahme. Undo nur gültiger letzter Schritt; ältere Präsentationsreferenz darf kontrolliert fehlen. Kein doppelter fachlicher Write nach erfolgreicher Speicherung und anschließendem Lesefehler.
 - Identitätsbestätigung zeigt Konsequenzen, nur mit aktueller Evidenz; ungespeicherte Notizen betroffener Personen blockieren Merge. Aktuelles Listing möglichst erhalten, andernfalls gültigen Kontext mit Hinweis öffnen. Merge ist kein Undo-Step. Notizkonflikte ausdrücklich lösen, keine Überschreibung fremder Felder oder stilles Umdeuten von Entwürfen. Kontakt und Vergleich nur auf ausdrückliche Aktion, keine automatischen Anrufe/Nachrichten.
 - Statuschecks: nur belegter Status, Ausfall/Timeout/Prüfseite sind Fehler/Unbekannt; Fortschritt und Teilfehler, Abbruch, keine Statusverfälschung. Karte zeigt den tatsächlich DB-weiten Datenumfang ([MAP](MAP.md)). SavedSearch-Ack nur ausdrücklich; Öffnen, Reload, Pagination, Rückkehr oder fachfremde Mutation quittieren nichts.
-- Für offene M06-/M07-Funktionen gilt ausschließlich der bestätigte Umfang im [Arbeitsregister](ROADMAP.md); keine UI aus bloß vorhandenen Datenbankfeldern ableiten.
+- Kein Synchronisierungsdienst, keine fachfremden Artefact-Funktionen, keine neuen Datenfelder nur für Mockups. Für offene M06-/M07-Funktionen gilt ausschließlich der bestätigte Umfang im [Arbeitsregister](ROADMAP.md); keine UI aus bloß vorhandenen Datenbankfeldern ableiten.
 
 ## Regressionsreferenz
 
