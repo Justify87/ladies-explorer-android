@@ -154,40 +154,78 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 
 ### Suche, Entdecken und Grid
 
-`MainViewModel` hält den Filter-Snapshot des ausgeführten Runs getrennt vom Entwurf. Rust liefert `activeSearchCards` in Positions-/ID-Reihenfolge mit aktuellen Owner-/Präferenz-/Favoritenzuordnungen; Grid liest diese aktive Ergebnismenge und nicht die bereits konsumierte Swipe-Queue. Der neutrale Startbestand verwendet Präferenz NONE. Im aktiven Run entscheidet das native Filterergebnis zusammen mit sessionlokaler Traversierung und Replay-Likes-Policy über zulässige Swipe-Cards. Fachliches Verhalten: [PRODUCT](PRODUCT.md#entdecken-und-entscheidungen).
+**Run und Sichtbarkeit:**
+- `MainViewModel` trennt Filter-Snapshot des **ausgeführten** Runs vom Entwurf.
+- Rust liefert `activeSearchCards` in Positions-/ID-Reihenfolge mit aktuellen Owner-/Präferenz-/Favoritenzuordnungen. Grid liest diese aktive Ergebnismenge, **nicht** die bereits konsumierte Swipe-Queue.
+- Neutraler Startbestand verwendet Präferenz `NONE`. Im aktiven Run bestimmen natives Filterergebnis, sessionlokale Traversierung und Replay-Likes-Policy gemeinsam zulässige Swipe-Karten. Fachvertrag: [PRODUCT](PRODUCT.md#entdecken-und-entscheidungen).
 
-`SwipeSession` besitzt Traversierung und Undo-Records, keinen zweiten fachlichen Store. Geste und Rail verwenden dieselbe gerenderte Admission und native CAS-Präferenzoperation; die Queue-Projektion ist autoritativ. Grid-Herz führt erwartungsgeprüfte LIKE/NONE- bzw. LIKE-Mutation aus; das rungebundene Präsentations-Hide wird bei neuem Run zurückgesetzt, ändert nicht die native Ergebnismenge und verwendet keine Swipe-Historie. Fachliche Entscheidungs- und Fehlersemantik gemäß PRODUCT und [Operationsmodell](#operations--und-konsistenzmodell).
+**Entscheidung und Grid-Hide:**
+- `SwipeSession` hält Traversierung/Undo-Records, keinen zweiten fachlichen Store.
+- Geste und Rail teilen dieselbe gerenderte Admission und native CAS-Präferenzoperation; Queue-Projektion ist autoritativ.
+- Grid-Herz führt eine erwartungsgeprüfte LIKE/NONE- beziehungsweise LIKE-Mutation aus. Das rungebundene temporäre Hide wird bei neuem Run zurückgesetzt, verändert weder native Ergebnismenge noch Swipe-Historie.
+- Fehler, Commit und Kontext: [Operationsmodell](#operations--und-konsistenzmodell) und PRODUCT.
 
-`DiscoveryProjectionPublisher` hält lokale Entdecken-/Grid- und Saved-People-Projektionen aktuell; getrennte Fehlerpfade, gemeinsame Gültigkeitsprüfung. Präsenz- und Altersinformationen kommen aus vorhandener eindeutiger Quell-/Snapshot-Evidenz, ohne dekorative Profilanfragen. Karte besitzt eigene DB-weite Projektion (siehe [Karte und Sicherheitsgrenzen](#karte-und-sicherheitsgrenzen)).
+**Unabhängige Projektionen:**
+- `DiscoveryProjectionPublisher` aktualisiert lokale Entdecken-/Grid- und Saved-People-Projektionen mit getrennter Fehlerbehandlung und gemeinsamer Gültigkeitsprüfung.
+- Präsenz/Alter aus vorhandener eindeutiger Quellen-/Snapshot-Evidenz, keine dekorativen Profilanfragen.
+- Karte hat eigene DB-weite Projektion: [Karte und Sicherheitsgrenzen](#karte-und-sicherheitsgrenzen).
 
 ### Gemeinsame Profilarchitektur
 
-`NativeProfileProjection` liest Profil, kanonische Identität, Person, Medien, Historie und Kandidaten unter demselben SQLite-Guard. `ProfileReadModel` bindet diese Projektion, Herkunft/Fehler und lokale Revision. Swipe und Standalone teilen den lokalen Lese- und Präsentationsvertrag, behalten jedoch unterschiedliche Quell-/Archiv-Lebenszyklen:
+**Datenhoheit und Render-Modell:**
+- `NativeProfileProjection` liest Profil, kanonische Identität, Person, Medien, Historie und Kandidaten unter **demselben SQLite-Guard**.
+- `ProfileReadModel` bindet Projektion, Herkunft/Fehler und lokale Revision. Swipe und Standalone teilen den lokalen Lese-/Präsentationsvertrag, aber nicht denselben Quellen-/Archiv-Lebenszyklus.
+- Standalone: `StandaloneProfileOperations` liest frische Quelldaten; bei Fehler aktiven lokalen Snapshot samt Medien mit Herkunft/Warnung zeigen. Erfolgreiche Abrufe dürfen separaten Archivvorgang auslösen; Offline-Fallback löst keinen erneuten Netzarchivvorgang aus.
+- Swipe: höchstens aktuelles plus zwei Folgeprofile ohne zusätzliche Archivierung; Current-/Prefetch-Vertrag unten.
 
-- Standalone: `StandaloneProfileOperations` liest aktuelle Quelldaten, nutzt bei Fehler den aktiven lokalen Snapshot samt Medien und zeigt die Herkunft/Warnung. Erfolgreiche Profilabrufe können den separaten Archivvorgang auslösen; bei Offline-Fallback kein erneutes Archivieren aus dem Netz.
-- Swipe: maximal aktuelles plus zwei folgende Profile, ohne zusätzliche Archivierung. Quellenabruf und lokaler Fallback folgen dem Current-/Prefetch-Vertrag unten.
+**Oberfläche und sichtbarkeitsgebundene Reads:**
+- `ProfileShell`/`ProfileFlow` teilen Profiloberfläche, erhalten separate Navigations-/Operationskontexte. [DESIGN](DESIGN.md#profile-und-medien) bestimmt sichtbare Inhalte.
+- `ProfileHeroLayout` berechnet adaptives Budget aus gemessenen Constraints, Insets und Leisten. Headeridentität folgt realer Lazy-Geometrie, Decision Rail hat Menü-Fallback; Status/Busy dürfen Viewport nicht unkontrolliert verschieben.
+- `ProfilePanels`, `ProfilePanelReads` in `ProfilePanelState.kt` und `ProfileFlowRows` steuern lokale Reads nach Sichtbarkeit/Bedarf.
+- Facts und PersonDetail werden nur für gültiges Listing/Owner/Snapshot/Filter/Revision wiederverwendet. Analyse, Historie und Vergleich erzeugen **keine** zusätzlichen Quellrequests durch bloße Darstellung; Snapshotvergleich prüft Owner und Listingzuordnung.
 
-`ProfileShell` und `ProfileFlow` bilden die gemeinsame Profiloberfläche; Swipe und Standalone behalten ihre jeweiligen Navigations-/Operationskontexte. Sichtbare Gestaltungs- und Informationsanforderungen: [DESIGN](DESIGN.md#profile-und-medien).
-
-`ProfileHeroLayout` berechnet aus tatsächlichen Constraints, Insets und Leisten das adaptive Hero-Budget. Die Header-Identität wird anhand realer Lazy-Geometrie übergeben; die Decision Rail besitzt einen Menü-Fallback. Status und Busy sollen den Viewport nicht unkontrolliert verschieben. Galerie- und Hero-Ziele stehen in [DESIGN](DESIGN.md#profile-und-medien).
-
-`ProfilePanels` und `ProfilePanelReads` (in `ProfilePanelState.kt`) sowie `ProfileFlowRows` steuern sichtbarkeits-/bedarfsgebundene lokale Reads. Facts und PersonDetail werden je gültigem Listing/Owner/Snapshot/Filter/Revision wiederverwendet; Analyse/Historie und Vergleich erzeugen keine zusätzlichen Quellenabrufe durch die Darstellung. Snapshotvergleich prüft Besitzer und Inseratzuordnung. Notiz-Reads/Retry haben einen gemeinsamen projektionsgebundenen Job; Entwürfe und Tickets sind ownergebunden im ViewModel und bleiben bei Navigation/Rotation erhalten (nicht über Prozessende). Speichern ist transaktionaler Vergleich von aktuellem Besitzer und erwartetem Text, schreibt nur private_note und updated_at. Konflikte explizit auflösen; Merge schützt betroffene ungespeicherte Entwürfe.
+**Notiz / Konflikt und Lifecycle:**
+- Notiz-Reads/Retry besitzen einen gemeinsamen projektionsgebundenen Job. Entwürfe und Tickets sind im ViewModel ownergebunden, über Navigation/Rotation, **nicht** Prozessende erhalten.
+- Speichern vergleicht transaktional aktuellen Besitzer und erwarteten Text, schreibt ausschließlich `private_note` und `updated_at`.
+- Notizkonflikte explizit auflösen; Identitäts-Merge blockiert bei betroffenen ungespeicherten Entwürfen.
 
 ### Gesten, Präsentation und Undo
 
-`PhotoGestureResolver` klassifiziert den gemeinsamen Hero-Pointer-Stream nach Android-Touch-Slop, gemessenen Grenzen und dominanter Achse; Schwellen und sichtbares Gestenverhalten siehe [DESIGN](DESIGN.md#gesten-und-präsentation). Native Clickables besitzen seitliche Galerie-Taps, Fokus und Semantik; interaktive Kindziele haben Vorrang. Horizontaler Lock wird übernommen, vertikales Scrollen der LazyColumn überlassen. Mehrfinger, Fokus-/Geometrie-/Kontextwechsel, Pause, Back, Cancel oder widerrufene Touch-Intention verhindern den Commit. `ProfileTouchGate` widerruft den gesamten Touch-Stream bis zum letzten Up; Semantik-/Tastaturaktionen bleiben nativ. Standalone nutzt Galerie-Taps ohne Swipe-Entscheidung.
+**Gesten-Admission:**
+- `PhotoGestureResolver` klassifiziert denselben Hero-Pointer-Stream anhand Android-Touch-Slop, gemessener Grenzen und dominanter Achse; [Schwellen/Interaktion](DESIGN.md#gesten-und-präsentation).
+- Native Clickables besitzen Galerie-Taps, Fokus und Semantik; interaktive Kindziele haben Vorrang. Horizontaler Lock übernimmt den Stream; vertikales Scrollen bleibt bei der LazyColumn.
+- Mehrfinger, Fokus-/Geometrie-/Kontextwechsel, Pause, Back, Cancel oder widerrufene Touch-Intention verhindern den Commit.
+- `ProfileTouchGate` widerruft gesamten Touch-Stream bis zum letzten Up; Semantik-/Tastaturaktionen bleiben nativ. Standalone: Galerie-Taps ohne Swipe-Entscheidung.
 
-`SwipeFlight` ist nur ein inert gerenderter visueller Übergang, keine optimistische Queue oder fachliche Mutation. Drag bleibt bis Admission/autoritativer Antwort sichtbar; ausgehendes Bild animiert im stabilen Viewport, neuer Profilfluss behält seine Geometrie. Kurzes begrenztes Warten auf Dekodierung und ehrlicher Cache-Fallback; keine künstlichen Snapshots für ungeeignete Medien oder Detailscrollzustände. Während des Flight sind entsprechende Eingaben kurz gesperrt, die fachliche Admission bleibt maßgeblich.
+**Flight ist nur Präsentation:**
+- `SwipeFlight` rendert einen **inerten** visuellen Übergang, keine optimistische Queue oder fachliche Mutation.
+- Drag bis Admission und autoritativer Antwort sichtbar. Ausgehendes Bild im stabilen Viewport animieren, neuen Profilfluss mit stabiler Geometrie.
+- Begrenztes Warten auf Dekodierung mit ehrlichem Cache-Fallback. Keine künstlichen Snapshots für ungeeignete Medien oder Detailscrollzustände.
+- Während Flight betreffende Eingaben kurz sperren; fachliche Admission bleibt maßgeblich.
 
-`ProfilePresentation` hält Medien-ID/Index, stabile Row-Keys/Offset und Sektionen getrennt vom fachlichen Read-Model. `SwipeSession` speichert höchstens 16 jüngere Präsentationsreferenzen zu Undo-fähigen Visits, gebunden an Run/Listing/Owner/Snapshot/Filter. Ältere oder unpassende Referenzen fallen kontrolliert zurück. Ein Undo-Receipt wird einmalig nach gültiger Anwendung oder eindeutig nicht passendem Kontext konsumiert; bei Readfehler bleibt es erhalten. Leeres/abweichendes autoritatives Deck verwirft unpassendes Receipt; Rail bleibt bei leerem Deck für gültiges Undo verfügbar.
+**Präsentationszustand und Undo:**
+- `ProfilePresentation` hält Medien-ID/Index, stabile Row-Keys/Offset und Sektionen **getrennt** vom fachlichen Read-Model.
+- `SwipeSession` speichert höchstens 16 jüngere Präsentationsreferenzen zu Undo-fähigen Visits, gebunden an Run/Listing/Owner/Snapshot/Filter. Ältere/unpassende Referenzen kontrolliert zurückfallen lassen.
+- Undo-Receipt einmalig nach gültiger Anwendung oder eindeutig unpassendem Kontext konsumieren; bei Readfehler erhalten. Leeres/abweichendes autoritatives Deck verwirft unpassendes Receipt; Rail bei leerem Deck bleibt für gültiges Undo erreichbar.
 
-`ProfileRestoreCoordinator` koordiniert den Wiederherstellungsauftrag, nicht die tatsächlichen Medien-/Scroll-/Sektionsowner. Row-Manifest dient als stabile Schlüsselgrundlage und Datenbedarfsquelle; bei Änderung von Snapshot/Filter wird der Schlüssel geprüft und Pixeloffset auf sicheren Zeilenanfang bzw. gültige Größe begrenzt. Medien-ID hat Vorrang vor begrenztem Index. Kein zusätzlicher Quellenabruf oder dauerhafter UI-Profilcache für Wiederherstellung. Reset hat eine eigenständige Präsentationsgeneration.
+**Restore und Invalidierung:**
+- `ProfileRestoreCoordinator` koordiniert Auftrag, besitzt **nicht** Medien-/Scroll-/Sektionszustand.
+- Row-Manifest ist stabile Schlüsselgrundlage und Datenbedarfsquelle. Bei Snapshot-/Filterwechsel Schlüssel prüfen und Pixeloffset auf sicheren Zeilenanfang beziehungsweise gültige Größe begrenzen; Medien-ID vor begrenztem Index.
+- Kein zusätzlicher Quellenabruf oder dauerhafter UI-Profilcache fürs Restore. Reset erhält eigene Präsentationsgeneration.
 
 ### Swipe-Read-Window und Prefetch
 
-`DiscoveryScreen`, `SwipeProfileWindow` und `SwipeProfileReads` halten maximal Current+2 Slots, jeweils an Listing, erwarteten Owner und Ticket/Revision gebunden. Jeder Slot besitzt einen stabilen Effect und RequestControl. Ein Mutex serialisiert Profilreads; Promotion eines laufenden gültigen Prefetch erhält dessen Auftrag statt abzubrechen und neu zu starten. Busy erzeugt keinen neuen Slot. Pruning, Lifecycle-/Route-/Owner-/Revisionswiderruf entziehen alte Tickets. Verspätete native Commits aktualisieren betroffene lokale Projektionen unabhängig von UI-Annahme.
+**Fenster und Owner:** `DiscoveryScreen`, `SwipeProfileWindow` und `SwipeProfileReads` halten **maximal Current+2 Slots**.
+- Jeder Slot bindet Listing, erwarteten Owner und Ticket/Revision; stabiler Effect und `RequestControl` pro Slot.
+- Mutex serialisiert Profilreads; Promotion eines **gültigen laufenden** Prefetch übernimmt denselben Auftrag statt Cancel und Quellen-Neustart.
+- Busy erzeugt keinen neuen Slot. Pruning, Lifecycle-/Route-/Owner-/Revisionswiderruf entziehen alte Tickets.
+- Verspätete native Commits aktualisieren abhängige lokale Projektionen **unabhängig** von UI-Admission; Publikation nur im gültigen Kontext gemäß [Operationsmodell](#operations--und-konsistenzmodell).
 
-Lokaler archivierter Bestand liest lokal zuerst. Aktuelle erstmalige Freshness und spekulative Cache-first-Reads sind getrennte Policies. Fehler spekulativer Reads warten auf Promotion; lokaler Reprojektionsfehler löst keinen zweiten Source-Read aus. Coil-Warming ist pro Slot, Revision und tatsächlicher Hero-Pixelgröße begrenzt, mit Crop-Skalierung. Kein zweiter Mediencache, keine automatische Archivierung.
+**Read-/Cache-Policy:**
+- Lokal archivierten Bestand zuerst lokal lesen. Erstmalige Current-Freshness und spekulative Cache-first-Reads sind unterschiedliche Policies.
+- Fehler spekulativer Reads bis Promotion halten; lokaler Reprojektionsfehler löst **keinen** zweiten Source-Read aus.
+- Coil-Warming pro Slot, Revision und tatsächlicher Hero-Pixelgröße mit Crop-Skalierung begrenzen.
+- Kein zweiter Mediencache und keine automatische Archivierung.
 
 ## Gespeicherte Personen und Suchen
 
