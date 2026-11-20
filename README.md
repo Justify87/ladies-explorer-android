@@ -18,7 +18,7 @@ Den nächsten ausführbaren Schritt dem [Arbeitsregister](docs/ROADMAP.md) entne
 
 ## Architektur
 
-Kotlin/Compose besitzt UI, Navigation und Lifecycle; Rust besitzt fachliche Logik und die app-private SQLite-Datenbank. UniFFI/JNA verbindet beide Schichten. Gradle baut die Rust-Bibliothek über cargo-ndk, erzeugt Kotlin-Bindings per UniFFI und verpackt das APK. Keine handgeschriebene JNI-/REST-Schicht. Die technischen Verträge und Module beschreibt [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Technische Architektur und Grenzen: [ARCHITECTURE.md](docs/ARCHITECTURE.md). Gradle baut die native Bibliothek und Bindings für das APK.
 
 ## Build und Installation
 
@@ -94,8 +94,8 @@ Format, Voraussetzungen, Ausschlüsse und Integrität: [DATA-IMPORT.md](docs/DAT
 | [DIAGNOSTICS.md](docs/DIAGNOSTICS.md) | Lokale Logs, Messungen, HTTP-Mitschnitt, Export und Prüfschritte |
 | [MAP.md](docs/MAP.md) | Karte, Geocoding, Cache, Lifecycle und Abnahme |
 | [ROADMAP.md](docs/ROADMAP.md) | Einziges Arbeits- und Fortschrittsregister |
-| [M05-PLAN.md](docs/M05-PLAN.md) | Gültiger UI-/Profilvertrag und Regressionsanforderungen |
-| [M05-PARITY.md](docs/M05-PARITY.md) | Fach-/UX-Anforderungsinventar mit stabilen IDs |
+| [DESIGN.md](docs/DESIGN.md) | Übergreifender UI-/UX- und Designvertrag |
+| [REQUIREMENTS.md](docs/REQUIREMENTS.md) | Fachliche Anforderungen und stabile Regressions-IDs |
 | [AGENTS.md](AGENTS.md) | Ausführungs-Harness für Agenten |
 | [PROVENANCE.md](docs/PROVENANCE.md) | Artefact-Referenz und Codeherkunft |
 

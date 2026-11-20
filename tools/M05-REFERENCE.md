@@ -1,4 +1,4 @@
-# Synthetische M05-Referenz (T0.2)
+# Synthetische M05-Referenzfixture
 
 Keine realen Profile, Cookies, HARs oder Bilder. Der Generator verwendet ausschließlich das für den bereits bestehenden Import-Test verwendete native v1-Schema, künstliche Identitäten und selbst erzeugte geometrische PNGs. Kein Produktionscode und keine Laufzeitabhängigkeit. `example.invalid` ist absichtlich nicht erreichbar. Die Testdaten sind keine Kopie der Legacy-Datenbank und der Szenariokatalog ist kein simuliertes Testergebnis.
 
@@ -19,7 +19,7 @@ Der Test ist bewusst opt-in (erfordert das erzeugte Archiv) und wird in CI expli
 ## Optionale Geräteprüfverfahren
 
 - Android: APK aus dem festgelegten Ausgangscommit bauen/installieren, ZIP über Einstellungen importieren, Offline-Feed, Suche, Details, gespeicherte Suchen und Karte öffnen. Screenshots bei 360/390/430/600 dp, normal/erhöht skalierter Schrift und hell/dunkel; Route, Zustand, UTC-Zeit und APK-SHA notieren. Fehlende Daten und bestehende UI-Lücken sind ausdrücklich Teil der Baseline.
-- Legacy: statischer Vergleich des fixierten Quellstands (Templates, CSS, Router, State, Bootstrap und nachträgliche JS-Erweiterungen) anhand des [Anforderungsinventars](../docs/M05-PARITY.md). Kein Browser-Testwerkzeug, keine Browser-Testautomatisierung und kein nachgebauter Legacy-Testserver.
+- Legacy: statischer Vergleich des fixierten Quellstands (Templates, CSS, Router, State, Bootstrap und nachträgliche JS-Erweiterungen) anhand des [Anforderungsinventars](../docs/REQUIREMENTS.md). Kein Browser-Testwerkzeug, keine Browser-Testautomatisierung und kein nachgebauter Legacy-Testserver.
 - Je P-ID: erwartete Sichtbarkeit, Reihenfolge, Zustand und Gesten anhand des Anforderungsinventars vergleichen; Screenshot/Protokoll mit Fixture-ID, Viewport, Commit und Ergebnis ergänzen. 0/1/viele/partial/unverified und Stale/Cancel sind zusätzlich Mock-Transport-Szenarien, nicht allein durch den Import nachgewiesen.
 - Visuelle Geräteprüfung bei Bedarf manuell; Aufgabenstatus nach der [Merge-Regel](../docs/ROADMAP.md#pflege). Keine automatisierten Browser-Referenzscreens erforderlich.
 

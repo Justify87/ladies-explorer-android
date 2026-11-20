@@ -2,6 +2,12 @@
 
 Die App ist eine eigenständige lokale Android-Anwendung mit einer APK. Kotlin/Compose (Material 3) verantwortet Darstellung, Navigation, Interaktion und Lebenszyklus; der Rust-Core ist die fachliche Autorität für Quellverarbeitung, Identität, Mutation und SQLite. Die typisierte Grenze bildet beim Gradle-Build generiertes UniFFI/JNA. Kein Server, WebView-Port, Python-/Flask-/Node-Runtime, Cloud-Backend oder zweiter fachlicher Datenstore.
 
+## Verbindliche Grenzen
+
+Architekturgrenzen (einschließlich ARC-01–08) sind die fachliche Datenhoheit des Rust-Core und seiner SQLite-Persistenz, die typisierte generierte UniFFI-Grenze, Kotlin/Compose für UI und Lifecycle, die unten definierte Netzwerk-, Medien- und Sicherheitsgrenze sowie die Trennung von fachlichem Commit, UI-Admission und tatsächlichem Operationsende. Keine zweite fachliche Queue, Datenbank, Profilimplementierung oder Quellen-HTTP-Schicht. Generierte Bindings nicht manuell ändern. Verbindliche Integritäts- und fachliche Verträge bleiben erhalten.
+
+Die folgenden Komponenten, Klassen und Datenflüsse beschreiben den gegenwärtigen Stand und sind innerhalb dieser Grenzen refaktorierbar. Keine erzwungene ViewModel-/Gradle-Modularisierung ohne Bedarf. Umgang mit Änderungen: [AGENTS](../AGENTS.md#architektur--und-designvertrag). UI-/UX-Ziele: [DESIGN](DESIGN.md); fachliche Anforderungen: [REQUIREMENTS](REQUIREMENTS.md).
+
 ## Systemübersicht
 
 ```text
@@ -31,7 +37,7 @@ Externe Intents ── Dialer / WhatsApp / Originalprofil
 | Persistenz | `schema.rs` verwaltet Schema und Migration; `legacy_import.rs` importiert native Austauschdaten. |
 | Diagnose | `diagnostics.rs`, `http_capture.rs`, `DiagnosticEventQueue`, CoreStore und Diagnoseprovider. |
 
-Codepfade: [Android](../app/src/main/java/de/justify87/ladiesexplorer), [Rust](../rust/ladies-core/src). Herkunft und Abhängigkeiten: [PROVENANCE](PROVENANCE.md). Fachliche UI-Anforderungen: [UI-Vertrag](M05-PLAN.md), [Anforderungsinventar](M05-PARITY.md). Aufgaben und Fortschritt: ausschließlich [ROADMAP](ROADMAP.md).
+Codepfade: [Android](../app/src/main/java/de/justify87/ladiesexplorer), [Rust](../rust/ladies-core/src). Herkunft und Abhängigkeiten: [PROVENANCE](PROVENANCE.md). UI/UX: [DESIGN](DESIGN.md); Anforderungen: [REQUIREMENTS](REQUIREMENTS.md). Aufgaben und Fortschritt: ausschließlich [ROADMAP](ROADMAP.md).
 
 ## Domäne und Persistenz
 
@@ -99,9 +105,9 @@ Für Medien validiert Rust bekannte HTTPS-Hosts und URL-Formen, verbietet Redire
 - Standalone: `StandaloneProfileOperations` liest aktuelle Quelldaten, nutzt bei Fehler den aktiven lokalen Snapshot samt Medien und zeigt die Herkunft/Warnung. Erfolgreiche Profilabrufe können den separaten Archivvorgang auslösen; bei Offline-Fallback kein erneutes Archivieren aus dem Netz.
 - Swipe: maximal aktuelles plus zwei folgende Profile, ohne zusätzliche Archivierung. Quellenabruf und lokaler Fallback folgen dem Current-/Prefetch-Vertrag unten.
 
-`ProfileShell` und `ProfileFlow` bilden einen gemeinsamen LazyColumn-Scrollfluss. Profilinhalt umfasst Galerie, belegte Identität/Status, Fakten, Beschreibung, Dienste, Filterbelege, Kontakt sowie ausklappbare Analyse, Notiz, Historie und verknüpfte Anzeigen. Keine Pflicht-Tabs oder Swipe-Weiterleitung auf eine zweite Detailroute. Verknüpfte Originalanzeigen und WhatsApp werden bewusst extern geöffnet; Telefonnummer über Dialer.
+`ProfileShell` und `ProfileFlow` bilden die gemeinsame Profiloberfläche; Swipe und Standalone behalten ihre jeweiligen Navigations-/Operationskontexte. Sichtbare Gestaltungs- und Informationsanforderungen: [DESIGN](DESIGN.md#profile-und-medien).
 
-`ProfileHeroLayout` berechnet das adaptive Bildbudget aus tatsächlichem Fenster, Insets und gemessenen Leisten. Der Swipe-Start hat einen kompakten Header und großen Hero; beim Scrollen übernimmt der kompakte Identitätsheader anhand realer Lazy-Geometrie. Eine fixierte Decision Rail bleibt im Swipe erreichbar; in sehr kleinen Fenstern existiert der Menü-Fallback. Standalone verwendet Back statt Decksteuerung. Statusdialog im reservierten Header-Slot, keine dynamische Statuszeile, die den Swipe-Viewport verschiebt. Bei engem Fenster oder hoher Schriftvergrößerung liegt Identität außerhalb des Bildes. Galerie ohne obere Bedienleiste, Storysegmente, Zähler oder permanente Pfeile; seitliche Tap-Zonen, Original/Fit im Profilmenü. Die belegte Identität am unteren Bildrand und kurzzeitiges Drag-Feedback sind keine Galerie-Navigation.
+`ProfileHeroLayout` berechnet aus tatsächlichen Constraints, Insets und Leisten das adaptive Hero-Budget. Die Header-Identität wird anhand realer Lazy-Geometrie übergeben; die Decision Rail besitzt einen Menü-Fallback. Status und Busy sollen den Viewport nicht unkontrolliert verschieben. Galerie- und Hero-Ziele stehen in [DESIGN](DESIGN.md#profile-und-medien).
 
 `ProfilePanels` und `ProfilePanelReads` (in `ProfilePanelState.kt`) sowie `ProfileFlowRows` steuern sichtbarkeits-/bedarfsgebundene lokale Reads. Facts und PersonDetail werden je gültigem Listing/Owner/Snapshot/Filter/Revision wiederverwendet; Analyse/Historie und Vergleich erzeugen keine zusätzlichen Quellenabrufe durch die Darstellung. Snapshotvergleich prüft Besitzer und Inseratzuordnung. Notiz-Reads/Retry haben einen gemeinsamen projektionsgebundenen Job; Entwürfe und Tickets sind ownergebunden im ViewModel und bleiben bei Navigation/Rotation erhalten (nicht über Prozessende). Speichern ist transaktionaler Vergleich von aktuellem Besitzer und erwartetem Text, schreibt nur private_note und updated_at. Konflikte explizit auflösen; Merge/Import schützen betroffene ungespeicherte Entwürfe.
 
@@ -146,10 +152,12 @@ Datenhoheit, Render-/Admission-Gültigkeit und tatsächliches Ende einer nativen
 - Reprojektion betrifft die tatsächlich abhängigen lokalen Fenster (Profil/Notiz, Entdecken/Grid, SavedPeople, SavedSearch, Map, Home). Unabhängige Reads behalten ihre eigenen Erfolgs-/Fehlerzustände; sichtbare gültige Resultate werden publiziert, verdeckte Fenster nach Bedarf dirty. Alte Ergebnisse dürfen keine Aktionen für einen anderen Owner freigeben. Reine erfolgreiche Swipe-Entscheidung invalidiert nicht pauschal andere Personenprofile; tatsächliche Quell-/Identitätsänderungen oder Fehler widerrufen betroffene Slots.
 - Archivierung und bestätigter Merge koordinieren Cancel/Drain und aktuellen Besitzer; native Transaktionen sichern die Integrität. Kein implizites Gelesen-Ack, kein fachlicher Write durch Layout oder Navigation.
 
+Ergänzende Operationsinvarianten: Skip/Undo/Reset/Replay bleiben an den gültigen Deck-/Owner-Kontext gebunden; Skip-Undo schreibt nicht in SQLite, alte Steps werden nach Merge nicht auf neue Owner übertragen. Reset/Replay widerrufen alte Callback-/Step-Generationen. Gerenderte Kontakt-, Medien-, Menü- und Vergleichsaktionen dürfen nicht auf einen anderen Owner/Session übergehen. Notizentwürfe werden nicht still auf andere Owner umgedeutet oder rebased. Snapshotvergleich ist explizit und prüft das gültige Snapshot-Paar; alte Dialoge werden invalidiert. Es gibt keinen unbeschränkten SaveableState pro Profil. Bei Merge aktuelles Listing soweit zulässig erhalten, andernfalls sauberer Kontextwechsel; keine zusätzliche Swipe- oder Undo-Aktion.
+
 ## Diagnose, Karte und Sicherheitsgrenzen
 
 - Einstellungen bedienen Import, DB-/Core-Status, Replay-Likes, Debug-Logging und Diagnoseexport. Rust zeichnet seine Operationen und optional begrenzte HTTP-Evidenz auf; Kotlin liefert eigene Diagnoseereignisse über den Core. TXT/HAR-Export über app-private Cache-Dateien und den Diagnoseprovider. Einzelheiten und Grenzen: [DIAGNOSTICS](DIAGNOSTICS.md).
-- MapLibre besitzt Karten-View und Kartenressourcen; Rust liefert die eigene Kartenprojektion. Geocoding-/Lifecycle-/Refresh-Vertrag: [MAP](MAP.md). Kein Gerätestandort.
+- MapLibre besitzt Karten-View und Kartenressourcen; AndroidView-Factory/onRelease und Lifecycle-Observer koordinieren genau einmal den nativen View-Lifecycle einschließlich Speicherdruck. Kamera und Auswahl bleiben über SaveableStateHolder bei Tab-/Profilwechseln erhalten. Rust liefert die DB-weite Kartenprojektion und hält Koordinatencache in app_settings, zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg. Offline-Überblick und Auftragsstatus sind getrennt; nach Abschluss/Abbruch liest die UI genau einmal den aktuellen Bestand statt doppelter Listenübertragung. Kein eigener Prozess, WebView, Server oder Gerätestandort. Provider-, Cache- und Bedienvertrag: [MAP](MAP.md).
 - Private Datenbank, Medien, Exporte und temporäre Player-Dateien liegen im App-Sandboxbereich. Android-Backup ist deaktiviert. Manifest entfernt von SDKs deklarierte COARSE/FINE_LOCATION-Berechtigungen. Keine automatischen Kontakte, Messenger, Synchronisierung oder KI-/OCR-Preisextraktion. Externe Aktionen sind explizite Intents. Lizenzinformationen für native Bibliotheken stehen in [PROVENANCE](PROVENANCE.md) und [NOTICE](../NOTICE).
 
 ## Automatisierte Architekturverträge

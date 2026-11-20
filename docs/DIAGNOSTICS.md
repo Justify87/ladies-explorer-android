@@ -60,6 +60,6 @@ Rust zeichnet Such-, Profil-, Anzeige-Bild-, Medienarchiv- und Geocoder-Requests
 - [Coil benutzerdefinierter Netzwerkclient](https://coil-kt.github.io/coil/network/)
 - [HAR 1.2](https://github.com/ahmadnassri/har-spec/blob/master/versions/1.2.md)
 
-## M05.7 Statusprüfung
+## Statusprüfung
 
-Einzel- und Batchstatus laufen ausschließlich über bestehenden Rust-HTTP-Recorder. Bestätigte Checks protokollieren Listing-ID, Status und HTTP-Code; Kotlin zeigt Fortschritt, Fehleranzahl und letzten Fehler. Unbestätigte Antworten überschreiben keinen bestätigten Status. Bei Navigation/ON_STOP wird RequestControl abgebrochen, bereits erfolgreich gespeicherte Teilresultate bleiben erhalten und werden lokal neu projiziert. Optionale Geräteprüfung: keine zusätzlichen Such-/Archivrequests, stabile Reihenfolge bei wiederholter Statusprüfung, Cancel/Timeout und Statusfehler. Aufgabenabschluss nach [Merge-Regel](ROADMAP.md#pflege).
+Einzel- und Batchstatus laufen ausschließlich über bestehenden Rust-HTTP-Recorder. Bestätigte Checks protokollieren Listing-ID, Status und HTTP-Code; Kotlin zeigt Fortschritt, Fehleranzahl und letzten Fehler. Fachlicher Statusvertrag: [SOURCE](SOURCE.md#gespeicherte-personen--quellenbeobachtung-und-status). Technische Konsistenz: [ARCHITECTURE](ARCHITECTURE.md#operations--und-konsistenzmodell). Optionale Geräteprüfung: keine zusätzlichen Such-/Archivrequests, stabile Reihenfolge bei wiederholter Statusprüfung, Cancel/Timeout und Statusfehler. Aufgabenabschluss nach [Merge-Regel](ROADMAP.md#pflege).

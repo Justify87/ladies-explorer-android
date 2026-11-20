@@ -6,7 +6,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen. Stand:
 
 ## Ziel und Grenzen
 
-Eigenständige lokale Android-App auf einem Gerät: Kotlin/Compose für UI/Lifecycle, Rust/SQLite via UniFFI für Fachlogik und Persistenz. Relevante Web-App-Daten und Regeln erhalten; kein Server/Flask/Python-Runtime, Messenger, Synchronisierungsdienst, automatische KI-/OCR-Preisextraktion oder fachfremde Artefact-Funktionen. [Architektur](ARCHITECTURE.md), [Quelle](SOURCE.md), [UI-Vertrag](M05-PLAN.md), [Fach-/UX-Anforderungsinventar](M05-PARITY.md) sind Spezifikationen, keine parallelen Backlogs.
+Eigenständige lokale Android-App auf einem Gerät: technische Grenzen gemäß [Architektur](ARCHITECTURE.md). Relevante Web-App-Daten und Regeln erhalten; kein Server/Flask/Python-Runtime, Messenger, Synchronisierungsdienst, automatische KI-/OCR-Preisextraktion oder fachfremde Artefact-Funktionen. [Architektur](ARCHITECTURE.md), [Quelle](SOURCE.md), [UI-/Designvertrag](DESIGN.md), [Anforderungen](REQUIREMENTS.md) sind Spezifikationen, keine parallelen Backlogs.
 
 ## Fortschritt
 
@@ -48,7 +48,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 ### T10.7 — READY · Lifecycle, Performance und Altcode
 
-Vorgänger T10.6; P03/P20–P23/P39–P44/P49–P51. PR #31 enthält bereits drei Listing-/Owner-gebundene Slots, serialisierte Reads, Promotion ohne Cancel, begrenztes Coil-Warming in Hero-Größe, Retry und lokalen libmpv-Lifecycle/Rust-only Videotransport. Nicht neu implementieren. Code: `DiscoveryScreen.kt`, `SwipeProfile.kt`, `SwipeFlight.kt`, `ProfilePanels.kt`, `ProfilePresentation.kt`, `GalleryVideo.kt`, `MainViewModel.kt`; Tests: `SwipeProfileWindowTest`, `SwipeProfileReadTest`, `ProfilePresentationTest`, `ProfilePanelsTest`, `ProfileProjectionTest`, Rust-Medientests.
+Vorgänger T10.6; P03/P20–P23/P39–P44/P49–P51. PR #31 enthält bereits relevante Implementierungen; [Architektur](ARCHITECTURE.md#swipe-read-window-und-prefetch) und [Medienvertrag](ARCHITECTURE.md#persistentes-archiv-und-anzeige) prüfen, nicht neu implementieren. Code: `DiscoveryScreen.kt`, `SwipeProfile.kt`, `SwipeFlight.kt`, `ProfilePanels.kt`, `ProfilePresentation.kt`, `GalleryVideo.kt`, `MainViewModel.kt`; Tests: `SwipeProfileWindowTest`, `SwipeProfileReadTest`, `ProfilePresentationTest`, `ProfilePanelsTest`, `ProfileProjectionTest`, Rust-Medientests.
 
 - [ ] Restreview Owner-/Run-/Snapshot-/Revision- und Lifecycle-Wechsel: Prefetch-Promotion/Pruning, Request/Retry/Cancel, Native Drain, Cache-/Note-/Facts-Invalidierung, SaveableState, unabhängige Reprojektion, Video-Surface-/Tempfile-Cleanup. Betroffene Aufrufer bis Rust/SQLite prüfen.
 - [ ] Kein stale UI, Double Write, Source-Redo nach Commit, zusätzliche Archivierung, mehr als current+2 oder zweite Queue/HTTP-/Profilimplementierung. Nur belegte Defekte ursächlich beheben und Regression sichern.
@@ -56,7 +56,7 @@ Vorgänger T10.6; P03/P20–P23/P39–P44/P49–P51. PR #31 enthält bereits dre
 
 ### T10.8 — PLANNED · Vertikale Integration (G10.3)
 
-Vorgänger T10.7 abgeschlossen. P01–P51/X01–X11, [UI-Vertrag](M05-PLAN.md).
+Vorgänger T10.7 abgeschlossen. P01–P51/X01–X11, [UI-Vertrag](DESIGN.md).
 - [ ] Alle betroffenen Einstiegspunkte (Swipe/Grid/Karte/Suche/Gespeichert inkl. gespeicherter Ergebnisse), Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
 - [ ] Vertikale Regression UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision, Fehler/Offline/Status/Radius/Pagination. Kein zweiter Pfad, Funktionsverlust oder Scope Drift. Konkrete technische Testbelege.
 

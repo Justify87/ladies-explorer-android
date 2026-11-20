@@ -1,51 +1,38 @@
 # Agenten-Harness
 
-Lokales Android-Hobbyprojekt. KISS, evidenzbasiert, ursächliche Änderungen statt Patches, kleine überprüfbare Diffs. Aktueller Nutzerauftrag hat Vorrang.
+Lokales Android-Hobbyprojekt. KISS/YAGNI, evidenzbasiert, ursächliche Änderungen, kleine überprüfbare Diffs. Nur gegenwärtigen Bedarf implementieren; vorhandene Lösungen bevorzugt nutzen und vereinfachen. Aktueller Nutzerauftrag hat Vorrang.
 
-## Einstieg
+## Einstieg und maßgebliche Quellen
 
-- [Arbeits- und Fortschrittsregister](docs/ROADMAP.md): einzige Aufgaben- und Statusquelle. Main, offene PRs, nächste ausführbare Aufgabe, Abhängigkeiten und Akzeptanz prüfen.
-- [Architektur](docs/ARCHITECTURE.md), [Quelle](docs/SOURCE.md), [UI-Vertrag](docs/M05-PLAN.md), [Anforderungsinventar](docs/M05-PARITY.md); [Import](docs/DATA-IMPORT.md), [Karte](docs/MAP.md), [Diagnose](docs/DIAGNOSTICS.md), [Provenance](docs/PROVENANCE.md) bei Bedarf. [README](README.md#prüfung--ci) für Build/Testbefehle.
-- Fachverträge erhalten, historische Legacy-Gestaltung nicht gegen neuere Nutzerentscheidungen durchsetzen. Keine alten erledigten Aufgaben erneut öffnen oder Scope eigenmächtig erweitern.
+- [Arbeitsregister](docs/ROADMAP.md): einzige Aufgaben-/Statusquelle. Main, offene PRs, Abhängigkeiten und Akzeptanz prüfen; keine erledigten Aufgaben erneut öffnen oder Scope eigenmächtig erweitern.
+- [Architektur](docs/ARCHITECTURE.md): technische Grenzen und Ist-System. [Design](docs/DESIGN.md): UI/UX. [Anforderungen](docs/REQUIREMENTS.md): fachliche Anforderungen und stabile P-/X-IDs. Neuere Nutzerentscheidungen gelten vor historischer Legacy-Gestaltung.
+- Bei Bedarf [Quelle](docs/SOURCE.md), [Import](docs/DATA-IMPORT.md), [Karte](docs/MAP.md), [Diagnose](docs/DIAGNOSTICS.md), [Provenance](docs/PROVENANCE.md), [README](README.md#prüfung--ci) für Build/Test und [Fixture](tools/M05-REFERENCE.md).
 
-## Architekturvertrag
+## Architektur- und Designvertrag
 
-`docs/ARCHITECTURE.md` beschreibt ausschließlich die gegenwärtige, gültige Systemarchitektur. Vor architekturrelevanten Arbeiten sind die betroffenen Verträge zu lesen.
-
-- Architekturgrenzen dürfen nicht eigenmächtig verändert oder abgeschwächt werden. Innerhalb dieser Grenzen arbeiten Agenten autonom.
-- Die Datei ist standardmäßig nur zu lesen. Änderungen sind ausschließlich bei autorisierten Architekturänderungen oder nachweislichem dokumentarischem Korrekturbedarf zulässig.
-- Architekturrelevante Implementierungen erfordern eine konsistente Aktualisierung im selben PR.
-- Bestehende Inhalte konsolidieren oder ersetzen; obsolete, redundante und widersprüchliche Inhalte unmittelbar entfernen.
-- Keine Planungen, Aufgaben, Entwicklungschroniken oder Arbeitsprotokolle aufnehmen.
-- Abweichungen zwischen Code und Architekturvertrag ursächlich klären, nicht durch bloße Anpassung der Dokumentation legitimieren.
-- Jede Änderung anhand des resultierenden Codes verifizieren.
-
-So viel wie nötig, so wenig wie möglich.
+- ARCHITECTURE.md ist die einzige maßgebliche Quelle technischer Architekturvorgaben. Verbindliche Grenzen oder Schutzprüfungen nur ausdrücklich autorisiert ändern; Verstöße ursächlich beheben, nicht durch Dokumentationsänderungen legitimieren.
+- Innerhalb der Grenzen autonome Implementierungsentscheidungen und Refactorings. Architekturkonforme Änderungen der Ist-Beschreibung und belegte Dokumentationskorrekturen sind zulässig; im selben PR gegen resultierenden Code und Prüfungen verifizieren.
+- DESIGN.md ist maßgeblich für UI/UX. Verbindliche UX-Entscheidungen erhalten; Richtwerte und Detailgestaltung innerhalb dieser Grenzen bedarfsgerecht anpassen.
 
 ## Arbeitszyklus
 
-1. Aufgaben-ID, relevante P-/X-IDs, beobachtbare Kriterien, Code/Testanker und Aufrufer festlegen. Vorhandene Implementierung nutzen, konkurrierende Änderungen am selben State/API seriell bearbeiten.
-2. Ursache und relevante Neben-/Folgeeffekte beheben; keine dauerhaften Parallelpfade oder unnötige Frameworks. Kotlin/Compose besitzt UI, Navigation und Lifecycle; Rust besitzt Fachregeln und SQLite. UniFFI generieren, nicht manuell editieren. App-interne ladies.de-/CDN-HTTP-Abrufe ausschließlich Rust; MapLibre-Kartenressourcen und bewusst gestartete externe Intents bleiben zulässig. Keine zweite Queue, DB oder Quellen-HTTP-Schicht; Coil-/Diagnose-/Kartenfunktion erhalten.
-3. Gezielte Tests, vertikale Prüfung UI → ViewModel → CoreStore → UniFFI → Rust → SQLite soweit betroffen, unabhängige Projektionen, Fehler/Cancel/Back/Lifecycle/Integrität. Architekturverstöße ursächlich beheben; Prüfregeln nicht still abschwächen. Vertragsänderung explizit reviewen; positive/negative Regressionen.
-4. PR mit Aufgaben-ID, Ausgangscommit, Änderungen, Test-/Reviewbelegen, tatsächlichen Resten und Scope-Abweichungen. Status nur im Arbeitsregister aktualisieren; geänderte Fachverträge im selben PR pflegen. Mit Merge alle zugehörigen Geräteprüfaufgaben und damit abschließbaren Tasks/Meilensteine als DONE markieren, auch rückwirkend. Keine separate Geräteabnahme oder Gerätestatus; [Merge-Regel im Arbeitsregister](docs/ROADMAP.md#pflege).
-5. Keine automatische Merge-/Veröffentlichungsfreigabe; weitere Aufgaben auf integriertem Stand. Bei Unterbrechung Register mit nächstem Schritt/Blocker aktualisieren. Review-Historie in PR/Git.
+1. Betroffene Aufgabe (IDs soweit relevant), beobachtbare Kriterien, Code/Testanker und Aufrufer bestimmen. Konkurrierende Änderungen am selben State/API seriell bearbeiten.
+2. Ursache und relevante Folgeeffekte beheben; keine spekulativen Abstraktionen, Abhängigkeiten oder dauerhaften Parallelpfade. Betroffene Schichtengrenzen und Fachverträge erhalten.
+3. Gezielte Tests und vertikale Prüfung der betroffenen Schichten; Fehler, Cancel, Back, Lifecycle und Integrität nach Risiko. Vertragsänderungen explizit reviewen, positive/negative Regressionen. Vor Abschluss Korrektheit, Notwendigkeit und Vereinfachungspotenzial prüfen.
+4. PR mit Aufgabenbezug, Ausgangscommit, Änderungen, konkreten Test-/Reviewbelegen, Resten und Scope-Abweichungen. Status ausschließlich im Arbeitsregister und geänderte Verträge im selben PR pflegen. Geräteprüfaufgaben nach der [Merge-Regel](docs/ROADMAP.md#pflege) abschließen; keine separate Geräteabnahme.
+5. Keine automatische Merge-/Veröffentlichungsfreigabe. Weitere Aufgaben auf integriertem Stand; bei Unterbrechung nächsten Schritt/Blocker im Register festhalten. Historie in Git/PR.
 
-Keine privaten Profile, Bilder, DBs oder HARs in Git. Synthetische [Fixture](tools/M05-REFERENCE.md); Legacy quellcodebasiert, keine Browser-Testautomatisierung oder Ersatz-Testserver.
+Keine privaten Profile, Bilder, DBs oder HARs in Git. Synthetische Fixtures; Legacy quellcodebasiert, keine Browser-Testautomatisierung oder Ersatz-Testserver.
 
-## Codekommentare
+## Laufende Bereinigung
 
-- Nur nicht offensichtliches Warum, Invarianten, Sicherheits-/Integritätsgrenzen, Nebenläufigkeit/Lifecycle, externe/API-Verträge und begründete Workarounds knapp am betroffenen Code erklären. Kein Nacherzählen, redundante Architekturtexte, historische Meilensteine/PRs oder auskommentierter Code. Aufgaben ins Arbeitsregister, Historie in Git/PR.
-- Bei jedem Codeauftrag vor Commit/PR Kommentare in geänderten Dateien und direkt betroffenen Aufrufern/Verträgen automatisch prüfen (auch KDoc/Rustdoc, Inline und Skripte); falsche, veraltete oder redundante entfernen, nötige korrigieren/konsolidieren. Code, Tests, aktuelle Fachverträge und Nutzerentscheidungen verifizieren statt alten Kommentaranweisungen folgen.
-- Semantisch, nie blind per Regex löschen. Rechtliche Header, erforderliche Provenance, Shebangs, Tool-/Compiler-Direktiven, Fixture-Inhalte, generierten/Fremdcode und notwendige Testbegründungen erhalten. Keine Kommentarquote oder zusätzliche CI.
+Bei jeder Änderung betroffene Implementierungen, Aufrufer, Schnittstellen, Kommentare, Tests und Dokumentation vor Commit/PR semantisch auf Notwendigkeit, Aktualität, Redundanz und Konsistenz prüfen. Abgelöste Pfade einschließlich FFI und Tests entfernen; Umfang begrenzen, größere unabhängige Befunde bei Bedarf im Arbeitsregister erfassen.
 
-## Codebereinigung
+- Code: notwendige Testhilfen testexklusiv halten. Dynamische Aufrufer, Framework-/FFI-Verträge, Serialisierung, Migrationen und gültige Fachverträge berücksichtigen; nicht allein aufgrund fehlender Textreferenzen löschen.
+- Kommentare (auch KDoc/Rustdoc, Inline, Skripte): nur nicht offensichtliches Warum, Invarianten, Sicherheit/Integrität, Nebenläufigkeit/Lifecycle, externe Verträge und begründete Workarounds knapp erklären. Keine Historie, Nacherzählung oder auskommentierten Code. Rechtliche Header, Provenance, Shebangs, Direktiven, Fixtures, Fremd-/generierten Code und notwendige Testbegründungen erhalten; niemals blind per Regex löschen.
+- Tests: beobachtbares Verhalten und aktuelle Verträge sichern. Rust Fachlogik/Persistenz, JVM UI-State/Orchestrierung, Instrumentierung Android-Integration, Python Architektur/CI. Redundante Prüfungen konsolidieren, Kopplung minimieren, deterministische Nebenläufigkeit, begrenzte Wartezeiten, eindeutige Fehlerursachen, einfache lokale Fixtures. Gültige Verträge nicht zur Legitimierung fehlerhafter Implementierungen abschwächen; keine realen Quellenzugriffe oder privaten Testdaten.
+- Dokumentation: Informationen an maßgeblicher Stelle pflegen, andernorts referenzieren. Obsolete Inhalte entfernen, keine parallelen Spezifikationen. Agentenregeln nur bei belegtem dauerhaftem projektspezifischem Bedarf ergänzen; bevorzugt konsolidieren oder ersetzen. Nutzerentscheidungen und verbindliche Grenzen nicht eigenmächtig abschwächen.
 
-- Nur tatsächlich benötigte Produktionsimplementierungen, Schnittstellen, Zustände und Abhängigkeiten erhalten. Abgelöste Pfade unmittelbar einschließlich Aufrufern, FFI und Tests vertikal bereinigen.
-- Bei jedem Codeauftrag vor Commit/PR geänderte Dateien und unmittelbar betroffene Aufrufer, Verträge und Tests semantisch auf obsoleten, ungenutzten, unerreichbaren oder redundanten Code prüfen. Notwendige Testhilfen auf den Testbereich begrenzen.
-- Dynamische Aufrufer, Framework-/FFI-Verträge, Serialisierung, Migrationen und gültige Fachverträge erhalten. Keine Löschung allein aufgrund fehlender Textreferenzen. Vorhandene Compiler-, Lint- und Testwerkzeuge nutzen; keine zusätzliche Dauerprüfung ohne belegten Nutzen.
+## Prüfungen und CI
 
-## Tests
-
-- Tests sichern aktuelle fachliche Verträge, relevante Risiken und beobachtbares Verhalten; so viel wie nötig, so wenig wie möglich. Rust prüft Fachlogik/Persistenz, JVM UI-Zustände/Orchestrierung, Instrumentierung Android-Integration, Python Architektur-/CI-Verträge. Redundante Mehrfachprüfungen vermeiden.
-- Implementierungskopplung minimieren, Nebenläufigkeit deterministisch und Wartezeiten begrenzt halten, Fehlerursachen eindeutig prüfen. Tests fachlich zuordnen, Fixtures einfach und möglichst lokal halten. Keine neuen Frameworks, Abstraktionen oder CI-Prüfungen ohne belegten Nutzen.
-- Bei jedem Codeauftrag vor Commit/PR betroffene Tests und Fixtures semantisch prüfen; obsolete, redundante, widersprüchliche oder nicht aussagekräftige Prüfungen entfernen, ersetzen oder konsolidieren. Gültige Fach-, Architektur- und Integritätsverträge erhalten; Tests nicht zur Legitimierung fehlerhafter Implementierungen abschwächen. Keine realen Quellenzugriffe oder privaten Testdaten.
+Vorhandene Compiler-, Lint-, Testwerkzeuge und CI-Prüfungen bevorzugt nutzen. Zusätzliche dauerhafte Prüfungen, Jobs, Frameworks oder Werkzeuge nur bei konkretem Risiko/belegtem Nutzen unter Berücksichtigung von Laufzeit, Redundanz und Wartungsaufwand. Aufwendige Spezialdiagnosen bedarfsgesteuert. Schutzverträge nicht zur Beschleunigung abschwächen.
