@@ -196,7 +196,7 @@ jobs:
           VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}
         run: |
           if [ "$EVENT_NAME" = pull_request ]; then
-            if git diff --quiet HEAD^1 HEAD -- app/build.gradle.kts rust/rust-toolchain.toml gradle.properties tools/verify-native-cache.sh; then
+            if git diff --quiet HEAD^1 HEAD -- app/build.gradle.kts rust/rust-toolchain.toml gradle.properties tools/verify-native-cache.sh .github/workflows/android.yml; then
               exit 0
             fi
           elif [ "$VERIFY_NATIVE_CACHE" != true ]; then

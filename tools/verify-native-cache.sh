@@ -35,12 +35,16 @@ test ! -e "$copy/rust/target"
 # Check actual input invalidation with a generator config change. This also
 # forces a native build because CI02 conservatively tracks the full workspace.
 # The original APK and build outputs are untouched.
-sed -i 's/de\.justify87\.ladiesexplorer\.core/de.justify87.ladiesexplorer.cacheprobe/' \
+# A unique synthetic package prevents a previous probe's cache entry from
+# turning a valid invalidation into a false failure on a later workflow rerun.
+token="$(basename "$tmp" | tr -cd '[:alnum:]')"
+probe_package="de.justify87.ladiesexplorer.cacheprobe_$token"
+sed -i "s/de\.justify87\.ladiesexplorer\.core/$probe_package/" \
     "$copy/rust/ladies-core/uniffi.toml"
 run_native "$tmp/invalidate.log"
 require_task "$tmp/invalidate.log" cargoBuildDebug ""
 require_task "$tmp/invalidate.log" uniffiBindgenDebug ""
-grep -R -m 1 '^package de.justify87.ladiesexplorer.cacheprobe' "$copy/$generated/kotlin"
+grep -R -F -m 1 "package $probe_package" "$copy/$generated/kotlin"
 test -s "$copy/$generated/jniLibs/arm64-v8a/libladies_core.so"
 
 # An embedded non-Rust resource must invalidate the native task on its own.

@@ -17,9 +17,7 @@ val rustAbis: List<String> = providers.gradleProperty("ladies.abis")
     .filter(String::isNotEmpty)
     .distinct()
 
-require(rustAbis.isNotEmpty() && rustAbis.all { it in setOf("arm64-v8a", "x86_64") }) {
-    "Select supported targets (arm64-v8a, x86_64) in ladies.abis"
-}
+require(rustAbis.isNotEmpty()) { "Select at least one target in ladies.abis" }
 
 val cargoExecutable: String = providers.environmentVariable("CARGO").orNull ?: run {
     val filename = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) "cargo.exe" else "cargo"
@@ -112,7 +110,7 @@ abstract class NativeCargoTask : DefaultTask() {
                 setEnvironment(toolEnvironment.get())
                 // Force Cargo fingerprints to change when the hosted toolchain
                 // changes, even if restored target artifacts are present.
-                val identity = (toolIdentity.get() + "\n" +
+                val identity = (toolIdentity.get() + "\n" + cargo.get() + "\n" +
                     toolEnvironment.get().toSortedMap().entries.joinToString("\n") + "\n" +
                     extraIdentity).toByteArray(Charsets.UTF_8)
                 val digest = MessageDigest.getInstance("SHA-256")
@@ -146,7 +144,7 @@ abstract class BuildRustForAndroid : NativeCargoTask() {
             listOf("ndk") + abis.get().flatMap { listOf("-t", it) } +
                 listOf("--platform", minApi.get().toString(), "-o", output.absolutePath,
                     "build", "--release", "--locked", "-p", "ladies-core", "--lib"),
-            ndk, ndk.absolutePath + "\n" + ndkMetadata.get().asFile.readText(),
+            ndk, ndk.absolutePath + "\n" + ndkMetadata.get().asFile.readText() + "\napi=" + minApi.get(),
         )
         check(abis.get().all { output.resolve("$it/libladies_core.so").let { f -> f.isFile && f.length() > 0 } }) {
             "Missing compiled Rust library for one or more selected ABIs"
