@@ -69,8 +69,8 @@ fun nativeToolVersion(vararg command: String): Provider<String> =
         setEnvironment(nativeEnvironment)
     }.standardOutput.asText.map { it.trim() }
 
-// Gradle outputs remain partitioned by runner image and installed targets.
-// Cargo fingerprints use actual compiler/linker versions, not image labels.
+// Native cache identities use actual toolchain versions, not the rotating image label.
+// ImageVersion is only an eligibility check for the hosted environment.
 val compilerIdentity = if (nativeCacheEnabled) {
     val versions = listOf(
         nativeToolVersion(cargoExecutable, "--version", "--verbose"),
@@ -87,8 +87,7 @@ val compilerIdentity = if (nativeCacheEnabled) {
 } else providers.provider { "uncontrolled Cargo environment" }
 
 val nativeOutputIdentity = if (nativeCacheEnabled) {
-    val targets = nativeToolVersion("rustup", "target", "list", "--installed")
-    providers.provider { runnerImage + "\n" + targets.get() }
+    nativeToolVersion("rustup", "target", "list", "--installed")
 } else providers.provider { "uncontrolled host" }
 
 val ndkCliIdentity = if (nativeCacheEnabled) {

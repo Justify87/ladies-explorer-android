@@ -57,10 +57,12 @@ rust_source="rust/ladies-core/src/source/filter.rs"
 token="$(basename "$tmp" | tr -cd '[:alnum:]')"
 probe_package="de.justify87.ladiesexplorer.cacheprobe_$token"
 
-# A Kotlin-only edit in another checkout must reuse both native artifacts.
+# A Kotlin-only edit in another checkout and a different nonempty image label
+# must reuse both native artifacts when the effective toolchain is unchanged.
 printf '\n// CI02 synthetic Kotlin-only edit\n' >> "$copy/app/src/main/java/de/justify87/ladiesexplorer/MainActivity.kt"
 test ! -e "$copy/rust/target"
-run_native "$tmp/restore.log" arm64-v8a
+ImageVersion="${ImageVersion:?Expected hosted runner image}-ci02-probe" \
+    run_native "$tmp/restore.log" arm64-v8a
 require_task "$tmp/restore.log" cargoBuildDebug " FROM-CACHE"
 require_task "$tmp/restore.log" uniffiBindgenDebug " FROM-CACHE"
 diff -qr "$root/$generated" "$copy/$generated"
