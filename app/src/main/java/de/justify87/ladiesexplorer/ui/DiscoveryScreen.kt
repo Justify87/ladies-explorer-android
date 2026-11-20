@@ -144,6 +144,7 @@ internal fun DiscoverScreen(
             }
             while (true) {
                 snapshotFlow { eligible() }.first { it }
+                var waitForDemotion = false
                 val completed = readGate.withLock {
                     if (!eligible()) return@withLock false
                     if (decks[target] != null && explicitRetry == 0) return@withLock true
@@ -173,19 +174,21 @@ internal fun DiscoverScreen(
                     } catch (cancel: CancellationException) {
                         throw cancel
                     } catch (failure: Exception) {
-                        if (currentRole) {
-                            reportCurrentRead(target, failure)
-                            true
-                        } else {
-                            // A failed speculative read is not a current-profile
-                            // failure; wait for promotion before a bounded retry.
-                            promotionOnly = true
-                            localRecovery = localRecovery || failure is LocalProfileReadFailure
-                            false
-                        }
+                        promotionOnly = true
+                        localRecovery = localRecovery || failure is LocalProfileReadFailure
+                        waitForDemotion = swipeFailureNeedsDemotion(currentRole,
+                            sameSwipeCard(target, latestReadCard))
+                        if (waitForDemotion) reportCurrentRead(target, failure)
+                        false
                     }
                 }
                 if (completed) break
+                // No automatic retry of a failed current read while it remains
+                // current. Explicit retry replaces this effect; Undo may instead
+                // demote the same slot and later promote it without recreating it.
+                if (waitForDemotion) {
+                    snapshotFlow { !sameSwipeCard(target, latestReadCard) }.first { it }
+                }
             }
         }
         val model = decks[target]

@@ -132,6 +132,13 @@ class SwipeProfileReadTest {
         assertEquals(1, f.calls.count { it.startsWith("source:") })
     }
 
+    @Test fun currentReadFailureWaitsForDemotionButSpeculativeFailureDoesNot() {
+        assertTrue(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = true))
+        assertFalse(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = false))
+        assertFalse(swipeFailureNeedsDemotion(startedCurrent = false, stillCurrent = true))
+        assertFalse(swipeFailureNeedsDemotion(startedCurrent = false, stillCurrent = false))
+    }
+
     @Test fun cachedActiveRunPrefetchStillAvoidsSource() = runBlocking {
         val f = Fixture(fixtureProfile())
         val result = readSwipeProfile(4L, false, true, { f.calls += "completion" }, f.reads)

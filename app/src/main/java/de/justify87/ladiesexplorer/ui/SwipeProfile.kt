@@ -76,6 +76,12 @@ internal suspend fun readSwipeProfile(
 internal fun sameSwipeCard(a: DiscoveryCard?, b: DiscoveryCard?): Boolean =
     a != null && b != null && a.listingId == b.listingId && a.personId == b.personId
 
+/** A read that both started and failed as current requires explicit retry
+ * or a real demotion/promotion cycle. A speculative failure may retry once
+ * on becoming current, but must not publish an error for a different card. */
+internal fun swipeFailureNeedsDemotion(startedCurrent: Boolean, stillCurrent: Boolean): Boolean =
+    startedCurrent && stillCurrent
+
 internal data class SwipeReadPolicy(val refresh: Boolean, val allowNetwork: Boolean)
 
 /** Current active-run freshness remains explicit. Promotion reuses its slot;

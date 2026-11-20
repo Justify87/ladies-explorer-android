@@ -107,7 +107,8 @@ internal fun GalleryVideo(
     val video = file
     if (playing && video != null && !failure) {
         key(video, retry) {
-            LocalMpvPlayer(video, paused, modifier, onReady = { ready = true }, onFailure = { failure = true })
+            LocalMpvPlayer(video, paused, modifier, onLoading = { ready = false },
+                onReady = { ready = true }, onFailure = { failure = true })
         }
     } else Box(modifier)
     onTargets()
@@ -132,14 +133,18 @@ internal fun GalleryVideo(
 @Composable
 private fun LocalMpvPlayer(
     video: LocalGalleryVideo, paused: Boolean, modifier: Modifier,
-    onReady: () -> Unit, onFailure: () -> Unit,
+    onLoading: () -> Unit, onReady: () -> Unit, onFailure: () -> Unit,
 ) {
     val context = LocalContext.current
+    val latestLoading by rememberUpdatedState(onLoading)
     val latestReady by rememberUpdatedState(onReady)
     val latestFailure by rememberUpdatedState(onFailure)
     var owner by remember(video) { mutableStateOf<MpvSurfaceOwner?>(null) }
     var surfaceGeneration by remember(video) { mutableIntStateOf(0) }
     DisposableEffect(video, surfaceGeneration) {
+        // A recreated TextureView does not own a loaded file until its new
+        // native instance reports FILE_LOADED; never expose stale controls.
+        latestLoading()
         val instance = try {
             MpvSurfaceOwner(context.applicationContext, video, { latestReady() }, { latestFailure() },
                 onSurfaceLost = { surfaceGeneration++ })
