@@ -111,7 +111,9 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 - [ ] Native Android-Schemaentwicklung und bestehende Android-Nutzerdaten unbeschädigt.
 - [ ] Technische Integrationsprüfungen im separaten Code-PR. [Produktsoll](PRODUCT.md#produktziel-und-grenzen).
 
-- [x] **DC01 — DONE:** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49): obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
+### DC01 — DONE
+
+[PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49): obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
 
 ## Unabhängiger Klärungspunkt
 
