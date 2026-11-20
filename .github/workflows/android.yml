@@ -34,20 +34,38 @@ jobs:
       actions: read
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
+      native_qualification: ${{ steps.classify.outputs.native_qualification }}
+      performance_measurement: ${{ steps.classify.outputs.performance_measurement }}
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          # Push ranges may span multiple commits; ancestry needs complete history.
+          # For PRs the checked synthetic merge and its parents are sufficient.
+          fetch-depth: ${{ github.event_name != 'push' && 2 || 0 }}
           persist-credentials: false
       - name: Verify scope policy
         run: python3 -m unittest discover -s tools -p test_ci_scope.py
-      - name: Classify complete PR merge diff
+      - name: Classify complete event diff
         id: classify
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}
+          MEASURE_ANDROID_BUILD: ${{ inputs.measure_android_build }}
           GH_TOKEN: ${{ github.token }}
         run: python3 tools/ci_scope.py
+
+      - name: Validate execution policy
+        env:
+          MODE: ${{ steps.classify.outputs.mode }}
+          NATIVE: ${{ steps.classify.outputs.native_qualification }}
+          PERFORMANCE: ${{ steps.classify.outputs.performance_measurement }}
+        run: |
+          case "$MODE:$NATIVE:$PERFORMANCE" in
+            docs:false:false|full:false:false|full:true:false|full:false:true|full:true:true) ;;
+            *) echo "Invalid or incomplete CI policy" >&2; exit 1 ;;
+          esac
 
   core:
     name: Core and contracts
@@ -181,27 +199,10 @@ jobs:
           # API 37 is distributed as android-37.0; pre-install to avoid AGP first-run SDK discovery issues.
           test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
 
-      - name: Select optional CI05 diagnostics
-        id: ci05
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          MEASURE_ANDROID_BUILD: ${{ inputs.measure_android_build }}
-        run: |
-          if [ "$EVENT_NAME" = pull_request ]; then
-            if git diff --quiet HEAD^1 HEAD -- tools/measure-android-build.sh tools/install-cargo-ndk.sh; then
-              echo "enabled=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          elif [ "$MEASURE_ANDROID_BUILD" != true ]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
-
       - name: Build arm64 APK and device test APK, run JVM tests and Android Lint
         id: gradle
         env:
-          CI05_DIAGNOSTICS: ${{ steps.ci05.outputs.enabled }}
+          CI05_DIAGNOSTICS: ${{ needs.scope.outputs.performance_measurement }}
         run: |
           args=()
           if [ "$CI05_DIAGNOSTICS" = true ]; then
@@ -218,24 +219,15 @@ jobs:
           test -x "$aapt2"
           python3 tools/check_architecture.py --apk "$1" --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 "$aapt2"
 
-      # Expensive invalidation/relocation probe only for native build logic changes
-      # or explicit manual requests; not part of routine app edits.
+      # Qualification runs use the same verified policy as the routine build.
       - name: Verify native task cache contract
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}
-        run: |
-          if [ "$EVENT_NAME" = pull_request ]; then
-            if git diff --quiet HEAD^1 HEAD -- '*.gradle.kts' '*.gradle' gradle.properties gradle/ gradlew gradlew.bat rust/Cargo.toml rust/Cargo.lock 'rust/**/Cargo.toml' 'rust/**/uniffi.toml' 'rust/**/build.rs' rust/bindgen/ rust/rust-toolchain.toml tools/verify-native-cache.sh .github/workflows/android.yml; then
-              exit 0
-            fi
-          elif [ "$VERIFY_NATIVE_CACHE" != true ]; then
-            exit 0
-          fi
-          bash tools/verify-native-cache.sh
+        id: native_qualification
+        if: ${{ needs.scope.outputs.native_qualification == 'true' }}
+        run: bash tools/verify-native-cache.sh
 
       - name: Measure Android build performance (CI05)
-        if: ${{ steps.ci05.outputs.enabled == 'true' }}
+        id: performance_measurement
+        if: ${{ needs.scope.outputs.performance_measurement == 'true' }}
         run: bash tools/measure-android-build.sh
 
       - name: Upload debug APK
