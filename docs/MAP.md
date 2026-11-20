@@ -10,7 +10,7 @@
 ## Externe Infrastruktur
 
 - Kartendarstellung: **MapLibre Android SDK** (Version in [libs.versions.toml](../gradle/libs.versions.toml)), eingebettet in Compose per `AndroidView` (kein WebView und kein eigener Server).
-- Kein Gerätestandort: Die von MapLibre 13.5.4 deklarierten COARSE/FINE_LOCATION-Berechtigungen werden beim Manifest-Merge entfernt. Internet und Netzwerk-/WLAN-Status bleiben für Kartenressourcen zulässig (CI04 prüft das tatsächliche Debug-APK).
+- Kein Gerätestandort: Die von MapLibre 13.5.4 deklarierten COARSE/FINE_LOCATION-Berechtigungen werden beim Manifest-Merge entfernt. Internet und Netzwerk-/WLAN-Status bleiben für Kartenressourcen zulässig (Die CI prüft das tatsächliche Debug-APK).
 - Kartenstil/Kacheln: `https://tiles.openfreemap.org/styles/liberty`. Die Basiskarte benötigt Netzwerk, solange benötigte Kacheln nicht gecacht sind.
 - PLZ: `https://api.zippopotam.us/DE/<plz>`. Fehlende Postleitzahlen erhalten bei einer späteren Benutzeraktion einen Stadt-Fallback.
 - Stadt: `https://nominatim.openstreetmap.org/search`; nur Deutschland, maximal ein Ergebnis, mindestens 1,1 Sekunden Abstand zwischen Aufrufen auch über Vorgänge hinweg.

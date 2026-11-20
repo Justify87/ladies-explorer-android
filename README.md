@@ -57,9 +57,7 @@ Gradle Enhanced Caching und getrennte Host-/Android-Rust-Caches werden verwendet
 Optionale Diagnosewerkzeuge, ausschließlich explizit manuell (beide Inputs standardmäßig false):
 
 - `verify_native_cache=true`: [Native Cache-Probe](tools/verify-native-cache.sh) mit separatem Checkout, Wiederherstellung, Bytevergleich und Input-Invalidierungen; gemeinsamer Probe-Cache schreibgeschützt.
-- `measure_android_build=true`: [Build-Messung](tools/measure-android-build.sh) mit Cache-Key-Diagnostik, Kotlin-/Gradle-Berichten und isoliertem Configuration-Cache-Experiment; Berichte unter `build/reports/ci05` im Artefakt.
-
-Diese Werkzeuge sind vorhandene Betriebsfunktionen, keine offenen Qualifikationsaufgaben. Der gesamte CI-Arbeitsstrang ist gemäß [Roadmap](docs/ROADMAP.md#nachträgliche-arbeitsstränge) verbindlich abgeschlossen.
+- `measure_android_build=true`: [Build-Messung](tools/measure-android-build.sh) mit Cache-Key-Diagnostik, Kotlin-/Gradle-Berichten und isoliertem Configuration-Cache-Experiment.
 
 Wesentliche lokale Prüfungen:
 
@@ -72,7 +70,7 @@ python3 tools/check_architecture.py
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace --continue --profile
 ```
 
-Die CI prüft die in [ARCHITECTURE.md](docs/ARCHITECTURE.md#automatisierte-architekturverträge-ci04) beschriebenen Architekturverträge im bestehenden Core-Job und am tatsächlich erzeugten ARM64-Debug-APK vor dem Upload. Lokal nach dem Build: `python3 tools/check_architecture.py --apk app/build/outputs/apk/debug/app-debug.apk --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 /pfad/zum/sdk/build-tools/version/aapt2`. Keine zusätzlichen Runner oder Frameworks; die statischen Prüfungen sind keine vollständige semantische Analyse oder Sicherheits-Sandbox. Die kompilierte CoreStore-API wird zusätzlich im bestehenden JVM-Test geprüft; APK-Ressourcenreferenzen werden über die AAPT2-Tabelle aufgelöst und alle zugehörigen XML-Dateien validiert.
+Die CI prüft die in [ARCHITECTURE.md](docs/ARCHITECTURE.md#automatisierte-architekturverträge) beschriebenen Architekturverträge im bestehenden Core-Job und am tatsächlich erzeugten ARM64-Debug-APK vor dem Upload. Lokal nach dem Build: `python3 tools/check_architecture.py --apk app/build/outputs/apk/debug/app-debug.apk --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 /pfad/zum/sdk/build-tools/version/aapt2`. Keine zusätzlichen Runner oder Frameworks; die statischen Prüfungen sind keine vollständige semantische Analyse oder Sicherheits-Sandbox. Die kompilierte CoreStore-API wird zusätzlich im bestehenden JVM-Test geprüft; APK-Ressourcenreferenzen werden über die AAPT2-Tabelle aufgelöst und alle zugehörigen XML-Dateien validiert.
 
 Eine grüne CI beweist keinen erfolgreichen Import realer Daten, keine funktionierende Website-Suche oder native Geräte-UX. Reale Android-Abnahme separat nach [ROADMAP.md](docs/ROADMAP.md); nach Installation unter Einstellungen Datenbankstatus (Schema v2) kontrollieren.
 
