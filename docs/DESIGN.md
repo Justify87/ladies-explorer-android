@@ -109,7 +109,7 @@ A: Entdecken/Filter/Modus (kompakt)     B: Name · belegter Kurzstatus (kompakt)
 | `W` um 360 dp, `H` ≥680 dp | Ziel mindestens 60 % `H` | Normalfall-Ziel für kleineres Fenster |
 | Hero-Anfang bei `H` 780 dp (Beispiel 109 dp) | Maximal 14 % `H`, Ziel 12 % `H` | Normalfall-Anforderung und Ziel |
 | Hero-Seitenabstand | 0–8 dp | Layout-Ziel |
-| Header und zusätzliche Filter-/Moduszeile | Header 48–56 dp, maximal **eine** zusätzliche kompakte Zeile | Layout-Ziel; keine doppelte Padding-Kette |
+| Header und zusätzliche Filter-/Moduszeile | Headerhöhe 48–56 dp als Richtwert | **Verbindlich:** maximal eine zusätzliche kompakte Zeile, keine doppelte Padding-Kette |
 
 **Planungsbudget bei `H=780`:** App-Bar 48 + Filterzeile 48 + Rail 56 + Root-Navigation 64 + Detailhinweis/Abstand 12 = 228 dp; Hero 546 dp (70 %) mit 6 dp Reserve. Das ist **kein** Satz fester Material-3-Höhen. Tatsächlich gemessene Insets und Komponenten entscheiden.
 
