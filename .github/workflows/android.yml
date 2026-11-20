@@ -6,6 +6,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      verify_native_cache:
+        description: 'Run the additional CI02 native cache integration probe'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -133,6 +138,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 2
           persist-credentials: false
 
       - name: Java 21
@@ -171,7 +177,7 @@ jobs:
 
       - name: Build arm64 APK and device test APK, run JVM tests and Android Lint
         id: gradle
-        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace --continue --profile
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a -Pladies.nativeCache=true --stacktrace --continue --profile
 
       - name: Verify packaged architecture contracts
         run: |
@@ -181,6 +187,22 @@ jobs:
           aapt2="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)"
           test -x "$aapt2"
           python3 tools/check_architecture.py --apk "$1" --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 "$aapt2"
+
+      # Expensive invalidation/relocation probe only for native build logic changes
+      # or explicit manual requests; not part of routine app edits.
+      - name: Verify native task cache contract
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            if git diff --quiet HEAD^1 HEAD -- '*.gradle.kts' '*.gradle' gradle.properties gradle/ gradlew gradlew.bat rust/Cargo.toml rust/Cargo.lock 'rust/**/Cargo.toml' 'rust/**/uniffi.toml' 'rust/**/build.rs' rust/bindgen/ rust/rust-toolchain.toml tools/verify-native-cache.sh .github/workflows/android.yml; then
+              exit 0
+            fi
+          elif [ "$VERIFY_NATIVE_CACHE" != true ]; then
+            exit 0
+          fi
+          bash tools/verify-native-cache.sh
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
