@@ -9,7 +9,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from ci_scope import DOCS, classify, docs_only, verified_main_run, parse_diff, native_required, main
+from ci_scope import DOCS, classify, docs_only, verified_main_run, parse_diff, main
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -132,10 +132,10 @@ class CiScopeTest(unittest.TestCase):
                                json.dumps({"workflow_runs": [run(conclusion="failure")]}).encode()]
         self.assert_policy(classify(ENV), "full", False, False)
         command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), b"incomplete"]
-        self.assert_policy(classify(ENV), "full", True, False)
+        self.assert_policy(classify(ENV), "full", False, False)
 
     @patch("ci_scope.subprocess.check_output")
-    def test_pr_matrix_and_union(self, command):
+    def test_pr_never_automatically_selects_native_probe(self, command):
         regular = (b"app/src/main/java/new.kt", b"app/src/main/res/layout/main.xml",
                    b"app/src/main/AndroidManifest.xml", b"app/src/test/java/X.java",
                    b"app/src/androidTest/java/X.kt", b"app/proguard-rules.pro",
@@ -151,9 +151,9 @@ class CiScopeTest(unittest.TestCase):
                   b"app/src/main/jniLibs/arm64-v8a/lib.so", b".github/workflows/android.yml",
                   b"tools/ci_scope.py", b"tools/test_ci_scope.py", b"tools/verify-native-cache.sh",
                   b"unknown.md", b"rust/ladies-core/src/unknown.sh")
-        cases = [(p, False, False) for p in regular] + [(p, True, False) for p in native]
+        cases = [(p, False, False) for p in regular + native]
         cases += [(b"tools/measure-android-build.sh", False, True),
-                  (b"tools/install-cargo-ndk.sh", True, True)]
+                  (b"tools/install-cargo-ndk.sh", False, True)]
         for path, n, m in cases:
             with self.subTest(path=path):
                 command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(path)]
@@ -161,7 +161,21 @@ class CiScopeTest(unittest.TestCase):
         command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(),
                                diff(b"README.md") + diff(b"rust/Cargo.lock") +
                                diff(b"tools/measure-android-build.sh")]
-        self.assert_policy(classify(ENV), "full", True, True)
+        self.assert_policy(classify(ENV), "full", False, True)
+
+    @patch("ci_scope.subprocess.check_output")
+    def test_automatic_events_ignore_manual_native_input(self, command):
+        for path in (b".github/workflows/android.yml", b"gradle.properties",
+                     b"rust/Cargo.lock", b"tools/verify-native-cache.sh",
+                     b"tools/ci_reuse.py", b"unknown.bin"):
+            with self.subTest(path=path):
+                command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(path)]
+                self.assert_policy(classify(dict(ENV, VERIFY_NATIVE_CACHE="true")),
+                                   "full", False, False)
+                command.side_effect = [MERGE.encode(), b"", diff(path)]
+                env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
+                           BEFORE_SHA=BASE, VERIFY_NATIVE_CACHE="true")
+                self.assert_policy(classify(env), "full", False, False)
 
     def test_manual_inputs_independent(self):
         for n in (True, False):
@@ -178,18 +192,19 @@ class CiScopeTest(unittest.TestCase):
                     diff(b"README.md", old=b"000000")):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 parse_diff(raw)
-        self.assertTrue(native_required(parse_diff(diff(b"app/src/main/java/X.kt",
-                                                       new=b"100755"))[0]))
-        self.assertFalse(native_required(parse_diff(diff(b"README.md", new=b"100755"))[0]))
+        for path in (b"app/src/main/java/X.kt", b"README.md"):
+            changes = parse_diff(diff(path, new=b"100755"))
+            self.assertEqual(b"100755", changes[0].new_mode)
+            self.assertFalse(docs_only(diff(path, new=b"100755")))
 
     @patch("ci_scope.subprocess.check_output")
     def test_push_head_and_ancestry_required(self, command):
         env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
                    BEFORE_SHA=BASE)
         command.side_effect = [MERGE.encode(), subprocess.CalledProcessError(1, "git")]
-        self.assert_policy(classify(env), "full", True, False)
+        self.assert_policy(classify(env), "full", False, False)
         command.side_effect = [HEAD.encode()]
-        self.assert_policy(classify(env), "full", True, False)
+        self.assert_policy(classify(env), "full", False, False)
         command.side_effect = [MERGE.encode(), b"", diff(b"tools/measure-android-build.sh")]
         self.assert_policy(classify(env), "full", False, True)
 
@@ -218,7 +233,7 @@ class CiScopeTest(unittest.TestCase):
                     dict(ENV, GITHUB_EVENT_NAME="push", BEFORE_SHA="0" * 40),
                     dict(ENV, GITHUB_EVENT_NAME="unrecognized")):
             with self.subTest(env=env):
-                self.assert_policy(classify(env), "full", True, False)
+                self.assert_policy(classify(env), "full", False, False)
         command.assert_not_called()
 
     def test_actual_manual_output_files(self):
@@ -351,13 +366,13 @@ class RealGitPolicyTest(unittest.TestCase):
         self.write("README.md", "updated")
         self.commit("docs")
         result = self.classify_push()
-        self.assertEqual(("full", True, True),
+        self.assertEqual(("full", False, True),
                          (result.mode, result.native_qualification, result.performance_measurement))
         self.git("reset", "--hard", self.base)
         self.git("mv", "app/build.gradle.kts", "README2.md")
         self.commit("rename build contract")
         result = self.classify_push()
-        self.assertEqual(("full", True, False),
+        self.assertEqual(("full", False, False),
                          (result.mode, result.native_qualification, result.performance_measurement))
 
     def test_real_push_docs_and_new_code(self):
@@ -404,7 +419,7 @@ class RealGitPolicyTest(unittest.TestCase):
         self.git("merge", "--no-ff", "-qm", "PR merge", "feature")
         self.assertEqual(303, len(parse_diff(self.raw_diff())))
         self.assert_decision(self.classify_pr({"workflow_runs": [run(head_sha=self.base)]}),
-                             "full", True, False)
+                             "full", False, False)
 
     def test_real_pr_docs_proof_and_structural_change(self):
         self.git("checkout", "-qb", "feature")
@@ -441,7 +456,7 @@ class RealGitPolicyTest(unittest.TestCase):
                 env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
                            BEFORE_SHA=before, GITHUB_SHA=head)
                 with patch("ci_scope.git", side_effect=self.git):
-                    self.assert_decision(classify(env), "full", True, False)
+                    self.assert_decision(classify(env), "full", False, False)
 
     def test_real_nul_paths_unknown_and_measurement_union(self):
         self.write("app/src/main/java/space tab\tnewline\n.kt", "// synthetic\n")
@@ -450,7 +465,7 @@ class RealGitPolicyTest(unittest.TestCase):
         self.write("unknown\nfile", "synthetic")
         self.write("tools/measure-android-build.sh", "# synthetic\n")
         self.commit("unknown and measurement")
-        self.assert_decision(self.classify_push(), "full", True, True)
+        self.assert_decision(self.classify_push(), "full", False, True)
 
 
 
@@ -649,7 +664,8 @@ class WorkflowGateTest(unittest.TestCase):
         for step_name, flag in zip(names[3:5], ("native_qualification", "performance_measurement")):
             step = self.step(step_name)
             self.assertIn(f"id: {flag}", step)
-            self.assertIn("if: ${{ needs.scope.outputs." + flag + " == 'true' }}", step)
+            condition = "github.event_name == 'workflow_dispatch' && " if flag == "native_qualification" else ""
+            self.assertIn("if: ${{ " + condition + "needs.scope.outputs." + flag + " == 'true' }}", step)
             self.assertNotIn("continue-on-error:", step)
             self.assertIn(flag + ": ${{ steps." + flag + ".outcome }}", self.workflow)
             self.assertIn(flag + ": ${{ steps.classify.outputs." + flag + " }}", self.workflow)

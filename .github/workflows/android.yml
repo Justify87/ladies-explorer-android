@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       verify_native_cache:
-        description: 'Run the additional CI02 native cache integration probe'
+        description: 'Optional diagnostic only: verify native task cache contract (slow)'
         type: boolean
         default: false
       measure_android_build:
@@ -289,7 +289,7 @@ jobs:
       # Qualification runs use the same verified policy as the routine build.
       - name: Verify native task cache contract
         id: native_qualification
-        if: ${{ needs.scope.outputs.native_qualification == 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && needs.scope.outputs.native_qualification == 'true' }}
         run: bash tools/verify-native-cache.sh
 
       - name: Measure Android build performance (CI05)
