@@ -160,12 +160,6 @@ class CoreStore(context: Context) {
         recorded("setFavorite") { engine.setFavorite(personId, favorite) }
     }
 
-    suspend fun importLegacyBundle(file: File): ImportReport = withContext(Dispatchers.IO) {
-        recorded("importLegacyBundle") {
-            engine.importLegacyBundle(file.absolutePath, appFiles.absolutePath)
-        }
-    }
-
     suspend fun preview(query: SearchRequest, control: RequestControl): SearchPreview =
         withContext(Dispatchers.IO) {
             recorded("preview city=${query.city} radius=${query.radiusKm}") {

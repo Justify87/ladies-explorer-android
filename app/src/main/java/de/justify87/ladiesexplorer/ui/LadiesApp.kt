@@ -73,7 +73,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun LadiesApp(
     viewModel: MainViewModel,
-    onPickLegacyBundle: () -> Unit,
     onSaveDiagnostics: () -> Unit,
     onShareDiagnostics: () -> Unit,
     onSaveHar: () -> Unit,
@@ -154,7 +153,7 @@ fun LadiesApp(
 
     // Root navigation preserves pagination and scroll state.
     fun selectRoot(destination: RootDestination) {
-        if (route.root == destination || saved.blockingNavigation || home.importing) return
+        if (route.root == destination || saved.blockingNavigation) return
         profileTouchGate.invalidate()
         if (swipeShell) viewModel.setSwipeVisible(false)
         route = route.select(destination)
@@ -192,7 +191,6 @@ fun LadiesApp(
     }
     fun back() {
         profileTouchGate.invalidate()
-        if (home.importing) return
         if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen || savedResultsOpen)) {
             viewModel.savedSearch.back()
             return
@@ -205,7 +203,7 @@ fun LadiesApp(
         }
     }
     // On the default swipe route, Back cancels an active touch or delegates to Android.
-    BackHandler(enabled = home.importing || savedEditorOpen || savedOverviewOpen ||
+    BackHandler(enabled = savedEditorOpen || savedOverviewOpen ||
         route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System ||
         (profileTouchEnabled && profileTouchGate.active)) { back() }
 
@@ -264,7 +262,7 @@ fun LadiesApp(
                         NavigationBarItem(
                             selected = route.root == destination,
                             onClick = { selectRoot(destination) },
-                            enabled = (!saved.blockingNavigation && !home.importing) || route.root == destination,
+                            enabled = !saved.blockingNavigation || route.root == destination,
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -440,7 +438,6 @@ fun LadiesApp(
                     RootDestination.Settings -> SettingsScreen(
                         state=home,
                         onRefresh=viewModel::refresh,
-                        onPickLegacyBundle=onPickLegacyBundle,
                         onSaveDiagnostics=onSaveDiagnostics,
                         onShareDiagnostics=onShareDiagnostics,
                         onDebugLogging=viewModel::setDebugLoggingEnabled,
@@ -508,7 +505,6 @@ private fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode) 
 private fun SettingsScreen(
     state: HomeUiState,
     onRefresh: () -> Unit,
-    onPickLegacyBundle: () -> Unit,
     onSaveDiagnostics: () -> Unit,
     onShareDiagnostics: () -> Unit,
     onDebugLogging: (Boolean) -> Unit,
@@ -533,13 +529,6 @@ private fun SettingsScreen(
         Button(onClick=onRefresh,enabled=!state.loading,modifier=Modifier.fillMaxWidth()) {
             Text("Datenbankstatus aktualisieren")
         }
-        Button(onClick=onPickLegacyBundle,enabled=!state.loading,modifier=Modifier.fillMaxWidth()) {
-            Text("Web-App-Datenarchiv importieren")
-        }
-        Text(
-            "Das ZIP muss mit tools/export-legacy.sh erstellt werden. Der Import in eine bereits befüllte Datenbank ist nicht erlaubt.",
-            style=MaterialTheme.typography.bodySmall,
-        )
         Text("Diagnose",style=MaterialTheme.typography.titleLarge)
         androidx.compose.foundation.layout.Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
             Text("Debug-Details", modifier=Modifier.weight(1f))
@@ -597,13 +586,6 @@ private fun SettingsScreen(
             modifier=Modifier.fillMaxWidth()) {
             Text("Aufzeichnung löschen")
         }
-        state.lastImport?.let { report ->
-            Text("Import abgeschlossen",style=MaterialTheme.typography.titleMedium)
-            Text(
-                "Personen: ${report.persons} · Quellenprofile: ${report.sourceProfiles} · " +
-                    "Inserate: ${report.listings} · Gespeicherte Suchen: ${report.savedSearches} · " +
-                    "Preislisten: ${report.manualPriceLists} · Medien: ${report.mediaFiles}",
-            )
-        }
+
     }
 }

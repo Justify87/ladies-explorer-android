@@ -21,10 +21,6 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
-    private val pickLegacyBundle = registerForActivityResult(ActivityResultContracts.OpenDocument()) {
-        uri -> uri?.let(viewModel::importBundle)
-    }
-
     private val saveDiagnostics = registerForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri ->
@@ -124,15 +120,6 @@ class MainActivity : ComponentActivity() {
             LadiesTheme {
                 LadiesApp(
                     viewModel = viewModel,
-                    onPickLegacyBundle = {
-                        pickLegacyBundle.launch(
-                            arrayOf(
-                                "application/zip",
-                                "application/x-zip-compressed",
-                                "application/octet-stream",
-                            )
-                        )
-                    },
                     onSaveDiagnostics = {
                         saveDiagnostics.launch("ladies-debug-${System.currentTimeMillis()}.txt")
                     },
