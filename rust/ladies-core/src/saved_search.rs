@@ -1007,7 +1007,11 @@ mod tests {
         }
         let page = results(&core, id.clone(), 2, None).unwrap();
         let cursor = page.next_cursor.unwrap();
-        assert!(results(&core, other, 2, Some(cursor.clone())).is_err());
+        assert!(matches!(
+            results(&core, other, 2, Some(cursor.clone())),
+            Err(CoreError::InvalidInput(reason))
+                if reason == "Saved result cursor expired; reload the window"
+        ));
         let window_before = window(&core, id.clone(), 2).unwrap();
         let version = window_before
             .searches
@@ -1022,7 +1026,11 @@ mod tests {
                 [&id],
             )
             .unwrap();
-        assert!(results(&core, id.clone(), 2, Some(cursor)).is_err());
+        assert!(matches!(
+            results(&core, id.clone(), 2, Some(cursor)),
+            Err(CoreError::InvalidInput(reason))
+                if reason == "Saved result cursor expired; reload the window"
+        ));
         assert!(!acknowledge_revision(&core, id.clone(), version).unwrap());
         let fresh = window(&core, id.clone(), 4).unwrap();
         assert_eq!(
@@ -1328,7 +1336,11 @@ mod tests {
             radius_verified: true,
             profiles: Vec::new(),
         };
-        assert!(persist_results(&core, &id, &empty, &initial, initial_version).is_err());
+        assert!(matches!(
+            persist_results(&core, &id, &empty, &initial, initial_version),
+            Err(CoreError::InvalidInput(reason))
+                if reason == "Saved search changed during execution; stale results discarded"
+        ));
         let db = core.connection().unwrap();
         let (count, last_run): (i64, Option<String>) = db
             .query_row(
@@ -1343,9 +1355,24 @@ mod tests {
     }
 
     #[test]
-    fn cancelled_result_transaction_preserves_the_old_baseline() {
+    fn cancelled_or_failed_result_write_preserves_membership_and_baseline() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "Leipzig".into(), SearchRequest::for_test()).unwrap();
+        let (definition, version) = definition(&core, &id).unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO saved_search_results(saved_search_id,result_key,snapshot_json,position,present,visible)
+                 VALUES (?1,'old','{}',0,1,1)",
+                [&id],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE saved_searches SET last_run_at='2000-01-01',unread_new_results=1 WHERE saved_search_id=?1",
+                [&id],
+            )
+            .unwrap();
+        }
         let response = SearchResponse {
             query: SearchRequest::for_test(),
             local: LocalVisibility::default(),
@@ -1360,31 +1387,36 @@ mod tests {
             radius_verified: true,
             profiles: Vec::new(),
         };
-        let (definition, version) = definition(&core, &id).unwrap();
-        persist_results(&core, &id, &response, &definition, version).unwrap();
+        let baseline = || {
+            let info = list(&core).unwrap().remove(0);
+            assert_eq!(info.last_run_at.as_deref(), Some("2000-01-01"));
+            assert!(info.unread_new_results);
+            let cards = results(&core, id.clone(), 100, None).unwrap().cards;
+            assert_eq!(cards.len(), 1);
+            assert_eq!(cards[0].result_key, "old");
+        };
+        baseline();
         let control = RequestControl::default();
         control.cancel();
-        assert!(
-            persist_results_with_control(
-                &core,
-                &id,
-                &response,
-                &definition,
-                version,
-                Some(&control)
-            )
-            .is_err()
-        );
-        let last_run: String = core
-            .connection()
+        assert!(matches!(
+            persist_results_with_control(&core, &id, &response, &definition, version, Some(&control)),
+            Err(CoreError::Source(reason)) if reason == "Operation cancelled"
+        ));
+        baseline();
+
+        // Abort after result rows were changed, not before the transaction began.
+        core.connection()
             .unwrap()
-            .query_row(
-                "SELECT last_run_at FROM saved_searches WHERE saved_search_id=?1",
-                [&id],
-                |r| r.get(0),
+            .execute_batch(
+                "CREATE TEMP TRIGGER reject_baseline_update BEFORE UPDATE OF last_run_at ON saved_searches
+                 BEGIN SELECT RAISE(ABORT, 'fixture baseline rejection'); END;",
             )
             .unwrap();
-        assert!(!last_run.is_empty());
+        assert!(matches!(
+            persist_results(&core, &id, &response, &definition, version),
+            Err(CoreError::Storage(reason)) if reason.contains("fixture baseline rejection")
+        ));
+        baseline();
     }
 
     #[test]
@@ -1474,20 +1506,24 @@ mod tests {
         }
         drop(db);
         let mut cursor = None;
-        let mut count = 0;
+        let mut keys = Vec::new();
         loop {
             let page = results(&core, id.clone(), 100, cursor).unwrap();
-            count += page.cards.len();
+            assert!(!page.cards.is_empty());
+            assert!(page.cards.len() <= 100);
+            keys.extend(page.cards.into_iter().map(|card| card.result_key));
+            assert!(keys.len() <= 1105);
             match page.next_cursor {
                 Some(next) => cursor = Some(next),
                 None => break,
             }
         }
-        assert_eq!(count, 1105);
+        let expected: Vec<_> = (0..1105).map(|position| format!("item-{position:04}")).collect();
+        assert_eq!(keys, expected);
     }
 
     #[test]
-    fn saved_result_changes_are_atomic_and_old_absences_need_complete_search() {
+    fn repeated_empty_complete_results_do_not_create_new_alerts() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "test".into(), SearchRequest::for_test()).unwrap();
         let response = SearchResponse {

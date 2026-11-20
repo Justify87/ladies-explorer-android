@@ -432,9 +432,18 @@ mod tests {
         core.set_preference(person, Preference::Like).unwrap();
         core.set_favorite(person, true).unwrap();
         save_note(&core, listing, person, None, Some("First".into())).unwrap();
-        assert!(save_note(&core, listing, person, None, Some("Stale".into())).is_err());
-        assert!(save_note(&core, listing, other, None, Some("Wrong".into())).is_err());
-        assert!(person_note(&core, listing, other).is_err());
+        assert!(matches!(
+            save_note(&core, listing, person, None, Some("Stale".into())),
+            Err(CoreError::IdentityConflict(reason)) if reason == "Note has changed; reload before saving"
+        ));
+        assert!(matches!(
+            save_note(&core, listing, other, None, Some("Wrong".into())),
+            Err(CoreError::IdentityConflict(reason)) if reason == "Note owner changed; reopen profile"
+        ));
+        assert!(matches!(
+            person_note(&core, listing, other),
+            Err(CoreError::IdentityConflict(reason)) if reason == "Note owner changed; reopen profile"
+        ));
         assert_eq!(
             person_note(&core, listing, person).unwrap().as_deref(),
             Some("First")

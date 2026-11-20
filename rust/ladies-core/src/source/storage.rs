@@ -751,11 +751,17 @@ mod tests {
         let target = listing_target(&core, listing, true).unwrap();
         let control = RequestControl::default();
         save_status(&core, &target, "UNAVAILABLE", 404, true, Some(&control)).unwrap();
-        assert!(save_status(&core, &target, "ACTIVE", 200, true, Some(&control)).is_err());
+        assert!(matches!(
+            save_status(&core, &target, "ACTIVE", 200, true, Some(&control)),
+            Err(CoreError::Source(reason)) if reason == "Listing changed during source request"
+        ));
         let new_target = listing_target(&core, listing, true).unwrap();
         let cancelled = RequestControl::default();
         cancelled.cancel();
-        assert!(save_status(&core, &new_target, "ACTIVE", 200, true, Some(&cancelled)).is_err());
+        assert!(matches!(
+            save_status(&core, &new_target, "ACTIVE", 200, true, Some(&cancelled)),
+            Err(CoreError::Source(reason)) if reason == "Operation cancelled"
+        ));
         {
             let db = core.connection().unwrap();
             let status: (String, Option<String>, Option<String>) = db
@@ -834,7 +840,10 @@ mod tests {
         }
         let stale = listing_target(&core, listing, false).unwrap();
         save_status(&core, &stale, "UNAVAILABLE", 404, false, None).unwrap();
-        assert!(save_observed_profile(&core, &stale, profile("Fixture"), true, None).is_err());
+        assert!(matches!(
+            save_observed_profile(&core, &stale, profile("Fixture"), true, None),
+            Err(CoreError::Source(reason)) if reason == "Listing changed during source request"
+        ));
         let target = listing_target(&core, listing, false).unwrap();
         save_observed_profile(&core, &target, profile("Fixture"), false, None).unwrap();
         {

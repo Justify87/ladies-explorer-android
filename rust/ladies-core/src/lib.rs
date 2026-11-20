@@ -1245,7 +1245,7 @@ mod tests {
         }
         let again = LadiesCore::new(path).unwrap();
         assert_eq!(again.status().unwrap().schema_version, schema::VERSION);
-        assert_eq!(again.get_person(id).unwrap().unwrap().favorite, true);
+        assert!(again.get_person(id).unwrap().unwrap().favorite);
         assert_eq!(
             again.person_note(listing, id).unwrap().as_deref(),
             Some("Local note")
@@ -1465,14 +1465,18 @@ mod swipe_preference_tests {
                 .unwrap(),
             Preference::Dislike
         );
-        assert!(
-            core.set_swipe_preference(listing, other, None, Preference::None)
-                .is_err()
-        );
-        assert!(
-            core.set_swipe_preference(listing, person, Some(Preference::None), Preference::Dislike)
-                .is_err()
-        );
+        assert!(matches!(
+            core.set_swipe_preference(listing, other, None, Preference::None),
+            Err(CoreError::IdentityConflict(reason))
+                if reason == "Personenzuordnung geändert; bitte Deck aktualisieren."
+        ));
+        assert!(matches!(
+            core.set_swipe_preference(listing, person, Some(Preference::None), Preference::Dislike),
+            Err(CoreError::IdentityConflict(reason))
+                if reason == "Präferenz inzwischen geändert; Undo nicht möglich."
+        ));
+        assert_eq!(core.get_person(person).unwrap().unwrap().preference, Preference::Like);
+        assert_eq!(core.get_person(other).unwrap().unwrap().preference, Preference::None);
         assert_eq!(
             core.set_swipe_preference(listing, person, Some(Preference::Like), Preference::Dislike)
                 .unwrap(),
