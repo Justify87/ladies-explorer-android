@@ -1,4 +1,4 @@
-"""Conservative, shared CI06 execution policy; no cross-commit build reuse."""
+"""Central CI event policy; expensive cache qualification is manual only."""
 import json
 import os
 import re
@@ -11,24 +11,9 @@ DOCS = frozenset({
     b"docs/SOURCE.md", b"docs/DATA-IMPORT.md", b"docs/DIAGNOSTICS.md",
     b"docs/MAP.md", b"tools/M05-REFERENCE.md",
 })
-REGULAR = DOCS | frozenset({
-    b"AGENTS.md", b"docs/PROVENANCE.md", b"LICENSE", b"NOTICE", b".gitignore",
-    b"app/proguard-rules.pro", b"tools/check_architecture.py",
-    b"tools/test_check_architecture.py", b"tools/export-legacy.sh",
-    b"tools/m05-reference.py", b"tools/measure-android-build.sh",
-})
-NATIVE = frozenset({
-    b"gradle.properties", b"gradlew", b"gradlew.bat",
-    b"tools/verify-native-cache.sh", b"tools/install-cargo-ndk.sh",
-    b"tools/ci_scope.py", b"tools/test_ci_scope.py",
-})
-MEASURE = frozenset({b"tools/install-cargo-ndk.sh", b"tools/measure-android-build.sh"})
-NATIVE_NAMES = frozenset({b"Cargo.toml", b"Cargo.lock", b"build.rs", b"uniffi.toml",
-                         b"rust-toolchain", b"rust-toolchain.toml"})
 OID = re.compile(r"[0-9a-f]{40}")
 RAW_OID = re.compile(rb"[0-9a-f]{7,64}")
 MODES = {b"000000", b"100644", b"100755", b"120000", b"160000"}
-ORDINARY = {b"100644", b"100755"}
 DIFF_ERRORS = (OSError, ValueError, UnicodeError, subprocess.SubprocessError)
 
 
@@ -44,6 +29,7 @@ class Decision(NamedTuple):
     reason: str
     native_qualification: bool
     performance_measurement: bool
+    reuse_candidate: str = "none"
 
 
 def parse_diff(raw):
@@ -85,36 +71,6 @@ def docs_only(raw):
         return is_docs_only(parse_diff(raw))
     except ValueError:
         return False
-
-
-def native_required(change):
-    path = change.path
-    parts = path.split(b"/")
-    name = parts[-1]
-    if (path in NATIVE or name in NATIVE_NAMES or b".cargo" in parts or
-            name.endswith((b".gradle", b".gradle.kts")) or
-            path.startswith((b"gradle/", b"rust/bindgen/", b".github/workflows/")) or
-            (path.startswith(b"app/src/") and b"jniLibs" in parts)):
-        return True
-    if path in DOCS:
-        return False
-    # Special-file/type or mode changes are not ordinary source edits.
-    if ({change.old_mode, change.new_mode} - ORDINARY - {b"000000"} or
-            (change.status == b"M" and change.old_mode != change.new_mode)):
-        return True
-    if path in REGULAR:
-        return False
-    if (path.startswith((b"app/src/main/java/", b"app/src/test/java/",
-                         b"app/src/androidTest/java/")) and name.endswith((b".kt", b".java"))):
-        return False
-    if path == b"app/src/main/AndroidManifest.xml":
-        return False
-    if (path.startswith(b"app/src/main/res/") and
-            name.endswith((b".xml", b".png", b".webp", b".jpg", b".jpeg", b".ttf", b".otf"))):
-        return False
-    if path.startswith(b"rust/ladies-core/src/") and name.endswith((b".rs", b".json")):
-        return False
-    return True
 
 
 def verified_main_run(response, base):
@@ -168,13 +124,11 @@ def classify(env):
         return Decision("full", "Manual full CI; explicit qualification inputs.",
                         manual_flag(env, "VERIFY_NATIVE_CACHE"), manual_flag(env, "MEASURE_ANDROID_BUILD"))
     if event not in {"pull_request", "push"}:
-        return Decision("full", "Unknown event; conservative full CI and native qualification.", True, False)
+        return Decision("full", "Unknown event; conservative full CI.", False, False)
     try:
         base, changes = event_diff(env, event)
     except DIFF_ERRORS:
-        return Decision("full", "Could not verify complete event diff; native qualification required.", True, False)
-    native = any(native_required(c) for c in changes)
-    measure = any(c.path in MEASURE for c in changes)
+        return Decision("full", "Could not verify complete event diff; full CI required.", False, False)
     if event == "pull_request" and env.get("BASE_REF") == "main" and is_docs_only(changes):
         try:
             response = json.loads(subprocess.check_output([
@@ -185,11 +139,12 @@ def classify(env):
             ], timeout=30))
             run_id = verified_main_run(response, base)
             if run_id is not None:
-                return Decision("docs", f"Documentation-only PR; full main CI evidence: run {run_id}, SHA {base}.", False, False)
+                return Decision("docs", f"Documentation-only PR; verified main CI evidence: run {run_id}, SHA {base}.", False, False)
         except DIFF_ERRORS + (KeyError, TypeError, AttributeError):
             pass
         return Decision("full", "No successful latest main push CI for the exact docs base.", False, False)
-    return Decision("full", "Verified event diff; full CI with selected additional qualifications.", native, measure)
+    candidate = ("docs" if is_docs_only(changes) else "merge") if event == "push" else "none"
+    return Decision("full", "Verified event diff; routine full CI.", False, False, candidate)
 
 
 def main():
@@ -197,7 +152,8 @@ def main():
     print(decision.reason)
     fields = (('mode', decision.mode),
               ('native_qualification', str(decision.native_qualification).lower()),
-              ('performance_measurement', str(decision.performance_measurement).lower()))
+              ('performance_measurement', str(decision.performance_measurement).lower()),
+              ('reuse_candidate', decision.reuse_candidate))
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for name, value in fields:
             output.write(f"{name}={value}\n")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI05 one-off measurement (manual or CI05 build-contract PR).
+# CI05 one-off measurement (explicit manual diagnostic only).
 # Use a disposable checkout and the already populated read-only task cache.
 # The checked APK, production build outputs and original checkout stay intact.
 set -euo pipefail
