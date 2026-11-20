@@ -103,7 +103,7 @@ class CiScopeTest(unittest.TestCase):
                    b"app/src/androidTest/java/X.kt", b"app/proguard-rules.pro",
                    b"rust/ladies-core/src/lib.rs", b"rust/ladies-core/src/source/filter_catalog.json",
                    b"tools/check_architecture.py", b"tools/test_check_architecture.py",
-                   b"tools/export-legacy.sh", b"tools/m05-reference.py",
+                   b"tools/install-cargo-ndk.sh", b"tools/m05-reference.py",
                    b"LICENSE", b"NOTICE", b".gitignore",
                    b"build.gradle.kts", b"app/build.gradle.kts", b"settings.gradle.kts",
                   b"gradle.properties", b"gradle/libs.versions.toml", b"gradlew", b"gradlew.bat",

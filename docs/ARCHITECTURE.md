@@ -74,20 +74,6 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 - **Keyset-Cursor:** `PersonCursor` über `last_seen_at`/`person_id`, `DiscoveryCursor` über Favorit/Inserat-`last_seen_at`/`listing_id`; jeweils absteigend und Seitengrößen 1–100. Suche, SavedSearch und SavedPeople besitzen eigene Fensterverträge.
 - UI enthält weder direkte SQL-Zugriffe noch eine alternative Persistenz.
 
-### Abzulösender Legacy-Import (Ist-Abweichung)
-
-**Ist-Abweichung vom [Produktsoll](PRODUCT.md#produktziel-und-grenzen), keine Nutzungsempfehlung:**
-- Vorhandener Pfad: Einstellungen/Dateiauswahl → `MainViewModel` → `CoreStore.importLegacyBundle` → UniFFI → `legacy_import.rs`. `tools/export-legacy.sh` und bestehende CI-/Fixture-Tests referenzieren diesen Altpfad.
-- Suche und Import sind gegenseitig exklusiv. Home-Status und Import teilen einen Owner; Statusrefresh wird koalesziert, ohne Importfehler zu verdecken.
-- Während des Imports bleiben Root/Back gesperrt; betroffene ungespeicherte Notizentwürfe sind geschützt.
-
-**Bis zur tatsächlichen Entfernung verbindliche Schutzregeln:**
-- Nur in leere DB importieren, vollständig transaktional; native-v1-Tabellen und -Spalten strikt prüfen.
-- Fremdschlüssel, Owner und Medien-SHA-256 prüfen. Ungültiges Archiv oder fehlende Dateien ohne Überschreiben und ohne Teilimport ablehnen.
-- Historische Definitionsformate in `saved_search.rs` strikt dekodieren; fachliche Sperre gemäß [PRODUCT](PRODUCT.md#gespeicherte-suchen).
-
-Kein Auftrag zur Erweiterung oder Nutzerdatenmigration. Entfernung und native synthetische Tests: [DC02](ROADMAP.md#unabhängige-technische-bereinigung).
-
 ### Historisierung und Identitätsoperation
 
 **Snapshots und Übergänge:**

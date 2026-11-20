@@ -75,10 +75,9 @@ Optionale Diagnosewerkzeuge, ausschließlich explizit manuell (beide Inputs stan
 
 ### Lokale Prüfungen
 
-**CI-Scope, Architektur und noch vorhandener Legacy-Exportpfad:**
+**CI-Scope und Architektur:**
 
 ```sh
-bash -n tools/export-legacy.sh
 python3 -m unittest discover -s tools -p test_ci_scope.py
 python3 -m unittest discover -s tools -p test_check_architecture.py
 python3 tools/check_architecture.py
@@ -109,14 +108,14 @@ Eine grüne CI beweist keine funktionierende reale Website-Suche oder native Ger
 
 ## Synthetische Testdaten
 
-Bis zur Entfernung des obsoleten Importpfads verwendet die bestehende CI ein internes natives v1-Fixture (keine Nutzerdaten, keine Migrationsempfehlung):
+Die CI erzeugt eine isolierte native Android-v2-Testdatenbank ohne Nutzerimport oder Migration:
 
 ```sh
 python3 tools/m05-reference.py /tmp/m05-reference --clock 2026-11-18T12:00:00+00:00
-(cd rust && M05_REFERENCE_BUNDLE=/tmp/m05-reference/m05-synthetic.zip cargo test --workspace --locked m05_reference_bundle_import -- --ignored)
+(cd rust && M05_REFERENCE_DB=/tmp/m05-reference/ladies.sqlite cargo test --workspace --locked m05_native_reference_fixture -- --ignored)
 ```
 
-Acht künstliche Personen, neun Inserate, 18 Snapshots, Präferenz-/Favorit-Kombinationen, geometrische Medien, example.invalid; `scenarios.json` enthält stabile IDs und Szenarien. Aktuelle Watchlist: Uhrzeit weglassen. Der opt-in-Rust-Test prüft Import, Medienpfad, Präferenz, Notiz, Snapshot-Anzahl und Fremdschlüssel, keine Geräte-UI. Zielverzeichnis neu, keine echten Daten überschreiben. Test-only; Generator und Importtest bei Entfernung des Altpfads auf direkte synthetische native Testdaten umstellen (ROADMAP). Spezifische Regressionsverträge: [ARCHITECTURE](docs/ARCHITECTURE.md#automatisierte-architekturverträge), visuelle Prüfung: [DESIGN](docs/DESIGN.md#prüfung-und-gestaltungsspielraum).
+Acht künstliche Personen, neun Inserate, 18 Snapshots, Präferenz-/Favorit-Kombinationen, geometrische Medien, example.invalid; `scenarios.json` enthält stabile IDs und Szenarien. Aktuelle Watchlist: Uhrzeit weglassen. Der opt-in-Rust-Test öffnet diese native Datenbank und prüft Schema, Medienpfad, Präferenz, Notiz, Snapshot-Anzahl und Fremdschlüssel, keine Geräte-UI. Zielverzeichnis neu, keine echten Daten überschreiben; ausschließlich Testdaten. Spezifische Regressionsverträge: [ARCHITECTURE](docs/ARCHITECTURE.md#automatisierte-architekturverträge), visuelle Prüfung: [DESIGN](docs/DESIGN.md#prüfung-und-gestaltungsspielraum).
 
 ## Dokumentation
 
