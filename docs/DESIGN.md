@@ -17,12 +17,12 @@ Maßgebliche konkrete Farb-, Shape- und Typografie-Tokens: [LadiesTheme.kt](../a
 - Vier Root-Ziele Entdecken/Suche/Gespeichert/Einstellungen. Kontextabhängiger Header mit Branding, Alle/Jetzt/Heute in Entdecken, Suchsymbol bzw. gespeicherte Suchen mit Neu-Indikator in Suche. Swipe/Grid/Karte als Ansichtswechsel. Standalone-Profil ohne Root-Navigation, Back/Mehr im festen Header.
 - Grid: zwei Spalten im üblichen Smartphone-Fenster, Breite/Höhe ca. 0,77, rund 23 dp als Richtwert, Cover, Dunkelgradient unten, Name/Alter und direktes Like oben rechts; Platzhalter bei fehlenden Medien.
 - Suche: globaler Filtertext, Ort/Radius, Top 5, Verfügbarkeit, Alter (dual range), Treffpunkt, einklappbare Kategorien/Eigenschaften (inkl. Größe)/Services/weitere Optionen; Footer Reset + Suche mit Count/Status; Gruppenstatus und Scroll erhalten.
-- Gespeichert: Tabs Favoriten/Likes/Dislikes, Anzahl, Sortierung Datum/Name, Statusprüfung, Watchlist mit zunächst drei Einträgen und Aufklappen, keine Duplikate. Kompakte Zeilen mit Thumbnail, Name/Alter, Ort, Status/Aktivitätszeit, Änderungsbadge/zusätzliche Anzeigen, Herz/Mehr. Gespeicherte Suchen als eigene Übersicht mit Neu-Indikator, Delta, Editor und Ergebnisgrid.
+- Gespeichert: Tabs, Counts, Sortierung, Statusprüfung und aufklappbare Watchlist gemäß [PRODUCT](PRODUCT.md#gespeicherte-personen). Kompakte Zeilen mit Thumbnail, Name/Alter, Ort, Status/Aktivitätszeit, Änderungsbadge/zusätzliche Anzeigen, Herz/Mehr. Gespeicherte Suchen als eigene Übersicht mit Neu-Indikator, Delta, Editor und Ergebnisgrid.
 - Karte: große Kartenfläche, zurückhaltende Controls, tatsächlichen Datenumfang und ungefähre Standorte kennzeichnen. Marker/Cluster, gemeinsame Auswahl gleich positionierter Profile, bestehende Profilnavigation, Kamera/Auswahl bei Tab- und Profilwechsel erhalten, Fehler/Retry, Auflösungsfortschritt/Abbruch sichtbar; gecachte Zentren bleiben während Auflösung sichtbar. Einstellungen: schlichte funktionale Gruppen. Neue Funktionen nutzen diese Muster.
 
 ## Profile und Medien
 
-Priorität: (1) korrekte Identität/Entscheidung, keine falsche Aktion oder Datenverluste; (2) eindeutige Tap-/Swipe-/Scroll-Interaktion; (3) große Galerie und Orientierung; (4) kompakte zugängliche Details; (5) Animation/Dekoration. Keine neuen Felder nur fürs Layout. Keine unbelegten Aktivitätszeiten, Verifiziert-Badges, Interessen, Preise, Begegnungen oder KI-Bewertungen.
+Priorität: (1) korrekte Identität/Entscheidung, keine falsche Aktion oder Datenverluste; (2) eindeutige Tap-/Swipe-/Scroll-Interaktion; (3) große Galerie und Orientierung; (4) kompakte zugängliche Details; (5) Animation/Dekoration. Keine neuen Felder nur fürs Layout; Datenumfang und Evidenz gemäß [PRODUCT](PRODUCT.md#profile-medien-und-kontakte).
 
 ### UX-Vertrag — zwei Zustände, ein Scrollfluss
 
@@ -61,7 +61,7 @@ Visuelle Hierarchie nach Relevanz für schnelle Profilentscheidung; keine Sammlu
 | 2 | Beschreibung | Kurzer mehrzeiliger Auszug, „Mehr anzeigen“ wenn abgeschnitten; voller Originaltext zugänglich, kein KI-Resümee |
 | 3 | Dienste/Filterbelege | Gruppierte Textzeilen oder wenige Chips, explizit Ja/Nein/Unbekannt; kompakte Zusammenfassung mit Zugang zu allen Werten, keine irreführende Verdichtung |
 | 4 | Kontakt und externe Aktionen | Direkt zugängliche vorhandene Kontaktregeln/Telefon/WhatsApp/Original; Favorit separat, keine automatischen Aktionen |
-| 5 | Analyse/Identitätskandidaten | Eingeklappt, vorhandene Evidenz und explizite Bestätigung; kein künstlicher Score |
+| 5 | Analyse/Identitätskandidaten | Eingeklappt, vorhandene Evidenz und explizite Bestätigung; Evidenz gemäß PRODUCT |
 | 6 | Meine Notiz | Eingeklappt; Entwurfs-/Konflikt-/Speicherhinweis bereits am Abschnittskopf; bestehende Speichern/Konfliktauflösung in-place |
 | 7 | Verlauf und verknüpfte Anzeigen | Eingeklappt, Liste mit bestehenden Zeit-/Filter-/Vergleichsfunktionen, externe Original-URLs unverändert |
 

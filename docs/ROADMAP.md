@@ -18,7 +18,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
 | M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 teilweise integriert, T10.8/9 offen. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
-| M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität, Export-/Backup- und Release-Umfang. |
+| M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
 Diagnose (Logging, Messungen, HTTP/HAR, TXT-Export) ist integriert [#7](https://github.com/Justify87/ladies-explorer-android/pull/7); abgeschlossen. Ursprüngliche M00–M02-Nummerierung wich von PR-Bezeichnungen ab; maßgeblich sind obige Zuordnung und Git. Kein Prozentwert aus ungleich großen Aufgaben.
 
@@ -77,7 +77,7 @@ Erst nach G10 und Nutzerauftrag. Schema `rust/ladies-core/src/schema.rs` (encoun
 
 Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 - [ ] **M07.1 — PLANNED:** technische Gesamtintegration und Stabilität der App anhand vorhandener automatisierter Regressionen, Code und konkreter Fehlerbefunde prüfen: Suche, gespeicherte Suchen, Profile/Medien/Identität, Karte, Lifecycle, Offline und Diagnose. Keine Wiedereröffnung bereits abgeschlossener Geräteprüfaufgaben.
-- [ ] **M07.2 — PLANNED / Scope bestätigen:** etwaigen lokalen Backup-/Exportbedarf separat klären; keine nutzerseitige Datenübernahme, Import-/Restore-Migration oder Gerätewechselmigration gemäß PRODUCT. Keine Implementierung ohne ausdrückliche Freigabe.
+- [ ] **M07.2 — PLANNED / Scope bestätigen:** ausschließlich etwaigen zusätzlichen Bedarf an bewussten lokalen Diagnoseexporten klären; keine Nutzerdatenmigration einschließlich Backup/Restore gemäß [PRODUCT](PRODUCT.md#produktziel-und-grenzen). Keine Implementierung ohne ausdrückliche Freigabe.
 - [ ] **M07.3 — PLANNED:** abschließende Produkt-/Release-Reife, bekannte Restfehler und Distribution gegen bestätigten Scope prüfen; keine Veröffentlichung ohne Auftrag.
 
 ## Unabhängige technische Bereinigung

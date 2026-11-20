@@ -1,10 +1,10 @@
 # Ladies Explorer Android
 
-Native, lokal genutzte Android-App mit Kotlin, Jetpack Compose / Material 3 Expressive, Rust, UniFFI und SQLite. Die App verwaltet ihren eigenen nativen Datenbestand; keine Datenübernahme aus der früheren Web-App. Kein separater Server, kein Python-/Flask-/Node.js-Runtime, keine Cloud-Datenbank.
+Native, lokal genutzte Android-App mit Kotlin, Jetpack Compose / Material 3 Expressive, Rust, UniFFI und SQLite. Die App verwaltet ihren eigenen nativen Datenbestand; Produktgrenzen siehe unten. Kein separater Server, kein Python-/Flask-/Node.js-Runtime, keine Cloud-Datenbank.
 
 ## Produkt
 
-Entdecken, Suche, Profile, Medien, Personen, gespeicherte Suchen, Karte und lokale Diagnose. Verbindlicher Funktionsumfang und Grenzen: [PRODUCT.md](docs/PRODUCT.md). Die frühere Web-App ist obsolet; gültiges Produktziel ist die eigenständige Android-App. Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md).
+Entdecken, Suche, Profile, Medien, Personen, gespeicherte Suchen, Karte und lokale Diagnose. Verbindlicher Funktionsumfang und Grenzen: [PRODUCT.md](docs/PRODUCT.md). Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md).
 
 ## Aktive Weiterentwicklung
 
@@ -35,7 +35,7 @@ Der [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft bei PRs, P
 ### Ausführung und Artefakte
 
 - `full`: Standard für Änderungen mit möglichen Build-/Testauswirkungen, manuelle Starts und nicht zuverlässig nachweisbare Änderungsumfänge.
-- `docs`: Vollständig verifizierte Änderungen ausschließlich an regulären `.md`-Dateien im Repository-Wurzelverzeichnis, unter `docs/` oder direkt unter `tools/` (auch AGENTS und Provenance, neue/gelöschte/umbenannte Dateien). PRs gegen main und verifizierte main-Pushes überspringen Core und Android. Keine Abhängigkeit von vorheriger CI oder APK-Verfügbarkeit. Markdown in Build-Input-Verzeichnissen, gemischte Diffs und Typ-/Moduswechsel bleiben Full-CI.
+- `docs`: Vollständig verifizierte Änderungen ausschließlich an regulären `.md`-Dateien im Repository-Wurzelverzeichnis, unter `docs/` oder direkt unter `tools/` (auch AGENTS, neue/gelöschte/umbenannte Dateien). PRs gegen main und verifizierte main-Pushes überspringen Core und Android. Keine Abhängigkeit von vorheriger CI oder APK-Verfügbarkeit. Markdown in Build-Input-Verzeichnissen, gemischte Diffs und Typ-/Moduswechsel bleiben Full-CI.
 - `reuse`: Bei nachgewiesenem Zwei-Parent-Merge desselben Repositories mit identischem geprüftem Git-Tree, exakter Basis und erfolgreichem jüngstem PR-CI-Lauf übernimmt main das geprüfte APK. Bei Docs-Merges kann das APK des verifizierten Basislaufs optional erneut veröffentlicht werden. [ci_reuse.py](tools/ci_reuse.py) prüft Run/Versuch, Repository, Ereignis, Tree/Parents, Gates/Jobs/Steps und APK-SHA-256. Fehlende oder ungültige Evidenz bzw. Transferfehler lassen den ursprünglichen Scope bestehen: bei Codeänderungen Full-CI, bei reinen Docs kein Build.
 
 Der Scope-Job und abschließende Check **build** laufen immer. Das Gate verlangt die tatsächlich erwarteten Job-/Step-Ergebnisse einschließlich ausdrücklich übersprungener Prüfungen und erfolgreicher APK-Wiederveröffentlichung. Überholte PR-Läufe werden abgebrochen; main und manuelle Läufe nicht pauschal.
@@ -64,7 +64,7 @@ python3 tools/check_architecture.py
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug -Pladies.abis=arm64-v8a --stacktrace --continue --profile
 ```
 
-Die CI prüft die in [ARCHITECTURE.md](docs/ARCHITECTURE.md#automatisierte-architekturverträge) beschriebenen Architekturverträge im bestehenden Core-Job und am tatsächlich erzeugten ARM64-Debug-APK vor dem Upload. Lokal nach dem Build: `python3 tools/check_architecture.py --apk app/build/outputs/apk/debug/app-debug.apk --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 /pfad/zum/sdk/build-tools/version/aapt2`. Keine zusätzlichen Runner oder Frameworks; die statischen Prüfungen sind keine vollständige semantische Analyse oder Sicherheits-Sandbox. Die kompilierte CoreStore-API wird zusätzlich im bestehenden JVM-Test geprüft; APK-Ressourcenreferenzen werden über die AAPT2-Tabelle aufgelöst und alle zugehörigen XML-Dateien validiert.
+Die CI prüft die in [ARCHITECTURE.md](docs/ARCHITECTURE.md#automatisierte-architekturverträge) beschriebenen Architekturverträge im bestehenden Core-Job und am tatsächlich erzeugten ARM64-Debug-APK vor dem Upload. Lokal nach dem Build: `python3 tools/check_architecture.py --apk app/build/outputs/apk/debug/app-debug.apk --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 /pfad/zum/sdk/build-tools/version/aapt2`. Prüfgrenzen und konkrete Regeln stehen im verlinkten Architekturvertrag.
 
 Eine grüne CI beweist keine funktionierende reale Website-Suche oder native Geräte-UX. Geräteprüfaufgaben werden nach der [Merge-Regel](docs/ROADMAP.md#pflege) abgeschlossen; nach Installation unter Einstellungen Datenbankstatus (Schema v2) kontrollieren.
 
@@ -81,7 +81,7 @@ python3 tools/m05-reference.py /tmp/m05-reference --clock 2026-11-18T12:00:00+00
 (cd rust && M05_REFERENCE_BUNDLE=/tmp/m05-reference/m05-synthetic.zip cargo test --workspace --locked m05_reference_bundle_import -- --ignored)
 ```
 
-Acht künstliche Personen, neun Inserate, 18 Snapshots, Präferenz-/Favorit-Kombinationen, geometrische Medien, example.invalid; aktuelle Watchlist: Uhrzeit weglassen. Zielverzeichnis neu, keine echten Daten überschreiben. Test-only; Generator und Importtest bei Entfernung des Altpfads auf direkte synthetische native Testdaten umstellen (ROADMAP). Regressionen nach Risiko: 0/1/200+ Cards, 0/1/12/80 Medien, partial/unverified, Offline/Timeout, betroffene Aktionen, Cancel/Late Write, Identitäts-/Notizkonflikte, SavedSearch-Ack und unabhängige Reprojektion. Visuelle Prüfvorgaben in DESIGN; keine zusätzliche Pflicht-Geräteprüfung. Keine realen Quellen-/Geocoderzugriffe in automatisierten Tests, keine generierten personenbezogenen Dateien in Git.
+Acht künstliche Personen, neun Inserate, 18 Snapshots, Präferenz-/Favorit-Kombinationen, geometrische Medien, example.invalid; `scenarios.json` enthält stabile IDs und Szenarien. Aktuelle Watchlist: Uhrzeit weglassen. Der opt-in-Rust-Test prüft Import, Medienpfad, Präferenz, Notiz, Snapshot-Anzahl und Fremdschlüssel, keine Geräte-UI. Zielverzeichnis neu, keine echten Daten überschreiben. Test-only; Generator und Importtest bei Entfernung des Altpfads auf direkte synthetische native Testdaten umstellen (ROADMAP). Spezifische Regressionsverträge: [ARCHITECTURE](docs/ARCHITECTURE.md#automatisierte-architekturverträge), visuelle Prüfung: [DESIGN](docs/DESIGN.md#prüfung-und-gestaltungsspielraum).
 
 ## Dokumentation
 
