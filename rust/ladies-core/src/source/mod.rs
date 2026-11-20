@@ -203,10 +203,10 @@ pub(crate) fn load_profile(
         .event("PROFILE", format!("Profile requested listing={listing_id}"));
     let target = storage::listing_target(core, listing_id, false)?;
     let network_started = Instant::now();
-    let observation = core
-        .source_session
-        .0
-        .get_profile(&target.url, &target.advert_id, Some(control))?;
+    let observation =
+        core.source_session
+            .0
+            .get_profile(&target.url, &target.advert_id, Some(control))?;
     let (html, verified) = match observation {
         network::ProfileObservation::Active(html) => (html, true),
         network::ProfileObservation::Unverified(html) => (html, false),

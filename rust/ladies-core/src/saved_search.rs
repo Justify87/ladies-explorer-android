@@ -1173,13 +1173,8 @@ mod tests {
                 .contains("Nur Video")
         );
         loaded.query.radius_km = 30;
-        core.update_search_definition(
-            "legacy".into(),
-            "Edited".into(),
-            loaded.query,
-            loaded.local,
-        )
-        .unwrap();
+        core.update_search_definition("legacy".into(), "Edited".into(), loaded.query, loaded.local)
+            .unwrap();
         let stored = core.load_search_definition("legacy".into()).unwrap();
         assert_eq!(stored.query.radius_km, 30);
         assert_eq!(stored.local, renamed.local);
@@ -1205,7 +1200,10 @@ mod tests {
             shown.local.clone(),
         )
         .unwrap();
-        assert_eq!(core.load_search_definition("aliases".into()).unwrap(), shown);
+        assert_eq!(
+            core.load_search_definition("aliases".into()).unwrap(),
+            shown
+        );
         assert!(list(&core).unwrap()[0].definition_supported);
     }
 
