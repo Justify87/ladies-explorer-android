@@ -128,7 +128,9 @@ class ProfileGestureDeviceTest {
             }
         }
         val hero = rule.onNodeWithTag("hero")
+        rule.onNodeWithTag("gallery-video-control").assertDoesNotExist()
         hero.performTouchInput { swipe(Offset(width * .85f, height * .6f), Offset(width * .15f, height * .6f)) }
+        rule.onNodeWithTag("gallery-video-control").assertDoesNotExist()
         rule.onNodeWithText("1 / 2").assertDoesNotExist()
         rule.runOnIdle { assertEquals(listOf(Preference.DISLIKE), decisions) }
         rule.onNodeWithContentDescription("Nächstes Medium").performTouchInput { click(center) }
