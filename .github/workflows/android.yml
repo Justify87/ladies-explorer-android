@@ -11,6 +11,10 @@ on:
         description: 'Run the additional CI02 native cache integration probe'
         type: boolean
         default: false
+      measure_android_build:
+        description: 'Run the additional CI05 Android build diagnostic comparisons'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -167,7 +171,9 @@ jobs:
           save-if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
 
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk --version 4.1.2 --locked
+        run: |
+          bash tools/install-cargo-ndk.sh
+          test "$(cargo ndk --version)" = 'cargo-ndk 4.1.2'
 
       - name: Install required Android SDK and NDK
         run: |
@@ -204,6 +210,20 @@ jobs:
           fi
           bash tools/verify-native-cache.sh
 
+      - name: Measure Android build performance (CI05)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MEASURE_ANDROID_BUILD: ${{ inputs.measure_android_build }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            if git diff --quiet HEAD^1 HEAD -- tools/measure-android-build.sh tools/install-cargo-ndk.sh; then
+              exit 0
+            fi
+          elif [ "$MEASURE_ANDROID_BUILD" != true ]; then
+            exit 0
+          fi
+          bash tools/measure-android-build.sh
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
@@ -219,6 +239,7 @@ jobs:
           name: android-ci-reports
           path: |
             build/reports/profile/
+            build/reports/ci05/
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
             app/build/reports/lint-results-debug.*
