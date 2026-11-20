@@ -20,7 +20,7 @@ REGULAR = DOCS | frozenset({
 NATIVE = frozenset({
     b"gradle.properties", b"gradlew", b"gradlew.bat",
     b"tools/verify-native-cache.sh", b"tools/install-cargo-ndk.sh",
-    b"tools/ci_scope.py", b"tools/test_ci_scope.py",
+    b"tools/ci_scope.py", b"tools/test_ci_scope.py", b"tools/ci_reuse.py",
 })
 MEASURE = frozenset({b"tools/install-cargo-ndk.sh", b"tools/measure-android-build.sh"})
 NATIVE_NAMES = frozenset({b"Cargo.toml", b"Cargo.lock", b"build.rs", b"uniffi.toml",

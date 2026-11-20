@@ -2,6 +2,7 @@ import json
 import itertools
 import os
 import textwrap
+from ci_reuse import verify_proof, merged_pr
 import subprocess
 import tempfile
 from pathlib import Path
@@ -485,10 +486,10 @@ class WorkflowGateTest(unittest.TestCase):
 
     def test_actual_scope_validation_shell(self):
         body = self.shell_body("Validate execution policy")
-        valid = {("docs", "false", "false"), ("full", "false", "false"),
+        valid = {("docs", "false", "false"), ("reuse", "false", "false"), ("full", "false", "false"),
                  ("full", "true", "false"), ("full", "false", "true"),
                  ("full", "true", "true")}
-        for values in itertools.product(("docs", "full", "", "unknown"),
+        for values in itertools.product(("docs", "reuse", "full", "", "unknown"),
                                         ("true", "false", "", "unknown"),
                                         ("true", "false", "", "unknown")):
             with self.subTest(values=values):
@@ -540,6 +541,53 @@ class WorkflowGateTest(unittest.TestCase):
                         ANDROID_RESULT="success", NATIVE_REQUIRED=native, PERFORMANCE_REQUIRED=measure,
                         NATIVE_OUTCOME=outcomes[0], PERFORMANCE_OUTCOME=outcomes[1]))
                     self.assertEqual(outcomes == expected, result.returncode == 0, result.stderr)
+
+
+    def test_reuse_gate_requires_successful_upload_and_source(self):
+        body = self.shell_body("Evaluate required CI gate")
+        env = dict(SCOPE_RESULT="success", MODE="reuse", CORE_RESULT="skipped",
+                   ANDROID_RESULT="skipped", NATIVE_REQUIRED="false", PERFORMANCE_REQUIRED="false",
+                   NATIVE_OUTCOME="", PERFORMANCE_OUTCOME="", REUSE_SOURCE="42", REUSE_UPLOAD="success")
+        result, _ = self.run_shell(body, env)
+        self.assertEqual(0, result.returncode, result.stderr)
+        for field, value in (("REUSE_SOURCE", ""), ("REUSE_SOURCE", "0"),
+                             ("REUSE_SOURCE", "unknown"), ("REUSE_UPLOAD", "failure"),
+                             ("REUSE_UPLOAD", "skipped"), ("REUSE_UPLOAD", ""),
+                             ("CORE_RESULT", "success"), ("ANDROID_RESULT", "failure"),
+                             ("NATIVE_REQUIRED", "true"), ("PERFORMANCE_OUTCOME", "success")):
+            with self.subTest(field=field, value=value):
+                result, _ = self.run_shell(body, dict(env, **{field: value}))
+                self.assertNotEqual(0, result.returncode)
+
+    def test_reuse_proof_rejects_wrong_tree_attempt_and_qualification(self):
+        source = {"id": 42, "run_attempt": 2, "event": "pull_request",
+                  "repository": {"full_name": "owner/repo"}}
+        apk = {"name": "app-debug.apk", "sha256": "a" * 64}
+        proof = {"version": 1, "tree": HEAD, "parents": [BASE, MERGE], "commit": MERGE,
+                 "event": "pull_request", "repository": "owner/repo", "run": 42, "attempt": 2,
+                 "apk": apk, "native": "true", "measurement": "false"}
+        verify_proof(proof, source, HEAD, [BASE, MERGE], None, apk, ("true", "false"))
+        for field, value in (("tree", BASE), ("parents", [BASE]), ("attempt", 1),
+                             ("repository", "fork/repo"), ("event", "push"), ("run", 41),
+                             ("native", "false"), ("measurement", "true"), ("apk", {})):
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                verify_proof(dict(proof, **{field: value}), source, HEAD, [BASE, MERGE],
+                             None, apk, ("true", "false"))
+
+    @patch("ci_reuse.api")
+    def test_reuse_only_real_same_repository_merge(self, api):
+        current = {"commit": MERGE, "tree": HEAD, "parents": [BASE, HEAD]}
+        pr = {"merge_commit_sha": MERGE, "merged_at": "2026-11-20T12:00:00Z",
+              "base": {"ref": "main", "repo": {"full_name": "owner/repo"}},
+              "head": {"sha": HEAD, "repo": {"full_name": "owner/repo"}}}
+        api.return_value = [pr]
+        self.assertEqual(pr, merged_pr("owner/repo", current, BASE))
+        self.assertIsNone(merged_pr("owner/repo", current, HEAD))
+        self.assertIsNone(merged_pr("owner/repo", dict(current, parents=[BASE]), BASE))
+        api.return_value = [dict(pr, head={"sha": HEAD, "repo": {"full_name": "fork/repo"}})]
+        self.assertIsNone(merged_pr("owner/repo", current, BASE))
+        api.return_value = [dict(pr, merge_commit_sha=BASE)]
+        self.assertIsNone(merged_pr("owner/repo", current, BASE))
 
     def test_workflow_bindings_and_upload_order(self):
         names = ("Build arm64 APK and device test APK, run JVM tests and Android Lint",
