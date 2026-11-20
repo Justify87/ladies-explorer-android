@@ -760,6 +760,18 @@ mod tests {
             [],
         )
         .unwrap();
+        for sql in [
+            "INSERT INTO source_profiles (person_id, source, external_profile_id)
+             VALUES (2, 'LADIES', 'profile-10')",
+            "INSERT INTO listings (person_id, source, external_listing_id)
+             VALUES (2, 'LADIES', 'ad-same')",
+        ] {
+            assert!(matches!(
+                db.execute(sql, []),
+                Err(rusqlite::Error::SqliteFailure(error, _))
+                    if error.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+            ));
+        }
         assert!(
             db.execute(
                 "UPDATE listings SET person_id=2 WHERE external_listing_id='ad-same'",

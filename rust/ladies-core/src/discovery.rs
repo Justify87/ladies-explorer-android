@@ -120,14 +120,6 @@ pub(crate) fn cached_profile_from(
     Ok(profile)
 }
 
-pub(crate) fn media(
-    core: &LadiesCore,
-    snapshot_id: i64,
-) -> Result<Vec<ProfileMediaItem>, CoreError> {
-    let db = core.connection()?;
-    media_from(core, &db, snapshot_id)
-}
-
 pub(crate) fn media_from(
     core: &LadiesCore,
     db: &rusqlite::Connection,
@@ -461,7 +453,8 @@ pub(crate) fn saved_window(
     Ok(SavedPeopleWindow { regular, recent })
 }
 
-pub(crate) fn saved_people(
+#[cfg(test)]
+fn saved_people(
     core: &LadiesCore,
     kind: SavedPersonKind,
     sort: SavedPersonSort,
@@ -975,7 +968,15 @@ mod tests {
                 .unwrap();
         }
         let saved = |kind, sort, limit, cursor| {
-            core.saved_people(kind, sort, SavedPersonSection::All, limit, cursor, None)
+            saved_people(
+                &core,
+                kind,
+                sort,
+                SavedPersonSection::All,
+                limit,
+                cursor,
+                None,
+            )
         };
         let fav = saved(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, None).unwrap();
         assert_eq!(fav.total, 2);
@@ -1047,7 +1048,8 @@ mod tests {
             ids.push(person);
         }
         let read = |section, cursor| {
-            core.saved_people(
+            saved_people(
+                &core,
                 SavedPersonKind::Favorite,
                 SavedPersonSort::Date,
                 section,
@@ -1156,16 +1158,16 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![a, b, c, d]
         );
-        let first = core
-            .saved_people(
-                SavedPersonKind::Favorite,
-                SavedPersonSort::Name,
-                SavedPersonSection::All,
-                1,
-                None,
-                None,
-            )
-            .unwrap();
+        let first = saved_people(
+            &core,
+            SavedPersonKind::Favorite,
+            SavedPersonSort::Name,
+            SavedPersonSection::All,
+            1,
+            None,
+            None,
+        )
+        .unwrap();
         let cursor = first.next_cursor.unwrap();
         let initial = core
             .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Date, 1, 1)
@@ -1181,7 +1183,8 @@ mod tests {
         }
         core.set_favorite(b, false).unwrap();
         assert!(
-            core.saved_people(
+            saved_people(
+                &core,
                 SavedPersonKind::Favorite,
                 SavedPersonSort::Name,
                 SavedPersonSection::All,

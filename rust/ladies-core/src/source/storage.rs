@@ -904,26 +904,92 @@ mod tests {
     #[test]
     fn search_is_transactional_and_preserves_user_state() {
         let core = core();
-        let first = save_cards(&core, vec![card("101", "Anna"), card("102", "Mia")]);
+        let first = save_cards(&core, vec![card("101", "Anna"), card("102", "Anna")]);
         assert_eq!(first.profiles.len(), 2);
+        assert_ne!(first.profiles[0].person_id, first.profiles[1].person_id);
         assert_eq!(core.status().unwrap().person_count, 2);
-        core.set_favorite(first.profiles[0].person_id, true)
+        let person_id = first.profiles[0].person_id;
+        core.set_favorite(person_id, true).unwrap();
+        core.set_preference(person_id, crate::Preference::Like)
             .unwrap();
         let again = save_cards(&core, vec![card("101", "Anna new")]);
         assert_eq!(again.profiles[0].listing_id, first.profiles[0].listing_id);
-        assert_eq!(again.profiles[0].person_id, first.profiles[0].person_id);
-        assert!(
-            core.get_person(first.profiles[0].person_id)
-                .unwrap()
-                .unwrap()
-                .favorite
-        );
+        assert_eq!(again.profiles[0].person_id, person_id);
+        let person = core.get_person(person_id).unwrap().unwrap();
+        assert!(person.favorite);
+        assert_eq!(person.preference, crate::Preference::Like);
+        assert_eq!(person.display_name.as_deref(), Some("Anna new"));
+        assert_eq!(person.listing_count, 1);
         assert_eq!(core.status().unwrap().person_count, 2);
+        assert_eq!(core.status().unwrap().listing_count, 2);
+        assert_eq!(core.list_people(10, None).unwrap().people.len(), 2);
         let db = core.connection().unwrap();
         let count: i64 = db
             .query_row("SELECT COUNT(*) FROM search_runs", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn search_and_profile_refresh_observed_activity_timestamps() {
+        let core = core();
+        let found = save_cards(&core, vec![card("101", "Anna")]);
+        let entry = &found.profiles[0];
+        let listing = entry.listing_id;
+        let person = entry.person_id;
+        let url = &entry.profile_url;
+        const OLD: &str = "2000-01-01T00:00:00.000Z";
+        save_profile(&core, listing, url, profile("Anna")).unwrap();
+
+        for observe_profile in [false, true] {
+            {
+                let db = core.connection().unwrap();
+                db.execute(
+                    "UPDATE persons SET last_seen_at=?1 WHERE person_id=?2",
+                    params![OLD, person],
+                )
+                .unwrap();
+                db.execute(
+                    "UPDATE listings SET last_seen_at=?1 WHERE listing_id=?2",
+                    params![OLD, listing],
+                )
+                .unwrap();
+                db.execute(
+                    "UPDATE source_profiles SET last_seen_at=?1 WHERE person_id=?2",
+                    params![OLD, person],
+                )
+                .unwrap();
+            }
+            if observe_profile {
+                save_profile(&core, listing, url, profile("Anna")).unwrap();
+            } else {
+                save_cards(&core, vec![card("101", "Anna")]);
+            }
+            assert!(
+                core.get_person(person)
+                    .unwrap()
+                    .unwrap()
+                    .last_seen_at
+                    .as_str()
+                    > OLD
+            );
+            let db = core.connection().unwrap();
+            let (listing_seen, profile_seen): (String, String) = db
+                .query_row(
+                    "SELECT l.last_seen_at, p.last_seen_at FROM listings l
+                     JOIN source_profiles p ON p.source_profile_id=l.source_profile_id
+                     WHERE l.listing_id=?1",
+                    [listing],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            assert!(listing_seen.as_str() > OLD);
+            if observe_profile {
+                assert!(profile_seen.as_str() > OLD);
+            } else {
+                assert_eq!(profile_seen, OLD);
+            }
+        }
     }
 
     #[test]
@@ -954,9 +1020,7 @@ mod tests {
         )
         .unwrap();
         assert_ne!(first.snapshot_id, second.snapshot_id);
-        let changes = core
-            .list_change_events(found.profiles[0].person_id, 20)
-            .unwrap();
+        let changes = crate::history::list(&core, found.profiles[0].person_id, 20).unwrap();
         assert!(
             changes
                 .iter()
@@ -995,6 +1059,8 @@ mod tests {
         .unwrap();
         assert_ne!(first.snapshot_id, changed.snapshot_id);
         assert!(changed.new_snapshot);
+        assert_eq!(core.status().unwrap().source_profile_count, 1);
+        assert_eq!(core.status().unwrap().listing_count, 1);
         let db = core.connection().unwrap();
         let count: i64 = db
             .query_row("SELECT COUNT(*) FROM snapshot_media", [], |r| r.get(0))
@@ -1124,9 +1190,7 @@ mod tests {
             .unwrap();
         assert_eq!(last, (1, 0, original.snapshot_id));
         drop(db);
-        let history = core
-            .list_change_events(found.profiles[0].person_id, 50)
-            .unwrap();
+        let history = crate::history::list(&core, found.profiles[0].person_id, 50).unwrap();
         let changes = history
             .iter()
             .filter(|event| {
@@ -1208,7 +1272,7 @@ mod tests {
         core.set_favorite(owner, true).unwrap();
         core.set_preference(owner, crate::Preference::Like).unwrap();
         assert!(
-            core.list_identity_candidates(listing)
+            crate::identity::list(&core, listing)
                 .unwrap()
                 .iter()
                 .any(|c| c.person_id == new_owner)
@@ -1216,7 +1280,11 @@ mod tests {
 
         // Seed only the saved-search baseline; use actual projection and ack APIs.
         let saved_id = core
-            .save_native_search("Fixture".into(), SearchRequest::for_test())
+            .save_search_definition(
+                "Fixture".into(),
+                SearchRequest::for_test(),
+                crate::LocalVisibility::default(),
+            )
             .unwrap();
         {
             let db = core.connection().unwrap();
@@ -1285,18 +1353,25 @@ mod tests {
             && c.favorite
             && c.preference == crate::Preference::Like));
         let saved = core
-            .saved_people(
+            .saved_people_window(
                 crate::SavedPersonKind::Favorite,
                 crate::SavedPersonSort::Date,
-                crate::SavedPersonSection::All,
                 50,
-                None,
-                None,
+                50,
             )
             .unwrap();
-        assert_eq!(saved.total, 1);
-        assert_eq!(saved.rows[0].person_id, new_owner);
-        assert_eq!(saved.rows[0].listing_count, 2);
+        assert_eq!(saved.regular.total, 1);
+        let recent = saved.recent.unwrap();
+        let rows = saved
+            .regular
+            .rows
+            .iter()
+            .chain(&recent.rows)
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), 1);
+        let row = rows[0];
+        assert_eq!(row.person_id, new_owner);
+        assert_eq!(row.listing_count, 2);
         let window = core.saved_search_window(saved_id.clone(), 100).unwrap();
         assert_eq!(window.cards.len(), 2);
         assert!(window.cards.iter().all(|c| c.person_id == Some(new_owner)));
@@ -1311,7 +1386,6 @@ mod tests {
         assert_eq!(core.map_overview(false).unwrap().total_profiles, 1);
         assert_eq!(core.map_overview(true).unwrap().total_profiles, 1);
         assert_eq!(core.person_detail(new_owner).unwrap().listings.len(), 2);
-        assert_eq!(core.profile_media(snapshot.snapshot_id).unwrap().len(), 1);
         assert!(
             core.acknowledge_saved_search_revision(saved_id, window.searches[0].revision)
                 .unwrap()

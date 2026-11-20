@@ -30,8 +30,6 @@ pub enum CoreError {
     Storage(String),
     #[error("No person with id {0}")]
     PersonNotFound(i64),
-    #[error("No source profile with id {0}")]
-    SourceProfileNotFound(i64),
     #[error("Identity ownership conflict: {0}")]
     IdentityConflict(String),
     #[error("Invalid input: {0}")]
@@ -116,13 +114,13 @@ pub struct PersonSummary {
     pub last_seen_at: String,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct PersonCursor {
     pub last_seen_at: String,
     pub person_id: i64,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct PersonPage {
     pub people: Vec<PersonSummary>,
     pub next_cursor: Option<PersonCursor>,
@@ -156,8 +154,8 @@ pub use profile_detail::{
     SnapshotDifference,
 };
 pub use saved_search::{
-    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchDelta,
-    SavedSearchInfo, SavedSearchResultPage, SavedSearchWindow,
+    LocalVisibility, SavedSearchCard, SavedSearchDefinition, SavedSearchDelta, SavedSearchInfo,
+    SavedSearchWindow,
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
 pub use source::{
@@ -266,10 +264,6 @@ impl LadiesCore {
         self.diagnostics.set_debug(enabled);
     }
 
-    pub fn diagnostic_debug_enabled(&self) -> bool {
-        self.diagnostics.debug_enabled()
-    }
-
     pub fn diagnostic_status(&self) -> Result<DiagnosticStatus, CoreError> {
         let (available, size_bytes, last_write_error) = self
             .diagnostics
@@ -350,20 +344,13 @@ impl LadiesCore {
         discovery::active_search_cards(self, run_id, &local)
     }
 
-    pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
-        self.diagnostics
-            .timed("PROFILE", "load_source_profile", || {
-                source::load_profile(self, listing_id, None)
-            })
-    }
-
     pub fn load_swipe_profile(
         &self,
         listing_id: i64,
         control: Arc<RequestControl>,
     ) -> Result<ProfileResponse, CoreError> {
         self.diagnostics.timed("PROFILE", "load_swipe_profile", || {
-            source::load_profile(self, listing_id, Some(&control))
+            source::load_profile(self, listing_id, &control)
         })
     }
 
@@ -406,13 +393,6 @@ impl LadiesCore {
             })
     }
 
-    pub fn list_identity_candidates(
-        &self,
-        listing_id: i64,
-    ) -> Result<Vec<IdentityCandidate>, CoreError> {
-        identity::list(self, listing_id)
-    }
-
     pub fn confirm_identity_match(
         &self,
         listing_id: i64,
@@ -427,14 +407,6 @@ impl LadiesCore {
             expected_snapshot_id,
             target_person_id,
         )
-    }
-
-    pub fn list_change_events(
-        &self,
-        person_id: i64,
-        limit: u32,
-    ) -> Result<Vec<ChangeRecord>, CoreError> {
-        history::list(self, person_id, limit)
     }
 
     pub fn profile_facts(
@@ -508,18 +480,6 @@ impl LadiesCore {
         discovery::saved_window(self, kind, sort, regular_limit, recent_limit)
     }
 
-    pub fn saved_people(
-        &self,
-        kind: SavedPersonKind,
-        sort: SavedPersonSort,
-        section: SavedPersonSection,
-        limit: u32,
-        cursor: Option<SavedPersonCursor>,
-        as_of: Option<i64>,
-    ) -> Result<SavedPersonPage, CoreError> {
-        discovery::saved_people(self, kind, sort, section, limit, cursor, as_of)
-    }
-
     pub fn map_overview(&self, favorites_only: bool) -> Result<MapOverview, CoreError> {
         map::overview(self, favorites_only)
     }
@@ -564,10 +524,6 @@ impl LadiesCore {
         source::profile_identity(self, listing_id)
     }
 
-    pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
-        discovery::media(self, snapshot_id)
-    }
-
     pub fn frequent_filters(&self) -> Result<Vec<FrequentFilter>, CoreError> {
         source::filter::frequent(self)
     }
@@ -588,7 +544,7 @@ impl LadiesCore {
         request: SearchRequest,
         local: LocalVisibility,
     ) -> Result<(), CoreError> {
-        saved_search::update_with_local(self, id, name, request, Some(local))
+        saved_search::update_with_local(self, id, name, request, local)
     }
 
     pub fn load_search_definition(&self, id: String) -> Result<SavedSearchDefinition, CoreError> {
@@ -599,34 +555,8 @@ impl LadiesCore {
         source::filter::available()
     }
 
-    pub fn save_native_search(
-        &self,
-        name: String,
-        request: SearchRequest,
-    ) -> Result<String, CoreError> {
-        saved_search::save(self, name, request)
-    }
-
-    pub fn update_native_search(
-        &self,
-        id: String,
-        name: String,
-        request: SearchRequest,
-    ) -> Result<(), CoreError> {
-        saved_search::update(self, id, name, request)
-    }
-
     pub fn list_saved_searches(&self) -> Result<Vec<SavedSearchInfo>, CoreError> {
         saved_search::list(self)
-    }
-
-    pub fn saved_search_results(
-        &self,
-        id: String,
-        limit: u32,
-        cursor: Option<SavedResultCursor>,
-    ) -> Result<SavedSearchResultPage, CoreError> {
-        saved_search::results(self, id, limit, cursor)
     }
 
     pub fn saved_search_window(
@@ -643,10 +573,6 @@ impl LadiesCore {
         revision: i64,
     ) -> Result<bool, CoreError> {
         saved_search::acknowledge_revision(self, id, revision)
-    }
-
-    pub fn load_saved_search(&self, id: String) -> Result<SearchRequest, CoreError> {
-        saved_search::load(self, id)
     }
 
     pub fn rename_saved_search(&self, id: String, name: String) -> Result<(), CoreError> {
@@ -685,202 +611,9 @@ impl LadiesCore {
         })
     }
 
-    pub fn create_person(&self, display_name: Option<String>) -> Result<i64, CoreError> {
-        let name = display_name
-            .map(|n| n.trim().to_owned())
-            .filter(|n| !n.is_empty());
-        let mut db = self.connection()?;
-        let tx = db.transaction()?;
-        tx.execute(
-            "INSERT INTO persons (display_name) VALUES (?1)",
-            params![name],
-        )?;
-        let id = tx.last_insert_rowid();
-        // An SQLite trigger initializes person_user_state for all insertion paths.
-        tx.commit()?;
-        Ok(id)
-    }
-
-    /// External profile IDs are evidence, not permission to merge different persons.
-    pub fn add_source_profile(
-        &self,
-        person_id: i64,
-        source: String,
-        external_profile_id: String,
-    ) -> Result<i64, CoreError> {
-        let source = non_empty(source, "source")?;
-        let external_profile_id = non_empty(external_profile_id, "external_profile_id")?;
-        let mut db = self.connection()?;
-        let tx = db.transaction()?;
-        ensure_person(&tx, person_id)?;
-        let existing: Option<(i64, i64)> = tx
-            .query_row(
-                "SELECT source_profile_id, person_id FROM source_profiles
-                 WHERE source = ?1 AND external_profile_id = ?2",
-                params![source, external_profile_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()?;
-        let id = if let Some((existing_id, owner)) = existing {
-            if owner != person_id {
-                return Err(CoreError::IdentityConflict(format!(
-                    "Profile {source}/{external_profile_id} belongs to person {owner}"
-                )));
-            }
-            tx.execute(
-                "UPDATE source_profiles SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                 WHERE source_profile_id = ?1",
-                params![existing_id],
-            )?;
-            existing_id
-        } else {
-            tx.execute(
-                "INSERT INTO source_profiles (person_id, source, external_profile_id)
-                 VALUES (?1, ?2, ?3)",
-                params![person_id, source, external_profile_id],
-            )?;
-            tx.last_insert_rowid()
-        };
-        touch_person(&tx, person_id)?;
-        tx.commit()?;
-        Ok(id)
-    }
-
-    /// The (source, external_listing_id) pair is stable and cannot silently change owners.
-    pub fn add_listing(
-        &self,
-        person_id: i64,
-        source_profile_id: Option<i64>,
-        source: String,
-        external_listing_id: String,
-        current_url: Option<String>,
-    ) -> Result<i64, CoreError> {
-        let source = non_empty(source, "source")?;
-        let external_listing_id = non_empty(external_listing_id, "external_listing_id")?;
-        let mut db = self.connection()?;
-        let tx = db.transaction()?;
-        ensure_person(&tx, person_id)?;
-        if let Some(profile_id) = source_profile_id {
-            let owner: Option<(i64, String)> = tx
-                .query_row(
-                    "SELECT person_id, source FROM source_profiles WHERE source_profile_id = ?1",
-                    params![profile_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()?;
-            match owner {
-                None => return Err(CoreError::SourceProfileNotFound(profile_id)),
-                Some((owner_id, profile_source))
-                    if owner_id != person_id || profile_source != source =>
-                {
-                    return Err(CoreError::IdentityConflict(
-                        "A listing must use a source profile of the same person and source".into(),
-                    ));
-                }
-                _ => {}
-            }
-        }
-        let existing: Option<(i64, i64, Option<i64>)> = tx
-            .query_row(
-                "SELECT listing_id, person_id, source_profile_id
-                 FROM listings WHERE source = ?1 AND external_listing_id = ?2",
-                params![source, external_listing_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .optional()?;
-        let id = if let Some((existing_id, owner, existing_profile)) = existing {
-            if owner != person_id
-                || existing_profile
-                    .is_some_and(|p| source_profile_id.is_some_and(|new_profile| p != new_profile))
-            {
-                return Err(CoreError::IdentityConflict(format!(
-                    "Listing {source}/{external_listing_id} is already assigned"
-                )));
-            }
-            tx.execute(
-                "UPDATE listings
-                 SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-                     current_url = COALESCE(?1, current_url),
-                     source_profile_id = COALESCE(source_profile_id, ?2)
-                 WHERE listing_id = ?3",
-                params![current_url, source_profile_id, existing_id],
-            )?;
-            existing_id
-        } else {
-            tx.execute(
-                "INSERT INTO listings
-                 (person_id, source_profile_id, source, external_listing_id, current_url)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    person_id,
-                    source_profile_id,
-                    source,
-                    external_listing_id,
-                    current_url
-                ],
-            )?;
-            tx.last_insert_rowid()
-        };
-        touch_person(&tx, person_id)?;
-        tx.execute(
-            "UPDATE source_profiles
-             SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE source_profile_id =
-               (SELECT source_profile_id FROM listings WHERE listing_id = ?1)",
-            params![id],
-        )?;
-        tx.commit()?;
-        Ok(id)
-    }
-
     pub fn get_person(&self, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
         let db = self.connection()?;
         person_from(&db, person_id)
-    }
-
-    pub fn list_people(
-        &self,
-        limit: u32,
-        cursor: Option<PersonCursor>,
-    ) -> Result<PersonPage, CoreError> {
-        if limit == 0 || limit > 100 {
-            return Err(CoreError::InvalidInput(
-                "Page size must be between 1 and 100".into(),
-            ));
-        }
-        if cursor
-            .as_ref()
-            .is_some_and(|value| value.person_id <= 0 || value.last_seen_at.is_empty())
-        {
-            return Err(CoreError::InvalidInput("Invalid person cursor".into()));
-        }
-        let db = self.connection()?;
-        let mut query = db.prepare(PERSON_QUERY_LIST)?;
-        let rows = query.query_map(
-            params![
-                cursor.as_ref().map(|value| value.last_seen_at.as_str()),
-                cursor.as_ref().map(|value| value.person_id),
-                i64::from(limit) + 1,
-            ],
-            parse_person_row,
-        )?;
-        let mut people = rows
-            .map(|row| PersonSummary::try_from(row?))
-            .collect::<Result<Vec<_>, _>>()?;
-        let has_more = people.len() > limit as usize;
-        people.truncate(limit as usize);
-        let next_cursor = if has_more {
-            people.last().map(|person| PersonCursor {
-                last_seen_at: person.last_seen_at.clone(),
-                person_id: person.person_id,
-            })
-        } else {
-            None
-        };
-        Ok(PersonPage {
-            people,
-            next_cursor,
-        })
     }
 
     pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
@@ -1029,45 +762,92 @@ impl TryFrom<RawPerson> for PersonSummary {
     }
 }
 
-fn non_empty(value: String, field: &'static str) -> Result<String, CoreError> {
-    let cleaned = value.trim().to_owned();
-    if cleaned.is_empty() {
-        return Err(CoreError::InvalidInput(format!(
-            "{field} must not be empty"
-        )));
-    }
-    Ok(cleaned)
-}
-
-fn touch_person(db: &Connection, person_id: i64) -> Result<(), CoreError> {
-    db.execute(
-        "UPDATE persons
-         SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-         WHERE person_id = ?1",
-        params![person_id],
-    )?;
-    Ok(())
-}
-
-fn ensure_person(db: &Connection, person_id: i64) -> Result<(), CoreError> {
-    let exists: bool = db.query_row(
-        "SELECT EXISTS(SELECT 1 FROM persons WHERE person_id = ?1)",
-        params![person_id],
-        |row| row.get(0),
-    )?;
-    if exists {
-        Ok(())
-    } else {
-        Err(CoreError::PersonNotFound(person_id))
-    }
-}
-
 impl LadiesCore {
+    pub fn list_people(
+        &self,
+        limit: u32,
+        cursor: Option<PersonCursor>,
+    ) -> Result<PersonPage, CoreError> {
+        if limit == 0 || limit > 100 {
+            return Err(CoreError::InvalidInput(
+                "Page size must be between 1 and 100".into(),
+            ));
+        }
+        if cursor
+            .as_ref()
+            .is_some_and(|value| value.person_id <= 0 || value.last_seen_at.is_empty())
+        {
+            return Err(CoreError::InvalidInput("Invalid person cursor".into()));
+        }
+        let db = self.connection()?;
+        let mut query = db.prepare(PERSON_QUERY_LIST)?;
+        let rows = query.query_map(
+            params![
+                cursor.as_ref().map(|value| value.last_seen_at.as_str()),
+                cursor.as_ref().map(|value| value.person_id),
+                i64::from(limit) + 1,
+            ],
+            parse_person_row,
+        )?;
+        let mut people = rows
+            .map(|row| PersonSummary::try_from(row?))
+            .collect::<Result<Vec<_>, _>>()?;
+        let has_more = people.len() > limit as usize;
+        people.truncate(limit as usize);
+        let next_cursor = if has_more {
+            people.last().map(|person| PersonCursor {
+                last_seen_at: person.last_seen_at.clone(),
+                person_id: person.person_id,
+            })
+        } else {
+            None
+        };
+        Ok(PersonPage {
+            people,
+            next_cursor,
+        })
+    }
+
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, CoreError> {
         self.db
             .lock()
             .map_err(|e| CoreError::Storage(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+impl LadiesCore {
+    pub fn create_person(&self, display_name: Option<String>) -> Result<i64, CoreError> {
+        let db = self.connection()?;
+        db.execute(
+            "INSERT INTO persons (display_name) VALUES (?1)",
+            params![display_name],
+        )?;
+        Ok(db.last_insert_rowid())
+    }
+
+    pub fn add_listing(
+        &self,
+        person_id: i64,
+        source_profile_id: Option<i64>,
+        source: String,
+        external_listing_id: String,
+        current_url: Option<String>,
+    ) -> Result<i64, CoreError> {
+        let db = self.connection()?;
+        db.execute(
+            "INSERT INTO listings
+             (person_id, source_profile_id, source, external_listing_id, current_url)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                person_id,
+                source_profile_id,
+                source,
+                external_listing_id,
+                current_url
+            ],
+        )?;
+        Ok(db.last_insert_rowid())
     }
 }
 
@@ -1105,118 +885,8 @@ mod tests {
     }
 
     #[test]
-    fn person_profile_listing_and_preference_roundtrip() {
+    fn missing_person_reads_and_writes_are_rejected_consistently() {
         let core = memory_core();
-        let person_id = core.create_person(Some(" Example ".into())).unwrap();
-        let profile_id = core
-            .add_source_profile(person_id, " LADIES ".into(), "abc".into())
-            .unwrap();
-        let listing_id = core
-            .add_listing(
-                person_id,
-                Some(profile_id),
-                "LADIES".into(),
-                "42".into(),
-                None,
-            )
-            .unwrap();
-        assert!(listing_id > 0);
-        assert_eq!(
-            profile_id,
-            core.add_source_profile(person_id, "LADIES".into(), "abc".into())
-                .unwrap()
-        );
-        assert_eq!(
-            listing_id,
-            core.add_listing(
-                person_id,
-                Some(profile_id),
-                "LADIES".into(),
-                "42".into(),
-                None
-            )
-            .unwrap(),
-        );
-        core.set_preference(person_id, Preference::Like).unwrap();
-        core.set_favorite(person_id, true).unwrap();
-        let person = core.get_person(person_id).unwrap().unwrap();
-        assert_eq!(person.display_name.as_deref(), Some("Example"));
-        assert_eq!(person.preference, Preference::Like);
-        assert!(person.favorite);
-        assert_eq!(person.listing_count, 1);
-        assert_eq!(core.list_people(10, None).unwrap().people.len(), 1);
-        assert_eq!(core.status().unwrap().source_profile_count, 1);
-        assert_eq!(core.status().unwrap().listing_count, 1);
-    }
-
-    #[test]
-    fn similar_names_and_distinct_listings_never_automatically_merge() {
-        let core = memory_core();
-        let first = core.create_person(Some("Same".into())).unwrap();
-        let second = core.create_person(Some("Same".into())).unwrap();
-        core.add_listing(first, None, "LADIES".into(), "100".into(), None)
-            .unwrap();
-        core.add_listing(second, None, "LADIES".into(), "101".into(), None)
-            .unwrap();
-        assert_eq!(core.status().unwrap().person_count, 2);
-        assert_ne!(first, second);
-    }
-
-    #[test]
-    fn conflicting_external_ids_cannot_reassign_person() {
-        let core = memory_core();
-        let first = core.create_person(None).unwrap();
-        let second = core.create_person(None).unwrap();
-        let profile = core
-            .add_source_profile(first, "LADIES".into(), "profile".into())
-            .unwrap();
-        assert!(matches!(
-            core.add_source_profile(second, "LADIES".into(), "profile".into()),
-            Err(CoreError::IdentityConflict(_))
-        ));
-        core.add_listing(first, Some(profile), "LADIES".into(), "ad".into(), None)
-            .unwrap();
-        assert!(matches!(
-            core.add_listing(second, None, "LADIES".into(), "ad".into(), None),
-            Err(CoreError::IdentityConflict(_))
-        ));
-        assert!(matches!(
-            core.add_listing(
-                second,
-                Some(profile),
-                "LADIES".into(),
-                "another".into(),
-                None
-            ),
-            Err(CoreError::IdentityConflict(_))
-        ));
-        assert!(matches!(
-            core.add_listing(
-                first,
-                Some(profile),
-                "OTHER".into(),
-                "different".into(),
-                None
-            ),
-            Err(CoreError::IdentityConflict(_))
-        ));
-    }
-
-    #[test]
-    fn invalid_references_and_empty_ids_return_errors() {
-        let core = memory_core();
-        assert!(matches!(
-            core.add_source_profile(999, "LADIES".into(), "a".into()),
-            Err(CoreError::PersonNotFound(999))
-        ));
-        assert!(matches!(
-            core.add_listing(999, None, "LADIES".into(), "a".into(), None),
-            Err(CoreError::PersonNotFound(999))
-        ));
-        assert!(matches!(
-            core.add_source_profile(1, "".into(), "a".into()),
-            Err(CoreError::InvalidInput(_))
-        ));
         assert!(matches!(
             core.set_favorite(999, true),
             Err(CoreError::PersonNotFound(999))
@@ -1310,60 +980,6 @@ mod tests {
         assert!(core.list_people(25, None).unwrap().people.is_empty());
     }
 
-    #[test]
-    fn source_profiles_and_listings_update_the_person_activity_timestamp() {
-        let core = memory_core();
-        let id = core.create_person(Some("Active".into())).unwrap();
-        const OLD: &str = "2000-01-01T00:00:00.000Z";
-        {
-            let db = core.connection().unwrap();
-            db.execute(
-                "UPDATE persons SET last_seen_at=?1 WHERE person_id=?2",
-                params![OLD, id],
-            )
-            .unwrap();
-        }
-        let profile_id = core
-            .add_source_profile(id, "LADIES".into(), "profile".into())
-            .unwrap();
-        assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
-
-        {
-            let db = core.connection().unwrap();
-            db.execute(
-                "UPDATE persons SET last_seen_at=?1 WHERE person_id=?2",
-                params![OLD, id],
-            )
-            .unwrap();
-            db.execute(
-                "UPDATE source_profiles SET last_seen_at=?1 WHERE source_profile_id=?2",
-                params![OLD, profile_id],
-            )
-            .unwrap();
-        }
-        core.add_listing(id, Some(profile_id), "LADIES".into(), "ad".into(), None)
-            .unwrap();
-        assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
-        {
-            let db = core.connection().unwrap();
-            let profile_seen: String = db
-                .query_row(
-                    "SELECT last_seen_at FROM source_profiles WHERE source_profile_id=?1",
-                    params![profile_id],
-                    |r| r.get(0),
-                )
-                .unwrap();
-            assert!(profile_seen.as_str() > OLD);
-            db.execute(
-                "UPDATE persons SET last_seen_at=?1 WHERE person_id=?2",
-                params![OLD, id],
-            )
-            .unwrap();
-        }
-        core.add_listing(id, Some(profile_id), "LADIES".into(), "ad".into(), None)
-            .unwrap();
-        assert!(core.get_person(id).unwrap().unwrap().last_seen_at.as_str() > OLD);
-    }
     #[test]
     fn independent_core_exports_remain_consistent_under_parallel_writes() {
         use std::fs;

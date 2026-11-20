@@ -80,6 +80,10 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 - [ ] **M07.2 — PLANNED / Scope bestätigen:** tatsächlichen Export-/Backup-/Restore-Bedarf Android-Datenbank/Medien abgleichen (Legacy-Export vorhanden, kein Android-Backup-Nachweis); nur freigegebenen Umfang mit Integritäts-/Wiederherstellungstest umsetzen.
 - [ ] **M07.3 — PLANNED:** abschließende Produkt-/Release-Reife, bekannte Restfehler und Distribution gegen bestätigten Scope prüfen; keine Veröffentlichung ohne Auftrag.
 
+## Unabhängige technische Bereinigung
+
+- [x] **DC01 — DONE:** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49): obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
+
 ## Unabhängiger Klärungspunkt
 
 - [ ] **L01 — READY:** libmpv/FFmpeg-AAR-Lizenz, konkret enthaltene Bibliotheken/ABIs, Corresponding Source und Weiterverteilungspflichten auch für bereits öffentlich verfügbare Debug-Artefakte klären. [PROVENANCE](PROVENANCE.md), [NOTICE](../NOTICE). Keine Lizenzfreigabe oder Behauptung eines Rechtsverstoßes alleine aus Wrapper-Lizenz; vor weiterer öffentlicher Distribution klären.

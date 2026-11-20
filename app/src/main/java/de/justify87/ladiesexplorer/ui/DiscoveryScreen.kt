@@ -31,7 +31,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import androidx.compose.ui.unit.IntOffset
-import kotlin.math.roundToInt
 
 @Composable
 internal fun DiscoverScreen(
@@ -284,7 +283,7 @@ internal fun DiscoverScreen(
             val layout = listState.layoutInfo
             val hero = layout.visibleItemsInfo.firstOrNull { it.key == "hero" }
             val selected = selectedMedia?.takeIf { it.kind == "IMAGE" }
-                ?: card?.takeIf { selectedMedia?.kind != "VIDEO" }?.let { row ->
+                ?: card.takeIf { selectedMedia?.kind != "VIDEO" }?.let { row ->
                     row.thumbnailUrl?.let { ProfileMediaItem("IMAGE", it, row.localPath, 0u) }
                 }
             flight = SwipeFlight(id, deckToken.session, direction, liveDrag, heroSize,
@@ -349,7 +348,7 @@ internal fun DiscoverScreen(
                     item(key = "hero") {
                         ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
-                            onSwipe = if (actions && token != null) ({ decision ->
+                            onSwipe = if (actions) ({ decision ->
                                 choose(decision)
                             }) else null,
                             modifier = Modifier.onSizeChanged { heroSize = it }, selection = mediaSelection,

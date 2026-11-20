@@ -133,7 +133,6 @@ data class SearchUiState(
     val selectedPersonId get() = profileRead?.identity?.personId
     val selectedPerson get() = profileRead?.person
     val profileMedia get() = profileRead?.media.orEmpty()
-    val changeEvents get() = profileRead?.history.orEmpty()
     val identityCandidates get() = profileRead?.candidates.orEmpty()
 }
 

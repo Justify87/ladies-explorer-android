@@ -904,7 +904,7 @@ mod tests {
             .unwrap();
         assert_eq!(links, 2);
         drop(db);
-        assert_eq!(core.list_identity_candidates(listing).unwrap().len(), 0);
+        assert_eq!(crate::identity::list(&core, listing).unwrap().len(), 0);
     }
     #[test]
     fn existing_revision_is_linked_without_network() {

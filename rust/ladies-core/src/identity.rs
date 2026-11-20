@@ -120,58 +120,6 @@ fn hashes(db: &Connection, snapshot_id: i64) -> Result<Vec<u64>, CoreError> {
         .collect())
 }
 
-fn augment(
-    new_index: usize,
-    edges: &[Vec<usize>],
-    seen: &mut [bool],
-    matched: &mut [Option<usize>],
-) -> bool {
-    for &old_index in &edges[new_index] {
-        if seen[old_index] {
-            continue;
-        }
-        seen[old_index] = true;
-        let previous = matched[old_index];
-        if previous.is_none_or(|other| augment(other, edges, seen, matched)) {
-            matched[old_index] = Some(new_index);
-            return true;
-        }
-    }
-    false
-}
-
-fn independent_pairs(new_hashes: &[u64], old_hashes: &[u64], threshold: u32) -> u32 {
-    let edges = new_hashes
-        .iter()
-        .map(|hash| {
-            let mut neighbors = old_hashes
-                .iter()
-                .enumerate()
-                .filter_map(|(index, old)| {
-                    let distance = (hash ^ old).count_ones();
-                    (distance <= threshold).then_some((distance, index))
-                })
-                .collect::<Vec<_>>();
-            neighbors.sort_unstable();
-            neighbors
-                .into_iter()
-                .map(|(_, index)| index)
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-    let mut order = (0..edges.len()).collect::<Vec<_>>();
-    order.sort_unstable_by_key(|&index| (edges[index].len(), index));
-    let mut matched = vec![None; old_hashes.len()];
-    let mut count = 0;
-    for index in order {
-        let mut seen = vec![false; old_hashes.len()];
-        if augment(index, &edges, &mut seen, &mut matched) {
-            count += 1;
-        }
-    }
-    count
-}
-
 fn compare_images(new_hashes: &[u64], old_hashes: &[u64]) -> (u32, u32, Option<u32>) {
     let mut best = None;
     let mut edges = Vec::new();
@@ -420,6 +368,7 @@ pub(crate) fn refresh(db: &Connection, listing_id: i64) -> Result<(), CoreError>
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn list(
     core: &LadiesCore,
     listing_id: i64,
@@ -690,7 +639,7 @@ mod tests {
                 .unwrap();
             assert_eq!(state, ("AMBIGUOUS".into(), None));
         }
-        assert_eq!(core.list_identity_candidates(listing).unwrap().len(), 2);
+        assert_eq!(crate::identity::list(&core, listing).unwrap().len(), 2);
         assert_eq!(core.status().unwrap().person_count, 3);
     }
 
@@ -755,9 +704,16 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let source = core.create_person(Some("From".into())).unwrap();
         let target = core.create_person(Some("To".into())).unwrap();
-        let sid = core
-            .add_source_profile(source, "LADIES".into(), "src".into())
+        let sid = {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO source_profiles (person_id, source, external_profile_id)
+                 VALUES (?1,'LADIES','src')",
+                [source],
+            )
             .unwrap();
+            db.last_insert_rowid()
+        };
         let listing = core
             .add_listing(source, Some(sid), "LADIES".into(), "1".into(), None)
             .unwrap();
@@ -792,27 +748,34 @@ mod tests {
             .unwrap();
             refresh(&db, listing).unwrap();
         }
-        assert_eq!(core.list_identity_candidates(listing).unwrap().len(), 1);
+        assert_eq!(crate::identity::list(&core, listing).unwrap().len(), 1);
         let expected_snapshot = snapshot_id(&core, listing);
         core.confirm_identity_match(listing, source, expected_snapshot, target)
             .unwrap();
         assert_eq!(core.status().unwrap().person_count, 1);
         assert!(core.get_person(target).unwrap().unwrap().favorite);
         let saved = core
-            .saved_people(
+            .saved_people_window(
                 crate::SavedPersonKind::Favorite,
                 crate::SavedPersonSort::Date,
-                crate::SavedPersonSection::All,
                 50,
-                None,
-                None,
+                50,
             )
             .unwrap();
-        assert_eq!(saved.total, 1);
-        assert_eq!(saved.rows[0].person_id, target);
-        assert_eq!(saved.rows[0].listing_count, 2);
+        assert_eq!(saved.regular.total, 1);
+        let recent = saved.recent.unwrap();
+        let rows = saved
+            .regular
+            .rows
+            .iter()
+            .chain(&recent.rows)
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), 1);
+        let row = rows[0];
+        assert_eq!(row.person_id, target);
+        assert_eq!(row.listing_count, 2);
         assert_eq!(
-            saved.rows[0].latest_change_type.as_deref(),
+            row.latest_change_type.as_deref(),
             Some("NEW_LISTING_FOR_PERSON")
         );
         assert_eq!(
@@ -909,7 +872,7 @@ mod tests {
             .unwrap();
             refresh(&db, listing).unwrap();
         }
-        let rendered = core.list_identity_candidates(listing).unwrap();
+        let rendered = crate::identity::list(&core, listing).unwrap();
         assert_eq!(rendered.len(), 1);
         assert_eq!(rendered[0].person_id, target);
         {
@@ -934,7 +897,7 @@ mod tests {
         );
         assert_eq!(core.profile_identity(listing).unwrap().person_id, source);
         assert_eq!(core.status().unwrap().person_count, 2);
-        assert!(core.list_identity_candidates(listing).unwrap().is_empty());
+        assert!(crate::identity::list(&core, listing).unwrap().is_empty());
     }
 
     #[test]
@@ -968,7 +931,7 @@ mod tests {
             )
             .unwrap();
         }
-        let rendered = core.list_identity_candidates(listing).unwrap();
+        let rendered = crate::identity::list(&core, listing).unwrap();
         assert!(rendered.iter().any(|candidate| candidate.person_id == b));
         assert!(rendered.iter().any(|candidate| candidate.person_id == c));
         assert_eq!(core.profile_identity(listing).unwrap().person_id, a);
@@ -999,7 +962,7 @@ mod tests {
         assert_eq!(core.profile_identity(listing).unwrap().person_id, b);
         // C remains a valid candidate for B, but an old A->C confirmation is invalid.
         assert!(
-            core.list_identity_candidates(listing)
+            crate::identity::list(&core, listing)
                 .unwrap()
                 .iter()
                 .any(|candidate| candidate.person_id == c)

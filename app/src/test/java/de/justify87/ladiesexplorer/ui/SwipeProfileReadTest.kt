@@ -44,7 +44,7 @@ class SwipeProfileReadTest {
         assertTrue(result.fromArchive)
         assertEquals(11L, result.profile.snapshotId)
         assertEquals(fixtureIdentity(1L), result.identity)
-        assertEquals(1L, result.person?.personId)
+        assertEquals(1L, result.person.personId)
         assertEquals(listOf("cache:4", "profile:4"), f.calls)
     }
 
@@ -96,7 +96,7 @@ class SwipeProfileReadTest {
         job.join()
         val local = requireNotNull(projected)
         assertEquals(2L, local.identity.personId)
-        assertEquals(2L, local.person?.personId)
+        assertEquals(2L, local.person.personId)
         assertEquals(12L, local.profile.snapshotId)
         assertEquals(12L, local.candidates.single().personId)
         assertEquals(listOf("cache:4", "profile:4"), f.calls)
@@ -143,7 +143,7 @@ class SwipeProfileReadTest {
         val f = Fixture(fixtureProfile())
         val result = readSwipeProfile(4L, false, true, { f.calls += "completion" }, f.reads)
         assertTrue(result.fromArchive)
-        assertEquals(1L, result.person?.personId)
+        assertEquals(1L, result.person.personId)
         assertFalse(f.calls.any { it.startsWith("source:") || it == "completion" })
     }
 }
