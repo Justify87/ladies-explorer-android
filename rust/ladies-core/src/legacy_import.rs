@@ -498,10 +498,19 @@ mod tests {
             })
             .unwrap();
         assert_eq!(saved, "uuid-leipzig");
-        assert!(app.join("ladies_data/media").is_dir());
+        let (path, digest): (String, String) = db
+            .query_row("SELECT local_path, sha256 FROM media_assets", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        let bytes = fs::read(app.join("ladies_data").join(path)).unwrap();
+        assert_eq!(bytes.as_slice(), b"sample image");
+        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), digest);
+        drop(db);
         assert!(matches!(
             import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()),
-            Err(CoreError::Import(_))
+            Err(CoreError::Import(reason))
+                if reason == "An existing media archive was detected; refusing to overwrite it"
         ));
     }
 
@@ -554,30 +563,29 @@ mod tests {
     }
 
     #[test]
-    fn inconsistent_source_foreign_keys_roll_back_after_partial_copy() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (bundle, app) = fixture(tmp.path(), false, true);
-        let core =
-            LadiesCore::new(app.join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
-        assert!(matches!(
-            import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()),
-            Err(CoreError::Import(_))
-        ));
-        assert_eq!(core.status().unwrap().person_count, 0);
-        assert!(!app.join("ladies_data").exists());
-    }
-
-    #[test]
-    fn missing_media_rolls_back_without_partial_database_changes() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (bundle, app) = fixture(tmp.path(), true, false);
-        let core =
-            LadiesCore::new(app.join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
-        assert!(matches!(
-            import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()),
-            Err(CoreError::Import(_))
-        ));
-        assert_eq!(core.status().unwrap().person_count, 0);
-        assert!(!app.join("ladies_data").exists());
+    fn failed_import_leaves_no_partial_rows_or_archive() {
+        for (missing_media, invalid_owner, reason) in [
+            (true, false, "Missing assets/media/images/"),
+            (
+                false,
+                true,
+                "Imported database contains broken foreign keys",
+            ),
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let (bundle, app) = fixture(tmp.path(), missing_media, invalid_owner);
+            let core =
+                LadiesCore::new(app.join("ladies.sqlite").to_string_lossy().into_owned()).unwrap();
+            assert!(
+                matches!(
+                    import_bundle(&core, bundle.to_str().unwrap(), app.to_str().unwrap()),
+                    Err(CoreError::Import(message)) if message.starts_with(reason)
+                ),
+                "{reason}"
+            );
+            let db = core.connection().unwrap();
+            assert!(!target_has_data(&db).unwrap(), "{reason}");
+            assert!(!app.join("ladies_data").exists(), "{reason}");
+        }
     }
 }

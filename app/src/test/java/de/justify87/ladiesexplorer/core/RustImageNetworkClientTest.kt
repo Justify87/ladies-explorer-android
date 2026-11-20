@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import okio.Buffer
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,9 +34,10 @@ class RustImageNetworkClientTest {
     @Test
     fun rejectsNonGetAndDoesNotFallbackOnFailure() = runBlocking {
         var calls = 0
+        val failure = IllegalStateException("synthetic failure")
         val client = RustImageNetworkClient {
             calls++
-            throw IllegalStateException("synthetic failure")
+            throw failure
         }
         val url = "https://bilder1.ladies-cdn.de/a.jpg"
         val rejected = runCatching {
@@ -46,7 +48,7 @@ class RustImageNetworkClientTest {
         val failed = runCatching {
             client.executeRequest(NetworkRequest(url)) { error("Unexpected response") }
         }
-        assertTrue(failed.exceptionOrNull() is IllegalStateException)
+        assertSame(failure, failed.exceptionOrNull())
         assertEquals(1, calls)
     }
 }

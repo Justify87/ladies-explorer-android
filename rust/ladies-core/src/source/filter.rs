@@ -422,12 +422,21 @@ mod tests {
     fn rejects_unknown_groups_values_and_invalid_radius() {
         let mut req = SearchRequest::for_test();
         req.filters_json = r#"{"unknown":["value"]}"#.into();
-        assert!(filter_path(&req).is_err());
+        assert!(matches!(
+            filter_path(&req),
+            Err(CoreError::InvalidInput(reason)) if reason == "Unknown filter group: unknown"
+        ));
         req.filters_json = r#"{"service":["invented"]}"#.into();
-        assert!(filter_path(&req).is_err());
+        assert!(matches!(
+            filter_path(&req),
+            Err(CoreError::InvalidInput(reason)) if reason.contains("Unknown filter value") && reason.contains("invented")
+        ));
         req.filters_json = "{}".into();
         req.radius_km = 13;
-        assert!(validate_request(&req).is_err());
+        assert!(matches!(
+            validate_request(&req),
+            Err(CoreError::InvalidInput(reason)) if reason == "Radius must be 5, 10, 20, 30, 50, 70 or 100 km"
+        ));
     }
 
     #[test]

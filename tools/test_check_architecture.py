@@ -211,17 +211,22 @@ class ApkArchitectureTest(unittest.TestCase):
                              "res/xml/diagnostic_file_paths.xml", "res/xml-v31/diagnostic_file_paths.xml"):
                     archive.writestr(path, b"fixture")
 
+            invalid_variant = False
+
             def response(args, **kwargs):
                 if args[0] == "aapt2":
                     return table
                 if args[1] == "manifest":
                     return manifest.encode()
-                if "xml-v31" in args[4]:
+                if invalid_variant and "xml-v31" in args[4]:
                     return PATHS.replace("diagnostic-exports/", ".").encode()
                 return PATHS.encode()
 
             with patch("check_architecture.subprocess.check_output", side_effect=response):
-                self.assertIn("ARC-08", {e[0] for e in check_apk(apk, "apkanalyzer", "aapt2")})
+                self.assertEqual([], check_apk(apk, "apkanalyzer", "aapt2"))
+                invalid_variant = True
+                self.assertEqual(provider_errors(PATHS.replace("diagnostic-exports/", ".")),
+                                 check_apk(apk, "apkanalyzer", "aapt2"))
 
     def test_provider_and_native_mutations(self):
         for xml in (PATHS.replace("diagnostic-exports/", "."), PATHS.replace("cache-path", "root-path"), PATHS.replace("</paths>", '<files-path name="all" path="."/></paths>')):

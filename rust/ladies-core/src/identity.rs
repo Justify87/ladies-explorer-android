@@ -651,42 +651,6 @@ mod tests {
     }
 
     #[test]
-    fn conflicting_user_decisions_block_merge_without_data_loss() {
-        let core = LadiesCore::new(":memory:".into()).unwrap();
-        let source = core.create_person(Some("Source".into())).unwrap();
-        let target = core.create_person(Some("Target".into())).unwrap();
-        let listing = core
-            .add_listing(source, None, "LADIES".into(), "101".into(), None)
-            .unwrap();
-        core.set_preference(source, crate::Preference::Like)
-            .unwrap();
-        core.set_preference(target, crate::Preference::Dislike)
-            .unwrap();
-        let db = core.connection().unwrap();
-        record_phone(&db, source, listing, Some("0170 1234567")).unwrap();
-        record_phone(&db, target, listing, Some("0170 1234567")).unwrap();
-        db.execute(
-            "INSERT INTO listing_snapshots(listing_id,fingerprint,normalized_phone)
-             VALUES (?1,'fp','+491701234567')",
-            [listing],
-        )
-        .unwrap();
-        let snapshot = db.last_insert_rowid();
-        db.execute(
-            "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
-            params![snapshot, listing],
-        )
-        .unwrap();
-        drop(db);
-        let expected_snapshot = snapshot_id(&core, listing);
-        assert!(
-            core.confirm_identity_match(listing, source, expected_snapshot, target)
-                .is_err()
-        );
-        assert_eq!(core.status().unwrap().person_count, 2);
-    }
-
-    #[test]
     fn image_evidence_needs_independent_pictures() {
         assert_eq!(compare_images(&[0, 0], &[0]).1, 1);
         assert_eq!(compare_images(&[0, 1], &[0, 1]).1, 2);
@@ -764,9 +728,18 @@ mod tests {
         let expected_snapshot = snapshot_id(&core, listing);
         assert!(matches!(
             core.confirm_identity_match(listing, source, expected_snapshot, target),
-            Err(CoreError::IdentityConflict(_))
+            Err(CoreError::IdentityConflict(reason))
+                if reason == "Conflicting LIKE/DISLIKE decisions require explicit resolution"
         ));
         assert_eq!(core.status().unwrap().person_count, 2);
+        let db = core.connection().unwrap();
+        assert_eq!(current_owner(&db, listing).unwrap().0, source);
+        assert_eq!(current_owner(&db, target_listing).unwrap().0, target);
+        assert_eq!(
+            current_owner(&db, listing).unwrap().1,
+            Some(expected_snapshot)
+        );
+        drop(db);
         assert_eq!(
             core.get_person(source).unwrap().unwrap().preference,
             crate::Preference::Like

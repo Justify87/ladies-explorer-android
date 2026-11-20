@@ -1213,7 +1213,14 @@ mod tests {
     #[test]
     fn discovery_limit_is_bounded() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
-        assert!(page(&core, false, 0, None, &[]).map(|p| p.cards).is_err());
-        assert!(page(&core, false, 201, None, &[]).map(|p| p.cards).is_err());
+        for limit in [0, 101] {
+            assert!(matches!(
+                page(&core, false, limit, None, &[]),
+                Err(CoreError::InvalidInput(reason))
+                    if reason == "Discovery page size must be between 1 and 100"
+            ));
+        }
+        assert!(page(&core, false, 1, None, &[]).unwrap().cards.is_empty());
+        assert!(page(&core, false, 100, None, &[]).unwrap().cards.is_empty());
     }
 }

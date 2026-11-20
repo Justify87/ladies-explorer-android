@@ -1,5 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
+import androidx.compose.ui.unit.IntSize
 import de.justify87.ladiesexplorer.core.Preference
 import org.junit.Assert.*
 import org.junit.Test
@@ -99,5 +100,11 @@ class ProfilePhotoGestureTest {
         assertFalse(geometry.galleryAt(androidx.compose.ui.geometry.Offset(200f, 100f)))
         assertNotEquals(geometry, geometry.copy(rootOrigin = androidx.compose.ui.geometry.Offset(0f, 1f)))
         assertNotEquals(geometry, geometry.copy(gallery = emptyList()))
+    }
+
+    @Test fun flightEndsOutsideTheMeasuredHeroInBothDirections() {
+        val flight = SwipeFlight(4L to 1L, 5, 1f, 125f, IntSize(800, 1200), 0, null, null)
+        assertTrue(flight.destination > 800f)
+        assertTrue(flight.copy(direction = -1f, offset = -125f).destination < -800f)
     }
 }

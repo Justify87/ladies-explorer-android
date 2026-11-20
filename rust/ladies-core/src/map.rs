@@ -750,7 +750,10 @@ mod tests {
     fn overlapping_resolution_is_rejected_without_network_access() {
         let core = seed();
         let _lease = core.geocoding.lock().unwrap();
-        assert!(resolve(&core, false, 15, &RequestControl::new()).is_err());
+        assert!(matches!(
+            resolve(&core, false, 15, &RequestControl::new()),
+            Err(CoreError::Source(reason)) if reason == "Standortauflösung läuft bereits"
+        ));
     }
 
     #[test]
@@ -824,7 +827,10 @@ mod tests {
         };
         let control = RequestControl::new();
         control.cancel();
-        assert!(state.wait_for_city(&control).is_err());
+        assert!(matches!(
+            state.wait_for_city(&control),
+            Err(CoreError::Source(reason)) if reason == "Operation cancelled"
+        ));
         assert_eq!(state.last_city_request, Some(previous));
     }
 

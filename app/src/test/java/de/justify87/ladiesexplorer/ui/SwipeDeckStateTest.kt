@@ -1,15 +1,12 @@
 package de.justify87.ladiesexplorer.ui
 
-import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.Preference
 import org.junit.Assert.*
 import org.junit.Test
 
 class SwipeDeckStateTest {
     private fun card(listing: Long, person: Long = listing, preference: Preference = Preference.NONE) =
-        DiscoveryCard(listingId = listing, personId = person, name = "Fixture", city = "Leipzig",
-            thumbnailUrl = null, localPath = null, description = null, preference = preference,
-            favorite = false, hasVideo = false, hasAiContent = false, isPremium = false, age = null)
+        fixtureCard(listing, person).copy(preference = preference)
 
     @Test fun activeQueuePreservesRunOrderAndDeduplicatesCanonicalPeople() {
         val rows = listOf(card(4, 1), card(5, 1), card(2, preference = Preference.LIKE),
@@ -44,14 +41,10 @@ class SwipeDeckStateTest {
         assertNull(session.last)
     }
 
-    @Test fun prefetchNeverExceedsTwoFollowingCardsAndShortDragsDoNotDecide() {
+    @Test fun prefetchNeverExceedsTwoFollowingCards() {
         val rows = (1L..8L).map { card(it) }
         assertEquals(listOf(2L, 3L), prefetchCards(rows).map { it.listingId })
         assertTrue(prefetchCards(emptyList()).isEmpty())
-        assertNull(photoSwipePreference(95f, 384f, 72f))
-        assertNull(photoSwipePreference(-95f, 384f, 72f))
-        assertEquals(Preference.LIKE, photoSwipePreference(96f, 384f, 72f))
-        assertEquals(Preference.DISLIKE, photoSwipePreference(-96f, 384f, 72f))
     }
 
     @Test fun explicitNoneDoesNotVisitButSkipHasNoPreviousPreference() {
@@ -200,5 +193,29 @@ class SwipeDeckStateTest {
         assertNull(currentSwipeTraversalCard(state.copy(activeRunId = 4L), false, token))
         assertNull(currentSwipeTraversalCard(state.copy(cards = listOf(card(4, 2))), false, token))
         assertNull(currentSwipeTraversalCard(state.copy(busy = true), false, token))
+    }
+
+    @Test fun menuNeverRebindsAcrossDeckOwnerRevisionOrBusyChanges() {
+        val deck = SwipeDeckToken(3L, 4L)
+        val card = SwipeCardToken(deck, 10L, 20L)
+        val token = SwipeActionToken(3L, 4L, 10L, 20L, 30L, 1L, Preference.LIKE, false, emptyList())
+        val context = SwipeMenuContext(deck, card, token, true, true, true, AvailabilityMode.Now, false, true)
+        assertTrue(swipeMenuCurrent(context, context.copy()))
+        assertFalse(swipeMenuCurrent(null, context))
+        assertFalse(swipeMenuCurrent(context, context.copy(deck = deck.copy(session = 5L))))
+        assertFalse(swipeMenuCurrent(context, context.copy(card = card.copy(ownerId = 21L))))
+        assertFalse(swipeMenuCurrent(context, context.copy(profile = token.copy(projectionRevision = 2L))))
+        assertFalse(swipeMenuCurrent(context, context.copy(profile = token.copy(preference = Preference.NONE))))
+        assertFalse(swipeMenuCurrent(context, context.copy(profile = null, deckEnabled = false)))
+        assertFalse(swipeMenuCurrent(context, context.copy(availabilityEnabled = false)))
+        assertFalse(swipeMenuCurrent(context, context.copy(matchingRun = false)))
+    }
+
+    @Test fun localSourceAndAvailabilityAreExplicitEvenInCompactContext() {
+        assertEquals("Lokaler Bestand · Swipe", swipeContextLabel("Lokaler Bestand", false, true, AvailabilityMode.Now))
+        assertEquals("Leipzig · Swipe · Heute", swipeContextLabel("Leipzig", true, true, AvailabilityMode.Today))
+        assertEquals("Lokal · Swipe", swipeContextShort(false, true, AvailabilityMode.Now))
+        assertEquals("Suche · Heute · Swipe", swipeContextShort(true, true, AvailabilityMode.Today))
+        assertEquals("Swipe · Suchwechsel", swipeContextShort(true, false, AvailabilityMode.Now))
     }
 }

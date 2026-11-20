@@ -14,7 +14,7 @@ class ProfilePanelsTest {
     private fun facts() = ProfileFacts(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
     private fun detail() = PersonDetail(emptyList(), 0u, 0u, 0u, 0u)
 
-    @Test fun factsAndAnalysisUseIndependentLocalReadKeysAndErrors() = runBlocking {
+    @Test(timeout = 15_000) fun factsAndAnalysisUseIndependentLocalReadKeysAndErrors() = runBlocking {
         val calls = mutableListOf<String>()
         val storedDetail = detail()
         var failFacts = true
@@ -43,7 +43,7 @@ class ProfilePanelsTest {
         assertEquals(listOf("facts:11:{}", "detail:7", "facts:12:{}"), calls)
     }
 
-    @Test fun lateComparisonAfterCloseCannotReplaceNewComparisonOrReopenDialog() = runBlocking {
+    @Test(timeout = 15_000) fun lateComparisonAfterCloseCannotReplaceNewComparisonOrReopenDialog() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         val newer = listOf(SnapshotDifference("name", "A", "B"))
@@ -52,7 +52,7 @@ class ProfilePanelsTest {
                 assertEquals(7L, owner)
                 if (from == 1L) {
                     started.complete(Unit)
-                    withContext(NonCancellable) { finish.await() }
+                    withContext(NonCancellable) { finish.awaitSignal() }
                     listOf(SnapshotDifference("name", "old", "stale"))
                 } else {
                     assertEquals(3L, to)
@@ -61,7 +61,7 @@ class ProfilePanelsTest {
             },
         )
         panel.compare(1L, 2L)
-        started.await()
+        started.awaitSignal()
         val oldJob = coroutineContext[Job]!!.children.single()
         assertTrue(panel.comparing)
         panel.closeComparison()
@@ -80,16 +80,16 @@ class ProfilePanelsTest {
         assertFalse(panel.comparing)
     }
 
-    @Test fun lateFactsCannotOverwriteNewFilterRevisionWithinSamePanel() = runBlocking {
+    @Test(timeout = 15_000) fun lateFactsCannotOverwriteNewFilterRevisionWithinSamePanel() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         val old = ProfileFacts(listOf(ProfileField("fixture", listOf("old"))), emptyList(), emptyList(), emptyList(), emptyList())
         val new = ProfileFacts(listOf(ProfileField("fixture", listOf("new"))), emptyList(), emptyList(), emptyList(), emptyList())
         val panel = ProfilePanels(this, 7L, { _, filters ->
-            if (filters == "old") { started.complete(Unit); finish.await(); old } else new
+            if (filters == "old") { started.complete(Unit); finish.awaitSignal(); old } else new
         }, { detail() }, { _, _, _ -> emptyList() })
         val read = launch { panel.loadFacts(11L, "old") }
-        started.await()
+        started.awaitSignal()
         panel.loadFacts(11L, "new")
         assertEquals(new, panel.facts)
         finish.complete(Unit)
@@ -97,7 +97,7 @@ class ProfilePanelsTest {
         assertEquals(new, panel.facts)
     }
 
-    @Test fun factsAndDetailCoalesceInFlightAndSuccessfulReads() = runBlocking {
+    @Test(timeout = 15_000) fun factsAndDetailCoalesceInFlightAndSuccessfulReads() = runBlocking {
         val start = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         var factsCalls = 0
@@ -105,11 +105,11 @@ class ProfilePanelsTest {
         val panel = ProfilePanels(this, 7L, { _, _ ->
             factsCalls++
             start.complete(Unit)
-            finish.await()
+            finish.awaitSignal()
             facts()
         }, { detailCalls++; detail() }, { _, _, _ -> emptyList() })
         val read = launch { panel.loadFacts(11L, "{}") }
-        start.await()
+        start.awaitSignal()
         panel.loadFacts(11L, "{}")
         panel.loadDetail()
         panel.loadDetail()
@@ -120,7 +120,7 @@ class ProfilePanelsTest {
         assertEquals(1, detailCalls)
     }
 
-    @Test fun failedDetailRetriesIndependentlyOnlyByExplicitAction() = runBlocking {
+    @Test(timeout = 15_000) fun failedDetailRetriesIndependentlyOnlyByExplicitAction() = runBlocking {
         var attempts = 0
         val panel = ProfilePanels(this, 7L, { _, _ -> facts() },
             { if (++attempts == 1) error("analysis failed") else detail() }, { _, _, _ -> emptyList() })
@@ -161,7 +161,7 @@ class ProfilePanelsTest {
             all.preview(true).filters.map { it.second })
     }
 
-    @Test fun sameKeyFactsRetryCannotResetSuccessfulDetail() = runBlocking {
+    @Test(timeout = 15_000) fun sameKeyFactsRetryCannotResetSuccessfulDetail() = runBlocking {
         var attempts = 0
         val panel = ProfilePanels(this, 7L, { _, _ ->
             if (++attempts == 1) error("facts failed") else facts()
@@ -180,15 +180,15 @@ class ProfilePanelsTest {
         assertEquals(previousDetail, panel.detail)
     }
 
-    @Test fun lateFactsFailureCannotReplaceNewSuccess() = runBlocking {
+    @Test(timeout = 15_000) fun lateFactsFailureCannotReplaceNewSuccess() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         val panel = ProfilePanels(this, 7L, { _, filter ->
-            if (filter == "old") { started.complete(Unit); finish.await(); error("late") }
+            if (filter == "old") { started.complete(Unit); finish.awaitSignal(); error("late") }
             facts()
         }, { detail() }, { _, _, _ -> emptyList() })
         val old = launch { panel.loadFacts(11L, "old") }
-        started.await()
+        started.awaitSignal()
         panel.loadFacts(11L, "new")
         finish.complete(Unit)
         old.join()
@@ -211,16 +211,16 @@ class ProfilePanelsTest {
             visibleProfileReads(rows, setOf("profile-services", "event/1", "profile-notes")))
     }
 
-    @Test fun disposedProjectionCannotPublishLateRead() = runBlocking {
+    @Test(timeout = 15_000) fun disposedProjectionCannotPublishLateRead() = runBlocking {
         val start = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         val panel = ProfilePanels(this, 7L, { _, _ ->
             start.complete(Unit)
-            finish.await()
+            finish.awaitSignal()
             facts()
         }, { detail() }, { _, _, _ -> emptyList() })
         val read = launch { panel.loadFacts(11L, "{}") }
-        start.await()
+        start.awaitSignal()
         panel.close()
         finish.complete(Unit)
         read.join()

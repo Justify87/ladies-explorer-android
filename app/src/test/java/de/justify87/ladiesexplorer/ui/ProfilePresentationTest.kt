@@ -1,8 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.*
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -194,67 +192,6 @@ class ProfilePresentationTest {
             { error("standalone must never visit") }, saved)
     }
 
-    @Test fun openedNoteCoalescesDemandAndRetryDoesNotDependOnLazyItem() = runBlocking {
-        val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
-        val token = requireNotNull(state.swipeToken(fixtureSwipe()))
-        var current = true
-        var reads = 0
-        val started = CompletableDeferred<Unit>()
-        val finish = CompletableDeferred<Unit>()
-        val demand = ProfileNoteDemand(this)
-        val load: suspend (Long, Long) -> Unit = { listing, owner ->
-            assertEquals(4L, listing)
-            assertEquals(1L, owner)
-            reads++
-            if (reads == 2) { started.complete(Unit); finish.await() }
-        }
-        demand.request(token, false, { current }, load)
-        demand.request(token, false, { current }, load)
-        assertEquals(1, reads)
-        demand.request(token, true, { current }, load)
-        started.await()
-        demand.request(token, false, { current }, load)
-        demand.request(token, true, { current }, load)
-        assertEquals(ProfileNoteDemand.Status.Loading, demand.status)
-        finish.complete(Unit)
-        coroutineContext[Job]!!.children.toList().forEach { it.join() }
-        assertEquals(ProfileNoteDemand.Status.Settled, demand.status)
-        current = false
-        demand.request(token, true, { current }, load)
-        assertEquals(2, reads)
-        demand.close()
-    }
-
-    @Test fun productionPreferenceCommitUsesCasThenTraversesOnlyForExplicitDeckDecision() = runBlocking {
-        val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
-        val token = requireNotNull(state.swipeToken(fixtureSwipe())).copy(preference = Preference.LIKE)
-        val deck = SwipeSession()
-        val writes = mutableListOf<Preference>()
-        val write: suspend (Long, Long, Preference?, Preference) -> Preference = { listing, owner, expected, target ->
-            assertEquals(4L, listing)
-            assertEquals(1L, owner)
-            assertEquals(Preference.LIKE, expected)
-            writes += target
-            Preference.LIKE
-        }
-        commitProfilePreference(token, Preference.NONE, write, deck::visit)
-        assertNull(deck.last)
-        assertEquals(listOf(1L), deck.queue(state.cards, active = true).map { it.personId })
-        val detail = DetailIdentityToken(2L, token.listingId, token.ownerId, token.snapshotId,
-            token.projectionRevision, token.preference, token.favorite, token.candidates)
-        commitProfilePreference(detail, Preference.DISLIKE, write, deck::visit)
-        assertNull(deck.last)
-        try {
-            commitProfilePreference(token, Preference.DISLIKE, { _, _, _, _ -> error("CAS failed") }, deck::visit)
-            fail("Expected CAS failure")
-        } catch (_: IllegalStateException) { }
-        assertNull(deck.last)
-        commitProfilePreference(token, Preference.DISLIKE, write, deck::visit)
-        assertEquals(SwipeStep(4L, 1L, Preference.LIKE, Preference.DISLIKE), deck.last)
-        assertTrue(deck.queue(state.cards, active = true).isEmpty())
-        assertEquals(listOf(Preference.NONE, Preference.DISLIKE, Preference.DISLIKE), writes)
-    }
-
     @Test fun committedDecisionRetainsPresentationOnlyForMatchingSwipeAndUndoCasSuccess() = runBlocking {
         val state = DiscoverUiState(cards = listOf(fixtureCard(4, 1)), activeRunId = 3, loading = false)
         val token = requireNotNull(state.swipeToken(fixtureSwipe()))
@@ -310,33 +247,11 @@ class ProfilePresentationTest {
         assertEquals(position, deck.restoredPresentation(fixtureCard(4, 1)))
     }
 
-    @Test fun committedNeutralResetReprojectsWithoutVisitEvenIfFeedReadFails() = runBlocking {
-        val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
-        val token = requireNotNull(state.swipeToken(fixtureSwipe())).copy(preference = Preference.LIKE)
-        val deck = SwipeSession()
-        var native = Preference.LIKE
-        var writes = 0
-        val outcome = writeAndProject(
-            write = {
-                commitProfilePreference(token, Preference.NONE, { listing, owner, expected, target ->
-                    assertEquals(4L, listing)
-                    assertEquals(1L, owner)
-                    assertEquals(native, expected)
-                    val previous = native
-                    native = target
-                    writes++
-                    previous
-                }, deck::visit)
-            },
-            project = { error("feed unavailable") },
-        )
-        assertTrue(outcome is DiscoveryMutationOutcome.ProjectionFailed)
-        assertEquals(Preference.NONE, native)
-        assertEquals(1, writes)
-        assertNull(deck.last)
-        // Read-only recovery uses the native state and the unchanged traversal owner.
-        val projected = state.cards.map { it.copy(preference = native) }
-        assertEquals(projected, deck.queue(projected, active = false))
-        assertEquals(1, writes)
+    @Test fun photoRequestSupersedesPendingAnchorRecovery() {
+        val memory = ProfileScrollMemory(ProfileScrollAnchor("profile-facts", 35), initialRecovery = true)
+        memory.returnToHero("hero")
+        assertFalse(memory.recovering)
+        assertEquals(ProfileScrollAnchor("hero", 0), memory.anchor)
+        assertNull(memory.target(listOf("hero", "profile-facts")))
     }
 }

@@ -33,3 +33,73 @@ pub(crate) fn validate_media_url(raw: &str, kind: Option<&str>) -> Result<Url, C
     }
     Ok(url)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permitted_media_urls_preserve_kind_and_resolve_relative_paths() {
+        for (raw, kind, expected) in [
+            (
+                "https://bilder1.ladies-cdn.de/Bilder/1.jpg",
+                Some("IMAGE"),
+                "https://bilder1.ladies-cdn.de/Bilder/1.jpg",
+            ),
+            (
+                "https://video2.ladies-cdn.de/a.mp4",
+                Some("VIDEO"),
+                "https://video2.ladies-cdn.de/a.mp4",
+            ),
+            (
+                "https://m.ladies.de/Bilder/gallery.jpg",
+                Some("IMAGE"),
+                "https://m.ladies.de/Bilder/gallery.jpg",
+            ),
+            (
+                "/Bilder/a.jpg?h=revision",
+                Some("IMAGE"),
+                "https://www.ladies.de/Bilder/a.jpg?h=revision",
+            ),
+            (
+                "//video12.ladies-cdn.de/a.mp4",
+                None,
+                "https://video12.ladies-cdn.de/a.mp4",
+            ),
+        ] {
+            assert_eq!(validate_media_url(raw, kind).unwrap().as_str(), expected);
+        }
+    }
+
+    #[test]
+    fn disallowed_media_targets_fail_closed() {
+        for (raw, kind) in [
+            (
+                "https://bilder1.ladies-cdn.de.evil.test/a.jpg",
+                Some("IMAGE"),
+            ),
+            ("http://bilder1.ladies-cdn.de/a.jpg", Some("IMAGE")),
+            ("https://127.0.0.1/a.jpg", Some("IMAGE")),
+            ("https://bilder.ladies-cdn.de/a.jpg", Some("IMAGE")),
+            ("https://bilderx.ladies-cdn.de/a.jpg", Some("IMAGE")),
+            ("https://bilder1.ladies-cdn.de/a.jpg", Some("VIDEO")),
+            ("https://video2.ladies-cdn.de/a.mp4", Some("IMAGE")),
+            ("https://bilder1.ladies-cdn.de:444/a.jpg", Some("IMAGE")),
+            ("https://user@bilder1.ladies-cdn.de/a.jpg", Some("IMAGE")),
+            (
+                "https://user:pass@bilder1.ladies-cdn.de/a.jpg",
+                Some("IMAGE"),
+            ),
+            ("https://www.ladies.de/a.jpg", Some("OTHER")),
+        ] {
+            assert!(
+                matches!(
+                    validate_media_url(raw, kind),
+                    Err(CoreError::Media(reason))
+                        if reason == "Media host or scheme is not allowed"
+                ),
+                "{raw} ({kind:?})"
+            );
+        }
+    }
+}

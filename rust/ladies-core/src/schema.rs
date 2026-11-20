@@ -610,7 +610,11 @@ mod tests {
             "INSERT INTO listings (person_id, source, external_listing_id) VALUES (77,'LADIES','x')",
             []
         );
-        assert!(res.is_err());
+        assert!(matches!(
+            res,
+            Err(rusqlite::Error::SqliteFailure(error, _))
+                if error.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY
+        ));
     }
 
     #[test]

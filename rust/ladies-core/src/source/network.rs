@@ -1010,9 +1010,22 @@ mod tests {
     fn preview_never_confirms_unverified_404_or_missing_count() {
         let request = SearchRequest::for_test();
         let url = search_url("leipzig", 20, 1, "", false);
-        let missing = with_city(Mock::default().with(&url, 200, &card(1)));
+        let html = format!(
+            "{} distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        let missing = with_city(Mock::default().with(&url, 200, &html));
         let result = preview_search_using(&missing, &request, None).unwrap();
         assert_eq!(result.server_count, None);
+        assert!(result.radius_verified);
+        let unverified_html = format!(
+            "{} advertCount: Number.parseInt(replaceWithDefault(\"1\", 1))",
+            card(1)
+        );
+        let unverified = with_city(Mock::default().with(&url, 200, &unverified_html));
+        let result = preview_search_using(&unverified, &request, None).unwrap();
+        assert_eq!(result.server_count, None);
+        assert!(!result.radius_verified);
         let not_found = with_city(Mock::default().with(&url, 404, ""));
         let result = preview_search_using(&not_found, &request, None).unwrap();
         assert_eq!(result.server_count, None);
@@ -1042,24 +1055,31 @@ mod tests {
         let client =
             with_city(Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, &html));
         let request = SearchRequest::for_test();
-        assert!(preview_search_using(&client, &request, None).is_err());
+        assert!(matches!(
+            preview_search_using(&client, &request, None),
+            Err(CoreError::Source(reason))
+                if reason == "Search radius was expanded by the source: requested 20 km, returned 50 km"
+        ));
         let control = RequestControl::default();
         control.cancel();
-        assert!(preview_search_using(&Mock::default(), &request, Some(&control)).is_err());
+        assert!(matches!(
+            preview_search_using(&Mock::default(), &request, Some(&control)),
+            Err(CoreError::Source(reason)) if reason == "Operation cancelled"
+        ));
     }
 
     #[test]
     fn cancelled_search_stops_before_any_network_request() {
         let control = RequestControl::default();
         control.cancel();
-        assert!(
-            fetch_search_controlled(&Mock::default(), &SearchRequest::for_test(), Some(&control))
-                .is_err()
-        );
+        assert!(matches!(
+            fetch_search_controlled(&Mock::default(), &SearchRequest::for_test(), Some(&control)),
+            Err(CoreError::Source(reason)) if reason == "Operation cancelled"
+        ));
     }
 
     #[test]
-    fn november_location_api_uses_title_case_keys() {
+    fn location_api_uses_title_case_keys() {
         let client = Mock::default().with(
             "https://www.ladies.de/api/location?searchString=Leipzi&searchAddAlleRegionen=false",
             200,
@@ -1071,7 +1091,7 @@ mod tests {
     }
 
     #[test]
-    fn november_har_card_and_search_config_shapes_are_supported() {
+    fn cards_and_search_config_accept_observed_source_markup() {
         // Synthetic data preserving observed HTML and metadata shapes.
         let html = r#"<div class="card-gallery-premium ladies-card top-teaser">
             <a class="card-link" data-owg-id="9988" data-ref-id="9988"
@@ -1229,74 +1249,43 @@ mod tests {
     }
 
     #[test]
-    fn radius_transition_preserves_previous_pages_as_partial() {
-        let first = format!(
-            "{} totalPages: Number.parseInt(replaceWithDefault(\"3\", 1)), \
-             advertCount: Number.parseInt(replaceWithDefault(\"5\", 1)), \
-             distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
-            card(1)
-        );
-        let transition = r#"<div hidden id="page-section-3" data-page="3"></div>
-            <h3>3 Anzeigen im Umkreis bis 20 km</h3>
-            <div class="card-gallery-standard affiliate-card ladies-card">
-                <p class="card-name">&nbsp;</p><p class="card-city">&nbsp;</p>
-            </div>
-            <lds-button id="load-adverts-next-distance" data-next-distance="30"></lds-button>"#;
-        let client = with_city(
-            Mock::default()
-                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
-                .with(
-                    &search_url("leipzig", 20, 2, "", true),
-                    200,
-                    &json!({"content":card(2), "distanceSearched":20}).to_string(),
-                )
-                .with(
-                    &search_url("leipzig", 20, 3, "", true),
-                    200,
-                    &json!({"content":transition, "distanceSearched":20}).to_string(),
-                ),
-        );
-        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
-        assert_eq!(result.cards.len(), 2);
-        assert_eq!(result.server_count, Some(5));
-        assert_eq!(result.fetched_pages, 3);
-        assert_eq!(result.total_pages, 3);
-        assert!(result.partial);
-        assert!(result.radius_boundary_stopped);
-        assert!(result.radius_verified);
-    }
-
-    #[test]
-    fn verified_radius_transition_with_matching_count_is_complete() {
-        let first = format!(
-            "{} totalPages: Number.parseInt(replaceWithDefault(\"3\", 1)), \
-             advertCount: Number.parseInt(replaceWithDefault(\"2\", 1)), \
-             distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
-            card(1)
-        );
-        let transition = r#"<div hidden id="page-section-3" data-page="3"></div>
-            <div class="affiliate-card ladies-card"><p class="card-name">&nbsp;</p></div>
-            <lds-button id="load-adverts-next-distance" data-next-distance="30"></lds-button>"#;
-        let client = with_city(
-            Mock::default()
-                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
-                .with(
-                    &search_url("leipzig", 20, 2, "", true),
-                    200,
-                    &json!({"content":card(2), "distanceSearched":20}).to_string(),
-                )
-                .with(
-                    &search_url("leipzig", 20, 3, "", true),
-                    200,
-                    &json!({"content":transition, "distanceSearched":20}).to_string(),
-                ),
-        );
-        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
-        assert_eq!(result.cards.len(), 2);
-        assert_eq!(result.server_count, Some(2));
-        assert!(result.radius_boundary_stopped);
-        assert!(result.radius_verified);
-        assert!(!result.partial);
+    fn verified_radius_transition_is_complete_only_with_matching_count() {
+        for (count, partial) in [(2, false), (5, true)] {
+            let first = format!(
+                "{} totalPages: Number.parseInt(replaceWithDefault(\"3\", 1)), \
+                 advertCount: Number.parseInt(replaceWithDefault(\"{count}\", 1)), \
+                 distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+                card(1)
+            );
+            let transition = r#"<div hidden id="page-section-3" data-page="3"></div>
+                <h3>2 Anzeigen im Umkreis bis 20 km</h3>
+                <div class="card-gallery-standard affiliate-card ladies-card">
+                    <p class="card-name">&nbsp;</p><p class="card-city">&nbsp;</p>
+                </div>
+                <lds-button id="load-adverts-next-distance" data-next-distance="30"></lds-button>"#;
+            let client = with_city(
+                Mock::default()
+                    .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                    .with(
+                        &search_url("leipzig", 20, 2, "", true),
+                        200,
+                        &json!({"content":card(2), "distanceSearched":20}).to_string(),
+                    )
+                    .with(
+                        &search_url("leipzig", 20, 3, "", true),
+                        200,
+                        &json!({"content":transition, "distanceSearched":20}).to_string(),
+                    ),
+            );
+            let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+            assert_eq!(result.cards.len(), 2);
+            assert_eq!(result.server_count, Some(count));
+            assert_eq!(result.fetched_pages, 3);
+            assert_eq!(result.total_pages, 3);
+            assert!(result.radius_boundary_stopped);
+            assert!(result.radius_verified);
+            assert_eq!(result.partial, partial, "source count: {count}");
+        }
     }
 
     #[test]
@@ -1395,9 +1384,17 @@ mod tests {
                 ),
         );
         let found = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
-        assert_eq!(found.cards.len(), 3);
+        assert_eq!(
+            found
+                .cards
+                .iter()
+                .map(|card| card.advert_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["1", "2", "3"]
+        );
         assert_eq!(found.total_pages, 3);
         assert_eq!(found.fetched_pages, 3);
+        assert!(found.radius_verified);
         assert!(!found.partial);
     }
 
@@ -1445,13 +1442,16 @@ mod tests {
     #[test]
     fn server_count_mismatch_is_reported_as_partial() {
         let first = format!(
-            "{} totalPages: Number.parseInt(replaceWithDefault(\"1\", 1)), advertCount: Number.parseInt(replaceWithDefault(\"2\", 1))",
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"1\", 1)), advertCount: Number.parseInt(replaceWithDefault(\"2\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
             card(1)
         );
         let client =
             with_city(Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, &first));
         let found = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
         assert_eq!(found.cards.len(), 1);
+        assert_eq!(found.server_count, Some(2));
+        assert!(found.radius_verified);
+        assert_eq!(found.fetched_pages, found.total_pages);
         assert!(found.partial);
     }
 
@@ -1462,6 +1462,9 @@ mod tests {
         let found = fetch_search_using(&empty, &SearchRequest::for_test()).unwrap();
         assert!(found.cards.is_empty());
         assert_eq!(found.total_pages, 0);
+        assert_eq!(found.server_count, Some(0));
+        assert!(!found.radius_verified);
+        assert!(!found.partial);
         let fallback = with_city(Mock::default()
             .with(&search_url("leipzig",20,1,"",false), 200, &card(1))
             .with(&search_url("leipzig",20,2,"",true), 200,
@@ -1541,7 +1544,7 @@ mod tests {
     #[test]
     fn pagination_limit_marks_partial_response() {
         let first = format!(
-            "{} totalPages: Number.parseInt(replaceWithDefault(\"4\", 1))",
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"4\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
             card(1)
         );
         let client =
@@ -1550,6 +1553,9 @@ mod tests {
         req.max_pages = 1;
         let found = fetch_search_using(&client, &req).unwrap();
         assert_eq!(found.cards.len(), 1);
+        assert!(found.radius_verified);
+        assert_eq!(found.total_pages, 4);
+        assert_eq!(found.fetched_pages, 1);
         assert!(found.partial);
     }
 }

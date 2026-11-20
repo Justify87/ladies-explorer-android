@@ -1,6 +1,9 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 
 internal fun fixtureProfile(snapshot: Long = 11L) = ProfileResponse(
     listingId = 4L, snapshotId = snapshot, newSnapshot = false, advertId = "fixture",
@@ -30,3 +33,9 @@ internal fun fixtureSwipe(listing: Long = 4L, owner: Long = 1L, snapshot: Long =
         emptyList(), emptyList(),
     ), true,
 )
+
+internal suspend fun <T> CompletableDeferred<T>.awaitSignal(): T = try {
+    withTimeout(5_000) { await() }
+} catch (timeout: TimeoutCancellationException) {
+    throw AssertionError("Fixture signal was not delivered", timeout)
+}

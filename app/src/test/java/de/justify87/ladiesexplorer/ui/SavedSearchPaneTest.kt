@@ -71,7 +71,7 @@ class SavedSearchPaneTest {
         withTimeout(5_000) { c.state.first { !it.busy } }
     }
 
-    @Test fun ordinaryDraftAndEditorAreIndependentAndCancelDoesNotSerialize() = runBlocking {
+    @Test(timeout = 15_000) fun ordinaryDraftAndEditorAreIndependentAndCancelDoesNotSerialize() = runBlocking {
         val ordinary = SearchDraft(city = " Berlin ", radiusKm = 30u,
             selectedFilters = mapOf("figur" to setOf("schlank")))
         val fake = Fake(info())
@@ -97,7 +97,7 @@ class SavedSearchPaneTest {
         assertNull(c.state.value.editor)
     }
 
-    @Test fun refreshCannotRaceWriteAndCommittedWriteIsNotRetriedOnReadFailure() = runBlocking {
+    @Test(timeout = 15_000) fun refreshCannotRaceWriteAndCommittedWriteIsNotRetriedOnReadFailure() = runBlocking {
         val fake = Fake(info())
         val c = controller(this, fake)
         c.open(); idle(c)
@@ -111,8 +111,8 @@ class SavedSearchPaneTest {
         fake.afterWriteReadError = true
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
-        fake.onWrite = { started.complete(Unit); gate.await() }
-        c.confirmDialog(); started.await()
+        fake.onWrite = { started.complete(Unit); gate.awaitSignal() }
+        c.confirmDialog(); started.awaitSignal()
         c.refresh()
         assertEquals(SavedOperation.Write, c.state.value.operation)
         c.confirmDialog()
@@ -123,14 +123,14 @@ class SavedSearchPaneTest {
         assertFalse(c.state.value.listAvailable)
     }
 
-    @Test fun staleWindowAfterBackCannotAcknowledgeAndReopeningReadsLoadedPrefix() = runBlocking {
+    @Test(timeout = 15_000) fun staleWindowAfterBackCannotAcknowledgeAndReopeningReadsLoadedPrefix() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
         c.open(); idle(c)
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
-        fake.onRead = { started.complete(Unit); gate.await() }
-        c.openResults("one"); started.await()
+        fake.onRead = { started.complete(Unit); gate.awaitSignal() }
+        c.openResults("one"); started.awaitSignal()
         c.back()
         gate.complete(Unit); idle(c)
         assertNull(c.state.value.result)
@@ -147,15 +147,15 @@ class SavedSearchPaneTest {
         assertEquals(1, fake.acknowledgements)
     }
 
-    @Test fun cancellationRetainsOperationUntilNativeCallDrains() = runBlocking {
+    @Test(timeout = 15_000) fun cancellationRetainsOperationUntilNativeCallDrains() = runBlocking {
         val fake = Fake(info())
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
-        fake.onCheck = { started.complete(Unit); gate.await() }
+        fake.onCheck = { started.complete(Unit); gate.awaitSignal() }
         var finished = 0
         val c = SavedSearchController(this, fake, { true }, { SearchDraft() }, { finished++ })
         c.open(); idle(c)
-        c.check("one"); started.await()
+        c.check("one"); started.awaitSignal()
         c.cancelCheck()
         assertEquals(SavedOperation.Cancelling, c.state.value.operation)
         assertEquals(1, fake.cancels)
@@ -168,14 +168,14 @@ class SavedSearchPaneTest {
         assertEquals(1, fake.cancels)
     }
 
-    @Test fun hiddenWindowDoesNotAcknowledgeUntilExplicitVisibleAction() = runBlocking {
+    @Test(timeout = 15_000) fun hiddenWindowDoesNotAcknowledgeUntilExplicitVisibleAction() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
         c.open(); idle(c)
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
-        fake.onRead = { started.complete(Unit); gate.await() }
-        c.openResults("one"); started.await()
+        fake.onRead = { started.complete(Unit); gate.awaitSignal() }
+        c.openResults("one"); started.awaitSignal()
         c.setVisible(false)
         gate.complete(Unit); idle(c)
         assertTrue(c.state.value.result!!.ready)
@@ -194,7 +194,7 @@ class SavedSearchPaneTest {
     private fun fixtureCard() = SavedSearchCard("synthetic", 1L, 2L, "Fixture", "Leipzig",
         null, "2026-01-01T00:00:00Z", null, null)
 
-    @Test fun lateNativeWriteQueuesCoherentResultRefreshWithoutAcknowledging() = runBlocking {
+    @Test(timeout = 15_000) fun lateNativeWriteQueuesCoherentResultRefreshWithoutAcknowledging() = runBlocking {
         val initial = fixtureCard()
         val updated = initial.copy(personId = 3L, localPath = "/fixture/image.jpg")
         val fake = Fake(info()).apply { cards = listOf(initial) }
@@ -203,8 +203,8 @@ class SavedSearchPaneTest {
         c.openResults("one"); idle(c)
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
-        fake.onRead = { started.complete(Unit); gate.await() }
-        c.more(); started.await()
+        fake.onRead = { started.complete(Unit); gate.awaitSignal() }
+        c.more(); started.awaitSignal()
         assertEquals(listOf(initial), c.state.value.result!!.cards)
         fake.cards = listOf(updated)
         fake.list = listOf(info(unread = true, revision = 2L))
@@ -218,7 +218,7 @@ class SavedSearchPaneTest {
         assertEquals(0, fake.acknowledgements)
     }
 
-    @Test fun failedReprojectionInvalidatesActionsAndRetryRetainsWindowCapacity() = runBlocking {
+    @Test(timeout = 15_000) fun failedReprojectionInvalidatesActionsAndRetryRetainsWindowCapacity() = runBlocking {
         val card = fixtureCard()
         val fake = Fake(info()).apply { cards = listOf(card) }
         val c = controller(this, fake)
@@ -241,7 +241,7 @@ class SavedSearchPaneTest {
         assertEquals(listOf(100u, 200u, 200u, 200u), fake.windows)
     }
 
-    @Test fun staleAcknowledgementKeepsUnreadAndDoesNotAutomaticallyRetry() = runBlocking {
+    @Test(timeout = 15_000) fun staleAcknowledgementKeepsUnreadAndDoesNotAutomaticallyRetry() = runBlocking {
         val fake = Fake(info(unread = true))
         fake.acceptAck = false
         val c = controller(this, fake)
@@ -252,7 +252,7 @@ class SavedSearchPaneTest {
         assertTrue(c.state.value.searches.single().unreadNewResults)
         assertNotNull(c.state.value.error)
     }
-    @Test fun hiddenInvalidationsCoalesceAndSuccessfulReadClearsOnlyItsError() = runBlocking {
+    @Test(timeout = 15_000) fun hiddenInvalidationsCoalesceAndSuccessfulReadClearsOnlyItsError() = runBlocking {
         val fake = Fake(info()).apply { cards = listOf(fixtureCard()) }
         val c = controller(this, fake)
         c.open(); idle(c)
@@ -274,16 +274,16 @@ class SavedSearchPaneTest {
         assertEquals(0, fake.acknowledgements)
     }
 
-    @Test fun explicitAckUsesDisplayedRevisionEvenIfVisibilityChangesDuringIo() = runBlocking {
+    @Test(timeout = 15_000) fun explicitAckUsesDisplayedRevisionEvenIfVisibilityChangesDuringIo() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
         c.open(); idle(c)
         c.openResults("one"); idle(c)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        fake.onAck = { started.complete(Unit); finish.await() }
+        fake.onAck = { started.complete(Unit); finish.awaitSignal() }
         c.acknowledge("one", 1L)
-        started.await()
+        started.awaitSignal()
         c.setVisible(false)
         fake.list = listOf(info(unread = true, revision = 2L))
         finish.complete(Unit); idle(c)
@@ -302,7 +302,7 @@ class SavedSearchPaneTest {
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
 
-    @Test fun successfulAcknowledgementWithFailedListReadIsNotRepeatedByRefresh() = runBlocking {
+    @Test(timeout = 15_000) fun successfulAcknowledgementWithFailedListReadIsNotRepeatedByRefresh() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
         c.open(); idle(c)

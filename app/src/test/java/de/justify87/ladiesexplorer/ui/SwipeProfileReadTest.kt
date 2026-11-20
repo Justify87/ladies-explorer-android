@@ -38,7 +38,7 @@ class SwipeProfileReadTest {
         assertEquals(SwipeReadPolicy(false, true), swipeReadPolicy(true, 3, 4, false, true))
     }
 
-    @Test fun cachedPrefetchDoesNotAccessSourceAndReadsBySnapshotAndOwner() = runBlocking {
+    @Test(timeout = 15_000) fun cachedPrefetchDoesNotAccessSourceAndReadsBySnapshotAndOwner() = runBlocking {
         val f = Fixture(fixtureProfile())
         val result = readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads)
         assertTrue(result.fromArchive)
@@ -48,7 +48,7 @@ class SwipeProfileReadTest {
         assertEquals(listOf("cache:4", "profile:4"), f.calls)
     }
 
-    @Test fun failedRefreshFallsBackLocallyAndReportsNativeCompletionExactlyOnce() = runBlocking {
+    @Test(timeout = 15_000) fun failedRefreshFallsBackLocallyAndReportsNativeCompletionExactlyOnce() = runBlocking {
         val f = Fixture(fixtureProfile())
         f.online = { error("source failed") }
         val result = readSwipeProfile(4L, true, true, { f.calls += "completion" }, f.reads)
@@ -58,7 +58,7 @@ class SwipeProfileReadTest {
         assertEquals(listOf("cache:4", "source:4", "completion", "profile:4"), f.calls)
     }
 
-    @Test fun successfulRefreshUsesReturnedSnapshotWithoutExtraSourceRead() = runBlocking {
+    @Test(timeout = 15_000) fun successfulRefreshUsesReturnedSnapshotWithoutExtraSourceRead() = runBlocking {
         val f = Fixture(fixtureProfile())
         val result = readSwipeProfile(4L, true, true, { f.calls += "completion" }, f.reads)
         assertFalse(result.fromArchive)
@@ -69,7 +69,7 @@ class SwipeProfileReadTest {
         assertEquals(1, f.calls.count { it == "completion" })
     }
 
-    @Test fun cancelledSourceDoesNotFallBackOrStartLocalProjectionButSignalsCompletion() = runBlocking {
+    @Test(timeout = 15_000) fun cancelledSourceDoesNotFallBackOrStartLocalProjectionButSignalsCompletion() = runBlocking {
         val f = Fixture(fixtureProfile())
         val stopped = CancellationException("cancelled")
         f.online = { throw stopped }
@@ -80,16 +80,16 @@ class SwipeProfileReadTest {
         assertEquals(listOf("cache:4", "source:4", "completion"), f.calls)
     }
 
-    @Test fun projectionUsesOneAuthoritativeLocalReadAfterOwnerAndSnapshotChange() = runBlocking {
+    @Test(timeout = 15_000) fun projectionUsesOneAuthoritativeLocalReadAfterOwnerAndSnapshotChange() = runBlocking {
         val f = Fixture(fixtureProfile())
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        f.beforeProjection = { started.complete(Unit); finish.await() }
+        f.beforeProjection = { started.complete(Unit); finish.awaitSignal() }
         var projected: ProfileReadModel? = null
         val job = launch {
             projected = readSwipeProfile(4L, false, false, {}, f.reads)
         }
-        started.await()
+        started.awaitSignal()
         f.owner = 2L
         f.cachedProfile = fixtureProfile(12L)
         finish.complete(Unit)
@@ -102,14 +102,14 @@ class SwipeProfileReadTest {
         assertEquals(listOf("cache:4", "profile:4"), f.calls)
     }
 
-    @Test fun offlineWithoutCacheFailsWithoutSourceOrCompletion() = runBlocking {
+    @Test(timeout = 15_000) fun offlineWithoutCacheFailsWithoutSourceOrCompletion() = runBlocking {
         val f = Fixture(null)
         val error = runCatching { readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads) }.exceptionOrNull()
         assertTrue(error is IllegalStateException)
         assertEquals(listOf("cache:4"), f.calls)
     }
 
-    @Test fun firstSourceFailureWithoutCacheSignalsCompletionAndPreservesFailure() = runBlocking {
+    @Test(timeout = 15_000) fun firstSourceFailureWithoutCacheSignalsCompletionAndPreservesFailure() = runBlocking {
         val f = Fixture(null)
         val expected = IllegalStateException("no cache")
         f.online = { throw expected }
@@ -118,7 +118,7 @@ class SwipeProfileReadTest {
         assertEquals(listOf("cache:4", "source:4", "completion"), f.calls)
     }
 
-    @Test fun sourceSuccessThenProjectionFailureDoesNotRetrySource() = runBlocking {
+    @Test(timeout = 15_000) fun sourceSuccessThenProjectionFailureDoesNotRetrySource() = runBlocking {
         val f = Fixture(fixtureProfile())
         val failure = IllegalStateException("person projection failed")
         f.beforeProjection = { throw failure }
@@ -139,7 +139,7 @@ class SwipeProfileReadTest {
         assertFalse(swipeFailureNeedsDemotion(startedCurrent = false, stillCurrent = false))
     }
 
-    @Test fun cachedActiveRunPrefetchStillAvoidsSource() = runBlocking {
+    @Test(timeout = 15_000) fun cachedActiveRunPrefetchStillAvoidsSource() = runBlocking {
         val f = Fixture(fixtureProfile())
         val result = readSwipeProfile(4L, false, true, { f.calls += "completion" }, f.reads)
         assertTrue(result.fromArchive)
