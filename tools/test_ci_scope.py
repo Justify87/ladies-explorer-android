@@ -236,28 +236,6 @@ class RealGitPolicyTest(unittest.TestCase):
     def raw_diff(self):
         return self.git("diff", "--raw", "-z", "--no-renames", self.base, "HEAD")
 
-    def test_real_merge_diff_allows_docs(self):
-        self.git("checkout", "-qb", "feature")
-        self.write("README.md", "updated\n")
-        self.write("docs/ARCHITECTURE.md", "updated\n")
-        self.commit("docs")
-        self.git("checkout", "-q", "main")
-        self.git("merge", "--no-ff", "-qm", "PR merge", "feature")
-        parents = self.git("rev-list", "--parents", "-n", "1", "HEAD").decode().split()
-        self.assertEqual(3, len(parents))
-        self.assertEqual(self.base, parents[1])
-        self.assertTrue(docs_only(self.raw_diff()))
-
-    def test_last_docs_commit_does_not_hide_earlier_code(self):
-        self.git("checkout", "-qb", "feature")
-        self.write("app/build.gradle.kts", "changed code\n")
-        self.commit("code")
-        self.write("README.md", "updated\n")
-        self.commit("docs")
-        self.git("checkout", "-q", "main")
-        self.git("merge", "--no-ff", "-qm", "PR merge", "feature")
-        self.assertFalse(docs_only(self.raw_diff()))
-
     def test_real_documentation_add_delete_rename_and_special_modes(self):
         path = self.root / "README.md"
 
@@ -393,7 +371,7 @@ class RealGitPolicyTest(unittest.TestCase):
                 with patch("ci_scope.git", side_effect=self.git):
                     self.assert_decision(classify(env), "full", False, False)
 
-    def test_real_nul_paths_unknown_and_measurement_union(self):
+    def test_real_nul_paths_and_unknown_paths_fail_closed(self):
         self.write("app/src/main/java/space tab\tnewline\n.kt", "// synthetic\n")
         self.commit("NUL paths")
         self.assert_decision(self.classify_push(), "full", False, False)

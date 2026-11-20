@@ -94,7 +94,7 @@ class StandaloneProfileOperationsTest {
         }
     }
 
-    @Test fun dirtyNotesForEitherOwnerBlockRealMergeAdmission() = runBlocking {
+    @Test(timeout = 15_000) fun dirtyNotesForEitherOwnerBlockRealMergeAdmission() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
@@ -111,7 +111,7 @@ class StandaloneProfileOperationsTest {
         assertTrue(f.calls.isEmpty())
     }
 
-    @Test fun mergeCommitsOnceAndInvalidatesBothTicketsBeforeReloadAndAllCompletionCallbacks() = runBlocking {
+    @Test(timeout = 15_000) fun mergeCommitsOnceAndInvalidatesBothTicketsBeforeReloadAndAllCompletionCallbacks() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
@@ -120,9 +120,9 @@ class StandaloneProfileOperationsTest {
         val other = f.tickets.invalidate(3L)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        f.commit = { _, target -> started.complete(Unit); finish.await(); f.owner = target }
+        f.commit = { _, target -> started.complete(Unit); finish.awaitSignal(); f.owner = target }
         f.confirmCurrent()
-        started.await()
+        started.awaitSignal()
         assertTrue(f.discovery.value.busy)
         f.confirmCurrent()
         assertTrue(f.tickets.isCurrent(1L, a))
@@ -140,15 +140,15 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.search.value.actionBusy)
     }
 
-    @Test fun backDuringMergeKeepsWriteGuardUntilDrainWithoutReopeningProfile() = runBlocking {
+    @Test(timeout = 15_000) fun backDuringMergeKeepsWriteGuardUntilDrainWithoutReopeningProfile() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        f.commit = { _, target -> started.complete(Unit); finish.await(); f.owner = target }
+        f.commit = { _, target -> started.complete(Unit); finish.awaitSignal(); f.owner = target }
         f.feedOk = false
         f.confirmCurrent()
-        started.await()
+        started.awaitSignal()
         f.operations.closeProfile()
         assertFalse(f.search.value.profileOpen)
         assertTrue(f.discovery.value.busy)
@@ -162,7 +162,7 @@ class StandaloneProfileOperationsTest {
             "discovery", "saved", "map", "home"), f.calls)
     }
 
-    @Test fun committedMergeReadFailureInvalidatesCapabilitiesAndRetryNeverRepeatsWrite() = runBlocking {
+    @Test(timeout = 15_000) fun committedMergeReadFailureInvalidatesCapabilitiesAndRetryNeverRepeatsWrite() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
@@ -191,7 +191,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.discovery.value.busy)
     }
 
-    @Test fun failedMergeWriteReprojectsButPreservesNotesAndDoesNotReplayWrite() = runBlocking {
+    @Test(timeout = 15_000) fun failedMergeWriteReprojectsButPreservesNotesAndDoesNotReplayWrite() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
@@ -207,7 +207,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.discovery.value.busy)
     }
 
-    @Test fun rejectedMergeWithChangedOwnerUsesNewLocalProjectionWithoutTouchingNotes() = runBlocking {
+    @Test(timeout = 15_000) fun rejectedMergeWithChangedOwnerUsesNewLocalProjectionWithoutTouchingNotes() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
@@ -227,7 +227,7 @@ class StandaloneProfileOperationsTest {
         assertEquals("fixture owner conflict", f.search.value.actionError)
     }
 
-    @Test fun lateDetailSuccessAndFailureCannotReplaceNewerProjection() = runBlocking {
+    @Test(timeout = 15_000) fun lateDetailSuccessAndFailureCannotReplaceNewerProjection() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         val session = f.search.value.profileSessionId
@@ -236,12 +236,12 @@ class StandaloneProfileOperationsTest {
             val release = CompletableDeferred<Unit>()
             f.afterProjection = { old ->
                 started.complete(Unit)
-                release.await()
+                release.awaitSignal()
                 if (failLate) error("late read failed")
                 old
             }
             val late = launch { f.operations.refreshLocalProfile(session, 4L) }
-            started.await()
+            started.awaitSignal()
             f.preference = if (failLate) Preference.DISLIKE else Preference.LIKE
             f.afterProjection = { it }
             f.operations.refreshLocalProfile(session, 4L)
@@ -254,14 +254,14 @@ class StandaloneProfileOperationsTest {
         }
     }
 
-    @Test fun stopBeforeFirstCommitOffersExplicitSourceRetryOnlyAfterLocalAbsence() = runBlocking {
+    @Test(timeout = 15_000) fun stopBeforeFirstCommitOffersExplicitSourceRetryOnlyAfterLocalAbsence() = runBlocking {
         val f = Fixture(this)
         f.cached = null
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        f.source = { started.complete(Unit); release.await(); error("cancelled before commit") }
+        f.source = { started.complete(Unit); release.awaitSignal(); error("cancelled before commit") }
         f.operations.loadProfile(4L, 1L) {}
-        started.await()
+        started.awaitSignal()
         f.operations.setPresentationVisible(false)
         f.operations.setPresentationVisible(true)
         release.complete(Unit)
@@ -277,7 +277,7 @@ class StandaloneProfileOperationsTest {
         assertEquals(2, f.calls.count { it.startsWith("source:") })
     }
 
-    @Test fun knownLocalProfileCannotTriggerOnlineRetryEvenWhenProjectionMissing() = runBlocking {
+    @Test(timeout = 15_000) fun knownLocalProfileCannotTriggerOnlineRetryEvenWhenProjectionMissing() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         val session = f.search.value.profileSessionId
@@ -291,13 +291,13 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.calls.any { it.startsWith("source:") })
     }
 
-    @Test fun reopenedListingWaitsForOldSourceDrainAndBothCompletionsRefreshMap() = runBlocking {
+    @Test(timeout = 15_000) fun reopenedListingWaitsForOldSourceDrainAndBothCompletionsRefreshMap() = runBlocking {
         val f = Fixture(this)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        f.source = { started.complete(Unit); finish.await(); error("late native response rejected") }
+        f.source = { started.complete(Unit); finish.awaitSignal(); error("late native response rejected") }
         f.operations.loadProfile(4L, 1L) {}
-        started.await()
+        started.awaitSignal()
         val oldSession = f.search.value.profileSessionId
         f.operations.closeProfile()
         f.owner = 7L
@@ -319,13 +319,13 @@ class StandaloneProfileOperationsTest {
         assertTrue(f.controls.isEmpty())
     }
 
-    @Test fun stopRevokesDetailDeliveryAndResumeReadsOnlyAfterSourceDrain() = runBlocking {
+    @Test(timeout = 15_000) fun stopRevokesDetailDeliveryAndResumeReadsOnlyAfterSourceDrain() = runBlocking {
         val f = Fixture(this)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        f.source = { started.complete(Unit); finish.await(); fixtureProfile(12L) }
+        f.source = { started.complete(Unit); finish.awaitSignal(); fixtureProfile(12L) }
         f.operations.loadProfile(4L, 1L) {}
-        started.await()
+        started.awaitSignal()
         val oldSession = f.search.value.profileSessionId
         f.operations.setPresentationVisible(false)
         assertNotEquals(oldSession, f.search.value.profileSessionId)
@@ -342,12 +342,12 @@ class StandaloneProfileOperationsTest {
         assertTrue(f.controls.isEmpty())
     }
 
-    @Test fun cancellationAfterNativeSourceCommitBeforeDeliveryStillCallsCompletion() = runBlocking {
+    @Test(timeout = 15_000) fun cancellationAfterNativeSourceCommitBeforeDeliveryStillCallsCompletion() = runBlocking {
         val f = Fixture(this)
         val continuation = CompletableDeferred<CancellableContinuation<ProfileResponse>>()
         f.source = { suspendCancellableCoroutine { continuation.complete(it) } }
         f.operations.loadProfile(4L, 1L) {}
-        val reply = continuation.await()
+        val reply = continuation.awaitSignal()
         // Simulate a native commit that returns to a suspended dispatcher; cancel before delivery.
         f.cached = fixtureProfile(12L)
         reply.resume(f.cached!!)
@@ -360,14 +360,14 @@ class StandaloneProfileOperationsTest {
         assertTrue(f.controls.isEmpty())
     }
 
-    @Test fun archiveUiRetainsOwnershipUntilNativeDrainAndSignalsCancelOnlyOnce() = runBlocking {
+    @Test(timeout = 15_000) fun archiveUiRetainsOwnershipUntilNativeDrainAndSignalsCancelOnlyOnce() = runBlocking {
         val f = Fixture(this)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         f.source = { fixtureProfile() }
-        f.archive = { snapshot, _ -> started.complete(Unit); finish.await(); MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u) }
+        f.archive = { snapshot, _ -> started.complete(Unit); finish.awaitSignal(); MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u) }
         f.operations.loadProfile(4L, 1L) {}
-        started.await()
+        started.awaitSignal()
         assertTrue(f.search.value.archiving)
         f.operations.cancelMediaArchive()
         assertEquals(1, f.controls.single().cancelled)
@@ -384,19 +384,19 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.search.value.profileOpen)
     }
 
-    @Test fun partialArchiveFailureStillReprojectsCommittedMediaAndRevokesOldToken() = runBlocking {
+    @Test(timeout = 15_000) fun partialArchiveFailureStillReprojectsCommittedMediaAndRevokesOldToken() = runBlocking {
         val f = Fixture(this)
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         f.source = { fixtureProfile() }
         f.archive = { _, _ ->
             started.complete(Unit)
-            release.await()
+            release.awaitSignal()
             f.archivedMedia = listOf(ProfileMediaItem("IMAGE", "https://example.invalid/changed.jpg", "/fixture/partial.jpg", 0u))
             error("partial archive failure")
         }
         f.operations.loadProfile(4L, 1L) {}
-        started.await()
+        started.awaitSignal()
         val old = requireNotNull(f.search.value.detailIdentityToken())
         release.complete(Unit)
         f.idle()
@@ -408,7 +408,7 @@ class StandaloneProfileOperationsTest {
         assertEquals(1, f.calls.count { it.startsWith("archive:") })
     }
 
-    @Test fun failedPostArchiveProjectionRevokesActionsAndRetryReadsOnlyLocalState() = runBlocking {
+    @Test(timeout = 15_000) fun failedPostArchiveProjectionRevokesActionsAndRetryReadsOnlyLocalState() = runBlocking {
         val f = Fixture(this)
         f.source = { fixtureProfile() }
         f.archive = { snapshot, _ ->
@@ -430,14 +430,14 @@ class StandaloneProfileOperationsTest {
         assertEquals(listOf("profile:4", "discovery"), f.calls)
     }
 
-    @Test fun mergeWaitsForCancelledArchiveToActuallyDrainBeforeWrite() = runBlocking {
+    @Test(timeout = 15_000) fun mergeWaitsForCancelledArchiveToActuallyDrainBeforeWrite() = runBlocking {
         val f = Fixture(this)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         f.source = { fixtureProfile() }
-        f.archive = { snapshot, _ -> started.complete(Unit); finish.await(); MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u) }
+        f.archive = { snapshot, _ -> started.complete(Unit); finish.awaitSignal(); MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u) }
         f.operations.loadProfile(4L, 1L) {}
-        started.await()
+        started.awaitSignal()
         f.calls.clear()
         f.confirmCurrent()
         yield()
@@ -452,7 +452,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.discovery.value.busy)
     }
 
-    @Test fun nativeMergeCommitWithCancelledDeliveryStillInvalidatesNotesAndProjections() = runBlocking {
+    @Test(timeout = 15_000) fun nativeMergeCommitWithCancelledDeliveryStillInvalidatesNotesAndProjections() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
@@ -460,7 +460,7 @@ class StandaloneProfileOperationsTest {
         val ticket = f.tickets.invalidate(1L)
         f.commit = { _, target -> suspendCancellableCoroutine { c -> f.owner = target; reply.complete(c) } }
         f.confirmCurrent()
-        reply.await().resume(Unit)
+        reply.awaitSignal().resume(Unit)
         coroutineContext[Job]!!.children.single().cancelAndJoin()
         assertEquals(2L, f.owner)
         assertEquals(listOf("confirm:4:2", "discovery", "saved", "map", "home"), f.calls)
@@ -471,14 +471,14 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.discovery.value.busy)
     }
 
-    @Test fun mergeWithPendingReadReconcilesAfterDrainWithoutWritingAgain() = runBlocking {
+    @Test(timeout = 15_000) fun mergeWithPendingReadReconcilesAfterDrainWithoutWritingAgain() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        f.commit = { _, target -> started.complete(Unit); finish.await(); f.owner = target }
+        f.commit = { _, target -> started.complete(Unit); finish.awaitSignal(); f.owner = target }
         f.confirmCurrent()
-        started.await()
+        started.awaitSignal()
         f.pending = true
         finish.complete(Unit)
         f.idle()
@@ -487,7 +487,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.pending)
         assertFalse(f.discovery.value.busy)
     }
-    @Test fun delayedConfirmCallbackCannotUseCurrentOwnerOfSameListingInNewSession() = runBlocking {
+    @Test(timeout = 15_000) fun delayedConfirmCallbackCannotUseCurrentOwnerOfSameListingInNewSession() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         val oldSession = f.search.value.profileSessionId
@@ -515,7 +515,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.tickets.isCurrent(7L, currentTicket))
     }
 
-    @Test fun swipeMergeUsesSameNativeWriteWithoutOpeningDetailAndRejectsStaleToken() = runBlocking {
+    @Test(timeout = 15_000) fun swipeMergeUsesSameNativeWriteWithoutOpeningDetailAndRejectsStaleToken() = runBlocking {
         val f = Fixture(this)
         val candidate = IdentityCandidate(2L, "CANDIDATE", false, true, 0u, 0u, null)
         f.discovery.value = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
@@ -538,7 +538,7 @@ class StandaloneProfileOperationsTest {
         assertEquals(setOf(3L), f.notes.value.keys)
         assertFalse(f.discovery.value.busy)
     }
-    @Test fun initialSourceCommitThenLocalReadFailureRetriesOnlyLocalProjection() = runBlocking {
+    @Test(timeout = 15_000) fun initialSourceCommitThenLocalReadFailureRetriesOnlyLocalProjection() = runBlocking {
         val f = Fixture(this)
         f.source = { fixtureProfile(12L) }
         f.identityError = IllegalStateException("local read failed")

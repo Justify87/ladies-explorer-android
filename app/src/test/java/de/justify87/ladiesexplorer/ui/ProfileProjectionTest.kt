@@ -9,7 +9,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProfileProjectionTest {
-    @Test fun rejectedConditionalWriteRecoversDetailAndFeedIndependentlyWithoutReplay() = runBlocking {
+    @Test(timeout = 15_000) fun rejectedConditionalWriteRecoversDetailAndFeedIndependentlyWithoutReplay() = runBlocking {
         val calls = mutableListOf<String>()
         val original = IllegalStateException("CAS rejected")
         val result = writeAndProject(
@@ -37,7 +37,7 @@ class ProfileProjectionTest {
         assertEquals(listOf("saved", "saved", "saved", "discovery", "map", "saved", "map"), calls)
     }
 
-    @Test fun actualDiscoveryPublisherKeepsSuccessfulSiblingAndRejectsOutdatedEpoch() = runBlocking {
+    @Test(timeout = 15_000) fun actualDiscoveryPublisherKeepsSuccessfulSiblingAndRejectsOutdatedEpoch() = runBlocking {
         val search = MutableStateFlow(SearchUiState(activeCards = listOf(fixtureCard(1L))))
         val state = MutableStateFlow(DiscoverUiState(cards = listOf(fixtureCard(1L))))
         val page = SavedPersonPage(emptyList(), 0u, 0u, 1L, null)
@@ -86,9 +86,9 @@ class ProfileProjectionTest {
 
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
-        beforeRead = { started.complete(Unit); finish.await() }
+        beforeRead = { started.complete(Unit); finish.awaitSignal() }
         val job = launch { publisher.project(1L) }
-        started.await()
+        started.awaitSignal()
         epoch = 2L
         state.value = state.value.copy(cards = listOf(fixtureCard(9L)), savedError = "new")
         finish.complete(Unit)
@@ -97,7 +97,7 @@ class ProfileProjectionTest {
         assertEquals("new", state.value.savedError)
     }
 
-    @Test fun mapReadFailureInvalidatesOldOverviewAndLateSuccessCannotReplaceNewEpoch() = runBlocking {
+    @Test(timeout = 15_000) fun mapReadFailureInvalidatesOldOverviewAndLateSuccessCannotReplaceNewEpoch() = runBlocking {
         val old = MapOverview(emptyList(), 1u, 1u, 0u)
         val new = MapOverview(emptyList(), 2u, 2u, 0u)
         val state = MutableStateFlow(MapUiState(overview = old, loading = true))
@@ -109,9 +109,9 @@ class ProfileProjectionTest {
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         val job = launch {
-            projectMapOverview(state, { epoch == 1 }, { started.complete(Unit); finish.await(); old }) { s, value -> s.copy(overview = value) }
+            projectMapOverview(state, { epoch == 1 }, { started.complete(Unit); finish.awaitSignal(); old }) { s, value -> s.copy(overview = value) }
         }
-        started.await()
+        started.awaitSignal()
         epoch = 2
         state.value = MapUiState(overview = new)
         finish.complete(Unit)
@@ -140,7 +140,7 @@ class ProfileProjectionTest {
         assertEquals(1, calls.count { it == "read" })
     }
 
-    @Test fun productionPreferenceCommitUsesCasThenTraversesOnlyForExplicitDeckDecision() = runBlocking {
+    @Test(timeout = 15_000) fun productionPreferenceCommitUsesCasThenTraversesOnlyForExplicitDeckDecision() = runBlocking {
         val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
         val token = requireNotNull(state.swipeToken(fixtureSwipe())).copy(preference = Preference.LIKE)
         val deck = SwipeSession()
@@ -170,7 +170,7 @@ class ProfileProjectionTest {
         assertEquals(listOf(Preference.NONE, Preference.DISLIKE, Preference.DISLIKE), writes)
     }
 
-    @Test fun committedNeutralResetReprojectsWithoutVisitEvenIfFeedReadFails() = runBlocking {
+    @Test(timeout = 15_000) fun committedNeutralResetReprojectsWithoutVisitEvenIfFeedReadFails() = runBlocking {
         val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
         val token = requireNotNull(state.swipeToken(fixtureSwipe())).copy(preference = Preference.LIKE)
         val deck = SwipeSession()
@@ -200,7 +200,7 @@ class ProfileProjectionTest {
         assertEquals(1, writes)
     }
 
-    @Test fun mutationFailureRestoresGridAndReprojectsWithoutRepeatingWrite() = runBlocking {
+    @Test(timeout = 15_000) fun mutationFailureRestoresGridAndReprojectsWithoutRepeatingWrite() = runBlocking {
         val events = mutableListOf<String>()
         val result = writeAndProject(
             write = { events += "write"; error("conflict") },
@@ -211,7 +211,7 @@ class ProfileProjectionTest {
         assertEquals(listOf("write", "restore", "projection"), events)
     }
 
-    @Test fun committedMutationWithFailedProjectionNeverRollsBackGridOrRetriesWrite() = runBlocking {
+    @Test(timeout = 15_000) fun committedMutationWithFailedProjectionNeverRollsBackGridOrRetriesWrite() = runBlocking {
         val events = mutableListOf<String>()
         val result = writeAndProject(
             write = { events += "write" },
@@ -228,7 +228,7 @@ class ProfileProjectionTest {
         ))
     }
 
-    @Test fun committedWriteCanBeFollowedByDetailFailureAndIndependentFeedRecovery() = runBlocking {
+    @Test(timeout = 15_000) fun committedWriteCanBeFollowedByDetailFailureAndIndependentFeedRecovery() = runBlocking {
         val calls = mutableListOf<String>()
         val result = writeAndProject(
             write = { calls += "commit" },
@@ -247,7 +247,7 @@ class ProfileProjectionTest {
         assertEquals(listOf("commit", "detail", "grid:7", "saved:8"), calls)
     }
 
-    @Test fun cancellationIsNotConvertedIntoWriteFailureOrReadRetry() = runBlocking {
+    @Test(timeout = 15_000) fun cancellationIsNotConvertedIntoWriteFailureOrReadRetry() = runBlocking {
         val calls = mutableListOf<String>()
         val cancellation = kotlinx.coroutines.CancellationException("cancelled")
         val failure = runCatching {

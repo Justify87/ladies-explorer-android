@@ -1518,7 +1518,9 @@ mod tests {
                 None => break,
             }
         }
-        let expected: Vec<_> = (0..1105).map(|position| format!("item-{position:04}")).collect();
+        let expected: Vec<_> = (0..1105)
+            .map(|position| format!("item-{position:04}"))
+            .collect();
         assert_eq!(keys, expected);
     }
 

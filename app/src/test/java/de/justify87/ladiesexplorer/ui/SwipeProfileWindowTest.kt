@@ -10,7 +10,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SwipeProfileWindowTest {
-    @Test fun actualWindowPrunesAndReusesCurrentAndTwoFollowingProfiles() = runBlocking {
+    @Test(timeout = 15_000) fun actualWindowPrunesAndReusesCurrentAndTwoFollowingProfiles() = runBlocking {
         val entries = mutableMapOf<Long, ProfileReadModel>()
         val cache = SwipeProfileWindow(entries)
         val cards = (1L..250L).map { fixtureCard(it) }
@@ -28,7 +28,7 @@ class SwipeProfileWindowTest {
         assertTrue(entries.isEmpty())
     }
 
-    @Test fun unfinishedPrefetchSurvivesPromotionOfTheSameOwnerSlot() = runBlocking {
+    @Test(timeout = 15_000) fun unfinishedPrefetchSurvivesPromotionOfTheSameOwnerSlot() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
         val a = fixtureCard(1L)
         val b = fixtureCard(2L)
@@ -42,11 +42,11 @@ class SwipeProfileWindowTest {
             cache.prefetch(b) {
                 reads++
                 started.complete(Unit)
-                finish.await()
+                finish.awaitSignal()
                 fixtureSwipe(b.listingId, b.personId)
             }
         }
-        started.await()
+        started.awaitSignal()
         cache.retain(listOf(b, c, next))
         finish.complete(Unit)
         pending.join()
@@ -57,7 +57,7 @@ class SwipeProfileWindowTest {
         assertEquals(1, reads)
     }
 
-    @Test fun promotedSlotRejectsProjectionForDifferentOwner() = runBlocking {
+    @Test(timeout = 15_000) fun promotedSlotRejectsProjectionForDifferentOwner() = runBlocking {
         val entries = mutableMapOf<Long, ProfileReadModel>()
         val cache = SwipeProfileWindow(entries)
         val a = fixtureCard(1L)
@@ -70,14 +70,14 @@ class SwipeProfileWindowTest {
             try {
                 cache.prefetch(b) {
                     started.complete(Unit)
-                    finish.await()
+                    finish.awaitSignal()
                     fixtureSwipe(b.listingId, a.personId)
                 }
             } catch (_: IllegalStateException) {
                 rejected = true
             }
         }
-        started.await()
+        started.awaitSignal()
         cache.retain(listOf(b))
         finish.complete(Unit)
         pending.join()
@@ -89,7 +89,7 @@ class SwipeProfileWindowTest {
         }?.identity?.personId)
     }
 
-    @Test fun sameListingOwnerChangeInvalidatesOldSnapshotAndContact() = runBlocking {
+    @Test(timeout = 15_000) fun sameListingOwnerChangeInvalidatesOldSnapshotAndContact() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
         val oldCard = fixtureCard(4L, 1L)
         cache.retain(listOf(oldCard))
@@ -103,16 +103,16 @@ class SwipeProfileWindowTest {
         assertNull(cache[oldCard])
     }
 
-    @Test fun lateCompletionAfterResetAndSameListingReuseCannotRepopulate() = runBlocking {
+    @Test(timeout = 15_000) fun lateCompletionAfterResetAndSameListingReuseCannotRepopulate() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
         val card = fixtureCard(4L, 1L)
         cache.retain(listOf(card))
         val started = CompletableDeferred<Unit>()
         val done = CompletableDeferred<Unit>()
         val late = launch {
-            assertNull(cache.prefetch(card) { started.complete(Unit); done.await(); fixtureSwipe(4L, 1L, 11L) })
+            assertNull(cache.prefetch(card) { started.complete(Unit); done.awaitSignal(); fixtureSwipe(4L, 1L, 11L) })
         }
-        started.await()
+        started.awaitSignal()
         cache.clear()
         cache.retain(listOf(card))
         cache.readCurrent(card) { fixtureSwipe(4L, 1L, 12L) }
@@ -121,7 +121,7 @@ class SwipeProfileWindowTest {
         assertEquals(12L, cache[card]?.profile?.snapshotId)
     }
 
-    @Test fun sourceCompletionRevokesOtherProfilesEvenWithSameOwnerAndSnapshot() = runBlocking {
+    @Test(timeout = 15_000) fun sourceCompletionRevokesOtherProfilesEvenWithSameOwnerAndSnapshot() = runBlocking {
         val entries = mutableMapOf<Long, ProfileReadModel>()
         val cache = SwipeProfileWindow(entries)
         val current = fixtureCard(1L)
@@ -154,7 +154,7 @@ class SwipeProfileWindowTest {
         assertFalse(cache.requiresLocal(current))
     }
 
-    @Test fun sourceCompletionRejectsAnotherInFlightLocalRead() = runBlocking {
+    @Test(timeout = 15_000) fun sourceCompletionRejectsAnotherInFlightLocalRead() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
         val a = fixtureCard(1L)
         val b = fixtureCard(2L)
@@ -162,9 +162,9 @@ class SwipeProfileWindowTest {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val late = launch {
-            assertNull(cache.readCurrent(a) { started.complete(Unit); release.await(); fixtureSwipe(1L) })
+            assertNull(cache.readCurrent(a) { started.complete(Unit); release.awaitSignal(); fixtureSwipe(1L) })
         }
-        started.await()
+        started.awaitSignal()
         val before = cache.invalidation(a)
         cache.prefetch(b) { sourceCompleted -> sourceCompleted(); fixtureSwipe(2L, 2L) }
         // Reject the pending read, but do not cancel/restart a native operation
@@ -179,7 +179,7 @@ class SwipeProfileWindowTest {
         assertNotNull(cache[b])
     }
 
-    @Test fun laterSourceCompletionFromReplacedSlotRevokesItsNewProjection() = runBlocking {
+    @Test(timeout = 15_000) fun laterSourceCompletionFromReplacedSlotRevokesItsNewProjection() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
         val card = fixtureCard(4L, 1L)
         cache.retain(listOf(card))
@@ -188,12 +188,12 @@ class SwipeProfileWindowTest {
         val old = launch {
             assertNull(cache.readCurrent(card) { sourceCompleted ->
                 started.complete(Unit)
-                release.await()
+                release.awaitSignal()
                 sourceCompleted()
                 fixtureSwipe(4L)
             })
         }
-        started.await()
+        started.awaitSignal()
         cache.remove(card.listingId)
         cache.readCurrent(card) { fixtureSwipe(4L) }
         assertNotNull(cache[card])
@@ -203,16 +203,16 @@ class SwipeProfileWindowTest {
         assertTrue(cache.requiresLocal(card))
     }
 
-    @Test fun externalCompletionRevokesReplacementWithoutRestartingItsRunningRead() = runBlocking {
+    @Test(timeout = 15_000) fun externalCompletionRevokesReplacementWithoutRestartingItsRunningRead() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf(), initialExternalRevision = 5L)
         val card = fixtureCard(4L, 1L)
         cache.retain(listOf(card))
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val current = launch {
-            assertNull(cache.readCurrent(card) { started.complete(Unit); release.await(); fixtureSwipe(4L) })
+            assertNull(cache.readCurrent(card) { started.complete(Unit); release.awaitSignal(); fixtureSwipe(4L) })
         }
-        started.await()
+        started.awaitSignal()
         val before = cache.invalidation(card)
         assertFalse(cache.isCurrent(6L))
         cache.applyExternalRevision(6L)
@@ -231,14 +231,14 @@ class SwipeProfileWindowTest {
         assertNotNull(cache[card])
     }
 
-    @Test fun cancelledSuspendingReadCannotWriteIntoCache() = runBlocking {
+    @Test(timeout = 15_000) fun cancelledSuspendingReadCannotWriteIntoCache() = runBlocking {
         val cache = SwipeProfileWindow(mutableMapOf())
         val card = fixtureCard(4L, 1L)
         cache.retain(listOf(card))
         val started = CompletableDeferred<Unit>()
         val done = CompletableDeferred<Unit>()
-        val late = launch { cache.readCurrent(card) { started.complete(Unit); done.await(); fixtureSwipe(4L) } }
-        started.await()
+        val late = launch { cache.readCurrent(card) { started.complete(Unit); done.awaitSignal(); fixtureSwipe(4L) } }
+        started.awaitSignal()
         late.cancelAndJoin()
         done.complete(Unit)
         assertNull(cache[card])

@@ -45,7 +45,7 @@ class ProfileNoteStateTest {
         assertEquals(listOf(1L), drafts.dirtyOwners(1L, 2L))
     }
 
-    @Test fun navigationWhileWriteAwaitsDoesNotRedirectCommittedNote() = runBlocking {
+    @Test(timeout = 15_000) fun navigationWhileWriteAwaitsDoesNotRedirectCommittedNote() = runBlocking {
         var notes = emptyMap<Long, NoteEditorState>()
             .updateNote(1L) { it.loaded("old") }
             .updateNote(1L) { it.copy(draft = it.draft!!.edit("saved")) }
@@ -53,13 +53,13 @@ class ProfileNoteStateTest {
         val finish = CompletableDeferred<Unit>()
         val job = launch {
             val outcome = writeAndProject(
-                write = { started.complete(Unit); finish.await() },
+                write = { started.complete(Unit); finish.awaitSignal() },
                 afterWrite = { notes = notes.updateNote(1L) { it.committed("saved") } },
                 project = {},
             )
             assertEquals(DiscoveryMutationOutcome.Success, outcome)
         }
-        started.await()
+        started.awaitSignal()
         notes = notes.updateNote(2L) { it.loaded("other") }
         finish.complete(Unit)
         job.join()
@@ -91,7 +91,7 @@ class ProfileNoteStateTest {
         assertEquals(listOf(2L), resolved.dirtyOwners(1L, 2L))
     }
 
-    @Test fun noteCallbacksCannotRetargetAfterRenderedContextChanges() = runBlocking {
+    @Test(timeout = 15_000) fun noteCallbacksCannotRetargetAfterRenderedContextChanges() = runBlocking {
         val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
         val token = requireNotNull(state.swipeToken(fixtureSwipe()))
         var active: ProfileIdentityToken? = token
@@ -115,7 +115,7 @@ class ProfileNoteStateTest {
         assertEquals(listOf("load:4:1", "edit:1"), calls)
     }
 
-    @Test fun openedNoteCoalescesDemandAndRetryDoesNotDependOnLazyItem() = runBlocking {
+    @Test(timeout = 15_000) fun openedNoteCoalescesDemandAndRetryDoesNotDependOnLazyItem() = runBlocking {
         val state = DiscoverUiState(cards = listOf(fixtureCard(4L, 1L)), loading = false)
         val token = requireNotNull(state.swipeToken(fixtureSwipe()))
         var current = true
@@ -127,13 +127,13 @@ class ProfileNoteStateTest {
             assertEquals(4L, listing)
             assertEquals(1L, owner)
             reads++
-            if (reads == 2) { started.complete(Unit); finish.await() }
+            if (reads == 2) { started.complete(Unit); finish.awaitSignal() }
         }
         demand.request(token, false, { current }, load)
         demand.request(token, false, { current }, load)
         assertEquals(1, reads)
         demand.request(token, true, { current }, load)
-        started.await()
+        started.awaitSignal()
         demand.request(token, false, { current }, load)
         demand.request(token, true, { current }, load)
         assertEquals(ProfileNoteDemand.Status.Loading, demand.status)

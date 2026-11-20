@@ -566,7 +566,11 @@ mod tests {
     fn failed_import_leaves_no_partial_rows_or_archive() {
         for (missing_media, invalid_owner, reason) in [
             (true, false, "Missing assets/media/images/"),
-            (false, true, "Imported database contains broken foreign keys"),
+            (
+                false,
+                true,
+                "Imported database contains broken foreign keys",
+            ),
         ] {
             let tmp = tempfile::tempdir().unwrap();
             let (bundle, app) = fixture(tmp.path(), missing_media, invalid_owner);

@@ -681,10 +681,9 @@ mod tests {
         });
         let mut previous = 1;
         let mut verify = || {
-            let har: Value = serde_json::from_slice(
-                &fs::read(recorder.export(root.path()).unwrap()).unwrap(),
-            )
-            .unwrap();
+            let har: Value =
+                serde_json::from_slice(&fs::read(recorder.export(root.path()).unwrap()).unwrap())
+                    .unwrap();
             let entries = har["log"]["entries"].as_array().unwrap();
             assert!((previous..=201).contains(&entries.len()));
             for (n, entry) in entries.iter().skip(1).enumerate() {
