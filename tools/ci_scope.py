@@ -11,7 +11,6 @@ DOCS = frozenset({
     b"docs/SOURCE.md", b"docs/DATA-IMPORT.md", b"docs/DIAGNOSTICS.md",
     b"docs/MAP.md", b"tools/M05-REFERENCE.md",
 })
-MEASURE = frozenset({b"tools/install-cargo-ndk.sh", b"tools/measure-android-build.sh"})
 OID = re.compile(r"[0-9a-f]{40}")
 RAW_OID = re.compile(rb"[0-9a-f]{7,64}")
 MODES = {b"000000", b"100644", b"100755", b"120000", b"160000"}
@@ -130,7 +129,6 @@ def classify(env):
         base, changes = event_diff(env, event)
     except DIFF_ERRORS:
         return Decision("full", "Could not verify complete event diff; full CI required.", False, False)
-    measure = any(c.path in MEASURE for c in changes)
     if event == "pull_request" and env.get("BASE_REF") == "main" and is_docs_only(changes):
         try:
             response = json.loads(subprocess.check_output([
@@ -146,8 +144,7 @@ def classify(env):
             pass
         return Decision("full", "No successful latest main push CI for the exact docs base.", False, False)
     candidate = ("docs" if is_docs_only(changes) else "merge") if event == "push" else "none"
-    return Decision("full", "Verified event diff; full CI with selected additional qualifications.",
-                    False, measure, candidate)
+    return Decision("full", "Verified event diff; routine full CI.", False, False, candidate)
 
 
 def main():

@@ -135,7 +135,7 @@ class CiScopeTest(unittest.TestCase):
         self.assert_policy(classify(ENV), "full", False, False)
 
     @patch("ci_scope.subprocess.check_output")
-    def test_pr_never_automatically_selects_native_probe(self, command):
+    def test_pr_never_automatically_selects_diagnostics(self, command):
         regular = (b"app/src/main/java/new.kt", b"app/src/main/res/layout/main.xml",
                    b"app/src/main/AndroidManifest.xml", b"app/src/test/java/X.java",
                    b"app/src/androidTest/java/X.kt", b"app/proguard-rules.pro",
@@ -152,8 +152,8 @@ class CiScopeTest(unittest.TestCase):
                   b"tools/ci_scope.py", b"tools/test_ci_scope.py", b"tools/verify-native-cache.sh",
                   b"unknown.md", b"rust/ladies-core/src/unknown.sh")
         cases = [(p, False, False) for p in regular + native]
-        cases += [(b"tools/measure-android-build.sh", False, True),
-                  (b"tools/install-cargo-ndk.sh", False, True)]
+        cases += [(b"tools/measure-android-build.sh", False, False),
+                  (b"tools/install-cargo-ndk.sh", False, False)]
         for path, n, m in cases:
             with self.subTest(path=path):
                 command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(path)]
@@ -161,20 +161,21 @@ class CiScopeTest(unittest.TestCase):
         command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(),
                                diff(b"README.md") + diff(b"rust/Cargo.lock") +
                                diff(b"tools/measure-android-build.sh")]
-        self.assert_policy(classify(ENV), "full", False, True)
+        self.assert_policy(classify(ENV), "full", False, False)
 
     @patch("ci_scope.subprocess.check_output")
-    def test_automatic_events_ignore_manual_native_input(self, command):
+    def test_automatic_events_ignore_manual_diagnostic_inputs(self, command):
         for path in (b".github/workflows/android.yml", b"gradle.properties",
                      b"rust/Cargo.lock", b"tools/verify-native-cache.sh",
-                     b"tools/ci_reuse.py", b"unknown.bin"):
+                     b"tools/ci_reuse.py", b"unknown.bin", b"tools/measure-android-build.sh",
+                     b"tools/install-cargo-ndk.sh"):
             with self.subTest(path=path):
                 command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(path)]
-                self.assert_policy(classify(dict(ENV, VERIFY_NATIVE_CACHE="true")),
+                self.assert_policy(classify(dict(ENV, VERIFY_NATIVE_CACHE="true", MEASURE_ANDROID_BUILD="true")),
                                    "full", False, False)
                 command.side_effect = [MERGE.encode(), b"", diff(path)]
                 env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
-                           BEFORE_SHA=BASE, VERIFY_NATIVE_CACHE="true")
+                           BEFORE_SHA=BASE, VERIFY_NATIVE_CACHE="true", MEASURE_ANDROID_BUILD="true")
                 self.assert_policy(classify(env), "full", False, False)
 
     def test_manual_inputs_independent(self):
@@ -206,7 +207,7 @@ class CiScopeTest(unittest.TestCase):
         command.side_effect = [HEAD.encode()]
         self.assert_policy(classify(env), "full", False, False)
         command.side_effect = [MERGE.encode(), b"", diff(b"tools/measure-android-build.sh")]
-        self.assert_policy(classify(env), "full", False, True)
+        self.assert_policy(classify(env), "full", False, False)
 
 
     @patch("ci_scope.subprocess.check_output")
@@ -366,7 +367,7 @@ class RealGitPolicyTest(unittest.TestCase):
         self.write("README.md", "updated")
         self.commit("docs")
         result = self.classify_push()
-        self.assertEqual(("full", False, True),
+        self.assertEqual(("full", False, False),
                          (result.mode, result.native_qualification, result.performance_measurement))
         self.git("reset", "--hard", self.base)
         self.git("mv", "app/build.gradle.kts", "README2.md")
@@ -465,7 +466,7 @@ class RealGitPolicyTest(unittest.TestCase):
         self.write("unknown\nfile", "synthetic")
         self.write("tools/measure-android-build.sh", "# synthetic\n")
         self.commit("unknown and measurement")
-        self.assert_decision(self.classify_push(), "full", False, True)
+        self.assert_decision(self.classify_push(), "full", False, False)
 
 
 
@@ -501,15 +502,18 @@ class WorkflowGateTest(unittest.TestCase):
             return result, summary.read_text() if summary.exists() else ""
 
     def test_actual_scope_validation_shell(self):
-        body = self.shell_body("Validate execution policy")
-        valid = {("docs", "false", "false"), ("reuse", "false", "false"), ("full", "false", "false"),
+        body = self.shell_body("Finalize execution policy")
+        valid = {("docs", "false", "false"), ("full", "false", "false"),
                  ("full", "true", "false"), ("full", "false", "true"),
                  ("full", "true", "true")}
         for values in itertools.product(("docs", "reuse", "full", "", "unknown"),
                                         ("true", "false", "", "unknown"),
                                         ("true", "false", "", "unknown")):
-            with self.subTest(values=values):
-                result, _ = self.run_shell(body, dict(zip(("MODE", "NATIVE", "PERFORMANCE"), values)))
+            with tempfile.TemporaryDirectory() as tmp, self.subTest(values=values):
+                env = dict(zip(("MODE", "NATIVE", "PERFORMANCE"), values),
+                           SOURCE="", RESTORE="skipped", UPLOAD="skipped",
+                           GITHUB_OUTPUT=str(Path(tmp) / "out"))
+                result, _ = self.run_shell(body, env)
                 self.assertEqual(values in valid, result.returncode == 0, result.stderr)
 
     def test_actual_gate_valid_profiles_and_negative_mutations(self):
@@ -651,6 +655,61 @@ class WorkflowGateTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_jobs("owner/repo", run_info, ("true", "false"))
 
+    def test_sdk_install_only_missing_packages_and_verify_afterwards(self):
+        body = self.shell_body("Install required Android SDK and NDK")
+        for platform, ndk, broken_install in itertools.product((False, True), repeat=3):
+            with tempfile.TemporaryDirectory() as tmp, self.subTest(
+                    platform=platform, ndk=ndk, broken_install=broken_install):
+                root = Path(tmp)
+                # Fake only the SDK installer, execute the actual production shell.
+                sdkmanager = root / "cmdline-tools/latest/bin/sdkmanager"
+                sdkmanager.parent.mkdir(parents=True)
+                log = root / "requests"
+                ndk_dir = root / "ndk/29.0.14206865"
+                clang = ndk_dir / "toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+                sysroot = ndk_dir / "toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+                def install_platform():
+                    jar = root / "platforms/android-37.0/android.jar"
+                    jar.parent.mkdir(parents=True, exist_ok=True)
+                    jar.write_text("fixture")
+                def install_ndk():
+                    clang.parent.mkdir(parents=True, exist_ok=True)
+                    clang.write_text("#!/bin/bash\n")
+                    clang.chmod(0o755)
+                    sysroot.mkdir(parents=True, exist_ok=True)
+                    (ndk_dir / "source.properties").write_text("Pkg.Revision = 29.0.14206865\n")
+                if platform:
+                    install_platform()
+                if ndk:
+                    install_ndk()
+                sdkmanager.write_text("""#!/bin/bash
+set -e
+printf '%s\\n' "$@" > "$REQUEST_LOG"
+if [ "$BROKEN_INSTALL" = true ]; then exit 0; fi
+for package in "$@"; do
+  case "$package" in
+    'platforms;android-37.0')
+      mkdir -p "$ANDROID_HOME/platforms/android-37.0"
+      printf fixture > "$ANDROID_HOME/platforms/android-37.0/android.jar" ;;
+    'ndk;29.0.14206865')
+      dir="$ANDROID_HOME/ndk/29.0.14206865"
+      mkdir -p "$dir/toolchains/llvm/prebuilt/linux-x86_64/bin" "$dir/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+      printf '#!/bin/bash\\n' > "$dir/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+      chmod +x "$dir/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+      printf 'Pkg.Revision = 29.0.14206865\\n' > "$dir/source.properties" ;;
+    *) exit 2 ;;
+  esac
+done
+""")
+                sdkmanager.chmod(0o755)
+                result, _ = self.run_shell(body, dict(ANDROID_HOME=str(root),
+                    REQUEST_LOG=str(log), BROKEN_INSTALL=str(broken_install).lower()))
+                expected = ([] if platform else ["platforms;android-37.0"]) + (
+                            [] if ndk else ["ndk;29.0.14206865"])
+                self.assertEqual(expected, log.read_text().splitlines() if log.exists() else [])
+                self.assertEqual(not (broken_install and expected), result.returncode == 0,
+                                 result.stderr)
+
     def test_workflow_bindings_and_upload_order(self):
         names = ("Build arm64 APK and device test APK, run JVM tests and Android Lint",
                  "Verify packaged architecture contracts", "Upload debug APK",
@@ -664,7 +723,7 @@ class WorkflowGateTest(unittest.TestCase):
         for step_name, flag in zip(names[3:5], ("native_qualification", "performance_measurement")):
             step = self.step(step_name)
             self.assertIn(f"id: {flag}", step)
-            condition = "github.event_name == 'workflow_dispatch' && " if flag == "native_qualification" else ""
+            condition = "github.event_name == 'workflow_dispatch' && "
             self.assertIn("if: ${{ " + condition + "needs.scope.outputs." + flag + " == 'true' }}", step)
             self.assertNotIn("continue-on-error:", step)
             self.assertIn(flag + ": ${{ steps." + flag + ".outcome }}", self.workflow)
