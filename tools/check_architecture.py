@@ -132,9 +132,10 @@ def manifest_errors(xml):
         return errors + [issue("ARC-08", label, "missing application")]
     if app.get(ANDROID + "allowBackup") != "false":
         fail("private data backup must be disabled")
-    # MapLibre network state, normal Internet; AndroidX receiver signature permission.
+    # MapLibre network/Wi-Fi state, normal Internet; AndroidX receiver signature permission.
+    # No location permission: the app displays Rust-resolved postal/city coordinates only.
     allowed = {"android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE",
-               package + ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"}
+               "android.permission.ACCESS_WIFI_STATE", package + ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"}
     permissions = {el.get(ANDROID + "name") for el in root if el.tag.startswith("uses-permission")}
     for name in sorted(permissions - allowed, key=str):
         fail("unexpected permission: " + str(name))

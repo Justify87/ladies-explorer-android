@@ -66,6 +66,7 @@ class SourceArchitectureTest(unittest.TestCase):
 MANIFEST = f"""<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{PKG}.debug">
 <uses-permission android:name="android.permission.INTERNET"/>
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+<uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
 <uses-permission android:name="{PKG}.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"/>
 <permission android:name="{PKG}.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature"/>
 <application android:allowBackup="false" android:debuggable="true">
@@ -89,6 +90,8 @@ class ApkArchitectureTest(unittest.TestCase):
         for before, after in (
             ('allowBackup="false"', 'allowBackup="true"'),
             ('android.permission.ACCESS_NETWORK_STATE', 'android.permission.READ_CONTACTS'),
+            ('android.permission.ACCESS_WIFI_STATE', 'android.permission.ACCESS_FINE_LOCATION'),
+            ('android.permission.ACCESS_WIFI_STATE', 'android.permission.ACCESS_COARSE_LOCATION'),
             ('android:protectionLevel="signature"', 'android:protectionLevel="normal"'),
             ('android:permission="android.permission.DUMP"', 'android:permission="android.permission.INTERNET"'),
             ('android:debuggable="true"', 'android:debuggable="false"'),
