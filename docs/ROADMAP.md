@@ -106,7 +106,7 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 
 ## Unabhängige technische Bereinigung
 
-### DC02 — REVIEW · Altimport entfernt (PR in Prüfung)
+### DC02 — REVIEW · Altimport entfernt ([PR #52](https://github.com/Justify87/ladies-explorer-android/pull/52))
 
 **Nutzerentscheidung:** 20.11.2026; Web-App obsolet, keine Nutzerdatenmigration. **Reihenfolge:** Vor weiterer Featurearbeit.
 
@@ -117,7 +117,7 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 **Akzeptanz:**
 - [x] Keine nutzerseitige Migrationsroute oder Ersatz-Importoberfläche.
 - [x] Native Android-Schemaentwicklung unverändert; keine Eingriffe in bestehende Android-Nutzerdaten.
-- [ ] Technische Integrationsprüfungen und grüner CI-Gate im separaten Code-PR. [Produktsoll](PRODUCT.md#produktziel-und-grenzen).
+- [x] Technische Integrationsprüfungen und grüner CI-Gate im separaten [PR #52](https://github.com/Justify87/ladies-explorer-android/pull/52), [CI #44828090537](https://github.com/Justify87/ladies-explorer-android/actions/runs/44828090537). [Produktsoll](PRODUCT.md#produktziel-und-grenzen).
 
 - [x] **DC01 — DONE:** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49) – obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
 
