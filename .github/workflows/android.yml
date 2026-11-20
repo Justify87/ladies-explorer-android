@@ -222,17 +222,6 @@ jobs:
           toolchain: "1.99.0"
           targets: aarch64-linux-android
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ci-android-arm64
-          workspaces: rust -> target
-          save-if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-
-      - name: Install cargo-ndk
-        run: |
-          bash tools/install-cargo-ndk.sh
-          test "$(cargo ndk --version)" = 'cargo-ndk 4.1.2'
-
       - name: Install required Android SDK and NDK
         run: |
           platform="$ANDROID_HOME/platforms/android-37.0"
@@ -254,6 +243,52 @@ jobs:
           fi
           platform_ready
           ndk_ready
+
+      - name: Identify native dependency toolchain
+        id: native_identity
+        working-directory: rust
+        run: |
+          set -euo pipefail
+          cargo_path="${CARGO:-$HOME/.cargo/bin/cargo}"
+          ndk="$ANDROID_HOME/ndk/29.0.14206865"
+          # Match the controlled compiler environment in app/build.gradle.kts, not the runner image.
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
+          identity="$RUNNER_TEMP/native-dependency-identity"
+          {
+            printf '%s\n' "$cargo_path" "$PWD" "$ndk"
+            env -i PATH="$PATH" HOME="$HOME" CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" CARGO_INCREMENTAL=0 LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC bash -euc '
+              "$1" --version --verbose
+              rustc --version --verbose
+              cc --version
+              c++ --version
+              ld --version
+              ldd --version
+            ' _ "$cargo_path"
+            cat "$ndk/source.properties"
+            grep '^ladies.minApi=' ../gradle.properties
+            sha256sum ../tools/install-cargo-ndk.sh
+          } > "$identity"
+          key="$(sha256sum "$identity" | cut -d' ' -f1)"
+          echo "Native dependency environment: $key"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Android Rust dependencies
+        id: rust_cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-ndk*
+            rust/target
+          key: native-android-v1-${{ steps.native_identity.outputs.key }}-${{ hashFiles('app/build.gradle.kts', 'gradle.properties', 'rust/**/Cargo.toml', 'rust/Cargo.lock', 'rust/**/rust-toolchain*', 'rust/**/.cargo/config*', '.cargo/config*') }}
+          restore-keys: |
+            native-android-v1-${{ steps.native_identity.outputs.key }}-
+
+      - name: Install cargo-ndk
+        run: |
+          bash tools/install-cargo-ndk.sh
+          test "$(cargo ndk --version)" = 'cargo-ndk 4.1.2'
 
       - name: Build arm64 APK and device test APK, run JVM tests and Android Lint
         id: gradle
@@ -291,6 +326,35 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
           overwrite: true
+
+      - name: Prepare compiled Rust dependency cache
+        id: prepare_rust_cache
+        if: ${{ steps.rust_cache.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        continue-on-error: true
+        working-directory: rust
+        run: |
+          set -euo pipefail
+          # Gradle can restore both outputs without compiling anything. Never save an empty target cache.
+          for deps in target/aarch64-linux-android/release/deps target/debug/deps; do
+            if [ ! -d "$deps" ] || [ -z "$(find "$deps" -name '*.rlib' -type f -print -quit)" ]; then
+              echo "Compiled dependencies unavailable; skip saving."
+              exit 0
+            fi
+          done
+          cargo clean --offline --locked --release --target aarch64-linux-android -p ladies-core
+          cargo clean --offline --locked -p ladies-core-bindgen
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Save Android Rust dependencies
+        if: ${{ steps.prepare_rust_cache.outcome == 'success' && steps.prepare_rust_cache.outputs.ready == 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-ndk*
+            rust/target
+          key: ${{ steps.rust_cache.outputs.cache-primary-key }}
 
       - name: Verify native task cache contract
         id: native_qualification
