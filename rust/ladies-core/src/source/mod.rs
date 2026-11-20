@@ -196,11 +196,9 @@ pub(crate) fn search(
 pub(crate) fn load_profile(
     core: &LadiesCore,
     listing_id: i64,
-    control: Option<&RequestControl>,
+    control: &RequestControl,
 ) -> Result<ProfileResponse, CoreError> {
-    if let Some(control) = control {
-        control.check()?;
-    }
+    control.check()?;
     core.diagnostics
         .event("PROFILE", format!("Profile requested listing={listing_id}"));
     let target = storage::listing_target(core, listing_id, false)?;
@@ -208,12 +206,12 @@ pub(crate) fn load_profile(
     let observation = core
         .source_session
         .0
-        .get_profile(&target.url, &target.advert_id, control)?;
+        .get_profile(&target.url, &target.advert_id, Some(control))?;
     let (html, verified) = match observation {
         network::ProfileObservation::Active(html) => (html, true),
         network::ProfileObservation::Unverified(html) => (html, false),
         network::ProfileObservation::Unavailable(code) => {
-            storage::save_status(core, &target, "UNAVAILABLE", code, false, control)?;
+            storage::save_status(core, &target, "UNAVAILABLE", code, false, Some(control))?;
             return Err(CoreError::Source(format!("Profile HTTP status {code}")));
         }
     };
@@ -243,7 +241,7 @@ pub(crate) fn load_profile(
             );
             // Parsing failure does not negate confirmed availability; revalidate at commit.
             if verified {
-                storage::save_status(core, &target, "ACTIVE", 200, false, control)?;
+                storage::save_status(core, &target, "ACTIVE", 200, false, Some(control))?;
             }
             return Err(error);
         }
@@ -260,11 +258,9 @@ pub(crate) fn load_profile(
             profile.services_json.len()
         ),
     );
-    if let Some(control) = control {
-        control.check()?;
-    }
+    control.check()?;
     let storage_started = Instant::now();
-    let result = storage::save_observed_profile(core, &target, profile, verified, control);
+    let result = storage::save_observed_profile(core, &target, profile, verified, Some(control));
     core.diagnostics
         .phase("STORAGE", "profile_sqlite_write", storage_started);
     match &result {

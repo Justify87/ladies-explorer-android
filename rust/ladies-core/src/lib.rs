@@ -114,13 +114,13 @@ pub struct PersonSummary {
     pub last_seen_at: String,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct PersonCursor {
     pub last_seen_at: String,
     pub person_id: i64,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct PersonPage {
     pub people: Vec<PersonSummary>,
     pub next_cursor: Option<PersonCursor>,
@@ -350,7 +350,7 @@ impl LadiesCore {
         control: Arc<RequestControl>,
     ) -> Result<ProfileResponse, CoreError> {
         self.diagnostics.timed("PROFILE", "load_swipe_profile", || {
-            source::load_profile(self, listing_id, Some(&control))
+            source::load_profile(self, listing_id, &control)
         })
     }
 
@@ -616,51 +616,6 @@ impl LadiesCore {
         person_from(&db, person_id)
     }
 
-    pub fn list_people(
-        &self,
-        limit: u32,
-        cursor: Option<PersonCursor>,
-    ) -> Result<PersonPage, CoreError> {
-        if limit == 0 || limit > 100 {
-            return Err(CoreError::InvalidInput(
-                "Page size must be between 1 and 100".into(),
-            ));
-        }
-        if cursor
-            .as_ref()
-            .is_some_and(|value| value.person_id <= 0 || value.last_seen_at.is_empty())
-        {
-            return Err(CoreError::InvalidInput("Invalid person cursor".into()));
-        }
-        let db = self.connection()?;
-        let mut query = db.prepare(PERSON_QUERY_LIST)?;
-        let rows = query.query_map(
-            params![
-                cursor.as_ref().map(|value| value.last_seen_at.as_str()),
-                cursor.as_ref().map(|value| value.person_id),
-                i64::from(limit) + 1,
-            ],
-            parse_person_row,
-        )?;
-        let mut people = rows
-            .map(|row| PersonSummary::try_from(row?))
-            .collect::<Result<Vec<_>, _>>()?;
-        let has_more = people.len() > limit as usize;
-        people.truncate(limit as usize);
-        let next_cursor = if has_more {
-            people.last().map(|person| PersonCursor {
-                last_seen_at: person.last_seen_at.clone(),
-                person_id: person.person_id,
-            })
-        } else {
-            None
-        };
-        Ok(PersonPage {
-            people,
-            next_cursor,
-        })
-    }
-
     pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
         let db = self.connection()?;
         let changed = db.execute(
@@ -808,6 +763,51 @@ impl TryFrom<RawPerson> for PersonSummary {
 }
 
 impl LadiesCore {
+    pub fn list_people(
+        &self,
+        limit: u32,
+        cursor: Option<PersonCursor>,
+    ) -> Result<PersonPage, CoreError> {
+        if limit == 0 || limit > 100 {
+            return Err(CoreError::InvalidInput(
+                "Page size must be between 1 and 100".into(),
+            ));
+        }
+        if cursor
+            .as_ref()
+            .is_some_and(|value| value.person_id <= 0 || value.last_seen_at.is_empty())
+        {
+            return Err(CoreError::InvalidInput("Invalid person cursor".into()));
+        }
+        let db = self.connection()?;
+        let mut query = db.prepare(PERSON_QUERY_LIST)?;
+        let rows = query.query_map(
+            params![
+                cursor.as_ref().map(|value| value.last_seen_at.as_str()),
+                cursor.as_ref().map(|value| value.person_id),
+                i64::from(limit) + 1,
+            ],
+            parse_person_row,
+        )?;
+        let mut people = rows
+            .map(|row| PersonSummary::try_from(row?))
+            .collect::<Result<Vec<_>, _>>()?;
+        let has_more = people.len() > limit as usize;
+        people.truncate(limit as usize);
+        let next_cursor = if has_more {
+            people.last().map(|person| PersonCursor {
+                last_seen_at: person.last_seen_at.clone(),
+                person_id: person.person_id,
+            })
+        } else {
+            None
+        };
+        Ok(PersonPage {
+            people,
+            next_cursor,
+        })
+    }
+
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, CoreError> {
         self.db
             .lock()

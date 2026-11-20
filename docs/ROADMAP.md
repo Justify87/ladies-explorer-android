@@ -82,7 +82,7 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 
 ## Unabhängige technische Bereinigung
 
-- [ ] **DC01 — REVIEW (DONE mit Merge):** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49): obsolete Fassaden und native Exporte, Testgrenzen und redundante Fixture-Logik bereinigt; `PersonCursor`-Vertrag erhalten. Abschluss nach erfolgreicher technischer Prüfung und Merge. Nachlauf nur bei konkreten Restbefunden aus Compiler/Lint, Abhängigkeiten oder dynamischen Einstiegen. Personenbezogene Saved-People-Mutationen sind aktiv; Read/Write-Semantik nur bei konkretem Anlass separat prüfen. M06-Datenverträge und CI-Optimierungen unverändert.
+- [x] **DC01 — DONE:** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49): obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
 
 ## Unabhängiger Klärungspunkt
 

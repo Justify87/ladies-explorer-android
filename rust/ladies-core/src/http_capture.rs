@@ -265,22 +265,15 @@ impl HttpRecorder {
 
     #[cfg(test)]
     fn record(&self, event: HttpObservation) {
-        self.record_checked(event, None);
+        self.record_for_epoch(event, self.mode_epoch().1);
     }
 
     /// Recorder errors never alter a source request or an image load.
-    pub(crate) fn record_for_epoch(&self, event: HttpObservation, epoch: u64) {
-        self.record_checked(event, Some(epoch));
-    }
-
-    fn record_checked(&self, mut event: HttpObservation, epoch: Option<u64>) {
+    pub(crate) fn record_for_epoch(&self, mut event: HttpObservation, epoch: u64) {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
-        if state.mode == CaptureMode::Off
-            || state.stopped
-            || epoch.is_some_and(|expected| state.epoch != expected)
-        {
+        if state.mode == CaptureMode::Off || state.stopped || state.epoch != epoch {
             return;
         };
         let Some(path) = self.path.as_ref() else {

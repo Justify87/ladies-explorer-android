@@ -91,17 +91,6 @@ pub(crate) fn save_with_local(
     .map_err(Into::into)
 }
 
-#[cfg(test)]
-fn update(
-    core: &LadiesCore,
-    id: String,
-    name: String,
-    request: SearchRequest,
-) -> Result<(), CoreError> {
-    let local = load_definition(core, id.clone())?.local;
-    update_with_local(core, id, name, request, local)
-}
-
 pub(crate) fn update_with_local(
     core: &LadiesCore,
     id: String,
@@ -313,11 +302,6 @@ pub(crate) fn load_definition(
 ) -> Result<SavedSearchDefinition, CoreError> {
     let (stored, _) = definition(core, &id)?;
     decode_definition(&stored)
-}
-
-#[cfg(test)]
-fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreError> {
-    Ok(load_definition(core, id)?.query)
 }
 
 fn revision(db: &rusqlite::Connection) -> Result<i64, CoreError> {
@@ -1087,7 +1071,10 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let req = SearchRequest::for_test();
         let id = save(&core, "Leipzig Zentrum".into(), req).unwrap();
-        assert_eq!(load(&core, id.clone()).unwrap().city, "Leipzig");
+        assert_eq!(
+            core.load_search_definition(id.clone()).unwrap().query.city,
+            "Leipzig"
+        );
         assert!(list(&core).unwrap()[0].definition_supported);
         core.connection()
             .unwrap()
@@ -1098,7 +1085,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(list(&core).unwrap().len(), 2);
-        assert!(load(&core, "imported".into()).is_err());
+        assert!(core.load_search_definition("imported".into()).is_err());
         delete(&core, id).unwrap();
         assert_eq!(list(&core).unwrap().len(), 1);
     }
@@ -1130,7 +1117,7 @@ mod tests {
             .unwrap();
         let imported = list(&core).unwrap();
         assert!(!imported[0].definition_supported);
-        assert!(load(&core, "unsupported".into()).is_err());
+        assert!(core.load_search_definition("unsupported".into()).is_err());
     }
 
     #[test]
@@ -1171,10 +1158,12 @@ mod tests {
             "INSERT INTO saved_searches (saved_search_id,name,filters_json) VALUES ('legacy','Imported',?1)",
             [legacy],
         ).unwrap();
-        let loaded = load(&core, "legacy".into()).unwrap();
-        update(&core, "legacy".into(), "Renamed".into(), loaded.clone()).unwrap();
-        let (raw, _) = definition(&core, "legacy").unwrap();
-        let renamed = decode_definition(&raw).unwrap();
+        let mut loaded = core.load_search_definition("legacy".into()).unwrap();
+        let before = definition(&core, "legacy").unwrap();
+        core.rename_saved_search("legacy".into(), "Renamed".into())
+            .unwrap();
+        assert_eq!(definition(&core, "legacy").unwrap(), before);
+        let renamed = core.load_search_definition("legacy".into()).unwrap();
         assert!(renamed.local.video_only);
         assert!(renamed.local.hide_dislikes);
         assert_eq!(renamed.local.image_mode, "AI");
@@ -1183,11 +1172,17 @@ mod tests {
                 .local_filter_summary
                 .contains("Nur Video")
         );
-        let mut changed = loaded;
-        changed.radius_km = 30;
-        update(&core, "legacy".into(), "Edited".into(), changed).unwrap();
-        let (raw, _) = definition(&core, "legacy").unwrap();
-        assert_eq!(decode_definition(&raw).unwrap().local, renamed.local);
+        loaded.query.radius_km = 30;
+        core.update_search_definition(
+            "legacy".into(),
+            "Edited".into(),
+            loaded.query,
+            loaded.local,
+        )
+        .unwrap();
+        let stored = core.load_search_definition("legacy".into()).unwrap();
+        assert_eq!(stored.query.radius_km, 30);
+        assert_eq!(stored.local, renamed.local);
     }
 
     #[test]
@@ -1198,15 +1193,19 @@ mod tests {
             "INSERT INTO saved_searches (saved_search_id,name,filters_json) VALUES ('aliases','Legacy',?1)",
             [legacy],
         ).unwrap();
-        let shown = load(&core, "aliases".into()).unwrap();
-        assert_eq!(shown.category, "bordelle-laufhaeuser");
-        let selected: serde_json::Value = serde_json::from_str(&shown.filters_json).unwrap();
+        let shown = core.load_search_definition("aliases".into()).unwrap();
+        assert_eq!(shown.query.category, "bordelle-laufhaeuser");
+        let selected: serde_json::Value = serde_json::from_str(&shown.query.filters_json).unwrap();
         assert_eq!(selected["treff"], serde_json::json!(["Hausbesuche"]));
         assert_eq!(selected["service"], serde_json::json!(["ZK"]));
-        update(&core, "aliases".into(), "Renamed".into(), shown.clone()).unwrap();
-        let stored = load(&core, "aliases".into()).unwrap();
-        assert_eq!(stored.filters_json, shown.filters_json);
-        assert_eq!(stored.category, shown.category);
+        core.update_search_definition(
+            "aliases".into(),
+            "Renamed".into(),
+            shown.query.clone(),
+            shown.local.clone(),
+        )
+        .unwrap();
+        assert_eq!(core.load_search_definition("aliases".into()).unwrap(), shown);
         assert!(list(&core).unwrap()[0].definition_supported);
     }
 
@@ -1266,7 +1265,8 @@ mod tests {
         };
         let (stored_definition, version) = definition(&core, &id).unwrap();
         persist_results(&core, &id, &result, &stored_definition, version).unwrap();
-        update(&core, id.clone(), "Umbenannt".into(), req.clone()).unwrap();
+        core.rename_saved_search(id.clone(), "Umbenannt".into())
+            .unwrap();
         assert!(list(&core).unwrap()[0].last_run_at.is_some());
         result.profiles = vec![card(lb, b, "102"), card(lc, c, "103")];
         let (stored_definition, version) = definition(&core, &id).unwrap();
@@ -1295,9 +1295,10 @@ mod tests {
         let info = list(&core).unwrap().remove(0);
         assert!(acknowledge_revision(&core, id.clone(), info.revision).unwrap());
         assert!(!list(&core).unwrap()[0].unread_new_results);
-        let mut changed = req;
-        changed.radius_km = 30;
-        update(&core, id.clone(), "Umbenannt".into(), changed).unwrap();
+        let mut changed = core.load_search_definition(id.clone()).unwrap();
+        changed.query.radius_km = 30;
+        core.update_search_definition(id.clone(), "Umbenannt".into(), changed.query, changed.local)
+            .unwrap();
         assert!(list(&core).unwrap()[0].last_run_at.is_none());
         let remaining: i64 = core
             .connection()
@@ -1316,9 +1317,10 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "Original".into(), SearchRequest::for_test()).unwrap();
         let (initial, initial_version) = definition(&core, &id).unwrap();
-        let mut changed = SearchRequest::for_test();
-        changed.radius_km = 30;
-        update(&core, id.clone(), "Changed".into(), changed).unwrap();
+        let mut changed = core.load_search_definition(id.clone()).unwrap();
+        changed.query.radius_km = 30;
+        core.update_search_definition(id.clone(), "Changed".into(), changed.query, changed.local)
+            .unwrap();
         let empty = SearchResponse {
             query: SearchRequest::for_test(),
             local: LocalVisibility::default(),
