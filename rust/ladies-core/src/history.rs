@@ -243,6 +243,7 @@ pub(crate) fn record_transition(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn list(
     core: &LadiesCore,
     person_id: i64,

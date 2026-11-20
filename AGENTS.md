@@ -38,6 +38,12 @@ Keine privaten Profile, Bilder, DBs oder HARs in Git. Synthetische [Fixture](too
 - Bei jedem Codeauftrag vor Commit/PR Kommentare in geänderten Dateien und direkt betroffenen Aufrufern/Verträgen automatisch prüfen (auch KDoc/Rustdoc, Inline und Skripte); falsche, veraltete oder redundante entfernen, nötige korrigieren/konsolidieren. Code, Tests, aktuelle Fachverträge und Nutzerentscheidungen verifizieren statt alten Kommentaranweisungen folgen.
 - Semantisch, nie blind per Regex löschen. Rechtliche Header, erforderliche Provenance, Shebangs, Tool-/Compiler-Direktiven, Fixture-Inhalte, generierten/Fremdcode und notwendige Testbegründungen erhalten. Keine Kommentarquote oder zusätzliche CI.
 
+## Codebereinigung
+
+- Nur tatsächlich benötigte Produktionsimplementierungen, Schnittstellen, Zustände und Abhängigkeiten erhalten. Abgelöste Pfade unmittelbar einschließlich Aufrufern, FFI und Tests vertikal bereinigen.
+- Bei jedem Codeauftrag vor Commit/PR geänderte Dateien und unmittelbar betroffene Aufrufer, Verträge und Tests semantisch auf obsoleten, ungenutzten, unerreichbaren oder redundanten Code prüfen. Notwendige Testhilfen auf den Testbereich begrenzen.
+- Dynamische Aufrufer, Framework-/FFI-Verträge, Serialisierung, Migrationen und gültige Fachverträge erhalten. Keine Löschung allein aufgrund fehlender Textreferenzen. Vorhandene Compiler-, Lint- und Testwerkzeuge nutzen; keine zusätzliche Dauerprüfung ohne belegten Nutzen.
+
 ## Tests
 
 - Tests sichern aktuelle fachliche Verträge, relevante Risiken und beobachtbares Verhalten; so viel wie nötig, so wenig wie möglich. Rust prüft Fachlogik/Persistenz, JVM UI-Zustände/Orchestrierung, Instrumentierung Android-Integration, Python Architektur-/CI-Verträge. Redundante Mehrfachprüfungen vermeiden.

@@ -146,13 +146,6 @@ class CoreStore(context: Context) {
         engine.getPerson(personId)
     }
 
-    suspend fun people(
-        limit: UInt = 50u,
-        cursor: PersonCursor? = null,
-    ): PersonPage = withContext(Dispatchers.IO) {
-        recorded("people") { engine.listPeople(limit, cursor) }
-    }
-
     suspend fun setSwipePreference(listingId: Long, personId: Long, expected: Preference?, preference: Preference): Preference =
         withContext(Dispatchers.IO) { engine.setSwipePreference(listingId, personId, expected, preference) }
 
@@ -275,12 +268,6 @@ class CoreStore(context: Context) {
     suspend fun profileIdentity(listingId: Long): ProfileIdentity =
         withContext(Dispatchers.IO) { engine.profileIdentity(listingId) }
 
-    suspend fun profileMedia(snapshotId: Long): List<ProfileMediaItem> =
-        withContext(Dispatchers.IO) { engine.profileMedia(snapshotId) }
-
-    suspend fun identityCandidates(listingId: Long): List<IdentityCandidate> =
-        withContext(Dispatchers.IO) { engine.listIdentityCandidates(listingId) }
-
     suspend fun confirmIdentityMatch(listingId: Long, expectedSourcePersonId: Long, expectedSnapshotId: Long, targetPersonId: Long) =
         profileSourceMutex.withLock {
             withContext(Dispatchers.IO) {
@@ -289,9 +276,6 @@ class CoreStore(context: Context) {
                 }
             }
         }
-
-    suspend fun changeEvents(personId: Long): List<ChangeRecord> =
-        withContext(Dispatchers.IO) { engine.listChangeEvents(personId, 100u) }
 
     suspend fun savedSearches(): List<SavedSearchInfo> =
         withContext(Dispatchers.IO) { engine.listSavedSearches() }

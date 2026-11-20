@@ -954,9 +954,7 @@ mod tests {
         )
         .unwrap();
         assert_ne!(first.snapshot_id, second.snapshot_id);
-        let changes = core
-            .list_change_events(found.profiles[0].person_id, 20)
-            .unwrap();
+        let changes = crate::history::list(&core, found.profiles[0].person_id, 20).unwrap();
         assert!(
             changes
                 .iter()
@@ -1124,9 +1122,7 @@ mod tests {
             .unwrap();
         assert_eq!(last, (1, 0, original.snapshot_id));
         drop(db);
-        let history = core
-            .list_change_events(found.profiles[0].person_id, 50)
-            .unwrap();
+        let history = crate::history::list(&core, found.profiles[0].person_id, 50).unwrap();
         let changes = history
             .iter()
             .filter(|event| {
@@ -1208,7 +1204,7 @@ mod tests {
         core.set_favorite(owner, true).unwrap();
         core.set_preference(owner, crate::Preference::Like).unwrap();
         assert!(
-            core.list_identity_candidates(listing)
+            crate::identity::list(&core, listing)
                 .unwrap()
                 .iter()
                 .any(|c| c.person_id == new_owner)
@@ -1216,7 +1212,11 @@ mod tests {
 
         // Seed only the saved-search baseline; use actual projection and ack APIs.
         let saved_id = core
-            .save_native_search("Fixture".into(), SearchRequest::for_test())
+            .save_search_definition(
+                "Fixture".into(),
+                SearchRequest::for_test(),
+                crate::LocalVisibility::default(),
+            )
             .unwrap();
         {
             let db = core.connection().unwrap();
@@ -1284,16 +1284,16 @@ mod tests {
         assert!(grid.iter().all(|c| c.person_id == new_owner
             && c.favorite
             && c.preference == crate::Preference::Like));
-        let saved = core
-            .saved_people(
-                crate::SavedPersonKind::Favorite,
-                crate::SavedPersonSort::Date,
-                crate::SavedPersonSection::All,
-                50,
-                None,
-                None,
-            )
-            .unwrap();
+        let saved = crate::discovery::saved_people(
+            &core,
+            crate::SavedPersonKind::Favorite,
+            crate::SavedPersonSort::Date,
+            crate::SavedPersonSection::All,
+            50,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(saved.total, 1);
         assert_eq!(saved.rows[0].person_id, new_owner);
         assert_eq!(saved.rows[0].listing_count, 2);
@@ -1311,7 +1311,6 @@ mod tests {
         assert_eq!(core.map_overview(false).unwrap().total_profiles, 1);
         assert_eq!(core.map_overview(true).unwrap().total_profiles, 1);
         assert_eq!(core.person_detail(new_owner).unwrap().listings.len(), 2);
-        assert_eq!(core.profile_media(snapshot.snapshot_id).unwrap().len(), 1);
         assert!(
             core.acknowledge_saved_search_revision(saved_id, window.searches[0].revision)
                 .unwrap()

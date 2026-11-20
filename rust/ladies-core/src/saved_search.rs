@@ -54,7 +54,8 @@ fn encode_definition(definition: &SavedSearchDefinition) -> Result<String, CoreE
     serde_json::to_string(definition).map_err(|e| CoreError::Storage(e.to_string()))
 }
 
-pub(crate) fn save(
+#[cfg(test)]
+fn save(
     core: &LadiesCore,
     name: String,
     request: SearchRequest,
@@ -94,7 +95,8 @@ pub(crate) fn save_with_local(
     .map_err(Into::into)
 }
 
-pub(crate) fn update(
+#[cfg(test)]
+fn update(
     core: &LadiesCore,
     id: String,
     name: String,
@@ -311,10 +313,6 @@ fn definition(core: &LadiesCore, id: &str) -> Result<(String, i64), CoreError> {
     .ok_or_else(|| CoreError::InvalidInput("Saved search not found".into()))
 }
 
-fn request(core: &LadiesCore, id: &str) -> Result<SearchRequest, CoreError> {
-    Ok(decode_definition(&definition(core, id)?.0)?.query)
-}
-
 pub(crate) fn load_definition(
     core: &LadiesCore,
     id: String,
@@ -323,8 +321,9 @@ pub(crate) fn load_definition(
     decode_definition(&stored)
 }
 
-pub(crate) fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreError> {
-    request(core, &id)
+#[cfg(test)]
+fn load(core: &LadiesCore, id: String) -> Result<SearchRequest, CoreError> {
+    Ok(load_definition(core, id)?.query)
 }
 
 fn revision(db: &rusqlite::Connection) -> Result<i64, CoreError> {
@@ -388,21 +387,22 @@ pub struct SavedSearchCard {
     pub age: Option<String>,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct SavedResultCursor {
+#[derive(Debug, Clone)]
+struct SavedResultCursor {
     pub position: i64,
     pub result_key: String,
     pub search_id: String,
     pub revision: i64,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct SavedSearchResultPage {
+#[derive(Debug, Clone)]
+struct SavedSearchResultPage {
     pub cards: Vec<SavedSearchCard>,
     pub next_cursor: Option<SavedResultCursor>,
 }
 
-pub(crate) fn results(
+#[cfg(test)]
+fn results(
     core: &LadiesCore,
     id: String,
     limit: u32,

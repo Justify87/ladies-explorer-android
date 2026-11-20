@@ -156,8 +156,8 @@ pub use profile_detail::{
     SnapshotDifference,
 };
 pub use saved_search::{
-    LocalVisibility, SavedResultCursor, SavedSearchCard, SavedSearchDefinition, SavedSearchDelta,
-    SavedSearchInfo, SavedSearchResultPage, SavedSearchWindow,
+    LocalVisibility, SavedSearchCard, SavedSearchDefinition, SavedSearchDelta, SavedSearchInfo,
+    SavedSearchWindow,
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
 pub use source::{
@@ -266,10 +266,6 @@ impl LadiesCore {
         self.diagnostics.set_debug(enabled);
     }
 
-    pub fn diagnostic_debug_enabled(&self) -> bool {
-        self.diagnostics.debug_enabled()
-    }
-
     pub fn diagnostic_status(&self) -> Result<DiagnosticStatus, CoreError> {
         let (available, size_bytes, last_write_error) = self
             .diagnostics
@@ -350,13 +346,6 @@ impl LadiesCore {
         discovery::active_search_cards(self, run_id, &local)
     }
 
-    pub fn load_source_profile(&self, listing_id: i64) -> Result<ProfileResponse, CoreError> {
-        self.diagnostics
-            .timed("PROFILE", "load_source_profile", || {
-                source::load_profile(self, listing_id, None)
-            })
-    }
-
     pub fn load_swipe_profile(
         &self,
         listing_id: i64,
@@ -406,13 +395,6 @@ impl LadiesCore {
             })
     }
 
-    pub fn list_identity_candidates(
-        &self,
-        listing_id: i64,
-    ) -> Result<Vec<IdentityCandidate>, CoreError> {
-        identity::list(self, listing_id)
-    }
-
     pub fn confirm_identity_match(
         &self,
         listing_id: i64,
@@ -427,14 +409,6 @@ impl LadiesCore {
             expected_snapshot_id,
             target_person_id,
         )
-    }
-
-    pub fn list_change_events(
-        &self,
-        person_id: i64,
-        limit: u32,
-    ) -> Result<Vec<ChangeRecord>, CoreError> {
-        history::list(self, person_id, limit)
     }
 
     pub fn profile_facts(
@@ -508,18 +482,6 @@ impl LadiesCore {
         discovery::saved_window(self, kind, sort, regular_limit, recent_limit)
     }
 
-    pub fn saved_people(
-        &self,
-        kind: SavedPersonKind,
-        sort: SavedPersonSort,
-        section: SavedPersonSection,
-        limit: u32,
-        cursor: Option<SavedPersonCursor>,
-        as_of: Option<i64>,
-    ) -> Result<SavedPersonPage, CoreError> {
-        discovery::saved_people(self, kind, sort, section, limit, cursor, as_of)
-    }
-
     pub fn map_overview(&self, favorites_only: bool) -> Result<MapOverview, CoreError> {
         map::overview(self, favorites_only)
     }
@@ -564,10 +526,6 @@ impl LadiesCore {
         source::profile_identity(self, listing_id)
     }
 
-    pub fn profile_media(&self, snapshot_id: i64) -> Result<Vec<ProfileMediaItem>, CoreError> {
-        discovery::media(self, snapshot_id)
-    }
-
     pub fn frequent_filters(&self) -> Result<Vec<FrequentFilter>, CoreError> {
         source::filter::frequent(self)
     }
@@ -599,34 +557,8 @@ impl LadiesCore {
         source::filter::available()
     }
 
-    pub fn save_native_search(
-        &self,
-        name: String,
-        request: SearchRequest,
-    ) -> Result<String, CoreError> {
-        saved_search::save(self, name, request)
-    }
-
-    pub fn update_native_search(
-        &self,
-        id: String,
-        name: String,
-        request: SearchRequest,
-    ) -> Result<(), CoreError> {
-        saved_search::update(self, id, name, request)
-    }
-
     pub fn list_saved_searches(&self) -> Result<Vec<SavedSearchInfo>, CoreError> {
         saved_search::list(self)
-    }
-
-    pub fn saved_search_results(
-        &self,
-        id: String,
-        limit: u32,
-        cursor: Option<SavedResultCursor>,
-    ) -> Result<SavedSearchResultPage, CoreError> {
-        saved_search::results(self, id, limit, cursor)
     }
 
     pub fn saved_search_window(
@@ -643,10 +575,6 @@ impl LadiesCore {
         revision: i64,
     ) -> Result<bool, CoreError> {
         saved_search::acknowledge_revision(self, id, revision)
-    }
-
-    pub fn load_saved_search(&self, id: String) -> Result<SearchRequest, CoreError> {
-        saved_search::load(self, id)
     }
 
     pub fn rename_saved_search(&self, id: String, name: String) -> Result<(), CoreError> {
@@ -683,154 +611,6 @@ impl LadiesCore {
             listing_count: count("listings")?,
             source_profile_count: count("source_profiles")?,
         })
-    }
-
-    pub fn create_person(&self, display_name: Option<String>) -> Result<i64, CoreError> {
-        let name = display_name
-            .map(|n| n.trim().to_owned())
-            .filter(|n| !n.is_empty());
-        let mut db = self.connection()?;
-        let tx = db.transaction()?;
-        tx.execute(
-            "INSERT INTO persons (display_name) VALUES (?1)",
-            params![name],
-        )?;
-        let id = tx.last_insert_rowid();
-        // An SQLite trigger initializes person_user_state for all insertion paths.
-        tx.commit()?;
-        Ok(id)
-    }
-
-    /// External profile IDs are evidence, not permission to merge different persons.
-    pub fn add_source_profile(
-        &self,
-        person_id: i64,
-        source: String,
-        external_profile_id: String,
-    ) -> Result<i64, CoreError> {
-        let source = non_empty(source, "source")?;
-        let external_profile_id = non_empty(external_profile_id, "external_profile_id")?;
-        let mut db = self.connection()?;
-        let tx = db.transaction()?;
-        ensure_person(&tx, person_id)?;
-        let existing: Option<(i64, i64)> = tx
-            .query_row(
-                "SELECT source_profile_id, person_id FROM source_profiles
-                 WHERE source = ?1 AND external_profile_id = ?2",
-                params![source, external_profile_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()?;
-        let id = if let Some((existing_id, owner)) = existing {
-            if owner != person_id {
-                return Err(CoreError::IdentityConflict(format!(
-                    "Profile {source}/{external_profile_id} belongs to person {owner}"
-                )));
-            }
-            tx.execute(
-                "UPDATE source_profiles SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                 WHERE source_profile_id = ?1",
-                params![existing_id],
-            )?;
-            existing_id
-        } else {
-            tx.execute(
-                "INSERT INTO source_profiles (person_id, source, external_profile_id)
-                 VALUES (?1, ?2, ?3)",
-                params![person_id, source, external_profile_id],
-            )?;
-            tx.last_insert_rowid()
-        };
-        touch_person(&tx, person_id)?;
-        tx.commit()?;
-        Ok(id)
-    }
-
-    /// The (source, external_listing_id) pair is stable and cannot silently change owners.
-    pub fn add_listing(
-        &self,
-        person_id: i64,
-        source_profile_id: Option<i64>,
-        source: String,
-        external_listing_id: String,
-        current_url: Option<String>,
-    ) -> Result<i64, CoreError> {
-        let source = non_empty(source, "source")?;
-        let external_listing_id = non_empty(external_listing_id, "external_listing_id")?;
-        let mut db = self.connection()?;
-        let tx = db.transaction()?;
-        ensure_person(&tx, person_id)?;
-        if let Some(profile_id) = source_profile_id {
-            let owner: Option<(i64, String)> = tx
-                .query_row(
-                    "SELECT person_id, source FROM source_profiles WHERE source_profile_id = ?1",
-                    params![profile_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()?;
-            match owner {
-                None => return Err(CoreError::SourceProfileNotFound(profile_id)),
-                Some((owner_id, profile_source))
-                    if owner_id != person_id || profile_source != source =>
-                {
-                    return Err(CoreError::IdentityConflict(
-                        "A listing must use a source profile of the same person and source".into(),
-                    ));
-                }
-                _ => {}
-            }
-        }
-        let existing: Option<(i64, i64, Option<i64>)> = tx
-            .query_row(
-                "SELECT listing_id, person_id, source_profile_id
-                 FROM listings WHERE source = ?1 AND external_listing_id = ?2",
-                params![source, external_listing_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .optional()?;
-        let id = if let Some((existing_id, owner, existing_profile)) = existing {
-            if owner != person_id
-                || existing_profile
-                    .is_some_and(|p| source_profile_id.is_some_and(|new_profile| p != new_profile))
-            {
-                return Err(CoreError::IdentityConflict(format!(
-                    "Listing {source}/{external_listing_id} is already assigned"
-                )));
-            }
-            tx.execute(
-                "UPDATE listings
-                 SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-                     current_url = COALESCE(?1, current_url),
-                     source_profile_id = COALESCE(source_profile_id, ?2)
-                 WHERE listing_id = ?3",
-                params![current_url, source_profile_id, existing_id],
-            )?;
-            existing_id
-        } else {
-            tx.execute(
-                "INSERT INTO listings
-                 (person_id, source_profile_id, source, external_listing_id, current_url)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    person_id,
-                    source_profile_id,
-                    source,
-                    external_listing_id,
-                    current_url
-                ],
-            )?;
-            tx.last_insert_rowid()
-        };
-        touch_person(&tx, person_id)?;
-        tx.execute(
-            "UPDATE source_profiles
-             SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE source_profile_id =
-               (SELECT source_profile_id FROM listings WHERE listing_id = ?1)",
-            params![id],
-        )?;
-        tx.commit()?;
-        Ok(id)
     }
 
     pub fn get_person(&self, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
@@ -1029,6 +809,7 @@ impl TryFrom<RawPerson> for PersonSummary {
     }
 }
 
+#[cfg(test)]
 fn non_empty(value: String, field: &'static str) -> Result<String, CoreError> {
     let cleaned = value.trim().to_owned();
     if cleaned.is_empty() {
@@ -1039,6 +820,7 @@ fn non_empty(value: String, field: &'static str) -> Result<String, CoreError> {
     Ok(cleaned)
 }
 
+#[cfg(test)]
 fn touch_person(db: &Connection, person_id: i64) -> Result<(), CoreError> {
     db.execute(
         "UPDATE persons
@@ -1050,6 +832,7 @@ fn touch_person(db: &Connection, person_id: i64) -> Result<(), CoreError> {
     Ok(())
 }
 
+#[cfg(test)]
 fn ensure_person(db: &Connection, person_id: i64) -> Result<(), CoreError> {
     let exists: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM persons WHERE person_id = ?1)",
@@ -1068,6 +851,157 @@ impl LadiesCore {
         self.db
             .lock()
             .map_err(|e| CoreError::Storage(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+impl LadiesCore {
+    pub fn create_person(&self, display_name: Option<String>) -> Result<i64, CoreError> {
+        let name = display_name
+            .map(|n| n.trim().to_owned())
+            .filter(|n| !n.is_empty());
+        let mut db = self.connection()?;
+        let tx = db.transaction()?;
+        tx.execute(
+            "INSERT INTO persons (display_name) VALUES (?1)",
+            params![name],
+        )?;
+        let id = tx.last_insert_rowid();
+        // An SQLite trigger initializes person_user_state for all insertion paths.
+        tx.commit()?;
+        Ok(id)
+    }
+
+    /// External profile IDs are evidence, not permission to merge different persons.
+    pub fn add_source_profile(
+        &self,
+        person_id: i64,
+        source: String,
+        external_profile_id: String,
+    ) -> Result<i64, CoreError> {
+        let source = non_empty(source, "source")?;
+        let external_profile_id = non_empty(external_profile_id, "external_profile_id")?;
+        let mut db = self.connection()?;
+        let tx = db.transaction()?;
+        ensure_person(&tx, person_id)?;
+        let existing: Option<(i64, i64)> = tx
+            .query_row(
+                "SELECT source_profile_id, person_id FROM source_profiles
+                 WHERE source = ?1 AND external_profile_id = ?2",
+                params![source, external_profile_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let id = if let Some((existing_id, owner)) = existing {
+            if owner != person_id {
+                return Err(CoreError::IdentityConflict(format!(
+                    "Profile {source}/{external_profile_id} belongs to person {owner}"
+                )));
+            }
+            tx.execute(
+                "UPDATE source_profiles SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                 WHERE source_profile_id = ?1",
+                params![existing_id],
+            )?;
+            existing_id
+        } else {
+            tx.execute(
+                "INSERT INTO source_profiles (person_id, source, external_profile_id)
+                 VALUES (?1, ?2, ?3)",
+                params![person_id, source, external_profile_id],
+            )?;
+            tx.last_insert_rowid()
+        };
+        touch_person(&tx, person_id)?;
+        tx.commit()?;
+        Ok(id)
+    }
+
+    /// The (source, external_listing_id) pair is stable and cannot silently change owners.
+    pub fn add_listing(
+        &self,
+        person_id: i64,
+        source_profile_id: Option<i64>,
+        source: String,
+        external_listing_id: String,
+        current_url: Option<String>,
+    ) -> Result<i64, CoreError> {
+        let source = non_empty(source, "source")?;
+        let external_listing_id = non_empty(external_listing_id, "external_listing_id")?;
+        let mut db = self.connection()?;
+        let tx = db.transaction()?;
+        ensure_person(&tx, person_id)?;
+        if let Some(profile_id) = source_profile_id {
+            let owner: Option<(i64, String)> = tx
+                .query_row(
+                    "SELECT person_id, source FROM source_profiles WHERE source_profile_id = ?1",
+                    params![profile_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            match owner {
+                None => return Err(CoreError::SourceProfileNotFound(profile_id)),
+                Some((owner_id, profile_source))
+                    if owner_id != person_id || profile_source != source =>
+                {
+                    return Err(CoreError::IdentityConflict(
+                        "A listing must use a source profile of the same person and source".into(),
+                    ));
+                }
+                _ => {}
+            }
+        }
+        let existing: Option<(i64, i64, Option<i64>)> = tx
+            .query_row(
+                "SELECT listing_id, person_id, source_profile_id
+                 FROM listings WHERE source = ?1 AND external_listing_id = ?2",
+                params![source, external_listing_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        let id = if let Some((existing_id, owner, existing_profile)) = existing {
+            if owner != person_id
+                || existing_profile
+                    .is_some_and(|p| source_profile_id.is_some_and(|new_profile| p != new_profile))
+            {
+                return Err(CoreError::IdentityConflict(format!(
+                    "Listing {source}/{external_listing_id} is already assigned"
+                )));
+            }
+            tx.execute(
+                "UPDATE listings
+                 SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                     current_url = COALESCE(?1, current_url),
+                     source_profile_id = COALESCE(source_profile_id, ?2)
+                 WHERE listing_id = ?3",
+                params![current_url, source_profile_id, existing_id],
+            )?;
+            existing_id
+        } else {
+            tx.execute(
+                "INSERT INTO listings
+                 (person_id, source_profile_id, source, external_listing_id, current_url)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    person_id,
+                    source_profile_id,
+                    source,
+                    external_listing_id,
+                    current_url
+                ],
+            )?;
+            tx.last_insert_rowid()
+        };
+        touch_person(&tx, person_id)?;
+        tx.execute(
+            "UPDATE source_profiles
+             SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE source_profile_id =
+               (SELECT source_profile_id FROM listings WHERE listing_id = ?1)",
+            params![id],
+        )?;
+        tx.commit()?;
+        Ok(id)
     }
 }
 

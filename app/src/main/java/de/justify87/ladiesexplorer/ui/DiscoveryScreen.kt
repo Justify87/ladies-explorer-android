@@ -31,7 +31,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import androidx.compose.ui.unit.IntOffset
-import kotlin.math.roundToInt
 
 @Composable
 internal fun DiscoverScreen(
