@@ -5,12 +5,12 @@ Native, lokal genutzte Android-App mit Kotlin, Jetpack Compose / Material 3 Expr
 ## Aktueller Funktionsumfang
 
 - Entdecken (Swipe, LIKE/DISLIKE, später), native Suche und Filter, gespeicherte Suchen mit Ergebnis-Historie, Favoriten, Karte und Einstellungen.
-- Profildetails mit Mediengalerie, lokalem Bildarchiv, Offline-Fallback auf gespeicherte Profile, Änderungshistorie und explizit bestätigbaren Identitätskandidaten.
+- Gemeinsamer vertikaler Profilfluss für Swipe und Einzelprofil mit Mediengalerie, lokalem Bildarchiv, Offline-Fallback auf gespeicherte Profile, privaten Personennotizen (lesen, bearbeiten, speichern), Änderungshistorie und explizit bestätigbaren Identitätskandidaten.
 - Lokaler Import vorhandener Web-App-Daten, native MapLibre-Karte mit groben Ortszentren und ausdrücklich gestarteter Geocodierung.
 - Lokales Debug-/Performance-Logging und optionaler HTTP-Mitschnitt mit TXT-/HAR-Export.
-- Eingebettete stumme Galerie-Videos, externe WhatsApp-/Originalaktionen; kein integrierter Messenger oder automatische KI-/OCR-Preisextraktion.
+- Galerie ohne obere Bedienleiste, Medienwechsel über seitliche Tippzonen; eingebettete stumme Videos mit Autoplay/Loop und mittigem Play/Pause. Externe WhatsApp-/Originalaktionen; kein integrierter Messenger oder automatische KI-/OCR-Preisextraktion.
 
-Der Code ist keine vollständig abgenommene Web-App-Ablösung. Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md). Personennotizen sind bereits vorhanden.
+Der Code ist keine vollständig abgenommene Web-App-Ablösung. Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md).
 
 ## Aktive Weiterentwicklung
 
