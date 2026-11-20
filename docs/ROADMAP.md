@@ -59,19 +59,27 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Ist-Stand:** PR #31 enthält bereits relevante Implementierungen; prüfen statt neu implementieren. Code: `DiscoveryScreen.kt`, `SwipeProfile.kt`, `SwipeFlight.kt`, `ProfilePanels.kt`, `ProfilePresentation.kt`, `GalleryVideo.kt`, `MainViewModel.kt`. Tests: `SwipeProfileWindowTest`, `SwipeProfileReadTest`, `ProfilePresentationTest`, `ProfilePanelsTest`, `ProfileProjectionTest`, Rust-Medientests.
 
-**Ziel / Umfang und Akzeptanz:**
-- [ ] Restreview von Owner-/Run-/Snapshot-/Revision- und Lifecycle-Wechseln: Prefetch-Promotion/Pruning, Request/Retry/Cancel, Native Drain, Cache-/Note-/Facts-Invalidierung, SaveableState, unabhängige Reprojektion sowie Video-Surface-/Tempfile-Cleanup. Aufrufer bis Rust/SQLite prüfen.
-- [ ] Kein stale UI, Double Write, Source-Redo nach Commit, zusätzliche Archivierung, mehr als Current+2 oder zweite Queue/HTTP-/Profilimplementierung. Nur belegte Defekte ursächlich beheben und Regression sichern.
-- [ ] Technische Performance anhand vorhandener Tests, Code und verfügbarer Diagnosebelege prüfen; keine Beschleunigung ohne Messung behaupten und keine allgemeine M07-Optimierung.
+**Ziel:** Verbleibende Lifecycle-, Performance- und Altcode-Risiken in M05.10 prüfen, ohne abgeschlossene Funktionen neu aufzubauen.
+
+**Umfang:**
+- [ ] Owner-/Run-/Snapshot-/Revision- und Lifecycle-Wechsel prüfen: Prefetch-Promotion/Pruning, Request/Retry/Cancel, Native Drain, Cache-/Note-/Facts-Invalidierung, SaveableState, unabhängige Reprojektion sowie Video-Surface-/Tempfile-Cleanup. Betroffene Aufrufer bis Rust/SQLite verfolgen.
+- [ ] Technische Performance anhand vorhandener Tests, Code und verfügbarer Diagnosebelege prüfen. Keine allgemeine M07-Optimierung.
+
+**Akzeptanz:**
+- [ ] Keine nachgewiesenen Defekte durch stale UI, Double Write, Source-Redo nach Commit, zusätzliche Archivierung, mehr als Current+2 oder zweite Queue/HTTP-/Profilimplementierung offen. Nur belegte Defekte ursächlich beheben und durch Regression sichern. Keine Beschleunigung ohne Messung behaupten.
 
 ### T10.8 — PLANNED · Vertikale Integration (G10.3)
 
 **Abhängigkeit:** T10.7 abgeschlossen. **Referenzen:** P01–P51/X01–X11, [UI-Vertrag](DESIGN.md).
 
-**Ziel / Umfang und Akzeptanz:**
-- [ ] Alle betroffenen Einstiegspunkte (Swipe/Grid/Karte/Suche/Gespeichert inklusive gespeicherter Ergebnisse), Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
-- [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision, Fehler/Offline/Status/Radius/Pagination.
-- [ ] Kein zweiter Pfad, Funktionsverlust oder Scope-Drift; konkrete technische Testbelege.
+**Ziel:** Betroffene Profileinstiege über alle Schichten konsistent integrieren.
+
+**Umfang:**
+- [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
+- [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision sowie Fehler/Offline/Status/Radius/Pagination.
+
+**Akzeptanz:**
+- [ ] Keine zweite Implementierungsroute, kein Funktionsverlust und kein Scope-Drift; konkrete technische Testbelege.
 
 ### T10.9 — PLANNED · Abschluss M05.10 (G10)
 
@@ -111,9 +119,7 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 - [ ] Native Android-Schemaentwicklung und bestehende Android-Nutzerdaten unbeschädigt.
 - [ ] Technische Integrationsprüfungen im separaten Code-PR. [Produktsoll](PRODUCT.md#produktziel-und-grenzen).
 
-### DC01 — DONE
-
-[PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49): obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
+- [x] **DC01 — DONE:** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49) – obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
 
 ## Unabhängiger Klärungspunkt
 
