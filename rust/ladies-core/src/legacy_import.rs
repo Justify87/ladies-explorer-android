@@ -372,7 +372,7 @@ mod tests {
         invalid_owner: bool,
     ) -> (std::path::PathBuf, std::path::PathBuf) {
         let source_file = root.join("source.sqlite3");
-        let mut src = Connection::open(&source_file).unwrap();
+        let src = Connection::open(&source_file).unwrap();
         src.execute_batch(crate::schema::VERSION_1).unwrap();
         src.execute_batch("PRAGMA foreign_keys=ON").unwrap();
         src.pragma_update(None, "user_version", 1).unwrap();
@@ -528,7 +528,10 @@ mod tests {
         assert_eq!(report.listings, 9);
         assert_eq!(report.saved_searches, 2);
         assert_eq!(report.media_files, 5);
-        let media = crate::discovery::media(&core, 1011).unwrap();
+        let media = {
+            let db = core.connection().unwrap();
+            crate::discovery::media_from(&core, &db, 1011).unwrap()
+        };
         assert_eq!(media.len(), 1);
         assert!(Path::new(media[0].local_path.as_ref().unwrap()).is_file());
         let person = core.get_person(2).unwrap().unwrap();

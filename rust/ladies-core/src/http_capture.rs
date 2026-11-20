@@ -263,11 +263,12 @@ impl HttpRecorder {
         }
     }
 
-    /// Recorder errors never alter a source request or an image load.
-    pub(crate) fn record(&self, event: HttpObservation) {
+    #[cfg(test)]
+    fn record(&self, event: HttpObservation) {
         self.record_checked(event, None);
     }
 
+    /// Recorder errors never alter a source request or an image load.
     pub(crate) fn record_for_epoch(&self, event: HttpObservation, epoch: u64) {
         self.record_checked(event, Some(epoch));
     }

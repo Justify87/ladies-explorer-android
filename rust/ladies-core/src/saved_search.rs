@@ -55,11 +55,7 @@ fn encode_definition(definition: &SavedSearchDefinition) -> Result<String, CoreE
 }
 
 #[cfg(test)]
-fn save(
-    core: &LadiesCore,
-    name: String,
-    request: SearchRequest,
-) -> Result<String, CoreError> {
+fn save(core: &LadiesCore, name: String, request: SearchRequest) -> Result<String, CoreError> {
     save_with_local(core, name, request, LocalVisibility::default())
 }
 

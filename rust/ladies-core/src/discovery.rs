@@ -968,7 +968,15 @@ mod tests {
                 .unwrap();
         }
         let saved = |kind, sort, limit, cursor| {
-            saved_people(&core, kind, sort, SavedPersonSection::All, limit, cursor, None)
+            saved_people(
+                &core,
+                kind,
+                sort,
+                SavedPersonSection::All,
+                limit,
+                cursor,
+                None,
+            )
         };
         let fav = saved(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, None).unwrap();
         assert_eq!(fav.total, 2);
