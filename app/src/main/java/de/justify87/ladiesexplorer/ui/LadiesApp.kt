@@ -439,7 +439,10 @@ fun LadiesApp(
                         search = search, saved = saved,
                         canStartSearch = !home.loading && !discovery.busy,
                         onDraftChange = if (pane == SearchPane.SavedEditor) {
-                            { change -> renderedEditorAction?.let { viewModel.savedSearch.editDraft(it, change) } }
+                            { change ->
+                                renderedEditorAction?.let { viewModel.savedSearch.editDraft(it, change) }
+                                Unit
+                            }
                         } else viewModel::editSearchDraft,
                         onReset = viewModel::resetSearchDraft,
                         onPreviewTarget = viewModel::setPreviewTarget,
