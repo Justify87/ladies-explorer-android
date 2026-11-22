@@ -45,7 +45,7 @@ internal fun SearchScreen(
     onPreviewTarget: (SearchRequest?) -> Unit,
     onSearch: () -> Unit,
     onCancelSearch: () -> Unit,
-    onSave: (SavedEditorSaveAction) -> Unit,
+    onSave: (SavedEditorAction) -> Unit,
     onName: (String) -> Unit,
     onCancelEdit: () -> Unit,
     generation: Long,
@@ -183,7 +183,7 @@ internal fun SearchScreen(
                         style = MaterialTheme.typography.labelSmall)
                     if (editor != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onCancelEdit, enabled = !saved.blockingNavigation) { Text("Abbrechen") }
-                        Button(onClick = { onSave(SavedEditorSaveAction(editor.session, saved.actionGeneration)) }, enabled = enabled && editor.name.isNotBlank() && editor.name.length <= 100 && draft.city.isNotBlank(), modifier = Modifier.weight(1f)) {
+                        Button(onClick = { onSave(SavedEditorAction(editor, saved.actionGeneration)) }, enabled = enabled && editor.name.isNotBlank() && editor.name.length <= 100 && draft.city.isNotBlank(), modifier = Modifier.weight(1f)) {
                             Text(if (saved.operation == SavedOperation.Write) "Speichert …" else "Speichern")
                         }
                     } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
