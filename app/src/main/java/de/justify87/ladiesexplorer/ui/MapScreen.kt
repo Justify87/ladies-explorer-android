@@ -73,7 +73,8 @@ fun MapScreen(
     onResolve: () -> Unit,
     onCancel: () -> Unit,
     onFavoritesOnly: (Boolean) -> Unit,
-    onProfile: (Long, Long) -> Unit,
+    generation: Long,
+    onProfile: (MapProfileOpenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var selectedListingId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -157,7 +158,9 @@ fun MapScreen(
                     selection.forEach { person ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("${person.name} · ${person.locationLabel}", modifier = Modifier.weight(1f))
-                            OutlinedButton(onClick = { onProfile(person.listingId, person.personId) }) {
+                            OutlinedButton(onClick = {
+                                if (overview != null) onProfile(MapProfileOpenAction(overview, person, state.favoritesOnly, generation))
+                            }) {
                                 Text("Profil")
                             }
                         }
