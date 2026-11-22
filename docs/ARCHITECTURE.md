@@ -224,7 +224,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Keyset-Cursor bindet Auswahl, Zeitgrenze und SQLite-`total_changes`-Revision. Namenssortierung mit NFD, Case-/Mark-Folding und ß/ss (keine vollständige CLDR-Kollation). Metadaten fallen deterministisch auf vorhandene Daten zurück; Relisting behält fachlichen Ereigniszeitpunkt.
 
 **Statusoperation:**
-1. Suche, Profil und explizite Einzel-/Batchchecks nutzen denselben Rust-Statusübergang.
+1. Suche, Profil und explizite Einzel-/Batchchecks nutzen denselben Rust-Statusübergang. Die UI lässt Einzelchecks nur für die weiterhin gerenderte Saved-Person-Zeile und Batchchecks nur für die gerenderte Auswahl/Fensterinstanz zu; Tab-, Fenster- und Lifecycle-Wechsel widerrufen verzögerte Aktionen vor I/O.
 2. Explizite Checks benötigen **vor I/O und erneut beim Commit** gültige gespeicherte LADIES-Mitgliedschaft (Favorit oder Präferenz ungleich `NONE`).
 3. Rust prüft vor Commit transaktional Owner, URL, Advert-ID und Beobachtungsrevision.
 4. Nur bestätigte Beobachtungen – einschließlich gültiger Suchkarten als positiver `ACTIVE`-Beleg – aktualisieren Status und Statuszeit; Status-only schreibt Beobachtung und bei bestätigtem Wechsel ein Ereignis, aber keine Inhalts-/Personenreihenfolge oder Medieningestion.
