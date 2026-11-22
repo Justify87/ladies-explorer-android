@@ -6,11 +6,29 @@ import de.justify87.ladiesexplorer.core.DiscoveryPage
 import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.SavedPeopleWindow
 import de.justify87.ladiesexplorer.core.MapOverview
+import de.justify87.ladiesexplorer.core.MapProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 
-enum class ProfileActionSurface { NONE, GRID, SAVED }
+enum class ProfileActionSurface { NONE, GRID, SAVED, SEARCH, SAVED_RESULTS, MAP }
+
+internal data class MapProfileOpenAction(
+    val overview: MapOverview,
+    val profile: MapProfile,
+    val favoritesOnly: Boolean,
+    val generation: Long,
+)
+
+internal fun mapProfileOpenMatches(
+    map: MapUiState, discovery: DiscoverUiState, action: MapProfileOpenAction,
+): Boolean =
+    discovery.actionSurface == ProfileActionSurface.MAP &&
+        discovery.actionGeneration == action.generation &&
+        !discovery.busy && !map.loading &&
+        map.favoritesOnly == action.favoritesOnly &&
+        map.overview === action.overview &&
+        action.overview.profiles.any { it == action.profile }
 
 /** Never reinterpret a stale click using a freshly projected card. */
 internal data class GridLikeAction(
