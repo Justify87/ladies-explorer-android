@@ -132,6 +132,41 @@ class SwipeProfileReadTest {
         assertEquals(1, f.calls.count { it.startsWith("source:") })
     }
 
+    @Test(timeout = 15_000) fun cacheOnlyPrefetchRefreshesExactlyOnceAfterPromotion() = runBlocking {
+        val fixture = Fixture(fixtureProfile())
+        val card = fixtureCard(4L)
+        val window = SwipeProfileWindow(mutableMapOf())
+        window.retain(listOf(card))
+        val speculative = requireNotNull(window.prefetch(card) {
+            readSwipeProfile(card.listingId, false, true, {}, fixture.reads)
+        })
+        assertTrue(speculative.fromArchive)
+        assertFalse(fixture.calls.any { it.startsWith("source:") })
+
+        val policy = swipeReadPolicy(true, 3L, card.listingId, false, false)
+        assertTrue(shouldRefreshPromotedCurrent(policy, speculative, alreadyAttempted = false))
+        val refreshed = requireNotNull(window.readCurrent(card) {
+            readSwipeProfile(card.listingId, policy.refresh, policy.allowNetwork, {}, fixture.reads)
+        })
+        assertFalse(refreshed.fromArchive)
+        assertEquals(12L, refreshed.profile.snapshotId)
+        assertSame(refreshed, window[card])
+        assertFalse(shouldRefreshPromotedCurrent(policy, refreshed, alreadyAttempted = true))
+        assertEquals(1, fixture.calls.count { it.startsWith("source:") })
+    }
+
+    @Test fun promotedRefreshDoesNotRedoFailedSourceOrStrictLocalRecovery() {
+        val cached = fixtureSwipe(4L, 1L).copy(fromArchive = true)
+        val network = swipeReadPolicy(true, 3L, 4L, false, false)
+        assertTrue(shouldRefreshPromotedCurrent(network, cached, false))
+        assertFalse(shouldRefreshPromotedCurrent(network, cached, true))
+        assertFalse(shouldRefreshPromotedCurrent(network, cached.copy(warning = "Offline"), false))
+        assertFalse(shouldRefreshPromotedCurrent(swipeReadPolicy(true, 3L, 4L, true, false), cached, false))
+        assertFalse(shouldRefreshPromotedCurrent(swipeReadPolicy(true, 3L, 4L, false, true), cached, false))
+        assertFalse(shouldRefreshPromotedCurrent(swipeReadPolicy(true, null, 4L, false, false), cached, false))
+        assertFalse(shouldRefreshPromotedCurrent(network, cached.copy(fromArchive = false), false))
+    }
+
     @Test fun currentReadFailureWaitsForDemotionButSpeculativeFailureDoesNot() {
         assertTrue(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = true))
         assertFalse(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = false))
