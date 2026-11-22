@@ -25,6 +25,8 @@ internal data class SavedResultWindow(
     val hasMore: Boolean = false,
     val ready: Boolean = false,
     val revision: Long? = null,
+    // Distinct result reads must publish even if their cards/revision are structurally equal.
+    val readGeneration: Long = 0L,
 )
 internal data class SavedSearchUiState(
     val overview: Boolean = false,
@@ -329,7 +331,7 @@ internal class SavedSearchController(
             if (ticket != readTicket || state.value.result?.id != id) return@operation
             limits[id] = limit
             mutable.update { it.copy(result = SavedResultWindow(id, window.cards, window.hasMore, true,
-                    window.searches.firstOrNull { info -> info.searchId == id }?.revision),
+                    window.searches.firstOrNull { info -> info.searchId == id }?.revision, ticket),
                 searches = window.searches, listAvailable = true, windowError = null, listError = null) }
         }
     }
