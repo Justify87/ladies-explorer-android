@@ -302,6 +302,41 @@ class SavedSearchPaneTest {
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
 
+    @Test(timeout = 15_000) fun profileOpenUsesExactlyTheVisibleSavedResultWindow() = runBlocking {
+        val card = fixtureCard()
+        val fake = Fake(info()).apply { cards = listOf(card) }
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        c.openResults("one"); idle(c)
+        val shown = c.state.value.result!!
+        val click = SavedSearchProfileOpenAction(shown, card, 12)
+        assertTrue(c.admitsProfileOpen(click))
+        assertFalse(c.admitsProfileOpen(click.copy(card = card.copy(personId = 99L))))
+        c.setVisible(false)
+        assertFalse(c.admitsProfileOpen(click))
+        c.setVisible(true)
+        assertTrue(c.admitsProfileOpen(click))
+        val gate = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        fake.onRead = { started.complete(Unit); gate.awaitSignal() }
+        c.more(); started.awaitSignal()
+        assertFalse(c.admitsProfileOpen(click))
+        gate.complete(Unit); idle(c)
+        assertFalse(c.admitsProfileOpen(click))
+        val refreshed = SavedSearchProfileOpenAction(c.state.value.result!!, card, 12)
+        assertTrue(c.admitsProfileOpen(refreshed))
+        fake.cards = listOf(card.copy(personId = 3L))
+        fake.onRead = {}
+        c.refreshResultProjection()
+        assertFalse(c.admitsProfileOpen(refreshed))
+        idle(c)
+        assertFalse(c.admitsProfileOpen(refreshed))
+        val updated = c.state.value.result!!
+        assertTrue(c.admitsProfileOpen(SavedSearchProfileOpenAction(updated, updated.cards.single(), 12)))
+        c.back()
+        assertFalse(c.admitsProfileOpen(SavedSearchProfileOpenAction(updated, updated.cards.single(), 12)))
+    }
+
     @Test(timeout = 15_000) fun successfulAcknowledgementWithFailedListReadIsNotRepeatedByRefresh() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
