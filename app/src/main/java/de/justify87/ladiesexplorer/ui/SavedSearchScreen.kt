@@ -64,7 +64,7 @@ internal fun SavedSearchOverview(
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { controller.showDialog(SavedDialogKind.Create) }, enabled = actions) { Text("Filter speichern") }
+                Button(onClick = { controller.showCreateDialog(SavedSearchPaneAction(state.actionGeneration)) }, enabled = actions) { Text("Filter speichern") }
                 TextButton(onClick = controller::refresh, enabled = !state.busy) { Text("Aktualisieren") }
             }
         }
