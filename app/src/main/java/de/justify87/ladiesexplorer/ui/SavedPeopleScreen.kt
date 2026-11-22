@@ -36,7 +36,7 @@ internal fun SavedPeopleScreen(
     onKind: (SavedPersonKind) -> Unit,
     onSort: (SavedPersonSort) -> Unit,
     onRefresh: () -> Unit,
-    onProfile: (Long, Long) -> Unit,
+    onProfile: (SavedPersonAction) -> Unit,
     onFavorite: (SavedPersonAction) -> Unit,
     onPreference: (SavedPersonAction, Preference) -> Unit,
     onLoadMore: () -> Unit,
@@ -181,7 +181,7 @@ internal fun SavedPeopleScreen(
 private fun SavedPersonCard(
     action: SavedPersonAction,
     enabled: Boolean,
-    onProfile: (Long, Long) -> Unit,
+    onProfile: (SavedPersonAction) -> Unit,
     onFavorite: (SavedPersonAction) -> Unit,
     onPreference: (SavedPersonAction, Preference) -> Unit,
     onCheckSingle: (Long) -> Unit,
@@ -199,7 +199,7 @@ private fun SavedPersonCard(
         ) {
             Row(
                 Modifier.weight(1f).clickable(enabled = enabled && card != null) {
-                    card?.let { onProfile(it.listingId, row.personId) }
+                    if (card != null) onProfile(action)
                 },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

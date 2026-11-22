@@ -13,12 +13,20 @@ internal enum class SavedOperation { Refresh, Editor, Results, Write, Check, Can
 internal enum class SavedDialogKind { Create, Rename, Delete }
 internal data class SavedDialog(val kind: SavedDialogKind, val id: String?, val name: String, val draft: SearchDraft? = null)
 internal enum class SearchPane { Filters, SavedList, SavedEditor, SavedResults }
+internal data class SavedSearchProfileOpenAction(
+    val window: SavedResultWindow,
+    val card: SavedSearchCard,
+    val generation: Long,
+)
+
 internal data class SavedResultWindow(
     val id: String,
     val cards: List<SavedSearchCard> = emptyList(),
     val hasMore: Boolean = false,
     val ready: Boolean = false,
     val revision: Long? = null,
+    // Distinct result reads must publish even if their cards/revision are structurally equal.
+    val readGeneration: Long = 0L,
 )
 internal data class SavedSearchUiState(
     val overview: Boolean = false,
@@ -159,6 +167,16 @@ internal class SavedSearchController(
     fun setVisible(value: Boolean) {
         visible = value
         if (value) refreshDirtyWindow()
+    }
+
+    /** A delayed grid click must still refer to the currently rendered result window. */
+    fun admitsProfileOpen(action: SavedSearchProfileOpenAction): Boolean {
+        val current = state.value
+        return visible && canOperate() && !current.busy && !current.resultDirty &&
+            current.pane == SearchPane.SavedResults &&
+            current.result === action.window && action.window.ready &&
+            action.card.listingId != null && action.card.personId != null &&
+            action.window.cards.any { it == action.card }
     }
 
     fun open() {
@@ -313,7 +331,7 @@ internal class SavedSearchController(
             if (ticket != readTicket || state.value.result?.id != id) return@operation
             limits[id] = limit
             mutable.update { it.copy(result = SavedResultWindow(id, window.cards, window.hasMore, true,
-                    window.searches.firstOrNull { info -> info.searchId == id }?.revision),
+                    window.searches.firstOrNull { info -> info.searchId == id }?.revision, ticket),
                 searches = window.searches, listAvailable = true, windowError = null, listError = null) }
         }
     }

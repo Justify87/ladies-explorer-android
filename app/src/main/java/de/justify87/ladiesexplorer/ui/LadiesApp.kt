@@ -115,6 +115,9 @@ fun LadiesApp(
         search.profileOpen -> ProfileActionSurface.NONE
         route.root == RootDestination.Saved -> ProfileActionSurface.SAVED
         route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid -> ProfileActionSurface.GRID
+        route.root == RootDestination.Discover && route.discovery == DiscoverMode.Map -> ProfileActionSurface.MAP
+        route.root == RootDestination.Search && saved.pane == SearchPane.SavedResults -> ProfileActionSurface.SAVED_RESULTS
+        route.root == RootDestination.Search && saved.pane == SearchPane.Filters -> ProfileActionSurface.SEARCH
         else -> ProfileActionSurface.NONE
     }
     val currentActionSurface by rememberUpdatedState(actionSurface)
@@ -171,6 +174,7 @@ fun LadiesApp(
         if (route.root == destination || saved.blockingNavigation) return
         profileTouchGate.invalidate()
         if (swipeShell) viewModel.setSwipeVisible(false)
+        viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
         route = route.select(destination)
         viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -213,7 +217,10 @@ fun LadiesApp(
         when (route.backAction(search.profileOpen, savedResultsOpen)) {
             BackAction.CloseProfile -> viewModel.closeProfile()
             BackAction.CloseSavedResults -> viewModel.savedSearch.back()
-            BackAction.Navigate -> route = route.back()
+            BackAction.Navigate -> {
+                viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                route = route.back()
+            }
             BackAction.System -> Unit
         }
     }
@@ -339,7 +346,10 @@ fun LadiesApp(
                         if (route.discovery == DiscoverMode.Grid) {
                             SearchRunStatus(search, viewModel::cancelActiveSearch)
                         }
-                        if (route.discovery != DiscoverMode.Swipe) DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
+                        if (route.discovery != DiscoverMode.Swipe) DiscoverModeSwitcher(route.discovery, onSelect = {
+                            viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                            route = route.select(it)
+                        })
                         if (route.discovery == DiscoverMode.Swipe) {
                             DiscoverScreen(
                                 state = discovery,
@@ -357,6 +367,7 @@ fun LadiesApp(
                                         mode != DiscoverMode.Swipe) {
                                         profileTouchGate.invalidate()
                                         viewModel.setSwipeVisible(false)
+                                        viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
                                         route = route.select(mode)
                                     }
                                 },
@@ -388,7 +399,7 @@ fun LadiesApp(
                                     onRefresh = viewModel::refreshDiscovery,
                                     onLoadMore = viewModel::loadMoreDiscovery,
                                     onLike = viewModel::toggleGridLike,
-                                    onProfile = viewModel::loadProfile,
+                                    onProfile = viewModel::openGridProfile,
                                     modifier = Modifier.weight(1f),
                                 )
                             }
@@ -399,7 +410,8 @@ fun LadiesApp(
                                 onResolve = viewModel::resolveMapLocations,
                                 onCancel = viewModel::cancelMapResolution,
                                 onFavoritesOnly = viewModel::setMapFavoritesOnly,
-                                onProfile = viewModel::loadProfile,
+                                generation = discovery.actionGeneration,
+                                onProfile = viewModel::openMapProfile,
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -416,9 +428,10 @@ fun LadiesApp(
                         controller = viewModel.savedSearch, modifier = modifier)
                     SearchPane.SavedResults -> key(saved.result?.id) {
                         SavedSearchResultsScreen(saved, !discovery.busy && !search.loading && !home.loading,
+                            generation = discovery.actionGeneration,
                             onMore = viewModel.savedSearch::more, onRetry = viewModel.savedSearch::retryResults,
                             onAcknowledge = viewModel.savedSearch::acknowledge,
-                            onOpen = viewModel::loadProfile, modifier = modifier)
+                            onOpen = viewModel::openSavedSearchProfile, modifier = modifier)
                     }
                     else -> SearchScreen(
                         search = search, saved = saved,
@@ -431,7 +444,8 @@ fun LadiesApp(
                         onSave = viewModel.savedSearch::saveEditor,
                         onName = viewModel.savedSearch::editName,
                         onCancelEdit = viewModel.savedSearch::back,
-                        onProfile = viewModel::loadProfile,
+                        generation = discovery.actionGeneration,
+                        onProfile = viewModel::openSearchResultProfile,
                         modifier = modifier,
                     )
                     } }
@@ -440,7 +454,7 @@ fun LadiesApp(
                         onKind = viewModel::selectSavedKind,
                         onSort = viewModel::selectSavedSort,
                         onRefresh = viewModel::refreshDiscovery,
-                        onProfile = viewModel::loadProfile,
+                        onProfile = viewModel::openSavedPersonProfile,
                         onFavorite = viewModel::toggleFavorite,
                         onPreference = viewModel::choosePreference,
                         onLoadMore = viewModel::loadMoreSavedPeople,

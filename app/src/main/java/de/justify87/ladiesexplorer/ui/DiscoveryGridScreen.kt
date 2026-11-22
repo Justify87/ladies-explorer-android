@@ -33,7 +33,7 @@ internal fun DiscoveryGridScreen(
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onLike: (GridLikeAction) -> Unit,
-    onProfile: (Long, Long) -> Unit,
+    onProfile: (GridLikeAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cards = gridCards(discovery, search)
@@ -91,6 +91,7 @@ internal fun DiscoveryGridScreen(
             }
         }
         items(cards, key = { it.listingId }) { card ->
+            val action = GridLikeAction(card, search.response?.searchRunId, discovery.actionGeneration)
             ProfileGridCard(
                 name = card.name,
                 age = card.age,
@@ -98,8 +99,8 @@ internal fun DiscoveryGridScreen(
                 localPath = card.localPath,
                 liked = card.preference == Preference.LIKE,
                 enabled = enabled,
-                onOpen = { onProfile(card.listingId, card.personId) },
-                onLike = { onLike(GridLikeAction(card, search.response?.searchRunId, discovery.actionGeneration)) },
+                onOpen = { onProfile(action) },
+                onLike = { onLike(action) },
             )
         }
         if (nextCursor != null) {
