@@ -74,13 +74,11 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Ziel:** Betroffene Profileinstiege über alle Schichten konsistent integrieren.
 
-**Aktueller Teilauftrag:** [Branch `fix/t10-8-saved-person-action-admission-20261122`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-saved-person-action-admission-20261122). Gespeicherte Personenaktionen an gerenderten Wert und gegebenenfalls Listing-Owner mit nativer CAS-Prüfung binden; veraltete Fenster dürfen keine fremden Zustände verändern. Auch Personen ohne Display-Listing bleiben bearbeitbar. Übrige Integrationsabnahme offen.
+**Aktueller Teilauftrag (Review-Funde F01–F05):** [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54) führt gespeicherte Personen-/Grid-Aktionen über gerenderte Kontext-/Run-/Fenstertokens und native CAS. Alte unbedingte FFI-Schreiboperationen werden testexklusiv; Standalone-Profile verweigern stille Ownerwechsel und erlauben Rebinding nach bestätigtem Merge. Rust-/JVM-Regressionen und CI dienen als Nachweise. Die übrige Integrationsabnahme bleibt offen.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
 - [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision sowie Fehler/Offline/Status/Radius/Pagination.
-
-**Aktuelle Teilaufgabe (Review-Funde F01–F05):** Gespeicherte Personen- und Grid-Aktionen an gerenderten Kontext, Run/Fenster und native CAS gebunden; alte unbedingte FFI-Schreiboperationen nur noch testexklusiv. Standalone-Projektionen weisen stille Ownerwechsel zurück und erlauben explizites Rebinding nur nach bestätigtem Merge. Nachweise: Rust-/JVM-Regressionen und finaler PR-CI-Lauf; übrige T10.8-Abnahme bleibt offen.
 
 **Akzeptanz:**
 - [ ] Keine zweite Implementierungsroute, kein Funktionsverlust und kein Scope-Drift; konkrete technische Testbelege.

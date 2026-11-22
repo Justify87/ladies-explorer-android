@@ -685,7 +685,6 @@ impl LadiesCore {
         }
         Ok(())
     }
-
 }
 
 const PERSON_QUERY_BY_ID: &str = r#"
@@ -824,10 +823,6 @@ impl LadiesCore {
         Ok(())
     }
 
-}
-
-#[cfg(test)]
-impl LadiesCore {
     pub fn create_person(&self, display_name: Option<String>) -> Result<i64, CoreError> {
         let db = self.connection()?;
         db.execute(
@@ -933,10 +928,13 @@ mod tests {
             core.set_swipe_preference(listing, first, Some(Preference::None), Preference::Dislike),
             Err(CoreError::IdentityConflict(_))
         ));
-        core.connection().unwrap().execute(
-            "UPDATE listings SET person_id=?1 WHERE listing_id=?2",
-            params![second, listing],
-        ).unwrap();
+        core.connection()
+            .unwrap()
+            .execute(
+                "UPDATE listings SET person_id=?1 WHERE listing_id=?2",
+                params![second, listing],
+            )
+            .unwrap();
         assert!(matches!(
             core.set_swipe_preference(listing, first, Some(Preference::Like), Preference::Dislike),
             Err(CoreError::IdentityConflict(_))
@@ -945,8 +943,14 @@ mod tests {
             core.set_listing_favorite(listing, first, false, true),
             Err(CoreError::IdentityConflict(_))
         ));
-        assert_eq!(core.get_person(first).unwrap().unwrap().preference, Preference::Like);
-        assert_eq!(core.get_person(second).unwrap().unwrap().preference, Preference::None);
+        assert_eq!(
+            core.get_person(first).unwrap().unwrap().preference,
+            Preference::Like
+        );
+        assert_eq!(
+            core.get_person(second).unwrap().unwrap().preference,
+            Preference::None
+        );
         assert!(!core.get_person(second).unwrap().unwrap().favorite);
     }
 
