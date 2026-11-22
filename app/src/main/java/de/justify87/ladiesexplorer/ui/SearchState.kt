@@ -7,6 +7,21 @@ import de.justify87.ladiesexplorer.core.SearchRequest
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal data class SearchResultOpenAction(
+    val card: DiscoveryCard,
+    val runId: Long,
+    val generation: Long,
+)
+
+internal fun searchResultOpenMatches(
+    search: SearchUiState, discovery: DiscoverUiState, action: SearchResultOpenAction,
+): Boolean =
+    discovery.actionSurface == ProfileActionSurface.SEARCH &&
+        discovery.actionGeneration == action.generation &&
+        !discovery.busy && !search.loading && !search.actionBusy && !search.profileOpen &&
+        search.response?.searchRunId == action.runId &&
+        search.activeCards.any { it == action.card }
+
 internal fun defaultLocalVisibility() = LocalVisibility(
     videoOnly = false, photosOnly = false, hideDislikes = true,
     hideLikes = false, imageMode = "ALL",
