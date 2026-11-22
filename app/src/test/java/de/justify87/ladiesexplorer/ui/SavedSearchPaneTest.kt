@@ -185,7 +185,7 @@ class SavedSearchPaneTest {
         val started = CompletableDeferred<Unit>()
         fake.onCheck = { started.complete(Unit); gate.awaitSignal() }
         var finished = 0
-        val c = SavedSearchController(this, fake, { true }, { SearchDraft() }, { finished++ })
+        val c = SavedSearchController(this, fake, { true }, { SearchDraft() }, { finished++ }).apply { setVisible(true) }
         c.open(); idle(c)
         c.check(row(c)); started.awaitSignal()
         c.cancelCheck()
