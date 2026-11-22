@@ -198,14 +198,16 @@ internal class SavedSearchController(
 
     fun back() {
         val s = state.value
-        if (s.operation == SavedOperation.Write) return
-        mutable.update { it.copy(ackGeneration = it.ackGeneration + 1) }
         when {
+            s.operation == SavedOperation.Write -> Unit
             s.operation == SavedOperation.Check || s.operation == SavedOperation.Cancelling -> cancelCheck()
             s.dialog != null -> dismissDialog()
-            s.result != null -> { readTicket++; mutable.update { it.copy(result = null, resultDirty = false, windowError = null, actionError = null) } }
-            s.editor != null -> mutable.update { it.copy(editor = null, actionError = null) }
-            else -> { session++; mutable.update { it.copy(overview = false, actionError = null) } }
+            s.result != null -> { readTicket++; mutable.update { it.copy(result = null, resultDirty = false,
+                windowError = null, actionError = null, ackGeneration = it.ackGeneration + 1) } }
+            s.editor != null -> mutable.update { it.copy(editor = null, actionError = null,
+                ackGeneration = it.ackGeneration + 1) }
+            else -> { session++; mutable.update { it.copy(overview = false, actionError = null,
+                ackGeneration = it.ackGeneration + 1) } }
         }
     }
 
@@ -295,7 +297,8 @@ internal class SavedSearchController(
         if (action.window == null) {
             if (s.pane != SearchPane.SavedList) return
         } else if (s.pane != SearchPane.SavedResults || s.result !== action.window ||
-            !action.window.ready || s.resultDirty || action.window.revision != action.revision) return
+            action.window.id != action.id || !action.window.ready || s.resultDirty ||
+            action.window.revision != action.revision) return
 
         val info = s.searches.firstOrNull { it.searchId == action.id && it.unreadNewResults } ?: return
         // Acknowledge only the explicitly rendered pane/window and revision.
