@@ -24,6 +24,7 @@ internal data class SavedSearchAckAction(
     val window: SavedResultWindow?,
     val generation: Long,
 )
+internal data class SavedSearchPaneAction(val generation: Long)
 internal data class SavedSearchRowAction(
     val search: SavedSearchInfo,
     val generation: Long,
@@ -196,9 +197,12 @@ internal class SavedSearchController(
             action.window.cards.any { it == action.card }
     }
 
-    fun open() {
-        if (!canOperate() || state.value.blockingNavigation) return
-        mutable.update { it.copy(overview = true, actionError = null) }
+    fun open(action: SavedSearchPaneAction) {
+        val s = state.value
+        if (!visible || !canOperate() || s.blockingNavigation ||
+            s.pane != SearchPane.Filters || s.actionGeneration != action.generation) return
+        mutable.update { it.copy(overview = true, actionError = null,
+            actionGeneration = it.actionGeneration + 1) }
         refresh()
     }
 
@@ -284,17 +288,21 @@ internal class SavedSearchController(
         }
     }
 
-    fun showDialog(kind: SavedDialogKind, action: SavedSearchRowAction? = null) {
+    fun showCreateDialog(action: SavedSearchPaneAction) {
         val s = state.value
         if (!visible || s.busy || !s.listAvailable || !canOperate() ||
-            s.pane != SearchPane.SavedList || s.dialog != null) return
-        val info = if (kind == SavedDialogKind.Create) {
-            if (action != null) return
-            null
-        } else admittedRow(action ?: return) ?: return
-        val draft = if (kind == SavedDialogKind.Create) ordinaryDraft() else null
-        val name = if (draft != null) "${draft.city} · ${draft.radiusKm} km" else info!!.name
-        mutable.update { it.copy(dialog = SavedDialog(kind, info?.searchId, name, draft), actionError = null,
+            s.pane != SearchPane.SavedList || s.dialog != null ||
+            s.actionGeneration != action.generation) return
+        val draft = ordinaryDraft()
+        mutable.update { it.copy(dialog = SavedDialog(SavedDialogKind.Create, null,
+                "${draft.city} · ${draft.radiusKm} km", draft), actionError = null,
+            actionGeneration = it.actionGeneration + 1) }
+    }
+
+    fun showDialog(kind: SavedDialogKind, action: SavedSearchRowAction) {
+        if (kind == SavedDialogKind.Create) return
+        val info = admittedRow(action) ?: return
+        mutable.update { it.copy(dialog = SavedDialog(kind, info.searchId, info.name), actionError = null,
             actionGeneration = it.actionGeneration + 1) }
     }
 
