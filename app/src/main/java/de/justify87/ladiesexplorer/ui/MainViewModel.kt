@@ -845,9 +845,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun refreshSelectedPerson(personId: Long) =
         profileOperations.refreshLocalProfileForOwner(personId)
 
-    fun checkAllSavedStatus() = checkSavedStatus(null)
+    internal fun checkAllSavedStatus(action: SavedStatusBatchAction) {
+        if (!savedStatusBatchMatches(_discoverState.value, action) || _searchUiState.value.profileOpen) return
+        checkSavedStatus(null)
+    }
 
-    fun checkSingleSavedStatus(listingId: Long) = checkSavedStatus(listingId)
+    internal fun checkSingleSavedStatus(action: SavedPersonAction) {
+        if (!admittedSavedPersonRow(action)) return
+        val listingId = action.row.card?.listingId ?: return
+        checkSavedStatus(listingId)
+    }
 
     fun cancelSavedStatus() {
         val control = savedStatusControl ?: return
