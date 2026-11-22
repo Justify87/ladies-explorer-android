@@ -189,7 +189,8 @@ private fun SavedPersonCard(
 ) {
     val row = action.row
     val card = row.card
-    var menu by remember { mutableStateOf(false) }
+    // An open menu must not silently rebind to a newer person window or owner.
+    var menu by remember(action) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().padding(8.dp),
