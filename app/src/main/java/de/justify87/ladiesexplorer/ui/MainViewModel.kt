@@ -1015,7 +1015,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         loadProfile(listing, person)
     }
 
-    fun loadProfile(listingId: Long, personId: Long) {
+    private fun loadProfile(listingId: Long, personId: Long) {
         if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
         invalidateSwipeActions()
         cancelPreview()
