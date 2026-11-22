@@ -1,5 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
+import de.justify87.ladiesexplorer.core.SavedPersonRow
 import de.justify87.ladiesexplorer.core.SavedPersonKind
 import de.justify87.ladiesexplorer.core.SavedPersonSort
 import kotlinx.coroutines.CancellationException
@@ -19,6 +20,12 @@ internal class SavedWindowMemory {
         else regular[kind to sort] = maxOf(regular[kind to sort] ?: 50u, requested)
     }
 }
+
+/** Ignore callbacks from a saved window that no longer matches the rendered person state. */
+internal fun savedActionMatches(current: SavedPersonRow?, requested: SavedPersonRow): Boolean =
+    current != null && current.personId == requested.personId &&
+        current.preference == requested.preference && current.favorite == requested.favorite &&
+        current.card?.listingId == requested.card?.listingId
 
 /** Cancellation must not replay completed status writes. */
 internal suspend fun runSavedStatusBatch(

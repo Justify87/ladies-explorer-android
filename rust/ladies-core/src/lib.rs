@@ -592,6 +592,28 @@ impl LadiesCore {
         Ok(())
     }
 
+    /// CAS for a saved person that has no displayable listing.
+    pub fn set_person_preference_if(
+        &self,
+        person_id: i64,
+        expected: Preference,
+        preference: Preference,
+    ) -> Result<(), CoreError> {
+        let db = self.connection()?;
+        let changed = db.execute(
+            "UPDATE person_user_state SET preference=?1,
+             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE person_id=?2 AND preference=?3",
+            params![preference.as_db(), person_id, expected.as_db()],
+        )?;
+        if changed != 1 {
+            return Err(CoreError::IdentityConflict(
+                "Person oder Präferenz seit Anzeige geändert".into(),
+            ));
+        }
+        Ok(())
+    }
+
     // Validate canonical owner and expected undo preference in the same write transaction.
     pub fn set_swipe_preference(
         &self,
@@ -651,6 +673,28 @@ impl LadiesCore {
         if changed != 1 {
             return Err(CoreError::IdentityConflict(
                 "Listing owner or favorite changed".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// CAS for a saved person that has no displayable listing.
+    pub fn set_person_favorite_if(
+        &self,
+        person_id: i64,
+        expected: bool,
+        favorite: bool,
+    ) -> Result<(), CoreError> {
+        let db = self.connection()?;
+        let changed = db.execute(
+            "UPDATE person_user_state SET favorite=?1,
+             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE person_id=?2 AND favorite=?3",
+            params![favorite, person_id, expected],
+        )?;
+        if changed != 1 {
+            return Err(CoreError::IdentityConflict(
+                "Person oder Favoritenzustand seit Anzeige geändert".into(),
             ));
         }
         Ok(())
@@ -819,6 +863,30 @@ mod tests {
 
     fn memory_core() -> Arc<LadiesCore> {
         LadiesCore::new(":memory:".into()).unwrap()
+    }
+
+    #[test]
+    fn saved_person_without_listing_writes_only_from_expected_state() {
+        let core = memory_core();
+        let person = core.create_person(None).unwrap();
+        core.set_person_preference_if(person, Preference::None, Preference::Like)
+            .unwrap();
+        assert!(matches!(
+            core.set_person_preference_if(person, Preference::None, Preference::Dislike),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        core.set_person_favorite_if(person, false, true).unwrap();
+        assert!(matches!(
+            core.set_person_favorite_if(person, false, false),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert!(matches!(
+            core.set_person_preference_if(999, Preference::None, Preference::Like),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        let saved = core.get_person(person).unwrap().unwrap();
+        assert_eq!(saved.preference, Preference::Like);
+        assert!(saved.favorite);
     }
 
     #[test]

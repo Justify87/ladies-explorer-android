@@ -37,8 +37,8 @@ internal fun SavedPeopleScreen(
     onSort: (SavedPersonSort) -> Unit,
     onRefresh: () -> Unit,
     onProfile: (Long, Long) -> Unit,
-    onFavorite: (Long) -> Unit,
-    onPreference: (Long, Preference) -> Unit,
+    onFavorite: (SavedPersonRow) -> Unit,
+    onPreference: (SavedPersonRow, Preference) -> Unit,
     onLoadMore: () -> Unit,
     onLoadMoreRecent: () -> Unit,
     onCheckAll: () -> Unit,
@@ -180,8 +180,8 @@ private fun SavedPersonCard(
     row: SavedPersonRow,
     enabled: Boolean,
     onProfile: (Long, Long) -> Unit,
-    onFavorite: (Long) -> Unit,
-    onPreference: (Long, Preference) -> Unit,
+    onFavorite: (SavedPersonRow) -> Unit,
+    onPreference: (SavedPersonRow, Preference) -> Unit,
     onCheckSingle: (Long) -> Unit,
     preferChangeTime: Boolean = false,
 ) {
@@ -229,7 +229,7 @@ private fun SavedPersonCard(
                 Text((if (preferChangeTime) row.latestChangeAt ?: row.lastSeenAt else row.lastSeenAt).take(10),
                     style = MaterialTheme.typography.labelSmall)
                 Row {
-                    IconButton(onClick = { onFavorite(row.personId) }, enabled = enabled) {
+                    IconButton(onClick = { onFavorite(row) }, enabled = enabled) {
                         Icon(if (row.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = if (row.favorite) "Favorit entfernen" else "Favorit hinzufügen")
                     }
@@ -245,7 +245,7 @@ private fun SavedPersonCard(
                             listOf(Preference.LIKE to "Like", Preference.DISLIKE to "Dislike",
                                 Preference.NONE to "Entscheidung entfernen").forEach { (target, title) ->
                                 DropdownMenuItem(text = { Text(title) }, enabled = row.preference != target,
-                                    onClick = { menu = false; onPreference(row.personId, target) })
+                                    onClick = { menu = false; onPreference(row, target) })
                             }
                         }
                     }

@@ -877,29 +877,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
-    fun choosePreference(personId: Long, preference: Preference) {
-        if (_discoverState.value.busy || _searchUiState.value.actionBusy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
+    private fun admittedSavedPersonRow(row: SavedPersonRow): Boolean {
+        val state = _discoverState.value
+        if (state.busy || state.loading || _searchUiState.value.loading ||
+            _searchUiState.value.actionBusy) return false
+        val current = state.savedPage?.rows?.firstOrNull { it.personId == row.personId }
+            ?: state.savedRecent?.rows?.firstOrNull { it.personId == row.personId }
+        return savedActionMatches(current, row)
+    }
+
+    fun choosePreference(row: SavedPersonRow, preference: Preference) {
+        if (!admittedSavedPersonRow(row) || row.preference == preference) return
         _searchUiState.update { it.copy(actionError = null) }
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
-            core.setPreference(personId, preference)
+            val listing = row.card?.listingId
+            if (listing != null) core.setSwipePreference(listing, row.personId, row.preference, preference)
+            else core.setPersonPreferenceIf(row.personId, row.preference, preference)
         }, afterWrite = {
-            refreshSelectedPerson(personId)
-        }, recoverWriteFailure = { refreshSelectedPerson(personId) }, onFailure = { message ->
-            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
+            refreshSelectedPerson(row.personId)
+        }, recoverWriteFailure = { refreshSelectedPerson(row.personId) }, onFailure = { message ->
+            _searchUiState.update { if (it.selectedPersonId == row.personId) it.copy(actionError = message) else it }
         })
     }
 
-    fun toggleFavorite(personId: Long) {
-        if (_discoverState.value.busy || _searchUiState.value.actionBusy || (_searchUiState.value.loading && !_searchUiState.value.profileOpen)) return
+    fun toggleFavorite(row: SavedPersonRow) {
+        if (!admittedSavedPersonRow(row)) return
         _searchUiState.update { it.copy(actionError = null) }
         mutateDiscovery("Favorit konnte nicht geändert werden", write = {
-            val person = core.person(personId) ?: error("Person nicht gefunden")
-            core.setFavorite(personId, !person.favorite)
+            val listing = row.card?.listingId
+            if (listing != null) core.setListingFavorite(listing, row.personId, row.favorite, !row.favorite)
+            else core.setPersonFavoriteIf(row.personId, row.favorite, !row.favorite)
         }, afterWrite = {
             refreshMap()
-            refreshSelectedPerson(personId)
-        }, recoverWriteFailure = { refreshMap(); refreshSelectedPerson(personId) }, onFailure = { message ->
-            _searchUiState.update { if (it.selectedPersonId == personId) it.copy(actionError = message) else it }
+            refreshSelectedPerson(row.personId)
+        }, recoverWriteFailure = { refreshMap(); refreshSelectedPerson(row.personId) }, onFailure = { message ->
+            _searchUiState.update { if (it.selectedPersonId == row.personId) it.copy(actionError = message) else it }
         })
     }
 

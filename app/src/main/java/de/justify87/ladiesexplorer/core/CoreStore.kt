@@ -149,12 +149,20 @@ class CoreStore(context: Context) {
     suspend fun setSwipePreference(listingId: Long, personId: Long, expected: Preference?, preference: Preference): Preference =
         withContext(Dispatchers.IO) { engine.setSwipePreference(listingId, personId, expected, preference) }
 
+    suspend fun setPersonPreferenceIf(personId: Long, expected: Preference, preference: Preference) = withContext(Dispatchers.IO) {
+        recorded("setPersonPreferenceIf") { engine.setPersonPreferenceIf(personId, expected, preference) }
+    }
+
     suspend fun setPreference(personId: Long, preference: Preference) = withContext(Dispatchers.IO) {
         recorded("setPreference") { engine.setPreference(personId, preference) }
     }
 
     suspend fun setListingFavorite(listingId: Long, personId: Long, expected: Boolean, favorite: Boolean) =
         withContext(Dispatchers.IO) { engine.setListingFavorite(listingId, personId, expected, favorite) }
+
+    suspend fun setPersonFavoriteIf(personId: Long, expected: Boolean, favorite: Boolean) = withContext(Dispatchers.IO) {
+        recorded("setPersonFavoriteIf") { engine.setPersonFavoriteIf(personId, expected, favorite) }
+    }
 
     suspend fun setFavorite(personId: Long, favorite: Boolean) = withContext(Dispatchers.IO) {
         recorded("setFavorite") { engine.setFavorite(personId, favorite) }

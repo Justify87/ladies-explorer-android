@@ -6,6 +6,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SavedPeopleStateTest {
+    private fun row(person: Long = 1L, preference: Preference = Preference.NONE, favorite: Boolean = false) =
+        SavedPersonRow(person, "Fixture", preference, favorite, null, 0u,
+            "2026-11-22", "2026-11-22", "UNKNOWN", null, null, null, false)
+
+    @Test fun savedActionsRejectOutdatedRowAndAcceptRenderedSparsePerson() {
+        val original = row()
+        assertTrue(savedActionMatches(original, original))
+        assertFalse(savedActionMatches(null, original))
+        assertFalse(savedActionMatches(row(person = 2L), original))
+        assertFalse(savedActionMatches(row(preference = Preference.LIKE), original))
+        assertFalse(savedActionMatches(row(favorite = true), original))
+    }
+
     @Test fun independentWindowSizesSurviveTabAndRetry() {
         val memory = SavedWindowMemory()
         val favorite = SavedPersonKind.FAVORITE
