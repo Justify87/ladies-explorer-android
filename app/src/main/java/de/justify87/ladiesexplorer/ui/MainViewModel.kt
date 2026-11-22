@@ -985,6 +985,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
+    internal fun openGridProfile(action: GridLikeAction) {
+        if (!gridActionMatches(_discoverState.value, _searchUiState.value, action)) return
+        loadProfile(action.card.listingId, action.card.personId)
+    }
+
+    internal fun openSavedPersonProfile(action: SavedPersonAction) {
+        if (!admittedSavedPersonRow(action)) return
+        action.row.card?.let { loadProfile(it.listingId, action.row.personId) }
+    }
+
+    internal fun openMapProfile(action: MapProfileOpenAction) {
+        if (!mapProfileOpenMatches(_mapState.value, _discoverState.value, action)) return
+        loadProfile(action.profile.listingId, action.profile.personId)
+    }
+
+    internal fun openSearchResultProfile(action: SearchResultOpenAction) {
+        if (savedSearch.state.value.pane != SearchPane.Filters ||
+            !searchResultOpenMatches(_searchUiState.value, _discoverState.value, action)) return
+        loadProfile(action.card.listingId, action.card.personId)
+    }
+
+    internal fun openSavedSearchProfile(action: SavedSearchProfileOpenAction) {
+        val current = _discoverState.value
+        if (current.actionSurface != ProfileActionSurface.SAVED_RESULTS ||
+            current.actionGeneration != action.generation || !savedSearch.admitsProfileOpen(action)) return
+        val listing = action.card.listingId ?: return
+        val person = action.card.personId ?: return
+        loadProfile(listing, person)
+    }
+
     fun loadProfile(listingId: Long, personId: Long) {
         if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
         invalidateSwipeActions()
