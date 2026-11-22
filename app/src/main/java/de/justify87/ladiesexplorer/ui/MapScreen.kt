@@ -67,7 +67,7 @@ private const val MAP_CLUSTERS = "ladies-clusters"
 private const val MAP_SINGLE = "ladies-single"
 
 @Composable
-fun MapScreen(
+internal fun MapScreen(
     state: MapUiState,
     onRefresh: () -> Unit,
     onResolve: () -> Unit,
