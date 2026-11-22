@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.8 – vertikale Integration; Review-Funde in PR #54 absichern, danach die übrigen Eintrittspfade.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: T10.8 – vertikale Integration; Profilöffnungen aller Eintrittspfade mit [PR #55](https://github.com/Justify87/ladies-explorer-android/pull/55) überprüfen, danach übrige G10.3-Regressionsmatrix.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -16,7 +16,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M03 Suche/Parser | DONE | [#4](https://github.com/Justify87/ladies-explorer-android/pull/4), [#8](https://github.com/Justify87/ladies-explorer-android/pull/8); abgeschlossen. |
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
-| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 mit [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) integriert; T10.8 in Arbeit, T10.9 offen. |
+| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 mit [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) integriert; T10.8 mit [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54) teilintegriert und [PR #55](https://github.com/Justify87/ladies-explorer-android/pull/55) im Review; T10.9 offen. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -68,13 +68,15 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 **Akzeptanz:**
 - [x] Abschluss mit erfolgreicher [CI #45013729939](https://github.com/Justify87/ladies-explorer-android/actions/runs/45013729939) in [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53): Ein cache-only Prefetch übersprang beim Current-Aufrücken die aktive Freshness-Policy; einmalige Quellenaktualisierung mit unverändertem Slot/Mutex und Regression für No-Redo/Local-only. Weitere entsprechende Defekte im geprüften T10.7-Umfang nicht belegt. Keine Beschleunigung ohne Messung behauptet.
 
-### T10.8 — DOING · Vertikale Integration (G10.3) ([PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54))
+### T10.8 — DOING · Vertikale Integration (G10.3) ([PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54), [PR #55](https://github.com/Justify87/ladies-explorer-android/pull/55))
 
 **Abhängigkeit:** T10.7 abgeschlossen. **Referenzen:** P01–P51/X01–X11, [UI-Vertrag](DESIGN.md).
 
 **Ziel:** Betroffene Profileinstiege über alle Schichten konsistent integrieren.
 
-**Aktueller Teilauftrag (Review-Funde F01–F05):** [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54) führt gespeicherte Personen-/Grid-Aktionen über gerenderte Kontext-/Run-/Fenstertokens und native CAS. Alte unbedingte FFI-Schreiboperationen werden testexklusiv; Standalone-Profile verweigern stille Ownerwechsel und erlauben Rebinding nach bestätigtem Merge. Rust-/JVM-Regressionen und CI dienen als Nachweise. Die übrige Integrationsabnahme bleibt offen.
+**Integrierter Teilauftrag (F01–F05):** [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54) bindet gespeicherte Personen-/Grid-Schreibaktionen an gerenderte Tokens und native CAS; Standalone-Profile verweigern stille Ownerwechsel und erlauben Rebinding nach bestätigtem Merge.
+
+**Laufender Teilauftrag – Profilöffnung:** [PR #55](https://github.com/Justify87/ladies-explorer-android/pull/55) bindet reine Profilöffnungen aus Grid, SavedPeople, normaler Suche, SavedSearch-Ergebnissen und Karte an aktuelle Surface-/Run-/Fenster-/Owner-Kontexte. Verzögerte Klicks nach Tab-, Filter-, Reprojektions-, Navigations- oder Lifecycle-Wechsel werden vor der Quellenoperation abgewiesen. JVM-Regressionsprüfungen ergänzen die bestehenden Schreibaktions-Tests; CI und Review stehen bis zum finalen grünen Gate aus. Übrige Integrationsabnahme bleibt offen.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
