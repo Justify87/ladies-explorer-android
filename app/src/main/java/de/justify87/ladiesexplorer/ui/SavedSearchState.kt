@@ -18,6 +18,12 @@ internal data class SavedSearchProfileOpenAction(
     val card: SavedSearchCard,
     val generation: Long,
 )
+internal data class SavedSearchAckAction(
+    val id: String,
+    val revision: Long,
+    val window: SavedResultWindow?,
+    val generation: Long,
+)
 
 internal data class SavedResultWindow(
     val id: String,
@@ -40,6 +46,7 @@ internal data class SavedSearchUiState(
     val listError: String? = null,
     val windowError: String? = null,
     val resultDirty: Boolean = false,
+    val ackGeneration: Long = 0L,
 ) {
     val error get() = actionError ?: if (result != null) windowError ?: listError else listError
     val busy get() = operation != null
@@ -104,7 +111,8 @@ internal class SavedSearchController(
 
     private fun operation(kind: SavedOperation, clearError: Boolean = true, work: suspend () -> Unit) {
         kotlin.check(!state.value.busy)
-        mutable.update { it.copy(operation = kind, actionError = if (clearError) null else it.actionError) }
+        mutable.update { it.copy(operation = kind, actionError = if (clearError) null else it.actionError,
+            ackGeneration = it.ackGeneration + 1) }
         scope.launch {
             try {
                 work()
@@ -165,7 +173,10 @@ internal class SavedSearchController(
     }
 
     fun setVisible(value: Boolean) {
-        visible = value
+        if (visible != value) {
+            visible = value
+            mutable.update { it.copy(ackGeneration = it.ackGeneration + 1) }
+        }
         if (value) refreshDirtyWindow()
     }
 
@@ -188,12 +199,15 @@ internal class SavedSearchController(
     fun back() {
         val s = state.value
         when {
-            s.operation == SavedOperation.Check || s.operation == SavedOperation.Cancelling -> cancelCheck()
             s.operation == SavedOperation.Write -> Unit
+            s.operation == SavedOperation.Check || s.operation == SavedOperation.Cancelling -> cancelCheck()
             s.dialog != null -> dismissDialog()
-            s.result != null -> { readTicket++; mutable.update { it.copy(result = null, resultDirty = false, windowError = null, actionError = null) } }
-            s.editor != null -> mutable.update { it.copy(editor = null, actionError = null) }
-            else -> { session++; mutable.update { it.copy(overview = false, actionError = null) } }
+            s.result != null -> { readTicket++; mutable.update { it.copy(result = null, resultDirty = false,
+                windowError = null, actionError = null, ackGeneration = it.ackGeneration + 1) } }
+            s.editor != null -> mutable.update { it.copy(editor = null, actionError = null,
+                ackGeneration = it.ackGeneration + 1) }
+            else -> { session++; mutable.update { it.copy(overview = false, actionError = null,
+                ackGeneration = it.ackGeneration + 1) } }
         }
     }
 
@@ -243,7 +257,8 @@ internal class SavedSearchController(
         val draft = if (kind == SavedDialogKind.Create) ordinaryDraft() else null
         val name = if (draft != null) "${draft.city} · ${draft.radiusKm} km"
             else s.searches.firstOrNull { it.searchId == id }?.name ?: return
-        mutable.update { it.copy(dialog = SavedDialog(kind, id, name, draft), actionError = null) }
+        mutable.update { it.copy(dialog = SavedDialog(kind, id, name, draft), actionError = null,
+            ackGeneration = it.ackGeneration + 1) }
     }
 
     fun dialogName(name: String) {
@@ -252,8 +267,9 @@ internal class SavedSearchController(
     }
 
     fun dismissDialog() {
-        if (state.value.operation == SavedOperation.Write) return
-        mutable.update { it.copy(dialog = null, actionError = null) }
+        if (state.value.operation == SavedOperation.Write || state.value.dialog == null) return
+        mutable.update { it.copy(dialog = null, actionError = null,
+            ackGeneration = it.ackGeneration + 1) }
     }
 
     fun confirmDialog() {
@@ -274,19 +290,25 @@ internal class SavedSearchController(
         }
     }
 
-    fun acknowledge(id: String, displayedRevision: Long) {
-        val info = state.value.searches.firstOrNull { it.searchId == id && it.unreadNewResults } ?: return
+    fun acknowledge(action: SavedSearchAckAction) {
         val s = state.value
-        if (s.busy || !canOperate() || !visible) return
-        if (s.result != null && (s.result.id != id || !s.result.ready || s.resultDirty)) return
-        // Acknowledge explicit user intent using the rendered revision, never a newer baseline.
-        val revision = if (s.result != null) s.result.revision ?: return else info.revision
-        if (displayedRevision != revision) {
+        if (s.busy || !canOperate() || !visible || s.dialog != null ||
+            s.ackGeneration != action.generation) return
+        if (action.window == null) {
+            if (s.pane != SearchPane.SavedList) return
+        } else if (s.pane != SearchPane.SavedResults || s.result !== action.window ||
+            action.window.id != action.id || !action.window.ready || s.resultDirty ||
+            action.window.revision != action.revision) return
+
+        val info = s.searches.firstOrNull { it.searchId == action.id && it.unreadNewResults } ?: return
+        // Acknowledge only the explicitly rendered pane/window and revision.
+        val revision = action.window?.revision ?: info.revision
+        if (action.revision != revision) {
             mutable.update { it.copy(actionError = "Ergebnisse haben sich geändert. Bitte erneut als gelesen markieren.") }
             return
         }
         operation(SavedOperation.Write) {
-            val accepted = store.acknowledge(id, displayedRevision)
+            val accepted = store.acknowledge(action.id, action.revision)
             reload(committed = accepted)
             if (!accepted) {
                 markResultDirty()

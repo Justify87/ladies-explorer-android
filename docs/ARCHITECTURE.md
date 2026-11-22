@@ -252,7 +252,7 @@ Fachliche Fälle/Fehler: [PRODUCT](PRODUCT.md#gespeicherte-personen).
 - Lokale Profilmetadaten zusammen mit dem Ergebnisfenster kohärent projizieren. Keyset-Cursor bindet Such-ID und prozesslokale SQLite-`total_changes`-Revision, **nicht** die Profilrevision.
 - Nach relevantem nativen Abschluss sichtbare Fenster lokal aktualisieren, unsichtbare als dirty markieren; Änderungen während eines Reads zusammenfassen.
 - List-/Window-/Actionfehler unabhängig halten. Retry liest die bestehende Fenstertiefe; keine stale Aktionen gegen fremden Kontext.
-- Explizites Ack nach [PRODUCT](PRODUCT.md#gespeicherte-suchen) bindet die **gerenderte Revision**. UI-Admission und Rust-CAS verhindern ein Ack gegen ein neueres Fenster; bei Fehler neu lesen, nie den Write automatisch wiederholen.
+- Explizites Ack nach [PRODUCT](PRODUCT.md#gespeicherte-suchen) bindet die **gerenderte Revision, Listen- oder Ergebnisansicht und deren Aktionsgeneration**; Ergebnis-Acks binden zusätzlich die konkrete Fensterinstanz. UI-Admission verwirft überholte Klicks nach Navigation, Read, Dialog und Lifecycle-Wechsel; Rust-CAS verhindert ein Ack gegen eine inzwischen neuere Revision. Bei Fehler neu lesen, nie den Write automatisch wiederholen.
 - Bereits zugelassene Ack-Operation darf nach `ON_STOP` bis zum tatsächlichen Abschluss drainieren. Weitere gemeinsame Grenzen: [Operationsmodell](#operations--und-konsistenzmodell).
 
 ## Operations- und Konsistenzmodell
