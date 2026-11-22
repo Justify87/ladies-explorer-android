@@ -38,7 +38,7 @@ internal fun SavedSearchOverview(
     state.dialog?.let { dialog ->
         val deleting = dialog.kind == SavedDialogKind.Delete
         AlertDialog(
-            onDismissRequest = controller::dismissDialog,
+            onDismissRequest = { controller.dismissDialog(SavedDialogAction(dialog, state.actionGeneration)) },
             title = { Text(when (dialog.kind) {
                 SavedDialogKind.Create -> "Aktuelle Filter speichern"
                 SavedDialogKind.Rename -> "Suche umbenennen"
@@ -47,7 +47,7 @@ internal fun SavedSearchOverview(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (deleting) Text(dialog.name)
-                    else OutlinedTextField(dialog.name, controller::dialogName, label = { Text("Name") },
+                    else OutlinedTextField(dialog.name, { name -> controller.dialogName(SavedDialogAction(dialog, state.actionGeneration), name) }, label = { Text("Name") },
                         singleLine = true, enabled = !state.busy)
                     state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (state.operation == SavedOperation.Write) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -57,7 +57,7 @@ internal fun SavedSearchOverview(
                 enabled = actions && (deleting || dialog.name.isNotBlank() && dialog.name.length <= 100)) {
                 Text(if (deleting) "Löschen" else "Speichern")
             } },
-            dismissButton = { TextButton(onClick = controller::dismissDialog, enabled = !state.blockingNavigation) { Text("Abbrechen") } },
+            dismissButton = { TextButton(onClick = { controller.dismissDialog(SavedDialogAction(dialog, state.actionGeneration)) }, enabled = !state.blockingNavigation) { Text("Abbrechen") } },
         )
     }
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
