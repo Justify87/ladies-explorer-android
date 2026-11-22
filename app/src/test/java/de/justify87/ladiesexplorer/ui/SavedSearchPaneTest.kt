@@ -669,4 +669,37 @@ class SavedSearchPaneTest {
         c.dismissDialog(current)
         assertNull(c.state.value.dialog)
     }
+
+    @Test(timeout = 15_000) fun savedSearchOverviewEntryRejectsCallbacksFromPreviousVisibility() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        val previous = paneAction(c)
+        c.setVisible(false)
+        c.open(previous)
+        assertEquals(SearchPane.Filters, c.state.value.pane)
+        c.setVisible(true)
+        c.open(previous)
+        assertEquals(SearchPane.Filters, c.state.value.pane)
+        c.open(paneAction(c)); idle(c)
+        assertEquals(SearchPane.SavedList, c.state.value.pane)
+    }
+
+    @Test(timeout = 15_000) fun savedSearchCreateDialogRequiresRenderedListGeneration() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        val stale = paneAction(c)
+        c.setVisible(false)
+        c.showCreateDialog(stale)
+        assertNull(c.state.value.dialog)
+        c.setVisible(true)
+        c.showCreateDialog(stale)
+        assertNull(c.state.value.dialog)
+        c.showCreateDialog(paneAction(c))
+        assertEquals(SavedDialogKind.Create, c.state.value.dialog?.kind)
+        c.dialogName(dialogAction(c), "New template")
+        c.confirmDialog(dialogAction(c)); idle(c)
+        assertEquals(1, fake.writes)
+        assertNull(c.state.value.dialog)
+    }
 }
