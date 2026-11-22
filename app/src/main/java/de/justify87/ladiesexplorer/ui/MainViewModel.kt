@@ -827,7 +827,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _discoverState.update { it.copy(swipeRestore = null) }
     }
 
-    fun toggleGridLike(action: GridLikeAction) {
+    internal fun toggleGridLike(action: GridLikeAction) {
         val state = _discoverState.value
         val search = _searchUiState.value
         if (!gridActionMatches(state, search, action)) return
@@ -894,7 +894,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         !_searchUiState.value.profileOpen && !_searchUiState.value.loading &&
             !_searchUiState.value.actionBusy && savedActionMatches(_discoverState.value, action)
 
-    fun choosePreference(action: SavedPersonAction, preference: Preference) {
+    internal fun choosePreference(action: SavedPersonAction, preference: Preference) {
         if (!admittedSavedPersonRow(action) || action.row.preference == preference) return
         val row = action.row
         _searchUiState.update { it.copy(actionError = null) }
@@ -909,7 +909,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
-    fun toggleFavorite(action: SavedPersonAction) {
+    internal fun toggleFavorite(action: SavedPersonAction) {
         if (!admittedSavedPersonRow(action)) return
         val row = action.row
         _searchUiState.update { it.copy(actionError = null) }

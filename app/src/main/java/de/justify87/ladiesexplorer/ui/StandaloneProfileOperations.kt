@@ -90,6 +90,9 @@ internal class StandaloneProfileOperations<C : Any>(
             check(local.profile.listingId == listingId && local.identity.personId == local.person.personId) {
                 "Inkonsistente Profilprojektion"
             }
+            check(local.identity.personId == requestedPersonId) {
+                "Profilzuordnung seit Öffnen geändert. Bitte das aktuelle Profil erneut öffnen."
+            }
             coroutineContext.ensureActive()
             if (!admitted()) return null
             localProfileKnown = true
@@ -412,7 +415,9 @@ internal class StandaloneProfileOperations<C : Any>(
                     }
                     _profileNotes.update { it - sourceOwner - targetPersonId }
                     projections.mergeCommitted(token, targetPersonId)
-                    if (detailCurrent()) {
+                    if (detailCurrent() && requestedPersonId == sourceOwner) {
+                        // Only a committed, user-confirmed merge may rebind this detail session.
+                        requestedPersonId = targetPersonId
                         revokeDetail(detailRequest!!, listingId)
                     }
                 }

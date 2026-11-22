@@ -578,20 +578,6 @@ impl LadiesCore {
         person_from(&db, person_id)
     }
 
-    pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
-        let db = self.connection()?;
-        let changed = db.execute(
-            "UPDATE person_user_state
-             SET preference = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE person_id = ?2",
-            params![preference.as_db(), person_id],
-        )?;
-        if changed == 0 {
-            return Err(CoreError::PersonNotFound(person_id));
-        }
-        Ok(())
-    }
-
     /// CAS for a saved person that has no displayable listing.
     pub fn set_person_preference_if(
         &self,
@@ -700,19 +686,6 @@ impl LadiesCore {
         Ok(())
     }
 
-    pub fn set_favorite(&self, person_id: i64, favorite: bool) -> Result<(), CoreError> {
-        let db = self.connection()?;
-        let changed = db.execute(
-            "UPDATE person_user_state
-             SET favorite = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE person_id = ?2",
-            params![favorite, person_id],
-        )?;
-        if changed == 0 {
-            return Err(CoreError::PersonNotFound(person_id));
-        }
-        Ok(())
-    }
 }
 
 const PERSON_QUERY_BY_ID: &str = r#"
@@ -819,6 +792,38 @@ impl LadiesCore {
             .lock()
             .map_err(|e| CoreError::Storage(e.to_string()))
     }
+}
+
+#[cfg(test)]
+impl LadiesCore {
+    pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
+        let db = self.connection()?;
+        let changed = db.execute(
+            "UPDATE person_user_state
+             SET preference = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE person_id = ?2",
+            params![preference.as_db(), person_id],
+        )?;
+        if changed == 0 {
+            return Err(CoreError::PersonNotFound(person_id));
+        }
+        Ok(())
+    }
+
+    pub fn set_favorite(&self, person_id: i64, favorite: bool) -> Result<(), CoreError> {
+        let db = self.connection()?;
+        let changed = db.execute(
+            "UPDATE person_user_state
+             SET favorite = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE person_id = ?2",
+            params![favorite, person_id],
+        )?;
+        if changed == 0 {
+            return Err(CoreError::PersonNotFound(person_id));
+        }
+        Ok(())
+    }
+
 }
 
 #[cfg(test)]

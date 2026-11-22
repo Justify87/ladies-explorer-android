@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 
-internal enum class ProfileActionSurface { NONE, GRID, SAVED }
+enum class ProfileActionSurface { NONE, GRID, SAVED }
 
 /** Never reinterpret a stale click using a freshly projected card. */
 internal data class GridLikeAction(

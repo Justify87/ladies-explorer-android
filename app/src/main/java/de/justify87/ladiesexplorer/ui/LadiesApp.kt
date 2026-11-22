@@ -111,6 +111,19 @@ fun LadiesApp(
         if (!savedVisible) viewModel.cancelSavedStatus()
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val actionSurface = when {
+        search.profileOpen -> ProfileActionSurface.NONE
+        route.root == RootDestination.Saved -> ProfileActionSurface.SAVED
+        route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid -> ProfileActionSurface.GRID
+        else -> ProfileActionSurface.NONE
+    }
+    val currentActionSurface by rememberUpdatedState(actionSurface)
+    LaunchedEffect(actionSurface, lifecycle) {
+        viewModel.setProfileActionSurface(
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) actionSurface
+            else ProfileActionSurface.NONE
+        )
+    }
     val profileTouchGate = remember { ProfileTouchGate() }
     val windowInfo = LocalWindowInfo.current
     val swipeShell = !search.profileOpen && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe
@@ -127,8 +140,9 @@ fun LadiesApp(
     val currentSavedSearchRouteVisible by rememberUpdatedState(savedSearchRouteVisible)
     DisposableEffect(lifecycle, viewModel) {
         fun publishVisibility() {
-            viewModel.savedSearch.setVisible(currentSavedSearchRouteVisible &&
-                lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+            val started = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            viewModel.savedSearch.setVisible(currentSavedSearchRouteVisible && started)
+            viewModel.setProfileActionSurface(if (started) currentActionSurface else ProfileActionSurface.NONE)
         }
         val observer = LifecycleEventObserver { _, event ->
             publishVisibility()
@@ -148,6 +162,7 @@ fun LadiesApp(
             profileTouchGate.invalidate()
             viewModel.setProfilePresentationVisible(false)
             viewModel.savedSearch.setVisible(false)
+            viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
         }
     }
 
