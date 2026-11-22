@@ -91,9 +91,9 @@ class SavedSearchPaneTest {
         return SavedDialogAction(requireNotNull(state.dialog), state.actionGeneration)
     }
 
-    private fun editorSaveAction(c: SavedSearchController): SavedEditorSaveAction {
+    private fun editorAction(c: SavedSearchController): SavedEditorAction {
         val state = c.state.value
-        return SavedEditorSaveAction(requireNotNull(state.editor).session, state.actionGeneration)
+        return SavedEditorAction(requireNotNull(state.editor), state.actionGeneration)
     }
 
     private fun ack(c: SavedSearchController): SavedSearchAckAction {
@@ -111,7 +111,7 @@ class SavedSearchPaneTest {
         c.open(); idle(c)
         c.openEditor(row(c)); idle(c)
         assertEquals(SearchPane.SavedEditor, c.state.value.pane)
-        c.editDraft { it.copy(city = "Hamburg").toggle("zeiten", "heute geöffnet") }
+        c.editDraft(editorAction(c)) { it.copy(city = "Hamburg").toggle("zeiten", "heute geöffnet") }
         assertEquals("Hamburg", c.state.value.editor!!.draft.city)
         assertEquals(AvailabilityMode.Today, availabilityMode(c.state.value.editor!!.draft.selectedFilters))
         assertEquals(AvailabilityMode.All, availabilityMode(ordinary.selectedFilters))
@@ -122,8 +122,8 @@ class SavedSearchPaneTest {
         assertEquals("Dresden", fake.loaded.city)
         assertEquals(0, fake.writes)
         c.openEditor(row(c)); idle(c)
-        c.editDraft { it.copy(city = "Köln") }
-        c.saveEditor(editorSaveAction(c)); idle(c)
+        c.editDraft(editorAction(c)) { it.copy(city = "Köln") }
+        c.saveEditor(editorAction(c)); idle(c)
         assertEquals("Köln", fake.loaded.city)
         assertEquals(" Berlin ", ordinary.city)
         assertNull(c.state.value.editor)
@@ -134,7 +134,7 @@ class SavedSearchPaneTest {
         val c = controller(this, fake)
         c.open(); idle(c)
         c.showDialog(SavedDialogKind.Rename, row(c))
-        c.dialogName("New")
+        c.dialogName(dialogAction(c), "New")
         fake.writeError = true
         c.confirmDialog(dialogAction(c)); idle(c)
         assertEquals("New", c.state.value.dialog?.name)
@@ -429,7 +429,7 @@ class SavedSearchPaneTest {
         val beforeModal = ack(c)
         c.showDialog(SavedDialogKind.Rename, row(c))
         c.acknowledge(beforeModal)
-        c.dismissDialog()
+        c.dismissDialog(dialogAction(c))
         c.acknowledge(beforeModal)
         assertEquals(0, fake.acknowledgements)
 
@@ -494,7 +494,7 @@ class SavedSearchPaneTest {
         assertTrue(fake.preparedChecks.isEmpty())
         assertEquals(0, fake.loads)
         assertTrue(fake.windows.isEmpty())
-        c.dismissDialog()
+        c.dismissDialog(dialogAction(c))
         c.check(beforeDialog)
         assertTrue(fake.preparedChecks.isEmpty())
 
@@ -559,7 +559,7 @@ class SavedSearchPaneTest {
         c.open(); idle(c)
         c.showDialog(SavedDialogKind.Rename, row(c))
         val oldName = dialogAction(c)
-        c.dialogName("Updated")
+        c.dialogName(dialogAction(c), "Updated")
         c.confirmDialog(oldName)
         assertEquals(0, fake.writes)
 
@@ -580,13 +580,13 @@ class SavedSearchPaneTest {
         val c = controller(this, fake)
         c.open(); idle(c)
         c.openEditor(row(c)); idle(c)
-        val beforeStop = editorSaveAction(c)
+        val beforeStop = editorAction(c)
         c.setVisible(false)
         c.saveEditor(beforeStop)
         c.setVisible(true)
         c.saveEditor(beforeStop)
         assertEquals(0, fake.writes)
-        c.saveEditor(editorSaveAction(c)); idle(c)
+        c.saveEditor(editorAction(c)); idle(c)
         assertEquals(1, fake.writes)
         assertNull(c.state.value.editor)
     }
@@ -604,5 +604,67 @@ class SavedSearchPaneTest {
         assertNull(c.state.value.editor)
         assertNull(c.state.value.actionError)
         assertEquals(SearchPane.SavedList, c.state.value.pane)
+    }
+
+    @Test(timeout = 15_000) fun staleSavedEditorInputAndCancelCannotModifyReplacementEditor() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        c.openEditor(row(c)); idle(c)
+        val previous = editorAction(c)
+        c.cancelEditor(previous)
+        assertNull(c.state.value.editor)
+        c.openEditor(row(c)); idle(c)
+        val current = editorAction(c)
+        c.editName(previous, "Unexpected")
+        c.editDraft(previous) { it.copy(city = "Unexpected") }
+        c.cancelEditor(previous)
+        assertEquals(current.editor, c.state.value.editor)
+        assertEquals("one", c.state.value.editor?.name)
+        assertEquals("Dresden", c.state.value.editor?.draft?.city)
+        c.editName(current, "Valid")
+        c.editDraft(current) { it.copy(city = "Köln") }
+        assertEquals("Valid", c.state.value.editor?.name)
+        assertEquals("Köln", c.state.value.editor?.draft?.city)
+    }
+
+    @Test(timeout = 15_000) fun savedEditorSaveRejectsObsoleteSnapshotAndInvalidDraft() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        c.openEditor(row(c)); idle(c)
+        val previous = editorAction(c)
+        c.editName(previous, "Changed")
+        c.saveEditor(previous)
+        assertEquals(0, fake.writes)
+        val renamed = editorAction(c)
+        c.editDraft(renamed) { it.copy(city = "   ") }
+        c.saveEditor(editorAction(c))
+        assertEquals(0, fake.writes)
+        c.editDraft(editorAction(c)) { it.copy(city = "Berlin") }
+        c.editName(editorAction(c), " ")
+        c.saveEditor(editorAction(c))
+        assertEquals(0, fake.writes)
+        c.editName(editorAction(c), "Valid")
+        c.saveEditor(editorAction(c)); idle(c)
+        assertEquals(1, fake.writes)
+        assertEquals("Berlin", fake.loaded.city)
+    }
+
+    @Test(timeout = 15_000) fun delayedDialogTextAndDismissCannotAlterReplacementDialog() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        c.showDialog(SavedDialogKind.Rename, row(c))
+        val stale = dialogAction(c)
+        c.dismissDialog(stale)
+        c.showDialog(SavedDialogKind.Delete, row(c))
+        val current = dialogAction(c)
+        c.dialogName(stale, "Unexpected")
+        c.dismissDialog(stale)
+        assertEquals(current.dialog, c.state.value.dialog)
+        assertEquals(SavedDialogKind.Delete, c.state.value.dialog?.kind)
+        c.dismissDialog(current)
+        assertNull(c.state.value.dialog)
     }
 }
