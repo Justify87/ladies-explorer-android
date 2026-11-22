@@ -93,6 +93,13 @@ internal fun swipeReadPolicy(
     )
 }
 
+/** Cache-only speculation needs one current-source attempt, never a redo after refresh failure. */
+internal fun shouldRefreshPromotedCurrent(
+    policy: SwipeReadPolicy,
+    model: ProfileReadModel?,
+    alreadyAttempted: Boolean,
+): Boolean = policy.refresh && model?.fromArchive == true && model.warning == null && !alreadyAttempted
+
 internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
     if (size.width <= 0 || size.height <= 0) return
     val media = profile?.media.orEmpty().filter { it.kind == "IMAGE" }

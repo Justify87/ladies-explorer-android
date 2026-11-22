@@ -132,6 +132,19 @@ internal fun DiscoverScreen(
         LaunchedEffect(slotControl) {
             var promotionOnly = false
             var localRecovery = false
+            var attemptedCurrentSource = false
+            fun readPolicy(currentRole: Boolean): SwipeReadPolicy {
+                val live = latestReadState
+                return swipeReadPolicy(
+                    currentRole, live.activeRunId, target.listingId,
+                    localOnly = localRecovery || decks.requiresLocal(target) ||
+                        (currentRole && latestRetryLocally) || target.listingId in live.localProfileStrictIds,
+                    preferLocal = decks.invalidation(target) != 0L ||
+                        target.listingId in live.localProfileReloadIds ||
+                        live.swipeRestore?.let { it.listingId == target.listingId &&
+                            it.ownerId == target.personId && it.runId == live.activeRunId } == true,
+                )
+            }
             fun eligible(): Boolean {
                 val activeCard = latestReadCard
                 if (!latestReadVisible || activeCard == null) return false
@@ -143,19 +156,14 @@ internal fun DiscoverScreen(
                 var waitForDemotion = false
                 val completed = readGate.withLock {
                     if (!eligible()) return@withLock false
-                    if (decks[target] != null && explicitRetry == 0) return@withLock true
                     val currentRole = sameSwipeCard(target, latestReadCard)
+                    val policy = readPolicy(currentRole)
+                    val cached = decks[target]
+                    if (cached != null && explicitRetry == 0 &&
+                        !(currentRole && shouldRefreshPromotedCurrent(policy, cached, attemptedCurrentSource)))
+                        return@withLock true
                     if (currentRole) markCurrentRead(target)
-                    val live = latestReadState
-                    val policy = swipeReadPolicy(
-                        currentRole, live.activeRunId, target.listingId,
-                        localOnly = localRecovery || decks.requiresLocal(target) ||
-                            (currentRole && latestRetryLocally) || target.listingId in live.localProfileStrictIds,
-                        preferLocal = decks.invalidation(target) != 0L ||
-                            target.listingId in live.localProfileReloadIds ||
-                            live.swipeRestore?.let { it.listingId == target.listingId &&
-                                it.ownerId == target.personId && it.runId == live.activeRunId } == true,
-                    )
+                    if (currentRole && policy.refresh) attemptedCurrentSource = true
                     try {
                         decks.readCurrent(target) { invalidateOtherProfiles ->
                             core.readSwipeProfile(target.listingId, slotControl,
@@ -178,7 +186,13 @@ internal fun DiscoverScreen(
                         false
                     }
                 }
-                if (completed) break
+                if (completed) {
+                    // Keep completed speculation alive until promotion, without canceling an in-flight read.
+                    snapshotFlow { sameSwipeCard(target, latestReadCard) }.first { it }
+                    if (!shouldRefreshPromotedCurrent(readPolicy(true), decks[target], attemptedCurrentSource))
+                        break
+                    continue
+                }
                 // A failed current read retries only explicitly or after demotion and promotion.
                 if (waitForDemotion) {
                     snapshotFlow { !sameSwipeCard(target, latestReadCard) }.first { it }
