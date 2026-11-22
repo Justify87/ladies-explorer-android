@@ -53,7 +53,7 @@ internal fun SavedSearchOverview(
                     if (state.operation == SavedOperation.Write) LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
             },
-            confirmButton = { TextButton(onClick = controller::confirmDialog,
+            confirmButton = { TextButton(onClick = { controller.confirmDialog(SavedDialogAction(dialog, state.actionGeneration)) },
                 enabled = actions && (deleting || dialog.name.isNotBlank() && dialog.name.length <= 100)) {
                 Text(if (deleting) "Löschen" else "Speichern")
             } },
