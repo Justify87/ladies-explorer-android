@@ -115,6 +115,9 @@ fun LadiesApp(
         search.profileOpen -> ProfileActionSurface.NONE
         route.root == RootDestination.Saved -> ProfileActionSurface.SAVED
         route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid -> ProfileActionSurface.GRID
+        route.root == RootDestination.Discover && route.discovery == DiscoverMode.Map -> ProfileActionSurface.MAP
+        route.root == RootDestination.Search && saved.pane == SearchPane.SavedResults -> ProfileActionSurface.SAVED_RESULTS
+        route.root == RootDestination.Search && saved.pane == SearchPane.Filters -> ProfileActionSurface.SEARCH
         else -> ProfileActionSurface.NONE
     }
     val currentActionSurface by rememberUpdatedState(actionSurface)
@@ -388,7 +391,7 @@ fun LadiesApp(
                                     onRefresh = viewModel::refreshDiscovery,
                                     onLoadMore = viewModel::loadMoreDiscovery,
                                     onLike = viewModel::toggleGridLike,
-                                    onProfile = viewModel::loadProfile,
+                                    onProfile = viewModel::openGridProfile,
                                     modifier = Modifier.weight(1f),
                                 )
                             }
@@ -399,7 +402,8 @@ fun LadiesApp(
                                 onResolve = viewModel::resolveMapLocations,
                                 onCancel = viewModel::cancelMapResolution,
                                 onFavoritesOnly = viewModel::setMapFavoritesOnly,
-                                onProfile = viewModel::loadProfile,
+                                generation = discovery.actionGeneration,
+                                onProfile = viewModel::openMapProfile,
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -416,9 +420,10 @@ fun LadiesApp(
                         controller = viewModel.savedSearch, modifier = modifier)
                     SearchPane.SavedResults -> key(saved.result?.id) {
                         SavedSearchResultsScreen(saved, !discovery.busy && !search.loading && !home.loading,
+                            generation = discovery.actionGeneration,
                             onMore = viewModel.savedSearch::more, onRetry = viewModel.savedSearch::retryResults,
                             onAcknowledge = viewModel.savedSearch::acknowledge,
-                            onOpen = viewModel::loadProfile, modifier = modifier)
+                            onOpen = viewModel::openSavedSearchProfile, modifier = modifier)
                     }
                     else -> SearchScreen(
                         search = search, saved = saved,
@@ -431,7 +436,8 @@ fun LadiesApp(
                         onSave = viewModel.savedSearch::saveEditor,
                         onName = viewModel.savedSearch::editName,
                         onCancelEdit = viewModel.savedSearch::back,
-                        onProfile = viewModel::loadProfile,
+                        generation = discovery.actionGeneration,
+                        onProfile = viewModel::openSearchResultProfile,
                         modifier = modifier,
                     )
                     } }
@@ -440,7 +446,7 @@ fun LadiesApp(
                         onKind = viewModel::selectSavedKind,
                         onSort = viewModel::selectSavedSort,
                         onRefresh = viewModel::refreshDiscovery,
-                        onProfile = viewModel::loadProfile,
+                        onProfile = viewModel::openSavedPersonProfile,
                         onFavorite = viewModel::toggleFavorite,
                         onPreference = viewModel::choosePreference,
                         onLoadMore = viewModel::loadMoreSavedPeople,
