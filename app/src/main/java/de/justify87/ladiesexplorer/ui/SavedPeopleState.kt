@@ -1,6 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.SavedPersonRow
+import de.justify87.ladiesexplorer.core.SavedPersonPage
 import de.justify87.ladiesexplorer.core.SavedPersonKind
 import de.justify87.ladiesexplorer.core.SavedPersonSort
 import kotlinx.coroutines.CancellationException
@@ -38,6 +39,20 @@ internal fun savedActionMatches(state: DiscoverUiState, action: SavedPersonActio
         ?: state.savedRecent?.rows?.firstOrNull { it.personId == action.row.personId }
     return current == action.row
 }
+
+/** A batch check starts only from the saved selection and window that rendered its button. */
+internal data class SavedStatusBatchAction(
+    val page: SavedPersonPage,
+    val kind: SavedPersonKind,
+    val sort: SavedPersonSort,
+    val generation: Long,
+)
+
+internal fun savedStatusBatchMatches(state: DiscoverUiState, action: SavedStatusBatchAction): Boolean =
+    state.actionSurface == ProfileActionSurface.SAVED &&
+        state.actionGeneration == action.generation &&
+        state.savedKind == action.kind && state.savedSort == action.sort &&
+        state.savedPage === action.page && !state.loading && !state.busy
 
 /** Cancellation must not replay completed status writes. */
 internal suspend fun runSavedStatusBatch(

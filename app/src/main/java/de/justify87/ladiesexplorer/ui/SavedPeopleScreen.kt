@@ -41,8 +41,8 @@ internal fun SavedPeopleScreen(
     onPreference: (SavedPersonAction, Preference) -> Unit,
     onLoadMore: () -> Unit,
     onLoadMoreRecent: () -> Unit,
-    onCheckAll: () -> Unit,
-    onCheckSingle: (Long) -> Unit,
+    onCheckAll: (SavedStatusBatchAction) -> Unit,
+    onCheckSingle: (SavedPersonAction) -> Unit,
     onCancelCheck: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -86,8 +86,11 @@ internal fun SavedPeopleScreen(
             }
             TextButton(onClick = onRefresh, enabled = !state.busy) { Text("Laden") }
         }
+        val batchAction = page?.let { SavedStatusBatchAction(it, state.savedKind, state.savedSort, state.actionGeneration) }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onCheckAll, enabled = enabled) { Text("Alle Status prüfen") }
+            TextButton(onClick = { batchAction?.let(onCheckAll) }, enabled = enabled && batchAction != null) {
+                Text("Alle Status prüfen")
+            }
             if (state.savedStatusProgress?.running == true) {
                 TextButton(onClick = onCancelCheck, enabled = !state.savedStatusProgress.cancelled) {
                     Text(if (state.savedStatusProgress.cancelled) "Abbruch …" else "Abbrechen")
@@ -184,7 +187,7 @@ private fun SavedPersonCard(
     onProfile: (SavedPersonAction) -> Unit,
     onFavorite: (SavedPersonAction) -> Unit,
     onPreference: (SavedPersonAction, Preference) -> Unit,
-    onCheckSingle: (Long) -> Unit,
+    onCheckSingle: (SavedPersonAction) -> Unit,
     preferChangeTime: Boolean = false,
 ) {
     val row = action.row
@@ -244,7 +247,7 @@ private fun SavedPersonCard(
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             if (card != null) DropdownMenuItem(
                                 text = { Text("Status prüfen") },
-                                onClick = { menu = false; onCheckSingle(card.listingId) },
+                                onClick = { menu = false; onCheckSingle(action) },
                             )
                             listOf(Preference.LIKE to "Like", Preference.DISLIKE to "Dislike",
                                 Preference.NONE to "Entscheidung entfernen").forEach { (target, title) ->
