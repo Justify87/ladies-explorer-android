@@ -44,6 +44,34 @@ class SavedPeopleStateTest {
         assertFalse(savedActionMatches(state.copy(savedRecent = null), action))
     }
 
+    @Test fun statusBatchRequiresExactRenderedSavedSelectionAndWindow() {
+        val state = displayed(row())
+        val action = SavedStatusBatchAction(state.savedPage!!, state.savedKind, state.savedSort,
+            state.actionGeneration)
+        assertTrue(savedStatusBatchMatches(state, action))
+        assertFalse(savedStatusBatchMatches(state.copy(savedPage = null), action))
+        assertFalse(savedStatusBatchMatches(state.copy(savedPage = state.savedPage.copy()), action))
+        assertFalse(savedStatusBatchMatches(state.copy(savedKind = SavedPersonKind.LIKE), action))
+        assertFalse(savedStatusBatchMatches(state.copy(savedSort = SavedPersonSort.NAME), action))
+        assertFalse(savedStatusBatchMatches(state.copy(actionGeneration = 43), action))
+        assertFalse(savedStatusBatchMatches(state.copy(actionSurface = ProfileActionSurface.SEARCH), action))
+        assertFalse(savedStatusBatchMatches(state.copy(loading = true), action))
+        assertFalse(savedStatusBatchMatches(state.copy(busy = true), action))
+    }
+
+    @Test fun singleStatusUsesExistingRenderedRowAdmissionAndCannotTargetCardlessPerson() {
+        val person = row().copy(card = fixtureCard(8L))
+        val state = displayed(person)
+        val action = SavedPersonAction(person, state.savedKind, state.savedSort, state.actionGeneration)
+        assertTrue(savedActionMatches(state, action))
+        assertEquals(8L, action.row.card?.listingId)
+        assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
+            rows = listOf(person.copy(card = fixtureCard(9L))))), action))
+        assertFalse(savedActionMatches(state.copy(actionSurface = ProfileActionSurface.NONE), action))
+        assertFalse(savedActionMatches(state.copy(actionGeneration = 43), action))
+        assertNull(row().card)
+    }
+
     @Test fun independentWindowSizesSurviveTabAndRetry() {
         val memory = SavedWindowMemory()
         val favorite = SavedPersonKind.FAVORITE
