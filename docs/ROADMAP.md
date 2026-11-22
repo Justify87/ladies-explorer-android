@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: DC02-Review und Merge; danach T10.7 – Lifecycle-/Performance-Restreview.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: T10.7-Review und Merge; danach T10.8 – vertikale Integration.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -16,7 +16,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M03 Suche/Parser | DONE | [#4](https://github.com/Justify87/ladies-explorer-android/pull/4), [#8](https://github.com/Justify87/ladies-explorer-android/pull/8); abgeschlossen. |
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
-| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 teilweise integriert, T10.8/9 offen. |
+| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 in [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) im Review, T10.8/9 offen. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -53,7 +53,7 @@ Diagnose (Logging, Messungen, HTTP/HAR, TXT-Export) ist integriert [#7](https://
 
 Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) in PR #31 bearbeitet. Alle zugehörigen Geräteprüfaufgaben T10.0–T10.6: **DONE**.
 
-### T10.7 — READY · Lifecycle, Performance und Altcode
+### T10.7 — REVIEW · Lifecycle, Performance und Altcode ([PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53))
 
 **Abhängigkeit:** T10.6. **Referenzen:** P03/P20–P23/P39–P44/P49–P51; [Architektur](ARCHITECTURE.md#swipe-read-window-und-prefetch), [Medienvertrag](ARCHITECTURE.md#persistentes-archiv-und-anzeige).
 
@@ -62,11 +62,11 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 **Ziel:** Verbleibende Lifecycle-, Performance- und Altcode-Risiken in M05.10 prüfen, ohne abgeschlossene Funktionen neu aufzubauen.
 
 **Umfang:**
-- [ ] Owner-/Run-/Snapshot-/Revision- und Lifecycle-Wechsel prüfen: Prefetch-Promotion/Pruning, Request/Retry/Cancel, Native Drain, Cache-/Note-/Facts-Invalidierung, SaveableState, unabhängige Reprojektion sowie Video-Surface-/Tempfile-Cleanup. Betroffene Aufrufer bis Rust/SQLite verfolgen.
-- [ ] Technische Performance anhand vorhandener Tests, Code und verfügbarer Diagnosebelege prüfen. Keine allgemeine M07-Optimierung.
+- [x] Owner-/Run-/Snapshot-/Revision- und Lifecycle-Wechsel im vorhandenen Kotlin-/Rust-Pfad und den vorhandenen Regressionen überprüft: Prefetch-Promotion/Pruning, Request/Retry/Cancel, Native Drain, Cache-/Note-/Facts-Invalidierung, SaveableState, unabhängige Reprojektion sowie Video-Surface-/Tempfile-Cleanup. Ein nachgewiesener Cache-Promotion-Befund wird in PR #53 behoben.
+- [x] Technische Performance anhand des vorhandenen Fenster-/Mutex-/Read- und Testvertrags überprüft. Kein neues Benchmark-Ergebnis oder gemessener Geschwindigkeitsgewinn; keine allgemeine M07-Optimierung.
 
 **Akzeptanz:**
-- [ ] Keine nachgewiesenen Defekte durch stale UI, Double Write, Source-Redo nach Commit, zusätzliche Archivierung, mehr als Current+2 oder zweite Queue/HTTP-/Profilimplementierung offen. Nur belegte Defekte ursächlich beheben und durch Regression sichern. Keine Beschleunigung ohne Messung behaupten.
+- [ ] Abschluss mit erfolgreicher CI in [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53): Ein cache-only Prefetch übersprang beim Current-Aufrücken die aktive Freshness-Policy; einmalige Quellenaktualisierung mit unverändertem Slot/Mutex und Regression für No-Redo/Local-only. Weitere entsprechende Defekte im geprüften T10.7-Umfang nicht belegt. Keine Beschleunigung ohne Messung behauptet.
 
 ### T10.8 — PLANNED · Vertikale Integration (G10.3)
 
@@ -106,7 +106,7 @@ Nach M06 bzw. ausdrücklich freigegebenem Umfang.
 
 ## Unabhängige technische Bereinigung
 
-### DC02 — REVIEW · Altimport entfernt ([PR #52](https://github.com/Justify87/ladies-explorer-android/pull/52))
+### DC02 — DONE · Altimport entfernt und gemergt ([PR #52](https://github.com/Justify87/ladies-explorer-android/pull/52))
 
 **Nutzerentscheidung:** 20.11.2026; Web-App obsolet, keine Nutzerdatenmigration. **Reihenfolge:** Vor weiterer Featurearbeit.
 
