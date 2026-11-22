@@ -86,6 +86,16 @@ class SavedSearchPaneTest {
         return SavedSearchRowAction(state.searches.single { it.searchId == id }, state.actionGeneration)
     }
 
+    private fun dialogAction(c: SavedSearchController): SavedDialogAction {
+        val state = c.state.value
+        return SavedDialogAction(requireNotNull(state.dialog), state.actionGeneration)
+    }
+
+    private fun editorSaveAction(c: SavedSearchController): SavedEditorSaveAction {
+        val state = c.state.value
+        return SavedEditorSaveAction(requireNotNull(state.editor).session, state.actionGeneration)
+    }
+
     private fun ack(c: SavedSearchController): SavedSearchAckAction {
         val s = c.state.value
         val info = s.searches.single { it.searchId == "one" }
@@ -113,7 +123,7 @@ class SavedSearchPaneTest {
         assertEquals(0, fake.writes)
         c.openEditor(row(c)); idle(c)
         c.editDraft { it.copy(city = "Köln") }
-        c.saveEditor(); idle(c)
+        c.saveEditor(editorSaveAction(c)); idle(c)
         assertEquals("Köln", fake.loaded.city)
         assertEquals(" Berlin ", ordinary.city)
         assertNull(c.state.value.editor)
@@ -126,7 +136,7 @@ class SavedSearchPaneTest {
         c.showDialog(SavedDialogKind.Rename, row(c))
         c.dialogName("New")
         fake.writeError = true
-        c.confirmDialog(); idle(c)
+        c.confirmDialog(dialogAction(c)); idle(c)
         assertEquals("New", c.state.value.dialog?.name)
         assertEquals(SavedDialogKind.Rename, c.state.value.dialog?.kind)
         fake.writeError = false
@@ -134,10 +144,10 @@ class SavedSearchPaneTest {
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
         fake.onWrite = { started.complete(Unit); gate.awaitSignal() }
-        c.confirmDialog(); started.awaitSignal()
+        c.confirmDialog(dialogAction(c)); started.awaitSignal()
         c.refresh()
         assertEquals(SavedOperation.Write, c.state.value.operation)
-        c.confirmDialog()
+        c.confirmDialog(dialogAction(c))
         gate.complete(Unit); idle(c)
         assertEquals(1, fake.writes)
         assertEquals(2, fake.renames)
@@ -541,5 +551,58 @@ class SavedSearchPaneTest {
         c.openEditor(row(c)); idle(c)
         assertNotNull(c.state.value.editor)
         assertEquals(2, fake.loads)
+    }
+
+    @Test(timeout = 15_000) fun savedDialogConfirmationRequiresCurrentRenderedDialog() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        c.showDialog(SavedDialogKind.Rename, row(c))
+        val oldName = dialogAction(c)
+        c.dialogName("Updated")
+        c.confirmDialog(oldName)
+        assertEquals(0, fake.writes)
+
+        val beforeStop = dialogAction(c)
+        c.setVisible(false)
+        c.confirmDialog(beforeStop)
+        c.setVisible(true)
+        c.confirmDialog(beforeStop)
+        assertEquals(0, fake.writes)
+        assertEquals("Updated", c.state.value.dialog?.name)
+        c.confirmDialog(dialogAction(c)); idle(c)
+        assertEquals(1, fake.writes)
+        assertNull(c.state.value.dialog)
+    }
+
+    @Test(timeout = 15_000) fun savedEditorWriteRejectsHiddenAndOldSessionCallbacks() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        c.openEditor(row(c)); idle(c)
+        val beforeStop = editorSaveAction(c)
+        c.setVisible(false)
+        c.saveEditor(beforeStop)
+        c.setVisible(true)
+        c.saveEditor(beforeStop)
+        assertEquals(0, fake.writes)
+        c.saveEditor(editorSaveAction(c)); idle(c)
+        assertEquals(1, fake.writes)
+        assertNull(c.state.value.editor)
+    }
+
+    @Test(timeout = 15_000) fun lateSavedEditorErrorDoesNotLeakIntoNewSurface() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        val gate = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        fake.onLoad = { started.complete(Unit); gate.awaitSignal(); error("stale read failure") }
+        c.openEditor(row(c)); started.awaitSignal()
+        c.setVisible(false)
+        gate.complete(Unit); idle(c)
+        assertNull(c.state.value.editor)
+        assertNull(c.state.value.actionError)
+        assertEquals(SearchPane.SavedList, c.state.value.pane)
     }
 }
