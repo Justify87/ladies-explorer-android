@@ -28,6 +28,8 @@ internal data class SavedSearchRowAction(
     val search: SavedSearchInfo,
     val generation: Long,
 )
+internal data class SavedDialogAction(val dialog: SavedDialog, val generation: Long)
+internal data class SavedEditorSaveAction(val session: Long, val generation: Long)
 
 internal data class SavedResultWindow(
     val id: String,
@@ -230,17 +232,20 @@ internal class SavedSearchController(
         val id = info.searchId
         val ticket = ++session
         val generation = action.generation + 1
+        val stillCurrent = {
+            ticket == session && visible && canOperate() &&
+                state.value.pane == SearchPane.SavedList && state.value.actionGeneration == generation
+        }
         operation(SavedOperation.Editor) {
             val draft = try {
                 store.load(id)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
-                if (ticket == session) mutable.update { it.copy(actionError = failure.message ?: "Vorlage konnte nicht geladen werden") }
+                if (stillCurrent()) mutable.update { it.copy(actionError = failure.message ?: "Vorlage konnte nicht geladen werden") }
                 return@operation
             }
-            if (ticket == session && visible && canOperate() &&
-                state.value.pane == SearchPane.SavedList && state.value.actionGeneration == generation) {
+            if (stillCurrent()) {
                 mutable.update { it.copy(editor = SavedEditor(id, ticket, info.name, draft)) }
             }
         }
@@ -256,9 +261,11 @@ internal class SavedSearchController(
         mutable.update { s -> s.copy(editor = s.editor?.copy(name = name)) }
     }
 
-    fun saveEditor() {
-        val editor = state.value.editor ?: return
-        if (state.value.busy || !canOperate()) return
+    fun saveEditor(action: SavedEditorSaveAction) {
+        val s = state.value
+        val editor = s.editor ?: return
+        if (!visible || s.busy || !canOperate() || s.pane != SearchPane.SavedEditor ||
+            editor.session != action.session || s.actionGeneration != action.generation) return
         operation(SavedOperation.Write) {
             store.update(editor.id, editor.name, editor.draft)
             mutable.update { it.copy(editor = null) }
@@ -268,7 +275,8 @@ internal class SavedSearchController(
 
     fun showDialog(kind: SavedDialogKind, action: SavedSearchRowAction? = null) {
         val s = state.value
-        if (!visible || s.busy || !canOperate() || s.pane != SearchPane.SavedList || s.dialog != null) return
+        if (!visible || s.busy || !s.listAvailable || !canOperate() ||
+            s.pane != SearchPane.SavedList || s.dialog != null) return
         val info = if (kind == SavedDialogKind.Create) {
             if (action != null) return
             null
@@ -290,9 +298,11 @@ internal class SavedSearchController(
             actionGeneration = it.actionGeneration + 1) }
     }
 
-    fun confirmDialog() {
-        val dialog = state.value.dialog ?: return
-        if (state.value.busy || !canOperate()) return
+    fun confirmDialog(action: SavedDialogAction) {
+        val s = state.value
+        val dialog = s.dialog ?: return
+        if (!visible || s.busy || !canOperate() || s.pane != SearchPane.SavedList ||
+            s.actionGeneration != action.generation || dialog !== action.dialog) return
         operation(SavedOperation.Write) {
             when (dialog.kind) {
                 SavedDialogKind.Create -> store.create(dialog.name, requireNotNull(dialog.draft))
