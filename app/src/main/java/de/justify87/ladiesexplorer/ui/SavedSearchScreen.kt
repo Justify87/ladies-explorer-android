@@ -80,6 +80,7 @@ internal fun SavedSearchOverview(
         if (state.dialog == null) state.error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
         if (state.listAvailable && state.searches.isEmpty() && !state.busy) item { Text("Noch keine gespeicherte Suche.") }
         items(state.searches, key = { it.searchId }) { saved ->
+            val rowAction = SavedSearchRowAction(saved, state.actionGeneration)
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -93,12 +94,12 @@ internal fun SavedSearchOverview(
                     if (saved.localFilterSummary.isNotBlank()) Text(saved.localFilterSummary, style = MaterialTheme.typography.bodySmall)
                     saved.lastError?.let { Text("Letzte Prüfung unvollständig/fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     FlowRow {
-                        TextButton(onClick = { controller.openResults(saved.searchId) }, enabled = actions) { Text("Öffnen") }
-                        TextButton(onClick = { controller.check(saved.searchId) }, enabled = actions && saved.definitionSupported) { Text("Prüfen") }
-                        TextButton(onClick = { controller.openEditor(saved.searchId) }, enabled = actions && saved.definitionSupported) { Text("Ändern") }
-                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Rename, saved.searchId) }, enabled = actions) { Text("Umbenennen") }
-                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Delete, saved.searchId) }, enabled = actions) { Text("Löschen") }
-                        if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(SavedSearchAckAction(saved.searchId, saved.revision, null, state.ackGeneration)) }, enabled = actions) { Text("Gelesen") }
+                        TextButton(onClick = { controller.openResults(rowAction) }, enabled = actions) { Text("Öffnen") }
+                        TextButton(onClick = { controller.check(rowAction) }, enabled = actions && saved.definitionSupported) { Text("Prüfen") }
+                        TextButton(onClick = { controller.openEditor(rowAction) }, enabled = actions && saved.definitionSupported) { Text("Ändern") }
+                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Rename, rowAction) }, enabled = actions) { Text("Umbenennen") }
+                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Delete, rowAction) }, enabled = actions) { Text("Löschen") }
+                        if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(SavedSearchAckAction(saved.searchId, saved.revision, null, state.actionGeneration)) }, enabled = actions) { Text("Gelesen") }
                     }
                 }
             }
@@ -150,7 +151,7 @@ internal fun SavedSearchResultsScreen(
                 Text("${result.cards.size} geladen · aktuelle lokale Profildaten", style = MaterialTheme.typography.bodySmall)
                 info?.lastError?.let { Text("Letzte Prüfung fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error) }
                 TextButton(onClick = onRetry, enabled = enabled && !state.busy) { Text("Aktualisieren") }
-                if (info?.unreadNewResults == true && result.revision != null) TextButton(onClick = { onAcknowledge(SavedSearchAckAction(result.id, result.revision, result, state.ackGeneration)) },
+                if (info?.unreadNewResults == true && result.revision != null) TextButton(onClick = { onAcknowledge(SavedSearchAckAction(result.id, result.revision, result, state.actionGeneration)) },
                     enabled = enabled && !state.busy) { Text("Als gelesen markieren") }
             }
         }
