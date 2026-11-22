@@ -134,7 +134,7 @@ class SwipeProfileReadTest {
 
     @Test(timeout = 15_000) fun cacheOnlyPrefetchRefreshesExactlyOnceAfterPromotion() = runBlocking {
         val fixture = Fixture(fixtureProfile())
-        val card = fixtureCard(4L)
+        val card = fixtureCard(4L, 1L)
         val window = SwipeProfileWindow(mutableMapOf())
         window.retain(listOf(card))
         val speculative = requireNotNull(window.prefetch(card) {
