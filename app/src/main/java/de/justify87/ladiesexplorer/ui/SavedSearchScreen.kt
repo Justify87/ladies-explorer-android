@@ -113,7 +113,8 @@ internal fun SavedSearchResultsScreen(
     onMore: () -> Unit,
     onRetry: () -> Unit,
     onAcknowledge: (String, Long) -> Unit,
-    onOpen: (Long, Long) -> Unit,
+    generation: Long,
+    onOpen: (SavedSearchProfileOpenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val result = state.result ?: return
@@ -168,7 +169,11 @@ internal fun SavedSearchResultsScreen(
             Column {
                 ProfileGridCard(card.name, card.age, card.thumbnailUrl, card.localPath, false,
                     enabled && !state.busy && listing != null && person != null,
-                    onOpen = { if (listing != null && person != null) onOpen(listing, person) }, onLike = null)
+                    onOpen = {
+                        if (listing != null && person != null) {
+                            onOpen(SavedSearchProfileOpenAction(result, card, generation))
+                        }
+                    }, onLike = null)
                 Text(if (listing == null || person == null) "Kein lokales Profil" else card.city,
                     style = MaterialTheme.typography.bodySmall, maxLines = 2)
             }
