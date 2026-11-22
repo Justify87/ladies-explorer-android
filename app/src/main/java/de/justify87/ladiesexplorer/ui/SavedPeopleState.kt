@@ -1,5 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
+import de.justify87.ladiesexplorer.core.SavedPersonRow
 import de.justify87.ladiesexplorer.core.SavedPersonKind
 import de.justify87.ladiesexplorer.core.SavedPersonSort
 import kotlinx.coroutines.CancellationException
@@ -18,6 +19,24 @@ internal class SavedWindowMemory {
         if (watchlist) recent = maxOf(recent, requested)
         else regular[kind to sort] = maxOf(regular[kind to sort] ?: 50u, requested)
     }
+}
+
+/** A saved action belongs to the rendered tab, window, surface and row. */
+internal data class SavedPersonAction(
+    val row: SavedPersonRow,
+    val kind: SavedPersonKind,
+    val sort: SavedPersonSort,
+    val generation: Long,
+)
+
+internal fun savedActionMatches(state: DiscoverUiState, action: SavedPersonAction): Boolean {
+    if (state.actionSurface != ProfileActionSurface.SAVED ||
+        state.actionGeneration != action.generation ||
+        state.savedKind != action.kind || state.savedSort != action.sort ||
+        state.loading || state.busy) return false
+    val current = state.savedPage?.rows?.firstOrNull { it.personId == action.row.personId }
+        ?: state.savedRecent?.rows?.firstOrNull { it.personId == action.row.personId }
+    return current == action.row
 }
 
 /** Cancellation must not replay completed status writes. */

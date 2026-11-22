@@ -150,7 +150,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 **Entscheidung und Grid-Hide:**
 - `SwipeSession` hält Traversierung/Undo-Records, keinen zweiten fachlichen Store.
 - Geste und Rail teilen dieselbe gerenderte Admission und native CAS-Präferenzoperation; Queue-Projektion ist autoritativ.
-- Grid-Herz führt eine erwartungsgeprüfte LIKE/NONE- beziehungsweise LIKE-Mutation aus. Das rungebundene temporäre Hide wird bei neuem Run zurückgesetzt, verändert weder native Ergebnismenge noch Swipe-Historie.
+- Grid-Herz bindet den gerenderten Listing-/Owner-/Präferenz- und Run-Snapshot samt Präsentationsgeneration und führt eine erwartungsgeprüfte LIKE/NONE- beziehungsweise LIKE-Mutation aus. Das rungebundene temporäre Hide wird bei neuem Run zurückgesetzt, verändert weder native Ergebnismenge noch Swipe-Historie.
 - Fehler, Commit und Kontext: [Operationsmodell](#operations--und-konsistenzmodell) und PRODUCT.
 
 **Unabhängige Projektionen:**
@@ -163,7 +163,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 **Datenhoheit und Render-Modell:**
 - `NativeProfileProjection` liest Profil, kanonische Identität, Person, Medien, Historie und Kandidaten unter **demselben SQLite-Guard**.
 - `ProfileReadModel` bindet Projektion, Herkunft/Fehler und lokale Revision. Swipe und Standalone teilen den lokalen Lese-/Präsentationsvertrag, aber nicht denselben Quellen-/Archiv-Lebenszyklus.
-- Standalone: `StandaloneProfileOperations` liest frische Quelldaten; bei Fehler aktiven lokalen Snapshot samt Medien mit Herkunft/Warnung zeigen. Erfolgreiche Abrufe dürfen separaten Archivvorgang auslösen; Offline-Fallback löst keinen erneuten Netzarchivvorgang aus.
+- Standalone: `StandaloneProfileOperations` liest frische Quelldaten; der geöffnete Detailkontext darf keinen stillen Wechsel des ursprünglich gewählten Owners akzeptieren, außer nach explizit bestätigtem Identitätsmerge. Bei Fehler aktiven lokalen Snapshot samt Medien mit Herkunft/Warnung zeigen. Erfolgreiche Abrufe dürfen separaten Archivvorgang auslösen; Offline-Fallback löst keinen erneuten Netzarchivvorgang aus.
 - Swipe: höchstens aktuelles plus zwei Folgeprofile ohne zusätzliche Archivierung; Current-/Prefetch-Vertrag unten.
 
 **Oberfläche und sichtbarkeitsgebundene Reads:**
@@ -219,7 +219,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 
 ### Personen und Status
 
-- `saved_people_window` in Rust projiziert Favoriten, Likes und Dislikes nach stabiler Personen-ID.
+- `saved_people_window` in Rust projiziert Favoriten, Likes und Dislikes nach stabiler Personen-ID. Gerenderte Aktionen binden Auswahl, Fenster-/Navigationsgeneration und vollständigen Row-Snapshot; nur atomare Rust-CAS-Operationen schreiben Präferenz/Favorit, für kartenlose Personen ohne erfundenes Listing.
 - Recent (Produktzeitfenster) und Regular samt Favoriten-/Datum-Counts entstehen unter demselben SQLite-Guard und Zeitanker. Nachladen liest ein kohärentes erweitertes Fenster; Kotlin hält nur Kapazität, Auswahl und Scrollzustand.
 - Keyset-Cursor bindet Auswahl, Zeitgrenze und SQLite-`total_changes`-Revision. Namenssortierung mit NFD, Case-/Mark-Folding und ß/ss (keine vollständige CLDR-Kollation). Metadaten fallen deterministisch auf vorhandene Daten zurück; Relisting behält fachlichen Ereigniszeitpunkt.
 

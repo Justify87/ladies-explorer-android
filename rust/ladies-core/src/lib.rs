@@ -578,16 +578,24 @@ impl LadiesCore {
         person_from(&db, person_id)
     }
 
-    pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
+    /// CAS for a saved person that has no displayable listing.
+    pub fn set_person_preference_if(
+        &self,
+        person_id: i64,
+        expected: Preference,
+        preference: Preference,
+    ) -> Result<(), CoreError> {
         let db = self.connection()?;
         let changed = db.execute(
-            "UPDATE person_user_state
-             SET preference = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE person_id = ?2",
-            params![preference.as_db(), person_id],
+            "UPDATE person_user_state SET preference=?1,
+             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE person_id=?2 AND preference=?3",
+            params![preference.as_db(), person_id, expected.as_db()],
         )?;
-        if changed == 0 {
-            return Err(CoreError::PersonNotFound(person_id));
+        if changed != 1 {
+            return Err(CoreError::IdentityConflict(
+                "Person oder Präferenz seit Anzeige geändert".into(),
+            ));
         }
         Ok(())
     }
@@ -656,16 +664,24 @@ impl LadiesCore {
         Ok(())
     }
 
-    pub fn set_favorite(&self, person_id: i64, favorite: bool) -> Result<(), CoreError> {
+    /// CAS for a saved person that has no displayable listing.
+    pub fn set_person_favorite_if(
+        &self,
+        person_id: i64,
+        expected: bool,
+        favorite: bool,
+    ) -> Result<(), CoreError> {
         let db = self.connection()?;
         let changed = db.execute(
-            "UPDATE person_user_state
-             SET favorite = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE person_id = ?2",
-            params![favorite, person_id],
+            "UPDATE person_user_state SET favorite=?1,
+             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE person_id=?2 AND favorite=?3",
+            params![favorite, person_id, expected],
         )?;
-        if changed == 0 {
-            return Err(CoreError::PersonNotFound(person_id));
+        if changed != 1 {
+            return Err(CoreError::IdentityConflict(
+                "Person oder Favoritenzustand seit Anzeige geändert".into(),
+            ));
         }
         Ok(())
     }
@@ -779,6 +795,34 @@ impl LadiesCore {
 
 #[cfg(test)]
 impl LadiesCore {
+    pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
+        let db = self.connection()?;
+        let changed = db.execute(
+            "UPDATE person_user_state
+             SET preference = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE person_id = ?2",
+            params![preference.as_db(), person_id],
+        )?;
+        if changed == 0 {
+            return Err(CoreError::PersonNotFound(person_id));
+        }
+        Ok(())
+    }
+
+    pub fn set_favorite(&self, person_id: i64, favorite: bool) -> Result<(), CoreError> {
+        let db = self.connection()?;
+        let changed = db.execute(
+            "UPDATE person_user_state
+             SET favorite = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE person_id = ?2",
+            params![favorite, person_id],
+        )?;
+        if changed == 0 {
+            return Err(CoreError::PersonNotFound(person_id));
+        }
+        Ok(())
+    }
+
     pub fn create_person(&self, display_name: Option<String>) -> Result<i64, CoreError> {
         let db = self.connection()?;
         db.execute(
@@ -822,6 +866,30 @@ mod tests {
     }
 
     #[test]
+    fn saved_person_without_listing_writes_only_from_expected_state() {
+        let core = memory_core();
+        let person = core.create_person(None).unwrap();
+        core.set_person_preference_if(person, Preference::None, Preference::Like)
+            .unwrap();
+        assert!(matches!(
+            core.set_person_preference_if(person, Preference::None, Preference::Dislike),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        core.set_person_favorite_if(person, false, true).unwrap();
+        assert!(matches!(
+            core.set_person_favorite_if(person, false, false),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert!(matches!(
+            core.set_person_preference_if(999, Preference::None, Preference::Like),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        let saved = core.get_person(person).unwrap().unwrap();
+        assert_eq!(saved.preference, Preference::Like);
+        assert!(saved.favorite);
+    }
+
+    #[test]
     fn listing_favorite_checks_owner_and_expected_value_atomically() {
         let core = memory_core();
         let owner = core.create_person(None).unwrap();
@@ -844,6 +912,46 @@ mod tests {
         core.set_listing_favorite(listing, owner, true, false)
             .unwrap();
         assert!(!core.get_person(owner).unwrap().unwrap().favorite);
+    }
+
+    #[test]
+    fn listing_preference_rejects_stale_value_and_changed_owner_without_retargeting() {
+        let core = memory_core();
+        let first = core.create_person(None).unwrap();
+        let second = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(first, None, "LADIES".into(), "preference".into(), None)
+            .unwrap();
+        core.set_swipe_preference(listing, first, Some(Preference::None), Preference::Like)
+            .unwrap();
+        assert!(matches!(
+            core.set_swipe_preference(listing, first, Some(Preference::None), Preference::Dislike),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        core.connection()
+            .unwrap()
+            .execute(
+                "UPDATE listings SET person_id=?1 WHERE listing_id=?2",
+                params![second, listing],
+            )
+            .unwrap();
+        assert!(matches!(
+            core.set_swipe_preference(listing, first, Some(Preference::Like), Preference::Dislike),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert!(matches!(
+            core.set_listing_favorite(listing, first, false, true),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert_eq!(
+            core.get_person(first).unwrap().unwrap().preference,
+            Preference::Like
+        );
+        assert_eq!(
+            core.get_person(second).unwrap().unwrap().preference,
+            Preference::None
+        );
+        assert!(!core.get_person(second).unwrap().unwrap().favorite);
     }
 
     #[test]

@@ -10,6 +10,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 
+enum class ProfileActionSurface { NONE, GRID, SAVED }
+
+/** Never reinterpret a stale click using a freshly projected card. */
+internal data class GridLikeAction(
+    val card: DiscoveryCard,
+    val runId: Long?,
+    val generation: Long,
+)
+
+internal fun gridActionMatches(discovery: DiscoverUiState, search: SearchUiState, action: GridLikeAction): Boolean =
+    discovery.actionSurface == ProfileActionSurface.GRID &&
+        discovery.actionGeneration == action.generation &&
+        !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy && !search.profileOpen &&
+        search.response?.searchRunId == action.runId &&
+        gridCards(discovery, search).firstOrNull { it.listingId == action.card.listingId } == action.card
+
 /** The transient hide affects presentation, not run membership. */
 internal fun gridCards(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
     if (search.response != null) search.activeCards.filterNot { it.listingId in search.gridHiddenLikes }
@@ -139,7 +155,7 @@ internal class DiscoveryProjectionPublisher(
                 activeRunId = projection.runId,
                 activeVisibleCount = projection.visible.size,
                 nextCursor = projection.page.nextCursor,
-                loadingMore = false, error = null,
+                loadingMore = false, error = null, actionGeneration = it.actionGeneration + 1,
             )
         }
     }
@@ -154,16 +170,18 @@ internal class DiscoveryProjectionPublisher(
                 onFailure = { failure ->
                     _searchUiState.update { it.copy(activeCards = emptyList()) }
                     _discoverState.update { it.copy(cards = emptyList(), nextCursor = null,
-                        activeVisibleCount = 0, error = failure.message ?: "Entdecken fehlgeschlagen") }
+                        activeVisibleCount = 0, actionGeneration = it.actionGeneration + 1,
+                        error = failure.message ?: "Entdecken fehlgeschlagen") }
                 },
             )
         },
         publishSecond = { result ->
             if (epoch == currentEpoch()) result.fold(
                 onSuccess = { page -> _discoverState.update { it.copy(savedPage = page.regular,
-                    savedRecent = page.recent, savedError = null) } },
+                    savedRecent = page.recent, savedError = null, actionGeneration = it.actionGeneration + 1) } },
                 onFailure = { failure -> _discoverState.update { it.copy(savedPage = null, savedRecent = null,
-                    savedError = failure.message ?: "Gespeicherte Personen konnten nicht geladen werden") } },
+                    savedError = failure.message ?: "Gespeicherte Personen konnten nicht geladen werden",
+                    actionGeneration = it.actionGeneration + 1) } },
             )
         },
     )

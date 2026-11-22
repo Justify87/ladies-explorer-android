@@ -6,6 +6,44 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SavedPeopleStateTest {
+    private fun row(person: Long = 1L, preference: Preference = Preference.NONE, favorite: Boolean = false) =
+        SavedPersonRow(person, "Fixture", preference, favorite, null, 0u,
+            "2026-11-22", "2026-11-22", "UNKNOWN", null, null, null, false)
+
+    private fun displayed(row: SavedPersonRow) = DiscoverUiState(
+        loading = false, actionSurface = ProfileActionSurface.SAVED, actionGeneration = 42,
+        savedPage = SavedPersonPage(listOf(row), 1u, 1u, 123L, null),
+    )
+
+    @Test fun savedActionsRequireRenderedRowTabAndWindowGeneration() {
+        val original = row()
+        val state = displayed(original)
+        val action = SavedPersonAction(original, state.savedKind, state.savedSort, state.actionGeneration)
+        assertTrue(savedActionMatches(state, action))
+        assertFalse(savedActionMatches(state.copy(savedPage = null), action))
+        assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
+            rows = listOf(row(person = 2L)))), action))
+        assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
+            rows = listOf(row(preference = Preference.LIKE)))), action))
+        assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
+            rows = listOf(row(favorite = true)))), action))
+        assertFalse(savedActionMatches(state.copy(savedKind = SavedPersonKind.LIKE), action))
+        assertFalse(savedActionMatches(state.copy(savedSort = SavedPersonSort.NAME), action))
+        assertFalse(savedActionMatches(state.copy(actionGeneration = 43), action))
+        assertFalse(savedActionMatches(state.copy(actionSurface = ProfileActionSurface.GRID), action))
+        assertFalse(savedActionMatches(state.copy(loading = true), action))
+        assertFalse(savedActionMatches(state.copy(busy = true), action))
+    }
+
+    @Test fun recentSavedActionsUseTheSameStrictContract() {
+        val recent = row().copy(recent = true)
+        val state = displayed(recent).copy(savedPage = SavedPersonPage(emptyList(), 1u, 0u, 123L, null),
+            savedRecent = SavedPersonPage(listOf(recent), 1u, 1u, 123L, null))
+        val action = SavedPersonAction(recent, state.savedKind, state.savedSort, state.actionGeneration)
+        assertTrue(savedActionMatches(state, action))
+        assertFalse(savedActionMatches(state.copy(savedRecent = null), action))
+    }
+
     @Test fun independentWindowSizesSurviveTabAndRetry() {
         val memory = SavedWindowMemory()
         val favorite = SavedPersonKind.FAVORITE
