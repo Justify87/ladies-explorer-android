@@ -71,6 +71,13 @@ class SavedSearchPaneTest {
         withTimeout(5_000) { c.state.first { !it.busy } }
     }
 
+    private fun ack(c: SavedSearchController): SavedSearchAckAction {
+        val s = c.state.value
+        val info = s.searches.single { it.searchId == "one" }
+        return SavedSearchAckAction(info.searchId, s.result?.revision ?: info.revision,
+            s.result, s.ackGeneration)
+    }
+
     @Test(timeout = 15_000) fun ordinaryDraftAndEditorAreIndependentAndCancelDoesNotSerialize() = runBlocking {
         val ordinary = SearchDraft(city = " Berlin ", radiusKm = 30u,
             selectedFilters = mapOf("figur" to setOf("schlank")))
@@ -143,7 +150,7 @@ class SavedSearchPaneTest {
         assertEquals(listOf(100u, 100u, 200u, 300u, 300u), fake.windows)
         assertTrue(c.state.value.result!!.ready)
         assertEquals(0, fake.acknowledgements)
-        c.acknowledge("one", 1L); idle(c)
+        c.acknowledge(ack(c)); idle(c)
         assertEquals(1, fake.acknowledgements)
     }
 
@@ -186,7 +193,7 @@ class SavedSearchPaneTest {
         fake.onRead = {}
         c.retryResults(); idle(c)
         assertEquals(0, fake.acknowledgements)
-        c.acknowledge("one", 1L); idle(c)
+        c.acknowledge(ack(c)); idle(c)
         assertEquals(1, fake.acknowledgements)
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
@@ -247,7 +254,7 @@ class SavedSearchPaneTest {
         val c = controller(this, fake)
         c.open(); idle(c)
         c.openResults("one"); idle(c)
-        c.acknowledge("one", 1L); idle(c)
+        c.acknowledge(ack(c)); idle(c)
         assertEquals(1, fake.acknowledgements)
         assertTrue(c.state.value.searches.single().unreadNewResults)
         assertNotNull(c.state.value.error)
@@ -279,10 +286,11 @@ class SavedSearchPaneTest {
         val c = controller(this, fake)
         c.open(); idle(c)
         c.openResults("one"); idle(c)
+        val displayed = ack(c)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
         fake.onAck = { started.complete(Unit); finish.awaitSignal() }
-        c.acknowledge("one", 1L)
+        c.acknowledge(displayed)
         started.awaitSignal()
         c.setVisible(false)
         fake.list = listOf(info(unread = true, revision = 2L))
@@ -291,13 +299,13 @@ class SavedSearchPaneTest {
         assertTrue(c.state.value.searches.single().unreadNewResults)
         assertNotNull(c.state.value.actionError)
         assertTrue(c.state.value.resultDirty)
-        c.acknowledge("one", 1L)
+        c.acknowledge(displayed)
         assertEquals(1, fake.acknowledgements)
         c.setVisible(true); idle(c)
         assertEquals(2L, c.state.value.result!!.revision)
-        c.acknowledge("one", 1L) // stale rendered callback must not clear the new revision
+        c.acknowledge(displayed) // stale rendered callback must not clear the new revision
         assertEquals(1, fake.acknowledgements)
-        c.acknowledge("one", 2L); idle(c)
+        c.acknowledge(ack(c)); idle(c)
         assertEquals(2, fake.acknowledgements)
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
@@ -343,7 +351,7 @@ class SavedSearchPaneTest {
         c.open(); idle(c)
         c.openResults("one"); idle(c)
         fake.onAck = { fake.readError = true }
-        c.acknowledge("one", 1L); idle(c)
+        c.acknowledge(ack(c)); idle(c)
         assertEquals(1, fake.acknowledgements)
         assertFalse(fake.list.single().unreadNewResults)
         assertFalse(c.state.value.listAvailable)
@@ -355,5 +363,52 @@ class SavedSearchPaneTest {
         assertEquals(1, fake.acknowledgements)
         assertTrue(c.state.value.listAvailable)
         assertFalse(c.state.value.searches.single().unreadNewResults)
+    }
+
+    @Test(timeout = 15_000) fun acknowledgementCannotCrossOverviewAndResultPanes() = runBlocking {
+        val fake = Fake(info(unread = true))
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        val overview = ack(c)
+        c.openResults("one"); idle(c)
+        c.acknowledge(overview)
+        assertEquals(0, fake.acknowledgements)
+
+        val results = ack(c)
+        c.back()
+        c.acknowledge(results)
+        assertEquals(0, fake.acknowledgements)
+
+        c.acknowledge(ack(c)); idle(c)
+        assertEquals(1, fake.acknowledgements)
+        assertFalse(c.state.value.searches.single().unreadNewResults)
+    }
+
+    @Test(timeout = 15_000) fun acknowledgementRejectsOldReadsVisibilityAndModalCallbacks() = runBlocking {
+        val fake = Fake(info(unread = true))
+        val c = controller(this, fake)
+        c.open(); idle(c)
+        c.openResults("one"); idle(c)
+        val oldWindow = ack(c)
+        c.retryResults(); idle(c)
+        c.acknowledge(oldWindow)
+        assertEquals(0, fake.acknowledgements)
+
+        val beforeStop = ack(c)
+        c.setVisible(false)
+        c.setVisible(true)
+        c.acknowledge(beforeStop)
+        assertEquals(0, fake.acknowledgements)
+
+        c.back()
+        val beforeModal = ack(c)
+        c.showDialog(SavedDialogKind.Rename, "one")
+        c.acknowledge(beforeModal)
+        c.dismissDialog()
+        c.acknowledge(beforeModal)
+        assertEquals(0, fake.acknowledgements)
+
+        c.acknowledge(ack(c)); idle(c)
+        assertEquals(1, fake.acknowledgements)
     }
 }
