@@ -48,7 +48,8 @@ internal fun SearchScreen(
     onSave: () -> Unit,
     onName: (String) -> Unit,
     onCancelEdit: () -> Unit,
-    onProfile: (Long,Long) -> Unit,
+    generation: Long,
+    onProfile: (SearchResultOpenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val editor = saved.editor
@@ -132,7 +133,7 @@ internal fun SearchScreen(
                 }
             }
             items(state.activeCards, key = { it.listingId }) { card ->
-                SearchResultRow(card, onProfile)
+                SearchResultRow(SearchResultOpenAction(card, response.searchRunId, generation), onProfile)
             }
         } else {
             if (editor != null) item {
@@ -199,8 +200,9 @@ internal fun SearchScreen(
 }
 
 @Composable
-private fun SearchResultRow(card: DiscoveryCard, onProfile: (Long,Long) -> Unit) {
-    Card(modifier=Modifier.fillMaxWidth(),onClick={onProfile(card.listingId,card.personId)}) {
+private fun SearchResultRow(action: SearchResultOpenAction, onProfile: (SearchResultOpenAction) -> Unit) {
+    val card = action.card
+    Card(modifier=Modifier.fillMaxWidth(),onClick={onProfile(action)}) {
         Row(
             modifier=Modifier.padding(12.dp),
             horizontalArrangement=Arrangement.spacedBy(12.dp),
