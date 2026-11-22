@@ -227,7 +227,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.discovery.value.busy)
     }
 
-    @Test(timeout = 15_000) fun rejectedMergeWithChangedOwnerUsesNewLocalProjectionWithoutTouchingNotes() = runBlocking {
+    @Test(timeout = 15_000) fun rejectedMergeWithChangedOwnerRevokesDetailInsteadOfRebindingSilently() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
         f.oldNotes()
@@ -237,15 +237,37 @@ class StandaloneProfileOperationsTest {
         f.cached = fixtureProfile(12L)
         f.operations.confirmIdentity(old, 2L)
         f.idle()
-        assertEquals(7L, f.search.value.profileIdentity?.personId)
-        assertEquals(12L, f.search.value.profile?.snapshotId)
-        assertNotEquals(old, f.search.value.detailIdentityToken())
+        assertNull(f.search.value.profileIdentity)
+        assertNull(f.search.value.profile)
+        assertNull(f.search.value.detailIdentityToken())
+        assertEquals(4L, f.search.value.retryProfileListingId)
         assertTrue(f.tickets.isCurrent(1L, ticket))
         assertEquals(setOf(1L, 2L, 3L), f.notes.value.keys)
         assertEquals("confirm:4:2", f.calls.first())
         assertEquals(listOf("map", "profile:4", "project:1", "saved"), f.calls.drop(1).sorted())
         assertFalse(f.discovery.value.busy)
         assertEquals("fixture owner conflict", f.search.value.actionError)
+    }
+
+    @Test(timeout = 15_000) fun changedOwnerAtOpenCannotBePublishedOrRecoveredByLocalRetry() = runBlocking {
+        val f = Fixture(this)
+        f.operations.loadProfile(4L, 1L) {}
+        f.owner = 7L
+        f.idle()
+        assertNull(f.search.value.profileIdentity)
+        assertNull(f.search.value.profile)
+        assertEquals(4L, f.search.value.retryProfileListingId)
+        assertTrue(f.search.value.error!!.contains("Profilzuordnung"))
+        assertTrue(f.controls.isEmpty())
+        f.calls.clear()
+        f.operations.retryProfileProjection()
+        f.idle()
+        assertNull(f.search.value.profile)
+        assertFalse(f.calls.any { it.startsWith("source:") })
+        f.operations.closeProfile()
+        f.operations.loadProfile(4L, 7L) {}
+        f.idle()
+        assertEquals(7L, f.search.value.profileIdentity?.personId)
     }
 
     @Test(timeout = 15_000) fun lateDetailSuccessAndFailureCannotReplaceNewerProjection() = runBlocking {

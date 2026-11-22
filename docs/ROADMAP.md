@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.8 – vertikale Integration; gespeicherte Personenaktionen im laufenden Branch prüfen, danach übrige Eintrittspfade.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: T10.8 – vertikale Integration; Review-Funde in PR #54 absichern, danach die übrigen Eintrittspfade.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -68,7 +68,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 **Akzeptanz:**
 - [x] Abschluss mit erfolgreicher [CI #45013729939](https://github.com/Justify87/ladies-explorer-android/actions/runs/45013729939) in [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53): Ein cache-only Prefetch übersprang beim Current-Aufrücken die aktive Freshness-Policy; einmalige Quellenaktualisierung mit unverändertem Slot/Mutex und Regression für No-Redo/Local-only. Weitere entsprechende Defekte im geprüften T10.7-Umfang nicht belegt. Keine Beschleunigung ohne Messung behauptet.
 
-### T10.8 — DOING · Vertikale Integration (G10.3)
+### T10.8 — DOING · Vertikale Integration (G10.3) ([PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54))
 
 **Abhängigkeit:** T10.7 abgeschlossen. **Referenzen:** P01–P51/X01–X11, [UI-Vertrag](DESIGN.md).
 
@@ -79,6 +79,8 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
 - [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision sowie Fehler/Offline/Status/Radius/Pagination.
+
+**Aktuelle Teilaufgabe (Review-Funde F01–F05):** Gespeicherte Personen- und Grid-Aktionen an gerenderten Kontext, Run/Fenster und native CAS gebunden; alte unbedingte FFI-Schreiboperationen nur noch testexklusiv. Standalone-Projektionen weisen stille Ownerwechsel zurück und erlauben explizites Rebinding nur nach bestätigtem Merge. Nachweise: Rust-/JVM-Regressionen und finaler PR-CI-Lauf; übrige T10.8-Abnahme bleibt offen.
 
 **Akzeptanz:**
 - [ ] Keine zweite Implementierungsroute, kein Funktionsverlust und kein Scope-Drift; konkrete technische Testbelege.

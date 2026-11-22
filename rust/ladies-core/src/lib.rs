@@ -920,6 +920,37 @@ mod tests {
     }
 
     #[test]
+    fn listing_preference_rejects_stale_value_and_changed_owner_without_retargeting() {
+        let core = memory_core();
+        let first = core.create_person(None).unwrap();
+        let second = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(first, None, "LADIES".into(), "preference".into(), None)
+            .unwrap();
+        core.set_swipe_preference(listing, first, Some(Preference::None), Preference::Like)
+            .unwrap();
+        assert!(matches!(
+            core.set_swipe_preference(listing, first, Some(Preference::None), Preference::Dislike),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        core.connection().unwrap().execute(
+            "UPDATE listings SET person_id=?1 WHERE listing_id=?2",
+            params![second, listing],
+        ).unwrap();
+        assert!(matches!(
+            core.set_swipe_preference(listing, first, Some(Preference::Like), Preference::Dislike),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert!(matches!(
+            core.set_listing_favorite(listing, first, false, true),
+            Err(CoreError::IdentityConflict(_))
+        ));
+        assert_eq!(core.get_person(first).unwrap().unwrap().preference, Preference::Like);
+        assert_eq!(core.get_person(second).unwrap().unwrap().preference, Preference::None);
+        assert!(!core.get_person(second).unwrap().unwrap().favorite);
+    }
+
+    #[test]
     fn missing_person_reads_and_writes_are_rejected_consistently() {
         let core = memory_core();
         assert!(matches!(

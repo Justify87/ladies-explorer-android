@@ -89,6 +89,28 @@ class SearchRunStateTest {
         assertEquals(Preference.NONE, gridLikeTarget(Preference.LIKE))
     }
 
+    @Test fun gridLikeRejectsReplacedRowRunAndNavigationAndNeverReinterpretsClick() {
+        val row = card(2).copy(preference = Preference.DISLIKE)
+        val deck = DiscoverUiState(cards = listOf(row), actionSurface = ProfileActionSurface.GRID,
+            actionGeneration = 15, loading = false)
+        val local = SearchUiState()
+        val action = GridLikeAction(row, null, 15)
+        assertTrue(gridActionMatches(deck, local, action))
+        assertEquals(Preference.LIKE, gridLikeTarget(action.card.preference))
+        assertFalse(gridActionMatches(deck.copy(cards = listOf(row.copy(preference = Preference.LIKE))), local, action))
+        assertFalse(gridActionMatches(deck.copy(cards = listOf(row.copy(personId = 99L))), local, action))
+        assertFalse(gridActionMatches(deck.copy(actionGeneration = 16), local, action))
+        assertFalse(gridActionMatches(deck.copy(actionSurface = ProfileActionSurface.SAVED), local, action))
+        assertFalse(gridActionMatches(deck.copy(busy = true), local, action))
+        assertFalse(gridActionMatches(deck, local.copy(profileOpen = true), action))
+        val running = local.acceptRun(response(1), listOf(row))
+        val runAction = GridLikeAction(row, 1, 15)
+        assertTrue(gridActionMatches(deck, running, runAction))
+        assertFalse(gridActionMatches(deck, running.acceptRun(response(2), listOf(row)), runAction))
+        assertFalse(gridActionMatches(deck, running.hideGridLike(row.listingId), runAction))
+        assertFalse(gridActionMatches(deck, running, action))
+    }
+
     @Test fun reprojectKeepsLoadedWindowAndUpdatedCursor() = runBlocking {
         val next = DiscoveryCursor(false, "2026-01-01", 2)
         val end = DiscoveryCursor(false, "2026-01-01", 4)
