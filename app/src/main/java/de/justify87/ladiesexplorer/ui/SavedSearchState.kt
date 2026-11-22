@@ -24,6 +24,13 @@ internal data class SavedSearchAckAction(
     val window: SavedResultWindow?,
     val generation: Long,
 )
+internal data class SavedSearchPaneAction(val generation: Long)
+internal data class SavedSearchRowAction(
+    val search: SavedSearchInfo,
+    val generation: Long,
+)
+internal data class SavedDialogAction(val dialog: SavedDialog, val generation: Long)
+internal data class SavedEditorAction(val editor: SavedEditor, val generation: Long)
 
 internal data class SavedResultWindow(
     val id: String,
@@ -46,7 +53,7 @@ internal data class SavedSearchUiState(
     val listError: String? = null,
     val windowError: String? = null,
     val resultDirty: Boolean = false,
-    val ackGeneration: Long = 0L,
+    val actionGeneration: Long = 0L,
 ) {
     val error get() = actionError ?: if (result != null) windowError ?: listError else listError
     val busy get() = operation != null
@@ -112,7 +119,7 @@ internal class SavedSearchController(
     private fun operation(kind: SavedOperation, clearError: Boolean = true, work: suspend () -> Unit) {
         kotlin.check(!state.value.busy)
         mutable.update { it.copy(operation = kind, actionError = if (clearError) null else it.actionError,
-            ackGeneration = it.ackGeneration + 1) }
+            actionGeneration = it.actionGeneration + 1) }
         scope.launch {
             try {
                 work()
@@ -175,7 +182,7 @@ internal class SavedSearchController(
     fun setVisible(value: Boolean) {
         if (visible != value) {
             visible = value
-            mutable.update { it.copy(ackGeneration = it.ackGeneration + 1) }
+            mutable.update { it.copy(actionGeneration = it.actionGeneration + 1) }
         }
         if (value) refreshDirtyWindow()
     }
@@ -190,9 +197,12 @@ internal class SavedSearchController(
             action.window.cards.any { it == action.card }
     }
 
-    fun open() {
-        if (!canOperate() || state.value.blockingNavigation) return
-        mutable.update { it.copy(overview = true, actionError = null) }
+    fun open(action: SavedSearchPaneAction) {
+        val s = state.value
+        if (!visible || !canOperate() || s.blockingNavigation ||
+            s.pane != SearchPane.Filters || s.actionGeneration != action.generation) return
+        mutable.update { it.copy(overview = true, actionError = null,
+            actionGeneration = it.actionGeneration + 1) }
         refresh()
     }
 
@@ -201,49 +211,76 @@ internal class SavedSearchController(
         when {
             s.operation == SavedOperation.Write -> Unit
             s.operation == SavedOperation.Check || s.operation == SavedOperation.Cancelling -> cancelCheck()
-            s.dialog != null -> dismissDialog()
+            s.dialog != null -> dismissCurrentDialog()
             s.result != null -> { readTicket++; mutable.update { it.copy(result = null, resultDirty = false,
-                windowError = null, actionError = null, ackGeneration = it.ackGeneration + 1) } }
+                windowError = null, actionError = null, actionGeneration = it.actionGeneration + 1) } }
             s.editor != null -> mutable.update { it.copy(editor = null, actionError = null,
-                ackGeneration = it.ackGeneration + 1) }
+                actionGeneration = it.actionGeneration + 1) }
             else -> { session++; mutable.update { it.copy(overview = false, actionError = null,
-                ackGeneration = it.ackGeneration + 1) } }
+                actionGeneration = it.actionGeneration + 1) } }
         }
     }
 
-    fun openEditor(id: String) {
+    private fun admittedRow(action: SavedSearchRowAction): SavedSearchInfo? {
         val s = state.value
-        val info = s.searches.firstOrNull { it.searchId == id && it.definitionSupported } ?: return
-        if (s.busy || !canOperate() || s.pane != SearchPane.SavedList) return
+        return action.search.takeIf { row ->
+            visible && canOperate() && !s.busy && s.listAvailable &&
+                s.pane == SearchPane.SavedList && s.dialog == null &&
+                s.actionGeneration == action.generation &&
+                s.searches.any { it === row }
+        }
+    }
+
+    fun openEditor(action: SavedSearchRowAction) {
+        val info = admittedRow(action)?.takeIf { it.definitionSupported } ?: return
+        val id = info.searchId
         val ticket = ++session
+        val generation = action.generation + 1
+        val stillCurrent = {
+            ticket == session && visible && canOperate() &&
+                state.value.pane == SearchPane.SavedList && state.value.actionGeneration == generation
+        }
         operation(SavedOperation.Editor) {
             val draft = try {
                 store.load(id)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
-                if (ticket == session) mutable.update { it.copy(actionError = failure.message ?: "Vorlage konnte nicht geladen werden") }
+                if (stillCurrent()) mutable.update { it.copy(actionError = failure.message ?: "Vorlage konnte nicht geladen werden") }
                 return@operation
             }
-            if (ticket == session && state.value.pane == SearchPane.SavedList) {
+            if (stillCurrent()) {
                 mutable.update { it.copy(editor = SavedEditor(id, ticket, info.name, draft)) }
             }
         }
     }
 
-    fun editDraft(change: (SearchDraft) -> SearchDraft) {
-        if (state.value.busy) return
-        mutable.update { s -> s.copy(editor = s.editor?.let { it.copy(draft = change(it.draft)) }) }
+    private fun admittedEditor(action: SavedEditorAction): SavedEditor? {
+        val s = state.value
+        return s.editor?.takeIf { editor ->
+            visible && !s.busy && canOperate() && s.pane == SearchPane.SavedEditor &&
+                s.actionGeneration == action.generation && editor.session == action.editor.session
+        }
     }
 
-    fun editName(name: String) {
-        if (state.value.busy) return
-        mutable.update { s -> s.copy(editor = s.editor?.copy(name = name)) }
+    fun editDraft(action: SavedEditorAction, change: (SearchDraft) -> SearchDraft) {
+        val editor = admittedEditor(action) ?: return
+        mutable.update { it.copy(editor = editor.copy(draft = change(editor.draft))) }
     }
 
-    fun saveEditor() {
-        val editor = state.value.editor ?: return
-        if (state.value.busy || !canOperate()) return
+    fun editName(action: SavedEditorAction, name: String) {
+        val editor = admittedEditor(action) ?: return
+        mutable.update { it.copy(editor = editor.copy(name = name)) }
+    }
+
+    fun cancelEditor(action: SavedEditorAction) {
+        if (admittedEditor(action) != null) back()
+    }
+
+    fun saveEditor(action: SavedEditorAction) {
+        val editor = admittedEditor(action) ?: return
+        if (editor !== action.editor || editor.name.isBlank() ||
+            editor.name.length > 100 || editor.draft.city.isBlank()) return
         operation(SavedOperation.Write) {
             store.update(editor.id, editor.name, editor.draft)
             mutable.update { it.copy(editor = null) }
@@ -251,30 +288,52 @@ internal class SavedSearchController(
         }
     }
 
-    fun showDialog(kind: SavedDialogKind, id: String? = null) {
+    fun showCreateDialog(action: SavedSearchPaneAction) {
         val s = state.value
-        if (s.busy || !canOperate() || s.pane != SearchPane.SavedList) return
-        val draft = if (kind == SavedDialogKind.Create) ordinaryDraft() else null
-        val name = if (draft != null) "${draft.city} · ${draft.radiusKm} km"
-            else s.searches.firstOrNull { it.searchId == id }?.name ?: return
-        mutable.update { it.copy(dialog = SavedDialog(kind, id, name, draft), actionError = null,
-            ackGeneration = it.ackGeneration + 1) }
+        if (!visible || s.busy || !s.listAvailable || !canOperate() ||
+            s.pane != SearchPane.SavedList || s.dialog != null ||
+            s.actionGeneration != action.generation) return
+        val draft = ordinaryDraft()
+        mutable.update { it.copy(dialog = SavedDialog(SavedDialogKind.Create, null,
+                "${draft.city} · ${draft.radiusKm} km", draft), actionError = null,
+            actionGeneration = it.actionGeneration + 1) }
     }
 
-    fun dialogName(name: String) {
-        if (state.value.busy) return
-        mutable.update { it.copy(dialog = it.dialog?.copy(name = name)) }
+    fun showDialog(kind: SavedDialogKind, action: SavedSearchRowAction) {
+        if (kind == SavedDialogKind.Create) return
+        val info = admittedRow(action) ?: return
+        mutable.update { it.copy(dialog = SavedDialog(kind, info.searchId, info.name), actionError = null,
+            actionGeneration = it.actionGeneration + 1) }
     }
 
-    fun dismissDialog() {
+    private fun admittedDialog(action: SavedDialogAction): SavedDialog? {
+        val s = state.value
+        return s.dialog?.takeIf { dialog ->
+            visible && !s.busy && canOperate() && s.pane == SearchPane.SavedList &&
+                s.actionGeneration == action.generation &&
+                dialog.kind == action.dialog.kind && dialog.id == action.dialog.id
+        }
+    }
+
+    fun dialogName(action: SavedDialogAction, name: String) {
+        val dialog = admittedDialog(action) ?: return
+        mutable.update { it.copy(dialog = dialog.copy(name = name)) }
+    }
+
+    private fun dismissCurrentDialog() {
         if (state.value.operation == SavedOperation.Write || state.value.dialog == null) return
         mutable.update { it.copy(dialog = null, actionError = null,
-            ackGeneration = it.ackGeneration + 1) }
+            actionGeneration = it.actionGeneration + 1) }
     }
 
-    fun confirmDialog() {
-        val dialog = state.value.dialog ?: return
-        if (state.value.busy || !canOperate()) return
+    fun dismissDialog(action: SavedDialogAction) {
+        if (admittedDialog(action) != null) dismissCurrentDialog()
+    }
+
+    fun confirmDialog(action: SavedDialogAction) {
+        val s = state.value
+        val dialog = s.dialog ?: return
+        if (admittedDialog(action) == null || dialog !== action.dialog) return
         operation(SavedOperation.Write) {
             when (dialog.kind) {
                 SavedDialogKind.Create -> store.create(dialog.name, requireNotNull(dialog.draft))
@@ -293,7 +352,7 @@ internal class SavedSearchController(
     fun acknowledge(action: SavedSearchAckAction) {
         val s = state.value
         if (s.busy || !canOperate() || !visible || s.dialog != null ||
-            s.ackGeneration != action.generation) return
+            s.actionGeneration != action.generation) return
         if (action.window == null) {
             if (s.pane != SearchPane.SavedList) return
         } else if (s.pane != SearchPane.SavedResults || s.result !== action.window ||
@@ -317,8 +376,8 @@ internal class SavedSearchController(
         }
     }
 
-    fun openResults(id: String) {
-        if (state.value.busy || !canOperate() || state.value.pane != SearchPane.SavedList) return
+    fun openResults(action: SavedSearchRowAction) {
+        val id = admittedRow(action)?.searchId ?: return
         mutable.update { it.copy(result = SavedResultWindow(id), resultDirty = false, windowError = null, actionError = null) }
         readWindow(id, limits[id] ?: 100u)
     }
@@ -358,9 +417,8 @@ internal class SavedSearchController(
         }
     }
 
-    fun check(id: String) {
-        val s = state.value
-        if (s.busy || !canOperate() || s.searches.none { it.searchId == id && it.definitionSupported }) return
+    fun check(action: SavedSearchRowAction) {
+        val id = admittedRow(action)?.takeIf { it.definitionSupported }?.searchId ?: return
         val request = store.prepareCheck(id)
         control = request
         operation(SavedOperation.Check) {

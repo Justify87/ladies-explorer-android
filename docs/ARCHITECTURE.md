@@ -235,6 +235,7 @@ Fachliche Fälle/Fehler: [PRODUCT](PRODUCT.md#gespeicherte-personen).
 ### Gespeicherte Suchen
 
 **Zuständigkeiten:** `SavedSearchController` besitzt Liste, Template-Session, Editor, Dialoge, Ergebnisfenster und Operationen. Rust besitzt validierte Definitionen, Mitgliedschaft des letzten vollständigen Laufs, Delta-/Membership-Historie sowie revisionierte Rename-/Ack-Operationen.
+- Einstieg in die gespeicherte Suchübersicht und das Anlegen einer Definition binden die gerenderte Pane-/Aktionsgeneration; Zeilenaktionen (Öffnen, Prüfen, Ändern, Umbenennen, Löschen) zusätzlich die aktuelle Zeileninstanz. Editor-Eingaben/Abbruch binden die Editor-Session, Speichern zusätzlich den exakt gerenderten Editorstand und die Eingabevalidierung. Dialog-Eingaben/Abbruch binden die Dialoggeneration, Bestätigungen zusätzlich die Dialoginstanz. Veraltete Aktionen nach Reload, Pane-/Dialog-/Lifecycle-Wechsel erreichen keine fremde Ansicht, Quellen- oder Schreiboperation; verspätete Editor-Reads und deren Fehler dürfen keinen fremden Kontext überschreiben. Rust bleibt für Definition/Version/Delta-Commit autoritativ.
 - Regulärer Entwurf und gespeicherte Definition verwenden denselben typisierten `SearchDraft`/Filtereditor; JSON nur an Core-Schnittstellen.
 - Unveränderte Definitionen bleiben byte-identisch. `SearchDraft.from(query, local)` und Updates mit beiden typisierten Anteilen erhalten unterstützte lokale Filter bei reinen Quellenparameteränderungen.
 

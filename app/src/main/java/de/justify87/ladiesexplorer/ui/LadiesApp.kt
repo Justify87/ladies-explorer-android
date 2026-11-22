@@ -195,6 +195,8 @@ fun LadiesApp(
     }
 
     val pane = saved.pane
+    val renderedPaneAction = SavedSearchPaneAction(saved.actionGeneration)
+    val renderedEditorAction = saved.editor?.let { SavedEditorAction(it, saved.actionGeneration) }
     LaunchedEffect(savedSearchRouteVisible, lifecycle) {
         viewModel.savedSearch.setVisible(savedSearchRouteVisible &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -266,7 +268,7 @@ fun LadiesApp(
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
                         }
                     } else if (route.root == RootDestination.Search && pane == SearchPane.Filters) {
-                        IconButton(onClick = viewModel.savedSearch::open, enabled = !search.loading && !saved.blockingNavigation && !home.loading && !discovery.busy) {
+                        IconButton(onClick = { viewModel.savedSearch.open(renderedPaneAction) }, enabled = !search.loading && !saved.blockingNavigation && !home.loading && !discovery.busy) {
                             BadgedBox(badge = { if (saved.searches.any { it.unreadNewResults }) Badge() }) {
                                 Icon(Icons.Default.Bookmarks, contentDescription = if (saved.searches.any { it.unreadNewResults })
                                     "Gespeicherte Suchen, neue Ergebnisse" else "Gespeicherte Suchen")
@@ -436,14 +438,19 @@ fun LadiesApp(
                     else -> SearchScreen(
                         search = search, saved = saved,
                         canStartSearch = !home.loading && !discovery.busy,
-                        onDraftChange = if (pane == SearchPane.SavedEditor) viewModel.savedSearch::editDraft else viewModel::editSearchDraft,
+                        onDraftChange = if (pane == SearchPane.SavedEditor) {
+                            { change ->
+                                renderedEditorAction?.let { viewModel.savedSearch.editDraft(it, change) }
+                                Unit
+                            }
+                        } else viewModel::editSearchDraft,
                         onReset = viewModel::resetSearchDraft,
                         onPreviewTarget = viewModel::setPreviewTarget,
                         onSearch = { viewModel.startSearch() },
                         onCancelSearch = viewModel::cancelActiveSearch,
                         onSave = viewModel.savedSearch::saveEditor,
-                        onName = viewModel.savedSearch::editName,
-                        onCancelEdit = viewModel.savedSearch::back,
+                        onName = { name -> renderedEditorAction?.let { viewModel.savedSearch.editName(it, name) } },
+                        onCancelEdit = { renderedEditorAction?.let { viewModel.savedSearch.cancelEditor(it) } },
                         generation = discovery.actionGeneration,
                         onProfile = viewModel::openSearchResultProfile,
                         modifier = modifier,

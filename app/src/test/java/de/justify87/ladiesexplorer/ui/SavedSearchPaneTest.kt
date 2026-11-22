@@ -17,6 +17,8 @@ class SavedSearchPaneTest {
         var list = listOf(item)
         var cards = emptyList<SavedSearchCard>()
         var loaded = SearchDraft(city = "Dresden", selectedFilters = mapOf("zeiten" to setOf("jetzt geöffnet")))
+        var onLoad: suspend () -> Unit = {}
+        var loads = 0
         var writeError = false
         var windowError = false
         var readError = false
@@ -33,7 +35,11 @@ class SavedSearchPaneTest {
             if (readError) error("read failed")
             return list
         }
-        override suspend fun load(id: String) = loaded
+        override suspend fun load(id: String): SearchDraft {
+            loads++
+            onLoad()
+            return loaded
+        }
         override suspend fun window(id: String, limit: UInt): SavedSearchWindow {
             windows += limit
             // Capture the DB snapshot before delaying delivery to the UI.
@@ -54,8 +60,12 @@ class SavedSearchPaneTest {
             return accepted
         }
         var onCheck: suspend () -> Unit = {}
+        val preparedChecks = mutableListOf<String>()
         var cancels = 0
-        override fun prepareCheck(id: String) = SavedCheck({ onCheck() }, { cancels++ })
+        override fun prepareCheck(id: String): SavedCheck {
+            preparedChecks += id
+            return SavedCheck({ onCheck() }, { cancels++ })
+        }
         private suspend fun write() {
             onWrite()
             if (writeError) error("write failed")
@@ -71,11 +81,28 @@ class SavedSearchPaneTest {
         withTimeout(5_000) { c.state.first { !it.busy } }
     }
 
+    private fun paneAction(c: SavedSearchController) = SavedSearchPaneAction(c.state.value.actionGeneration)
+
+    private fun row(c: SavedSearchController, id: String = "one"): SavedSearchRowAction {
+        val state = c.state.value
+        return SavedSearchRowAction(state.searches.single { it.searchId == id }, state.actionGeneration)
+    }
+
+    private fun dialogAction(c: SavedSearchController): SavedDialogAction {
+        val state = c.state.value
+        return SavedDialogAction(requireNotNull(state.dialog), state.actionGeneration)
+    }
+
+    private fun editorAction(c: SavedSearchController): SavedEditorAction {
+        val state = c.state.value
+        return SavedEditorAction(requireNotNull(state.editor), state.actionGeneration)
+    }
+
     private fun ack(c: SavedSearchController): SavedSearchAckAction {
         val s = c.state.value
         val info = s.searches.single { it.searchId == "one" }
         return SavedSearchAckAction(info.searchId, s.result?.revision ?: info.revision,
-            s.result, s.ackGeneration)
+            s.result, s.actionGeneration)
     }
 
     @Test(timeout = 15_000) fun ordinaryDraftAndEditorAreIndependentAndCancelDoesNotSerialize() = runBlocking {
@@ -83,10 +110,10 @@ class SavedSearchPaneTest {
             selectedFilters = mapOf("figur" to setOf("schlank")))
         val fake = Fake(info())
         val c = controller(this, fake, ordinary)
-        c.open(); idle(c)
-        c.openEditor("one"); idle(c)
+        c.open(paneAction(c)); idle(c)
+        c.openEditor(row(c)); idle(c)
         assertEquals(SearchPane.SavedEditor, c.state.value.pane)
-        c.editDraft { it.copy(city = "Hamburg").toggle("zeiten", "heute geöffnet") }
+        c.editDraft(editorAction(c)) { it.copy(city = "Hamburg").toggle("zeiten", "heute geöffnet") }
         assertEquals("Hamburg", c.state.value.editor!!.draft.city)
         assertEquals(AvailabilityMode.Today, availabilityMode(c.state.value.editor!!.draft.selectedFilters))
         assertEquals(AvailabilityMode.All, availabilityMode(ordinary.selectedFilters))
@@ -96,9 +123,9 @@ class SavedSearchPaneTest {
         assertEquals(setOf("schlank"), ordinary.selectedFilters["figur"])
         assertEquals("Dresden", fake.loaded.city)
         assertEquals(0, fake.writes)
-        c.openEditor("one"); idle(c)
-        c.editDraft { it.copy(city = "Köln") }
-        c.saveEditor(); idle(c)
+        c.openEditor(row(c)); idle(c)
+        c.editDraft(editorAction(c)) { it.copy(city = "Köln") }
+        c.saveEditor(editorAction(c)); idle(c)
         assertEquals("Köln", fake.loaded.city)
         assertEquals(" Berlin ", ordinary.city)
         assertNull(c.state.value.editor)
@@ -107,11 +134,11 @@ class SavedSearchPaneTest {
     @Test(timeout = 15_000) fun refreshCannotRaceWriteAndCommittedWriteIsNotRetriedOnReadFailure() = runBlocking {
         val fake = Fake(info())
         val c = controller(this, fake)
-        c.open(); idle(c)
-        c.showDialog(SavedDialogKind.Rename, "one")
-        c.dialogName("New")
+        c.open(paneAction(c)); idle(c)
+        c.showDialog(SavedDialogKind.Rename, row(c))
+        c.dialogName(dialogAction(c), "New")
         fake.writeError = true
-        c.confirmDialog(); idle(c)
+        c.confirmDialog(dialogAction(c)); idle(c)
         assertEquals("New", c.state.value.dialog?.name)
         assertEquals(SavedDialogKind.Rename, c.state.value.dialog?.kind)
         fake.writeError = false
@@ -119,10 +146,10 @@ class SavedSearchPaneTest {
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
         fake.onWrite = { started.complete(Unit); gate.awaitSignal() }
-        c.confirmDialog(); started.awaitSignal()
+        c.confirmDialog(dialogAction(c)); started.awaitSignal()
         c.refresh()
         assertEquals(SavedOperation.Write, c.state.value.operation)
-        c.confirmDialog()
+        c.confirmDialog(dialogAction(c))
         gate.complete(Unit); idle(c)
         assertEquals(1, fake.writes)
         assertEquals(2, fake.renames)
@@ -133,20 +160,20 @@ class SavedSearchPaneTest {
     @Test(timeout = 15_000) fun staleWindowAfterBackCannotAcknowledgeAndReopeningReadsLoadedPrefix() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
-        c.open(); idle(c)
+        c.open(paneAction(c)); idle(c)
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
         fake.onRead = { started.complete(Unit); gate.awaitSignal() }
-        c.openResults("one"); started.awaitSignal()
+        c.openResults(row(c)); started.awaitSignal()
         c.back()
         gate.complete(Unit); idle(c)
         assertNull(c.state.value.result)
         assertEquals(0, fake.acknowledgements)
         fake.onRead = {}
-        c.openResults("one"); idle(c)
+        c.openResults(row(c)); idle(c)
         c.more(); idle(c); c.more(); idle(c)
         c.back()
-        c.openResults("one"); idle(c)
+        c.openResults(row(c)); idle(c)
         assertEquals(listOf(100u, 100u, 200u, 300u, 300u), fake.windows)
         assertTrue(c.state.value.result!!.ready)
         assertEquals(0, fake.acknowledgements)
@@ -160,14 +187,14 @@ class SavedSearchPaneTest {
         val started = CompletableDeferred<Unit>()
         fake.onCheck = { started.complete(Unit); gate.awaitSignal() }
         var finished = 0
-        val c = SavedSearchController(this, fake, { true }, { SearchDraft() }, { finished++ })
-        c.open(); idle(c)
-        c.check("one"); started.awaitSignal()
+        val c = SavedSearchController(this, fake, { true }, { SearchDraft() }, { finished++ }).apply { setVisible(true) }
+        c.open(paneAction(c)); idle(c)
+        c.check(row(c)); started.awaitSignal()
         c.cancelCheck()
         assertEquals(SavedOperation.Cancelling, c.state.value.operation)
         assertEquals(1, fake.cancels)
         c.refresh()
-        c.check("one")
+        c.check(row(c))
         assertEquals(0, finished)
         gate.complete(Unit); idle(c)
         assertFalse(c.state.value.busy)
@@ -178,11 +205,11 @@ class SavedSearchPaneTest {
     @Test(timeout = 15_000) fun hiddenWindowDoesNotAcknowledgeUntilExplicitVisibleAction() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
-        c.open(); idle(c)
+        c.open(paneAction(c)); idle(c)
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
         fake.onRead = { started.complete(Unit); gate.awaitSignal() }
-        c.openResults("one"); started.awaitSignal()
+        c.openResults(row(c)); started.awaitSignal()
         c.setVisible(false)
         gate.complete(Unit); idle(c)
         assertTrue(c.state.value.result!!.ready)
@@ -206,8 +233,8 @@ class SavedSearchPaneTest {
         val updated = initial.copy(personId = 3L, localPath = "/fixture/image.jpg")
         val fake = Fake(info()).apply { cards = listOf(initial) }
         val c = controller(this, fake)
-        c.open(); idle(c)
-        c.openResults("one"); idle(c)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
         fake.onRead = { started.complete(Unit); gate.awaitSignal() }
@@ -229,8 +256,8 @@ class SavedSearchPaneTest {
         val card = fixtureCard()
         val fake = Fake(info()).apply { cards = listOf(card) }
         val c = controller(this, fake)
-        c.open(); idle(c)
-        c.openResults("one"); idle(c)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
         c.more(); idle(c)
         assertEquals(listOf(card), c.state.value.result!!.cards)
         fake.windowError = true
@@ -252,8 +279,8 @@ class SavedSearchPaneTest {
         val fake = Fake(info(unread = true))
         fake.acceptAck = false
         val c = controller(this, fake)
-        c.open(); idle(c)
-        c.openResults("one"); idle(c)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
         c.acknowledge(ack(c)); idle(c)
         assertEquals(1, fake.acknowledgements)
         assertTrue(c.state.value.searches.single().unreadNewResults)
@@ -262,8 +289,8 @@ class SavedSearchPaneTest {
     @Test(timeout = 15_000) fun hiddenInvalidationsCoalesceAndSuccessfulReadClearsOnlyItsError() = runBlocking {
         val fake = Fake(info()).apply { cards = listOf(fixtureCard()) }
         val c = controller(this, fake)
-        c.open(); idle(c)
-        c.openResults("one"); idle(c)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
         fake.windowError = true
         c.refreshResultProjection(); idle(c)
         assertNotNull(c.state.value.windowError)
@@ -284,8 +311,8 @@ class SavedSearchPaneTest {
     @Test(timeout = 15_000) fun explicitAckUsesDisplayedRevisionEvenIfVisibilityChangesDuringIo() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
-        c.open(); idle(c)
-        c.openResults("one"); idle(c)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
         val displayed = ack(c)
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
@@ -314,8 +341,8 @@ class SavedSearchPaneTest {
         val card = fixtureCard()
         val fake = Fake(info()).apply { cards = listOf(card) }
         val c = controller(this, fake)
-        c.open(); idle(c)
-        c.openResults("one"); idle(c)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
         val shown = c.state.value.result!!
         val click = SavedSearchProfileOpenAction(shown, card, 12)
         assertTrue(c.admitsProfileOpen(click))
@@ -348,8 +375,8 @@ class SavedSearchPaneTest {
     @Test(timeout = 15_000) fun successfulAcknowledgementWithFailedListReadIsNotRepeatedByRefresh() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
-        c.open(); idle(c)
-        c.openResults("one"); idle(c)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
         fake.onAck = { fake.readError = true }
         c.acknowledge(ack(c)); idle(c)
         assertEquals(1, fake.acknowledgements)
@@ -368,9 +395,9 @@ class SavedSearchPaneTest {
     @Test(timeout = 15_000) fun acknowledgementCannotCrossOverviewAndResultPanes() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
-        c.open(); idle(c)
+        c.open(paneAction(c)); idle(c)
         val overview = ack(c)
-        c.openResults("one"); idle(c)
+        c.openResults(row(c)); idle(c)
         c.acknowledge(overview)
         assertEquals(0, fake.acknowledgements)
 
@@ -387,8 +414,8 @@ class SavedSearchPaneTest {
     @Test(timeout = 15_000) fun acknowledgementRejectsOldReadsVisibilityAndModalCallbacks() = runBlocking {
         val fake = Fake(info(unread = true))
         val c = controller(this, fake)
-        c.open(); idle(c)
-        c.openResults("one"); idle(c)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
         val oldWindow = ack(c)
         c.retryResults(); idle(c)
         c.acknowledge(oldWindow)
@@ -402,13 +429,277 @@ class SavedSearchPaneTest {
 
         c.back()
         val beforeModal = ack(c)
-        c.showDialog(SavedDialogKind.Rename, "one")
+        c.showDialog(SavedDialogKind.Rename, row(c))
         c.acknowledge(beforeModal)
-        c.dismissDialog()
+        c.dismissDialog(dialogAction(c))
         c.acknowledge(beforeModal)
         assertEquals(0, fake.acknowledgements)
 
         c.acknowledge(ack(c)); idle(c)
         assertEquals(1, fake.acknowledgements)
+    }
+
+    @Test(timeout = 15_000) fun savedSearchRowCommandsRejectHiddenAndReplacedPanes() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        val previous = row(c)
+        c.setVisible(false)
+        c.check(previous)
+        c.openEditor(previous)
+        c.openResults(previous)
+        c.showDialog(SavedDialogKind.Rename, previous)
+        c.showDialog(SavedDialogKind.Delete, previous)
+        assertTrue(fake.preparedChecks.isEmpty())
+        assertEquals(0, fake.loads)
+        assertTrue(fake.windows.isEmpty())
+        assertNull(c.state.value.dialog)
+        assertEquals(SearchPane.SavedList, c.state.value.pane)
+
+        c.setVisible(true)
+        c.check(previous)
+        c.openResults(previous)
+        assertTrue(fake.preparedChecks.isEmpty())
+        assertTrue(fake.windows.isEmpty())
+
+        c.back()
+        c.check(row(c))
+        c.openResults(row(c))
+        assertEquals(SearchPane.Filters, c.state.value.pane)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(previous)
+        assertNull(c.state.value.result)
+        c.openResults(row(c)); idle(c)
+        assertEquals(listOf(100u), fake.windows)
+        assertEquals(SearchPane.SavedResults, c.state.value.pane)
+    }
+
+    @Test(timeout = 15_000) fun savedSearchRowActionsRevokeOnRefreshModalAndBusyOperation() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        val beforeRefresh = row(c)
+        c.refresh(); idle(c)
+        c.check(beforeRefresh)
+        c.openEditor(beforeRefresh)
+        c.showDialog(SavedDialogKind.Delete, beforeRefresh)
+        assertTrue(fake.preparedChecks.isEmpty())
+        assertEquals(0, fake.loads)
+        assertNull(c.state.value.dialog)
+
+        val beforeDialog = row(c)
+        c.showDialog(SavedDialogKind.Rename, beforeDialog)
+        assertEquals(SavedDialogKind.Rename, c.state.value.dialog?.kind)
+        c.check(beforeDialog)
+        c.openResults(beforeDialog)
+        c.openEditor(beforeDialog)
+        assertTrue(fake.preparedChecks.isEmpty())
+        assertEquals(0, fake.loads)
+        assertTrue(fake.windows.isEmpty())
+        c.dismissDialog(dialogAction(c))
+        c.check(beforeDialog)
+        assertTrue(fake.preparedChecks.isEmpty())
+
+        val gate = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        fake.onCheck = { started.complete(Unit); gate.awaitSignal() }
+        c.check(row(c)); started.awaitSignal()
+        c.check(row(c))
+        c.openResults(row(c))
+        assertEquals(listOf("one"), fake.preparedChecks)
+        assertTrue(fake.windows.isEmpty())
+        c.cancelCheck()
+        gate.complete(Unit); idle(c)
+        assertEquals(1, fake.cancels)
+    }
+
+    @Test(timeout = 15_000) fun unsupportedSavedDefinitionAllowsResultsButNotExecutionOrEditing() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        val old = row(c)
+        fake.list = listOf(info().copy(definitionSupported = false))
+        c.refresh(); idle(c)
+        c.check(old)
+        c.showDialog(SavedDialogKind.Delete, old)
+        assertNull(c.state.value.dialog)
+        val current = row(c)
+        c.check(current)
+        c.openEditor(current)
+        assertTrue(fake.preparedChecks.isEmpty())
+        assertEquals(0, fake.loads)
+        c.openResults(current); idle(c)
+        assertEquals(SearchPane.SavedResults, c.state.value.pane)
+        assertEquals(listOf(100u), fake.windows)
+    }
+
+    @Test(timeout = 15_000) fun lateSavedEditorReadCannotOpenAfterVisibilityRoundTrip() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        val gate = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        fake.onLoad = { started.complete(Unit); gate.awaitSignal() }
+        val previous = row(c)
+        c.openEditor(previous); started.awaitSignal()
+        c.setVisible(false)
+        c.setVisible(true)
+        gate.complete(Unit); idle(c)
+        assertNull(c.state.value.editor)
+        assertEquals(SearchPane.SavedList, c.state.value.pane)
+        c.openEditor(previous)
+        assertNull(c.state.value.editor)
+        fake.onLoad = {}
+        c.openEditor(row(c)); idle(c)
+        assertNotNull(c.state.value.editor)
+        assertEquals(2, fake.loads)
+    }
+
+    @Test(timeout = 15_000) fun savedDialogConfirmationRequiresCurrentRenderedDialog() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.showDialog(SavedDialogKind.Rename, row(c))
+        val oldName = dialogAction(c)
+        c.dialogName(dialogAction(c), "Updated")
+        c.confirmDialog(oldName)
+        assertEquals(0, fake.writes)
+
+        val beforeStop = dialogAction(c)
+        c.setVisible(false)
+        c.confirmDialog(beforeStop)
+        c.setVisible(true)
+        c.confirmDialog(beforeStop)
+        assertEquals(0, fake.writes)
+        assertEquals("Updated", c.state.value.dialog?.name)
+        c.confirmDialog(dialogAction(c)); idle(c)
+        assertEquals(1, fake.writes)
+        assertNull(c.state.value.dialog)
+    }
+
+    @Test(timeout = 15_000) fun savedEditorWriteRejectsHiddenAndOldSessionCallbacks() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.openEditor(row(c)); idle(c)
+        val beforeStop = editorAction(c)
+        c.setVisible(false)
+        c.saveEditor(beforeStop)
+        c.setVisible(true)
+        c.saveEditor(beforeStop)
+        assertEquals(0, fake.writes)
+        c.saveEditor(editorAction(c)); idle(c)
+        assertEquals(1, fake.writes)
+        assertNull(c.state.value.editor)
+    }
+
+    @Test(timeout = 15_000) fun lateSavedEditorErrorDoesNotLeakIntoNewSurface() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        val gate = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        fake.onLoad = { started.complete(Unit); gate.awaitSignal(); error("stale read failure") }
+        c.openEditor(row(c)); started.awaitSignal()
+        c.setVisible(false)
+        gate.complete(Unit); idle(c)
+        assertNull(c.state.value.editor)
+        assertNull(c.state.value.actionError)
+        assertEquals(SearchPane.SavedList, c.state.value.pane)
+    }
+
+    @Test(timeout = 15_000) fun staleSavedEditorInputAndCancelCannotModifyReplacementEditor() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.openEditor(row(c)); idle(c)
+        val previous = editorAction(c)
+        c.cancelEditor(previous)
+        assertNull(c.state.value.editor)
+        c.openEditor(row(c)); idle(c)
+        val current = editorAction(c)
+        c.editName(previous, "Unexpected")
+        c.editDraft(previous) { it.copy(city = "Unexpected") }
+        c.cancelEditor(previous)
+        assertEquals(current.editor, c.state.value.editor)
+        assertEquals("one", c.state.value.editor?.name)
+        assertEquals("Dresden", c.state.value.editor?.draft?.city)
+        c.editName(current, "Valid")
+        c.editDraft(current) { it.copy(city = "Köln") }
+        assertEquals("Valid", c.state.value.editor?.name)
+        assertEquals("Köln", c.state.value.editor?.draft?.city)
+    }
+
+    @Test(timeout = 15_000) fun savedEditorSaveRejectsObsoleteSnapshotAndInvalidDraft() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.openEditor(row(c)); idle(c)
+        val previous = editorAction(c)
+        c.editName(previous, "Changed")
+        c.saveEditor(previous)
+        assertEquals(0, fake.writes)
+        val renamed = editorAction(c)
+        c.editDraft(renamed) { it.copy(city = "   ") }
+        c.saveEditor(editorAction(c))
+        assertEquals(0, fake.writes)
+        c.editDraft(editorAction(c)) { it.copy(city = "Berlin") }
+        c.editName(editorAction(c), " ")
+        c.saveEditor(editorAction(c))
+        assertEquals(0, fake.writes)
+        c.editName(editorAction(c), "Valid")
+        c.saveEditor(editorAction(c)); idle(c)
+        assertEquals(1, fake.writes)
+        assertEquals("Berlin", fake.loaded.city)
+    }
+
+    @Test(timeout = 15_000) fun delayedDialogTextAndDismissCannotAlterReplacementDialog() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.showDialog(SavedDialogKind.Rename, row(c))
+        val stale = dialogAction(c)
+        c.dismissDialog(stale)
+        c.showDialog(SavedDialogKind.Delete, row(c))
+        val current = dialogAction(c)
+        c.dialogName(stale, "Unexpected")
+        c.dismissDialog(stale)
+        assertEquals(current.dialog, c.state.value.dialog)
+        assertEquals(SavedDialogKind.Delete, c.state.value.dialog?.kind)
+        c.dismissDialog(current)
+        assertNull(c.state.value.dialog)
+    }
+
+    @Test(timeout = 15_000) fun savedSearchOverviewEntryRejectsCallbacksFromPreviousVisibility() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        val previous = paneAction(c)
+        c.setVisible(false)
+        c.open(previous)
+        assertEquals(SearchPane.Filters, c.state.value.pane)
+        c.setVisible(true)
+        c.open(previous)
+        assertEquals(SearchPane.Filters, c.state.value.pane)
+        c.open(paneAction(c)); idle(c)
+        assertEquals(SearchPane.SavedList, c.state.value.pane)
+    }
+
+    @Test(timeout = 15_000) fun savedSearchCreateDialogRequiresRenderedListGeneration() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        val stale = paneAction(c)
+        c.setVisible(false)
+        c.showCreateDialog(stale)
+        assertNull(c.state.value.dialog)
+        c.setVisible(true)
+        c.showCreateDialog(stale)
+        assertNull(c.state.value.dialog)
+        c.showCreateDialog(paneAction(c))
+        assertEquals(SavedDialogKind.Create, c.state.value.dialog?.kind)
+        c.dialogName(dialogAction(c), "New template")
+        c.confirmDialog(dialogAction(c)); idle(c)
+        assertEquals(1, fake.writes)
+        assertNull(c.state.value.dialog)
     }
 }

@@ -38,7 +38,7 @@ internal fun SavedSearchOverview(
     state.dialog?.let { dialog ->
         val deleting = dialog.kind == SavedDialogKind.Delete
         AlertDialog(
-            onDismissRequest = controller::dismissDialog,
+            onDismissRequest = { controller.dismissDialog(SavedDialogAction(dialog, state.actionGeneration)) },
             title = { Text(when (dialog.kind) {
                 SavedDialogKind.Create -> "Aktuelle Filter speichern"
                 SavedDialogKind.Rename -> "Suche umbenennen"
@@ -47,24 +47,24 @@ internal fun SavedSearchOverview(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (deleting) Text(dialog.name)
-                    else OutlinedTextField(dialog.name, controller::dialogName, label = { Text("Name") },
+                    else OutlinedTextField(dialog.name, { name -> controller.dialogName(SavedDialogAction(dialog, state.actionGeneration), name) }, label = { Text("Name") },
                         singleLine = true, enabled = !state.busy)
                     state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (state.operation == SavedOperation.Write) LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
             },
-            confirmButton = { TextButton(onClick = controller::confirmDialog,
+            confirmButton = { TextButton(onClick = { controller.confirmDialog(SavedDialogAction(dialog, state.actionGeneration)) },
                 enabled = actions && (deleting || dialog.name.isNotBlank() && dialog.name.length <= 100)) {
                 Text(if (deleting) "Löschen" else "Speichern")
             } },
-            dismissButton = { TextButton(onClick = controller::dismissDialog, enabled = !state.blockingNavigation) { Text("Abbrechen") } },
+            dismissButton = { TextButton(onClick = { controller.dismissDialog(SavedDialogAction(dialog, state.actionGeneration)) }, enabled = !state.blockingNavigation) { Text("Abbrechen") } },
         )
     }
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { controller.showDialog(SavedDialogKind.Create) }, enabled = actions) { Text("Filter speichern") }
+                Button(onClick = { controller.showCreateDialog(SavedSearchPaneAction(state.actionGeneration)) }, enabled = actions) { Text("Filter speichern") }
                 TextButton(onClick = controller::refresh, enabled = !state.busy) { Text("Aktualisieren") }
             }
         }
@@ -80,6 +80,7 @@ internal fun SavedSearchOverview(
         if (state.dialog == null) state.error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
         if (state.listAvailable && state.searches.isEmpty() && !state.busy) item { Text("Noch keine gespeicherte Suche.") }
         items(state.searches, key = { it.searchId }) { saved ->
+            val rowAction = SavedSearchRowAction(saved, state.actionGeneration)
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -93,12 +94,12 @@ internal fun SavedSearchOverview(
                     if (saved.localFilterSummary.isNotBlank()) Text(saved.localFilterSummary, style = MaterialTheme.typography.bodySmall)
                     saved.lastError?.let { Text("Letzte Prüfung unvollständig/fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     FlowRow {
-                        TextButton(onClick = { controller.openResults(saved.searchId) }, enabled = actions) { Text("Öffnen") }
-                        TextButton(onClick = { controller.check(saved.searchId) }, enabled = actions && saved.definitionSupported) { Text("Prüfen") }
-                        TextButton(onClick = { controller.openEditor(saved.searchId) }, enabled = actions && saved.definitionSupported) { Text("Ändern") }
-                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Rename, saved.searchId) }, enabled = actions) { Text("Umbenennen") }
-                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Delete, saved.searchId) }, enabled = actions) { Text("Löschen") }
-                        if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(SavedSearchAckAction(saved.searchId, saved.revision, null, state.ackGeneration)) }, enabled = actions) { Text("Gelesen") }
+                        TextButton(onClick = { controller.openResults(rowAction) }, enabled = actions) { Text("Öffnen") }
+                        TextButton(onClick = { controller.check(rowAction) }, enabled = actions && saved.definitionSupported) { Text("Prüfen") }
+                        TextButton(onClick = { controller.openEditor(rowAction) }, enabled = actions && saved.definitionSupported) { Text("Ändern") }
+                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Rename, rowAction) }, enabled = actions) { Text("Umbenennen") }
+                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Delete, rowAction) }, enabled = actions) { Text("Löschen") }
+                        if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(SavedSearchAckAction(saved.searchId, saved.revision, null, state.actionGeneration)) }, enabled = actions) { Text("Gelesen") }
                     }
                 }
             }
@@ -150,7 +151,7 @@ internal fun SavedSearchResultsScreen(
                 Text("${result.cards.size} geladen · aktuelle lokale Profildaten", style = MaterialTheme.typography.bodySmall)
                 info?.lastError?.let { Text("Letzte Prüfung fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error) }
                 TextButton(onClick = onRetry, enabled = enabled && !state.busy) { Text("Aktualisieren") }
-                if (info?.unreadNewResults == true && result.revision != null) TextButton(onClick = { onAcknowledge(SavedSearchAckAction(result.id, result.revision, result, state.ackGeneration)) },
+                if (info?.unreadNewResults == true && result.revision != null) TextButton(onClick = { onAcknowledge(SavedSearchAckAction(result.id, result.revision, result, state.actionGeneration)) },
                     enabled = enabled && !state.busy) { Text("Als gelesen markieren") }
             }
         }
