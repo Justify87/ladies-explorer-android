@@ -50,6 +50,8 @@ data class DiscoverUiState(
     val savedPage: SavedPersonPage? = null,
     val savedRecent: SavedPersonPage? = null,
     val savedError: String? = null,
+    val actionSurface: ProfileActionSurface = ProfileActionSurface.NONE,
+    val actionGeneration: Long = 0L,
     val mutationError: String? = null,
     val nextCursor: DiscoveryCursor? = null,
     val activeRunId: Long? = null,
@@ -158,6 +160,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var discoveryEpoch = 0L
     private var swipeVisible = false
     private var renderedSwipe: SwipeActionToken? = null
+
+    internal fun setProfileActionSurface(surface: ProfileActionSurface) {
+        _discoverState.update { state ->
+            if (state.actionSurface == surface) state
+            else state.copy(actionSurface = surface, actionGeneration = state.actionGeneration + 1)
+        }
+    }
 
     internal fun setSwipeVisible(visible: Boolean) {
         if (swipeVisible == visible) return
@@ -483,7 +492,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(cards = swipeSession.queue(cards, active = true), canUndoSwipe = false, swipeRestore = null,
                         swipePresentationGeneration = it.swipePresentationGeneration + 1, nextCursor = null, activeRunId = result.searchRunId,
                         activeVisibleCount = cards.size, loading = false, loadingMore = false,
-                        savedLoadingMore = false, savedRecentLoadingMore = false, error = null)
+                        savedLoadingMore = false, savedRecentLoadingMore = false, error = null, actionGeneration = it.actionGeneration + 1)
                 }
                 _searchUiState.update { it.acceptRun(result, cards) }
                 acceptedRun = true
@@ -587,14 +596,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun selectSavedKind(kind: SavedPersonKind) {
         val state = _discoverState.value
         if (state.busy || state.loading || state.savedKind == kind) return
-        _discoverState.update { it.copy(savedKind = kind, savedPage = null, savedRecent = null) }
+        _discoverState.update { it.copy(savedKind = kind, savedPage = null, savedRecent = null,
+            actionGeneration = it.actionGeneration + 1) }
         refreshDiscovery()
     }
 
     fun selectSavedSort(sort: SavedPersonSort) {
         val state = _discoverState.value
         if (state.busy || state.loading || state.savedSort == sort) return
-        _discoverState.update { it.copy(savedSort = sort, savedPage = null, savedRecent = null) }
+        _discoverState.update { it.copy(savedSort = sort, savedPage = null, savedRecent = null,
+            actionGeneration = it.actionGeneration + 1) }
         refreshDiscovery()
     }
 
@@ -651,7 +662,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _discoverState.update {
                         val cards = swipeSession.queue(it.cards + page.cards, active = false)
                         localWindow = maxOf(localWindow, cards.size)
-                        it.copy(cards = cards, nextCursor = page.nextCursor, loadingMore = false)
+                        it.copy(cards = cards, nextCursor = page.nextCursor, loadingMore = false,
+                            actionGeneration = it.actionGeneration + 1)
                     }
                 }
             } catch (cancellation: CancellationException) {
@@ -687,7 +699,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
                         it.copy(savedPage = next.regular, savedRecent = next.recent,
-                            savedLoadingMore = false, savedRecentLoadingMore = false)
+                            savedLoadingMore = false, savedRecentLoadingMore = false,
+                            actionGeneration = it.actionGeneration + 1)
                     }
                 }
             } catch (cancel: CancellationException) {
@@ -814,18 +827,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _discoverState.update { it.copy(swipeRestore = null) }
     }
 
-    fun toggleGridLike(listingId: Long) {
+    fun toggleGridLike(action: GridLikeAction) {
         val state = _discoverState.value
         val search = _searchUiState.value
-        if (state.busy || state.loading || search.loading || search.actionBusy) return
-        val card = gridCards(state, search).firstOrNull { it.listingId == listingId } ?: return
+        if (!gridActionMatches(state, search, action)) return
+        val card = action.card
         val target = gridLikeTarget(card.preference)
-        val hide = search.response != null && target == Preference.LIKE
-        if (hide) _searchUiState.update { it.hideGridLike(listingId) }
+        val hide = action.runId != null && target == Preference.LIKE
+        if (hide) _searchUiState.update { it.hideGridLike(card.listingId) }
         mutateDiscovery("Like konnte nicht gespeichert werden", write = {
             core.setSwipePreference(card.listingId, card.personId, card.preference, target)
         }, onWriteFailure = {
-            if (hide) _searchUiState.update { it.restoreGridLike(listingId) }
+            if (hide) _searchUiState.update { it.restoreGridLike(card.listingId) }
         })
     }
 
@@ -877,17 +890,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
-    private fun admittedSavedPersonRow(row: SavedPersonRow): Boolean {
-        val state = _discoverState.value
-        if (state.busy || state.loading || _searchUiState.value.loading ||
-            _searchUiState.value.actionBusy) return false
-        val current = state.savedPage?.rows?.firstOrNull { it.personId == row.personId }
-            ?: state.savedRecent?.rows?.firstOrNull { it.personId == row.personId }
-        return savedActionMatches(current, row)
-    }
+    private fun admittedSavedPersonRow(action: SavedPersonAction): Boolean =
+        !_searchUiState.value.profileOpen && !_searchUiState.value.loading &&
+            !_searchUiState.value.actionBusy && savedActionMatches(_discoverState.value, action)
 
-    fun choosePreference(row: SavedPersonRow, preference: Preference) {
-        if (!admittedSavedPersonRow(row) || row.preference == preference) return
+    fun choosePreference(action: SavedPersonAction, preference: Preference) {
+        if (!admittedSavedPersonRow(action) || action.row.preference == preference) return
+        val row = action.row
         _searchUiState.update { it.copy(actionError = null) }
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
             val listing = row.card?.listingId
@@ -900,8 +909,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
-    fun toggleFavorite(row: SavedPersonRow) {
-        if (!admittedSavedPersonRow(row)) return
+    fun toggleFavorite(action: SavedPersonAction) {
+        if (!admittedSavedPersonRow(action)) return
+        val row = action.row
         _searchUiState.update { it.copy(actionError = null) }
         mutateDiscovery("Favorit konnte nicht geändert werden", write = {
             val listing = row.card?.listingId

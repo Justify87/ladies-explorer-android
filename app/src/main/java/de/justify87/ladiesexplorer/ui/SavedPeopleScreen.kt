@@ -37,8 +37,8 @@ internal fun SavedPeopleScreen(
     onSort: (SavedPersonSort) -> Unit,
     onRefresh: () -> Unit,
     onProfile: (Long, Long) -> Unit,
-    onFavorite: (SavedPersonRow) -> Unit,
-    onPreference: (SavedPersonRow, Preference) -> Unit,
+    onFavorite: (SavedPersonAction) -> Unit,
+    onPreference: (SavedPersonAction, Preference) -> Unit,
     onLoadMore: () -> Unit,
     onLoadMoreRecent: () -> Unit,
     onCheckAll: () -> Unit,
@@ -146,7 +146,8 @@ internal fun SavedPeopleScreen(
                         Text("Neu & geändert", style = MaterialTheme.typography.titleMedium)
                     }
                     items(if (expanded) recent.rows else recent.rows.take(3), key = { it.personId }) { row ->
-                        SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference, onCheckSingle, preferChangeTime = true)
+                        SavedPersonCard(SavedPersonAction(row, state.savedKind, state.savedSort, state.actionGeneration),
+                            enabled, onProfile, onFavorite, onPreference, onCheckSingle, preferChangeTime = true)
                     }
                     if (recent.sectionTotal > 3u) item(key = "recent-toggle") {
                         TextButton(onClick = { expanded = !expanded }) {
@@ -164,7 +165,8 @@ internal fun SavedPeopleScreen(
                     }
                 }
                 items(page.rows, key = { it.personId }) { row ->
-                    SavedPersonCard(row, enabled, onProfile, onFavorite, onPreference, onCheckSingle)
+                    SavedPersonCard(SavedPersonAction(row, state.savedKind, state.savedSort, state.actionGeneration),
+                        enabled, onProfile, onFavorite, onPreference, onCheckSingle)
                 }
                 if (state.savedLoadingMore) item { CircularProgressIndicator() }
                 else if (page.nextCursor != null) item {
@@ -177,14 +179,15 @@ internal fun SavedPeopleScreen(
 
 @Composable
 private fun SavedPersonCard(
-    row: SavedPersonRow,
+    action: SavedPersonAction,
     enabled: Boolean,
     onProfile: (Long, Long) -> Unit,
-    onFavorite: (SavedPersonRow) -> Unit,
-    onPreference: (SavedPersonRow, Preference) -> Unit,
+    onFavorite: (SavedPersonAction) -> Unit,
+    onPreference: (SavedPersonAction, Preference) -> Unit,
     onCheckSingle: (Long) -> Unit,
     preferChangeTime: Boolean = false,
 ) {
+    val row = action.row
     val card = row.card
     var menu by remember { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth()) {
@@ -229,7 +232,7 @@ private fun SavedPersonCard(
                 Text((if (preferChangeTime) row.latestChangeAt ?: row.lastSeenAt else row.lastSeenAt).take(10),
                     style = MaterialTheme.typography.labelSmall)
                 Row {
-                    IconButton(onClick = { onFavorite(row) }, enabled = enabled) {
+                    IconButton(onClick = { onFavorite(action) }, enabled = enabled) {
                         Icon(if (row.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = if (row.favorite) "Favorit entfernen" else "Favorit hinzufügen")
                     }
@@ -245,7 +248,7 @@ private fun SavedPersonCard(
                             listOf(Preference.LIKE to "Like", Preference.DISLIKE to "Dislike",
                                 Preference.NONE to "Entscheidung entfernen").forEach { (target, title) ->
                                 DropdownMenuItem(text = { Text(title) }, enabled = row.preference != target,
-                                    onClick = { menu = false; onPreference(row, target) })
+                                    onClick = { menu = false; onPreference(action, target) })
                             }
                         }
                     }

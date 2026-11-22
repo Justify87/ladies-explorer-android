@@ -21,11 +21,23 @@ internal class SavedWindowMemory {
     }
 }
 
-/** Ignore callbacks from a saved window that no longer matches the rendered person state. */
-internal fun savedActionMatches(current: SavedPersonRow?, requested: SavedPersonRow): Boolean =
-    current != null && current.personId == requested.personId &&
-        current.preference == requested.preference && current.favorite == requested.favorite &&
-        current.card?.listingId == requested.card?.listingId
+/** A saved action belongs to the rendered tab, window, surface and row. */
+internal data class SavedPersonAction(
+    val row: SavedPersonRow,
+    val kind: SavedPersonKind,
+    val sort: SavedPersonSort,
+    val generation: Long,
+)
+
+internal fun savedActionMatches(state: DiscoverUiState, action: SavedPersonAction): Boolean {
+    if (state.actionSurface != ProfileActionSurface.SAVED ||
+        state.actionGeneration != action.generation ||
+        state.savedKind != action.kind || state.savedSort != action.sort ||
+        state.loading || state.busy) return false
+    val current = state.savedPage?.rows?.firstOrNull { it.personId == action.row.personId }
+        ?: state.savedRecent?.rows?.firstOrNull { it.personId == action.row.personId }
+    return current == action.row
+}
 
 /** Cancellation must not replay completed status writes. */
 internal suspend fun runSavedStatusBatch(

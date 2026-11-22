@@ -32,7 +32,7 @@ internal fun DiscoveryGridScreen(
     search: SearchUiState,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
-    onLike: (Long) -> Unit,
+    onLike: (GridLikeAction) -> Unit,
     onProfile: (Long, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -99,7 +99,7 @@ internal fun DiscoveryGridScreen(
                 liked = card.preference == Preference.LIKE,
                 enabled = enabled,
                 onOpen = { onProfile(card.listingId, card.personId) },
-                onLike = { onLike(card.listingId) },
+                onLike = { onLike(GridLikeAction(card, search.response?.searchRunId, discovery.actionGeneration)) },
             )
         }
         if (nextCursor != null) {
