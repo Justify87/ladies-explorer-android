@@ -50,7 +50,7 @@ class SavedPeopleStateTest {
             state.actionGeneration)
         assertTrue(savedStatusBatchMatches(state, action))
         assertFalse(savedStatusBatchMatches(state.copy(savedPage = null), action))
-        assertFalse(savedStatusBatchMatches(state.copy(savedPage = state.savedPage.copy()), action))
+        assertFalse(savedStatusBatchMatches(state.copy(savedPage = state.savedPage!!.copy()), action))
         assertFalse(savedStatusBatchMatches(state.copy(savedKind = SavedPersonKind.LIKE), action))
         assertFalse(savedStatusBatchMatches(state.copy(savedSort = SavedPersonSort.NAME), action))
         assertFalse(savedStatusBatchMatches(state.copy(actionGeneration = 43), action))
@@ -60,13 +60,13 @@ class SavedPeopleStateTest {
     }
 
     @Test fun singleStatusUsesExistingRenderedRowAdmissionAndCannotTargetCardlessPerson() {
-        val person = row().copy(card = fixtureCard(8L))
+        val person = row().copy(card = fixtureCard(8L, 1L))
         val state = displayed(person)
         val action = SavedPersonAction(person, state.savedKind, state.savedSort, state.actionGeneration)
         assertTrue(savedActionMatches(state, action))
         assertEquals(8L, action.row.card?.listingId)
         assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
-            rows = listOf(person.copy(card = fixtureCard(9L))))), action))
+            rows = listOf(person.copy(card = fixtureCard(9L, 1L))))), action))
         assertFalse(savedActionMatches(state.copy(actionSurface = ProfileActionSurface.NONE), action))
         assertFalse(savedActionMatches(state.copy(actionGeneration = 43), action))
         assertNull(row().card)
