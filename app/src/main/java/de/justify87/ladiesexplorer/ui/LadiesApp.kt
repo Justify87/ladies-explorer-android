@@ -174,6 +174,7 @@ fun LadiesApp(
         if (route.root == destination || saved.blockingNavigation) return
         profileTouchGate.invalidate()
         if (swipeShell) viewModel.setSwipeVisible(false)
+        viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
         route = route.select(destination)
         viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -216,7 +217,10 @@ fun LadiesApp(
         when (route.backAction(search.profileOpen, savedResultsOpen)) {
             BackAction.CloseProfile -> viewModel.closeProfile()
             BackAction.CloseSavedResults -> viewModel.savedSearch.back()
-            BackAction.Navigate -> route = route.back()
+            BackAction.Navigate -> {
+                viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                route = route.back()
+            }
             BackAction.System -> Unit
         }
     }
@@ -342,7 +346,10 @@ fun LadiesApp(
                         if (route.discovery == DiscoverMode.Grid) {
                             SearchRunStatus(search, viewModel::cancelActiveSearch)
                         }
-                        if (route.discovery != DiscoverMode.Swipe) DiscoverModeSwitcher(route.discovery, onSelect = { route = route.select(it) })
+                        if (route.discovery != DiscoverMode.Swipe) DiscoverModeSwitcher(route.discovery, onSelect = {
+                            viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                            route = route.select(it)
+                        })
                         if (route.discovery == DiscoverMode.Swipe) {
                             DiscoverScreen(
                                 state = discovery,
@@ -360,6 +367,7 @@ fun LadiesApp(
                                         mode != DiscoverMode.Swipe) {
                                         profileTouchGate.invalidate()
                                         viewModel.setSwipeVisible(false)
+                                        viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
                                         route = route.select(mode)
                                     }
                                 },
