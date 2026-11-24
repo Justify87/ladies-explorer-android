@@ -622,7 +622,8 @@ pub(super) fn save_observed_profile(
         id
     };
     tx.execute(
-        "UPDATE listing_snapshots SET normalized_phone=?1 WHERE snapshot_id=?2",
+        "UPDATE listing_snapshots SET normalized_phone=?1
+         WHERE snapshot_id=?2 AND normalized_phone IS NULL",
         params![
             identity::normalize_phone(profile.phone_display.as_deref()),
             snapshot_id
@@ -899,6 +900,60 @@ mod tests {
                 revision_token: Some("1".into()),
             }],
         }
+    }
+
+    #[test]
+    fn refreshing_historical_phone_keeps_snapshot_key_and_records_corrected_evidence() {
+        let core = core();
+        let found = save_cards(&core, vec![card("101", "Anna")]);
+        let entry = &found.profiles[0];
+        let make_profile = || {
+            let mut value = profile("Anna");
+            value.phone_display = Some("0044 1234567890".into());
+            value
+        };
+        let first =
+            save_profile(&core, entry.listing_id, &entry.profile_url, make_profile()).unwrap();
+        let old_key = "+490441234567890";
+        let new_key = "+441234567890";
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listing_snapshots SET normalized_phone=?1 WHERE snapshot_id=?2",
+                params![old_key, first.snapshot_id],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE person_identifiers SET normalized_value=?1
+                 WHERE person_id=?2 AND kind='PHONE' AND normalized_value=?3",
+                params![old_key, entry.person_id, new_key],
+            )
+            .unwrap();
+        }
+        let refreshed =
+            save_profile(&core, entry.listing_id, &entry.profile_url, make_profile()).unwrap();
+        assert_eq!(refreshed.snapshot_id, first.snapshot_id);
+        let db = core.connection().unwrap();
+        let stored: String = db
+            .query_row(
+                "SELECT normalized_phone FROM listing_snapshots WHERE snapshot_id=?1",
+                [first.snapshot_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, old_key);
+        let mut query = db
+            .prepare(
+                "SELECT normalized_value FROM person_identifiers
+                 WHERE person_id=?1 AND kind='PHONE' ORDER BY normalized_value",
+            )
+            .unwrap();
+        let keys = query
+            .query_map([entry.person_id], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(keys, vec![new_key.to_owned(), old_key.to_owned()]);
     }
 
     #[test]

@@ -217,10 +217,10 @@ pub(crate) fn candidates(
             [snapshot_id],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
-    let phone = match raw_phone.as_deref() {
+    let phone = stored_phone.and_then(|stored| match raw_phone.as_deref() {
         Some(raw) => normalize_phone(Some(raw)),
-        None => stored_phone,
-    };
+        None => Some(stored),
+    });
     let mut matches: HashMap<i64, Evidence> = HashMap::new();
     if let Some(source) = source_id {
         let mut q = db.prepare(
@@ -630,6 +630,7 @@ mod tests {
         let owner = core.create_person(Some("Owner".into())).unwrap();
         let matching = core.create_person(Some("Matching".into())).unwrap();
         let other = core.create_person(Some("Other".into())).unwrap();
+        let unknown = core.create_person(Some("Unknown".into())).unwrap();
         let listing = core
             .add_listing(owner, None, "LADIES".into(), "100".into(), None)
             .unwrap();
@@ -637,8 +638,9 @@ mod tests {
         let old_key = "+490441234567890";
         db.execute(
             "INSERT INTO person_identifiers (person_id,kind,normalized_value,raw_value)
-             VALUES (?1,'PHONE',?3,'0044 1234567890'),(?2,'PHONE',?3,'+490441234567890')",
-            params![matching, other, old_key],
+             VALUES (?1,'PHONE',?4,'0044 1234567890'),
+                    (?2,'PHONE',?4,'+490441234567890'),(?3,'PHONE',?4,NULL)",
+            params![matching, other, unknown, old_key],
         )
         .unwrap();
         db.execute(
@@ -666,7 +668,8 @@ mod tests {
             .unwrap();
         assert_eq!(persisted, old_key);
         assert_eq!(current_owner(&db, listing).unwrap().0, owner);
-        assert_eq!(core.status().unwrap().person_count, 3);
+        drop(db);
+        assert_eq!(core.status().unwrap().person_count, 4);
     }
 
     #[test]
