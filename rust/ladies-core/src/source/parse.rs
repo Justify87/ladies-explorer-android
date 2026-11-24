@@ -627,8 +627,8 @@ pub(super) fn parse_profile(html: &str, fallback: &Card) -> Result<Profile, Core
         description,
         postal_code: attr(&doc, r#"[itemprop="postalCode"]"#, "content")
             .or_else(|| first_text(&doc, r#"[itemprop="postalCode"]"#)),
-        hidden_location: attr(&doc, ".address-details[data-ort]", "data-ort")
-            .or_else(|| attr(&doc, "[data-ort]", "data-ort")),
+        // Unscoped data-ort attributes may belong to search/navigation, not this listing.
+        hidden_location: attr(&doc, ".address-details[data-ort]", "data-ort"),
         source_profile_id: attr(&doc, "[data-profile-id]", "data-profile-id"),
         canonical_id,
         phone_display: phone,
@@ -850,12 +850,33 @@ mod tests {
         assert_eq!(p.name, "Anna");
         assert_eq!(p.city, "Leipzig");
         assert_eq!(p.postal_code.as_deref(), Some("04229"));
+        assert_eq!(p.hidden_location.as_deref(), Some("12345 Leipzig"));
         assert_eq!(p.media.len(), 3);
         assert_eq!(p.media[0].position, 1);
         assert!(p.media[0].url.contains("-A1.JPG"));
         assert_eq!(p.media[1].kind, "VIDEO");
         assert_eq!(p.media[2].position, 3);
         assert!(p.traits_json.contains("Blond"));
+    }
+
+    #[test]
+    fn unrelated_location_metadata_cannot_be_attributed_to_profile() {
+        let html = r#"<nav data-ort="Offenbach am Main"></nav>
+            <h2 class="page-heading kuenstlername">Fixture</h2>
+            <div class="address-details"><span itemprop="addressLocality"><span class="important">in Dresden</span></span></div>
+            <span class="share-advert-place">in Berlin</span>"#;
+        let profile = parse_profile(html, &example_card()).unwrap();
+        assert_eq!(profile.city, "Dresden");
+        assert_eq!(profile.hidden_location, None);
+
+        let html = r#"<nav data-ort="Offenbach am Main"></nav>
+            <h2 class="page-heading kuenstlername">Fixture</h2>"#;
+        let mut card = example_card();
+        assert_eq!(parse_profile(html, &card).unwrap().city, card.city);
+        card.city.clear();
+        let profile = parse_profile(html, &card).unwrap();
+        assert!(profile.city.is_empty());
+        assert_eq!(profile.hidden_location, None);
     }
 
     #[test]

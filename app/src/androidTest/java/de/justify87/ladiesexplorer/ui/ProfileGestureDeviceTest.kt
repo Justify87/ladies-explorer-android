@@ -124,9 +124,9 @@ class ProfileGestureDeviceTest {
                             ProfileMediaItem("VIDEO", "", null, 1u)),
                         height = 360.dp, modifier = Modifier.testTag("hero"),
                         actionsEnabled = true, isCurrent = { current }, selection = remember { ProfileMediaSelection() },
-                        identity = null, actionToken = null, compact = false, headerOwnsIdentity = false,
+                        actionToken = null, compact = false,
                         favorite = favorites % 2 == 1, onFavorite = { favorites++ },
-                        onIdentityMeasured = {}, onSwipe = { decisions.add(it) })
+                        onSwipe = { decisions.add(it) })
                 }
             }
         }

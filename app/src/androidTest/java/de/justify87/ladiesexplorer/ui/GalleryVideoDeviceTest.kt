@@ -37,9 +37,8 @@ class GalleryVideoDeviceTest {
                                 ProfileMediaItem("VIDEO", "", clip.absolutePath, 1u),
                                 ProfileMediaItem("IMAGE", "", null, 2u)),
                             height = 360.dp, actionsEnabled = true, isCurrent = { true },
-                            selection = remember { ProfileMediaSelection() }, identity = null,
-                            actionToken = null, compact = false, headerOwnsIdentity = false,
-                            onIdentityMeasured = {},
+                            selection = remember { ProfileMediaSelection() },
+                            actionToken = null, compact = false,
                         )
                     }
                 }

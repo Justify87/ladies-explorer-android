@@ -920,6 +920,59 @@ mod tests {
     }
 
     #[test]
+    fn profile_projection_reads_only_current_snapshot_of_selected_listing() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let owner = core.create_person(Some("Fixture".into())).unwrap();
+        let other = core.create_person(Some("Other".into())).unwrap();
+        let selected = core
+            .add_listing(owner, None, "LADIES".into(), "101".into(), None)
+            .unwrap();
+        let sibling = core
+            .add_listing(owner, None, "LADIES".into(), "102".into(), None)
+            .unwrap();
+        let foreign = core
+            .add_listing(other, None, "LADIES".into(), "103".into(), None)
+            .unwrap();
+        let current = {
+            let db = core.connection().unwrap();
+            let insert = |listing: i64, fingerprint: &str, city: &str, hidden: Option<&str>| {
+                db.execute(
+                    "INSERT INTO listing_snapshots(listing_id,fingerprint,name,city,hidden_location)
+                     VALUES (?1,?2,'Fixture',?3,?4)",
+                    params![listing, fingerprint, city, hidden],
+                )
+                .unwrap();
+                db.last_insert_rowid()
+            };
+            let old = insert(selected, "old", "Berlin", None);
+            let current = insert(selected, "current", "Dresden", Some("Offenbach am Main"));
+            let sibling_snapshot = insert(sibling, "sibling", "Hamburg", None);
+            let foreign_snapshot = insert(foreign, "foreign", "Munich", None);
+            assert_ne!(old, current);
+            for (listing, snapshot) in [
+                (selected, current),
+                (sibling, sibling_snapshot),
+                (foreign, foreign_snapshot),
+            ] {
+                db.execute(
+                    "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                    params![snapshot, listing],
+                )
+                .unwrap();
+            }
+            current
+        };
+        let projection = core.profile_projection(selected).unwrap().unwrap();
+        assert_eq!(projection.profile.snapshot_id, current);
+        assert_eq!(projection.profile.city, "Dresden");
+        assert_eq!(projection.identity.person_id, owner);
+        assert_eq!(
+            projection.profile.hidden_location.as_deref(),
+            Some("Offenbach am Main")
+        );
+    }
+
+    #[test]
     fn discovery_keyset_pages_beyond_old_limit_and_honors_skips() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         for id in 1..=215 {

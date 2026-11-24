@@ -104,11 +104,11 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 ### UX-Vertrag — zwei Zustände, ein Scrollfluss
 
 **A – Start am Hero:**
-- **Verbindlich:** Kompakter Entdecken-Header mit Schnellwahl, unmittelbar darunter Moduswahl und großer Swipe-Hero mit Foto in Fit-Darstellung. Kein unteres Textoverlay oder Scrim; Name, Alter und belegter Ort/Status folgen im Detailfluss. Oben rechts ein kleines halbtransparentes kontrastgesichertes Favoriten-Icon mit separatem 48-dp-Ziel. Keine dauerhafte Galerie-Leiste, Storysegmente, Zähler, Pfeile oder Gestentutorials. Standalone behält seine Identitätsdarstellung.
+- **Verbindlich:** Kompakter Entdecken-Header mit Schnellwahl, unmittelbar darunter Moduswahl und großer Swipe-Hero mit Foto in Fit-Darstellung. Kein unteres Textoverlay oder Scrim; Name, Alter und belegter Ort/Status folgen im Detailfluss. Oben rechts ein kleines halbtransparentes kontrastgesichertes Favoriten-Icon mit separatem 48-dp-Ziel. Keine dauerhafte Galerie-Leiste, Storysegmente, Zähler, Pfeile oder Gestentutorials. Standalone verwendet ebenfalls keinen Identitäts-Overlay.
 - **Verbindlich:** Decision Rail direkt über der Root-Navigation mit `Undo`, `Nein`, `Später`, `Gefällt`; Nein/Gefällt primär, Undo/Später sekundär. Favorit ist separat erreichbar. Die sichtbare Karte bleibt bis zur bestätigten Entscheidung oder eindeutigem Kontextwechsel bestehen. Keine zweite Decision Rail innerhalb des Profils.
 
 **B – Details nach vertikalem Scrollen:**
-- **Verbindlich:** **Derselbe vertikale Scrollfluss**; kein zweites Modal, keine zweite Profilroute, kein verschachtelter Detail-Scroller. Oberer Kontext scrollt aus oder kollabiert koordiniert. In Swipe steht die belegte Identität außerhalb des Mediums im Detailfluss; Standalone übergibt die Identität bei nicht mehr sichtbarem Overlay an den kompakten Header. Keine doppelte dauerhafte Namensüberschrift.
+- **Verbindlich:** **Derselbe vertikale Scrollfluss**; kein zweites Modal, keine zweite Profilroute, kein verschachtelter Detail-Scroller. Oberer Kontext scrollt aus oder kollabiert koordiniert. In beiden Kontexten folgen auf die Galerie unmittelbar die gültigen Kontaktaktionen und der gemeinsame, dezent akzentuierte Anzeigentitel mit belegtem Alter/Ort und Status statt „Übersicht“. Standalone übergibt die Identität an den kompakten Header außerhalb der sichtbaren Hero-/Identitätszeile. Keine doppelte Namensüberschrift, Scrollaufforderung oder technischen Metadaten-Pills.
 - **Verbindlich:** Rail bleibt für das aktuell sichtbare Profil erreichbar. Details werden vertikal gescrollt, horizontale Profilentscheidung nur am Hero. Tap auf kompakte Identität oder ein zugänglicher „Zum Foto“-Befehl führt zum Hero zurück, ohne neue Navigation. Zurückscrollen erhält den gewählten Galerieindex.
 - **Verbindlich:** Headerwechsel ohne Layoutsprung, ungewolltes Neuladen oder Scroll-Reset; aktive Fehler, Teilresultate und Ownerwarnungen bleiben sichtbar. Standalone verwendet denselben Inhalt und Galerie, aber Back statt Deck-Rail und **keine** Swipe-Entscheidung.
 
@@ -124,11 +124,11 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 
 | Priorität | Bereich | Sichtbarer Umfang |
 | --- | --- | --- |
-| 0 | Identität und Status | Name/Alter/Ort/Verfügbarkeit soweit belegt; Owner-, Archiv- und Fehlerhinweise |
-| 1 | Übersicht | Öffnungszeiten, wichtige belegte Merkmale, Anzeigenanzahl soweit verlässlich; auf kleinen Screens eine Spalte |
+| 0 | Kontakte | Telefon und WhatsApp direkt nach der Galerie, bei gültiger Nummer farblich unterscheidbare Theme-Buttons; Originalprofil als explizite Profilaktion, Favorit getrennt |
+| 1 | Anzeigentitel und Fakten | Akzentuierter tatsächlicher Name mit belegtem Alter, Stadt/PLZ und Verfügbarkeit; Öffnungszeiten, wichtige Merkmale und Anzeigenanzahl soweit verlässlich; auf kleinen Screens eine Spalte |
 | 2 | Beschreibung | Mehrzeiliger Auszug, vollständiger Originaltext über „Mehr anzeigen“; kein KI-Resümee |
 | 3 | Dienste und Filterbelege | Kompakte Gruppen mit eindeutigen Ja/Nein/Unbekannt-Belegen; keine geglättete Quellenunsicherheit |
-| 4 | Kontakte | Telefon/WhatsApp/Original nur bei gültigen Daten und bewusster Handlung; Favorit getrennt |
+| 4 | Hinweise und Profilaktionen | Relevante Owner-, Archivfehler- und Konflikthinweise bleiben sichtbar; keine redundanten Status-Pills oder technischen Rohwerte |
 | 5 | Analyse / Identität | Kandidaten mit Evidenz, ausdrücklich bestätigte Operation, keine automatischen Merges |
 | 6 | Meine Notiz | Personennotiz, Entwurf/Fehler/Konflikt schon im Abschnittskopf; Save/Retry/Conflict ohne Datenverlust |
 | 7 | Meine Begegnungen / Manuelle Angebotspreise | Getrennte lokale Sektionen, bedarfsgesteuerter Editor, frühere Listen, bezahlte Beträge nur aus Begegnungen |
