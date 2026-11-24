@@ -47,6 +47,7 @@ data class SavedStatusProgress(
 
 data class DiscoverUiState(
     val cards: List<DiscoveryCard> = emptyList(),
+    val localCards: List<DiscoveryCard> = emptyList(),
     val savedKind: SavedPersonKind = SavedPersonKind.FAVORITE,
     val savedSort: SavedPersonSort = SavedPersonSort.DATE,
     val savedPage: SavedPersonPage? = null,
@@ -572,7 +573,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 swipeSession.reset()
                 discoveryEpoch++
                 _discoverState.update {
-                    it.copy(cards = swipeSession.queue(cards, active = true), canUndoSwipe = false, swipeRestore = null,
+                    it.copy(cards = swipeSession.queue(cards, active = true), localCards = emptyList(), canUndoSwipe = false, swipeRestore = null,
                         swipePresentationGeneration = it.swipePresentationGeneration + 1, nextCursor = null, activeRunId = result.searchRunId,
                         activeVisibleCount = cards.size, loading = false, loadingMore = false,
                         savedLoadingMore = false, savedRecentLoadingMore = false, error = null, actionGeneration = it.actionGeneration + 1)
@@ -675,7 +676,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val active = _searchUiState.value.response
         if (active == null) {
             return DiscoveryProjection(null, emptyList(), readDiscoveryWindow(localWindow) { cursor ->
-                core.discoveryCards(cursor = cursor, excludedPeople = swipeSession.excludedPeople)
+                core.discoveryCards(cursor = cursor)
             })
         }
         val visible = core.activeSearchCards(active.searchRunId, active.local)
@@ -769,12 +770,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             try {
-                val page = core.discoveryCards(cursor = cursor, excludedPeople = swipeSession.excludedPeople)
+                val page = core.discoveryCards(cursor = cursor)
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        val cards = swipeSession.queue(it.cards + page.cards, active = false)
-                        localWindow = maxOf(localWindow, cards.size)
-                        it.copy(cards = cards, nextCursor = page.nextCursor, loadingMore = false,
+                        val membership = (it.localCards + page.cards).distinctBy { card -> card.personId }
+                        val cards = swipeSession.queue(membership, active = false)
+                        localWindow = maxOf(localWindow, membership.size)
+                        it.copy(cards = cards, localCards = membership, nextCursor = page.nextCursor, loadingMore = false,
                             actionGeneration = it.actionGeneration + 1)
                     }
                 }
@@ -861,7 +863,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateSwipeActions()
         swipeSession.visit(SwipeStep(card.listingId, card.personId, presentation = position))
         _discoverState.update {
-            it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true, swipeRestore = null)
+            it.copy(cards = swipeSession.queue(discoveryMembership(it, _searchUiState.value), active = it.activeRunId != null),
+                canUndoSwipe = true, swipeRestore = null)
         }
         val state = _discoverState.value
         if (state.cards.size < 10) state.nextCursor?.let(::loadMoreLocalDiscovery)
@@ -1123,9 +1126,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
-    internal fun openGridProfile(action: GridLikeAction) {
-        if (!gridActionMatches(_discoverState.value, _searchUiState.value, action)) return
-        loadProfile(action.card.listingId, action.card.personId)
+    internal fun openGridProfile(action: GridLikeAction): Boolean {
+        if (!gridActionMatches(_discoverState.value, _searchUiState.value, action)) return false
+        return openDiscoverySwipe(action.card.listingId, action.card.personId)
+    }
+
+    private fun openDiscoverySwipe(listingId: Long, ownerId: Long): Boolean {
+        val state = _discoverState.value
+        val search = _searchUiState.value
+        if (hasProfileEditor || state.busy || state.loading || search.loading || search.actionBusy ||
+            search.profileOpen || savedSearch.state.value.blockingNavigation ||
+            state.activeRunId != search.response?.searchRunId) return false
+        val membership = discoveryMembership(state, search)
+        if (!swipeSession.focus(membership, listingId, ownerId)) return false
+        setProfileActionSurface(ProfileActionSurface.NONE)
+        invalidateSwipeActions()
+        _discoverState.update {
+            val queue = swipeSession.queue(membership, active = state.activeRunId != null)
+            it.copy(cards = queue, swipeRestore = null,
+                swipePresentationGeneration = it.swipePresentationGeneration + 1,
+                localProfileReloadIds = it.localProfileReloadIds + queue.take(3).map { card -> card.listingId })
+        }
+        return true
     }
 
     internal fun openSavedPersonProfile(action: SavedPersonAction) {
@@ -1133,9 +1155,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         action.row.card?.let { loadProfile(it.listingId, action.row.personId) }
     }
 
-    internal fun openMapProfile(action: MapProfileOpenAction) {
-        if (!mapProfileOpenMatches(_mapState.value, _discoverState.value, action)) return
-        loadProfile(action.profile.listingId, action.profile.personId)
+    internal fun openMapProfile(action: MapProfileOpenAction): Boolean {
+        if (!mapProfileOpenMatches(_mapState.value, _discoverState.value, action)) return false
+        return openDiscoverySwipe(action.profile.listingId, action.profile.personId)
     }
 
     internal fun openSearchResultProfile(action: SearchResultOpenAction) {

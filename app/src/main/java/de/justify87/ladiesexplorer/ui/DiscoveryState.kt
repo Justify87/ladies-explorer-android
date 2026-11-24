@@ -96,10 +96,12 @@ internal fun gridPageMatches(discovery: DiscoverUiState, search: SearchUiState, 
         discovery.actionGeneration == action.generation &&
         localDiscoveryPageMatches(discovery, search, action.cursor)
 
-/** The transient hide affects presentation, not run membership. */
+/** Traversal and temporary Grid hiding never own result membership. */
+internal fun discoveryMembership(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
+    if (search.response != null) search.activeCards else discovery.localCards
+
 internal fun gridCards(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
-    if (search.response != null) search.activeCards.filterNot { it.listingId in search.gridHiddenLikes }
-    else discovery.cards
+    discoveryMembership(discovery, search).filterNot { search.response != null && it.listingId in search.gridHiddenLikes }
 
 internal fun gridLikeTarget(preference: Preference): Preference =
     if (preference == Preference.LIKE) Preference.NONE else Preference.LIKE
@@ -218,7 +220,8 @@ internal class DiscoveryProjectionPublisher(
                 else "Personen zusammengeführt. Die bisherige Anzeige ist nicht mehr die nächste zulässige Karte."
             } ?: it.mergeNotice
             it.copy(
-                cards = next, pendingMergeListingId = null, mergeNotice = mergeNotice,
+                cards = next, localCards = if (projection.runId == null) projection.page.cards else emptyList(),
+                pendingMergeListingId = null, mergeNotice = mergeNotice,
                 replayLikes = swipeSession.replayLikes,
                 canUndoSwipe = swipeSession.last != null,
                 swipeRestore = restore,
@@ -239,7 +242,7 @@ internal class DiscoveryProjectionPublisher(
                 onSuccess = { publishDiscovery(epoch, it) },
                 onFailure = { failure ->
                     _searchUiState.update { it.copy(activeCards = emptyList()) }
-                    _discoverState.update { it.copy(cards = emptyList(), nextCursor = null,
+                    _discoverState.update { it.copy(cards = emptyList(), localCards = emptyList(), nextCursor = null,
                         activeVisibleCount = 0, actionGeneration = it.actionGeneration + 1,
                         error = failure.message ?: "Entdecken fehlgeschlagen") }
                 },

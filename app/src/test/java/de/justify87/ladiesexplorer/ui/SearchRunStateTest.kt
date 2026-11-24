@@ -273,7 +273,10 @@ class SearchRunStateTest {
         assertEquals(rows, gridCards(discovery, search))
         // Neither a draft edit nor a cancelled replacement changes the grid's source.
         assertEquals(rows, gridCards(discovery, search.beginRun().endRun()))
-        assertEquals(discovery.cards, gridCards(discovery, SearchUiState()))
+        assertTrue(gridCards(discovery, SearchUiState()).isEmpty())
+        val local = discovery.copy(activeRunId = null, localCards = rows)
+        assertEquals(rows, gridCards(local, SearchUiState()))
+        assertEquals(rows, discoveryMembership(local, SearchUiState()))
     }
 
     @Test fun gridLikeHidesOnlyGridUntilSuccessfulNewRunAndRestoresOnFailure() {
@@ -302,14 +305,14 @@ class SearchRunStateTest {
 
     @Test fun gridLikeRejectsReplacedRowRunAndNavigationAndNeverReinterpretsClick() {
         val row = card(2).copy(preference = Preference.DISLIKE)
-        val deck = DiscoverUiState(cards = listOf(row), actionSurface = ProfileActionSurface.GRID,
+        val deck = DiscoverUiState(cards = listOf(row), localCards = listOf(row), actionSurface = ProfileActionSurface.GRID,
             actionGeneration = 15, loading = false)
         val local = SearchUiState()
         val action = GridLikeAction(row, null, 15)
         assertTrue(gridActionMatches(deck, local, action))
         assertEquals(Preference.LIKE, gridLikeTarget(action.card.preference))
-        assertFalse(gridActionMatches(deck.copy(cards = listOf(row.copy(preference = Preference.LIKE))), local, action))
-        assertFalse(gridActionMatches(deck.copy(cards = listOf(row.copy(personId = 99L))), local, action))
+        assertFalse(gridActionMatches(deck.copy(localCards = listOf(row.copy(preference = Preference.LIKE))), local, action))
+        assertFalse(gridActionMatches(deck.copy(localCards = listOf(row.copy(personId = 99L))), local, action))
         assertFalse(gridActionMatches(deck.copy(actionGeneration = 16), local, action))
         assertFalse(gridActionMatches(deck.copy(actionSurface = ProfileActionSurface.SAVED), local, action))
         assertFalse(gridActionMatches(deck.copy(busy = true), local, action))
