@@ -149,13 +149,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val profileNotes: StateFlow<Map<Long, NoteEditorState>> = _profileNotes
     private val noteReadTickets = NoteReadTickets()
     internal val noteActions = NoteEditorActions(::loadProfileNote, ::editProfileNote, ::saveProfileNote, ::useStoredNote, ::keepNoteDraft)
-    internal val encounters = EncounterEditor(::isEncounterContextCurrent, core::encounters, ::submitEncounter)
-
-    private fun isEncounterContextCurrent(token: ProfileIdentityToken): Boolean =
-        isProfileContextCurrent(token)
+    internal val encounters = EncounterEditor(::isProfileContextCurrent, core::encounters, ::submitEncounter)
 
     private fun submitEncounter(edit: EncounterEdit, values: EncounterValues?) {
-        if (_discoverState.value.loading || !isEncounterContextCurrent(edit.token)) {
+        if (_discoverState.value.loading || !isProfileContextCurrent(edit.token)) {
             encounters.failed(edit, "Profilkontext hat sich geändert.")
             return
         }
@@ -305,13 +302,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun invalidateSwipeActions(invalidateProfiles: Boolean = false) {
+    private fun invalidateSwipeActions(invalidateProfiles: Boolean = false, clearMergeNotice: Boolean = true) {
         renderedSwipe = null
         _discoverState.update { it.copy(swipeSessionId = it.swipeSessionId + 1,
             swipeProfileRevision = it.swipeProfileRevision + if (invalidateProfiles) 1 else 0,
             localProfileReloadIds = if (invalidateProfiles) emptySet() else it.localProfileReloadIds,
             localProfileStrictIds = if (invalidateProfiles) emptySet() else it.localProfileStrictIds,
-            mergeNotice = null, pendingMergeListingId = null) }
+            mergeNotice = if (clearMergeNotice) null else it.mergeNotice,
+            pendingMergeListingId = if (clearMergeNotice) null else it.pendingMergeListingId) }
     }
     private var localWindow = 0
     private val savedWindows = SavedWindowMemory()
@@ -842,7 +840,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         recoverWriteFailure: suspend () -> Unit = {},
         encounterOnly: Boolean = false,
     ) {
-        invalidateSwipeActions()
+        invalidateSwipeActions(clearMergeNotice = !encounterOnly)
         val epoch = ++discoveryEpoch
         _discoverState.update { it.copy(busy = true, loading = false, mutationError = null,
             loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false) }
