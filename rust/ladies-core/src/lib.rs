@@ -133,7 +133,7 @@ pub use discovery::{
     SavedPersonCursor, SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection,
     SavedPersonSort,
 };
-pub use encounters::{Encounter, EncounterValues};
+pub use encounters::{Encounter, EncounterService, EncounterValues};
 pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
