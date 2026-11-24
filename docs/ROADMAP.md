@@ -108,7 +108,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – Vorschau-Lifecycle (DONE mit Merge):** [PR #71](https://github.com/Justify87/ladies-explorer-android/pull/71) bindet Vorschau an STARTED-Lifecycle, eigene Lease und aktuellen Quellentwurf/Editor-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410399421) erfolgreich.
 
-**Integrierter Teilauftrag – Standalone-Archivabbruch:** [PR #72](https://github.com/Justify87/ladies-explorer-android/pull/72) bindet den gerenderten Stopp an die sichtbare Profil-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410911578) beim Merge noch nicht abschließend verifiziert.
+**Abgeschlossener Teilauftrag – Standalone-Archivabbruch (DONE mit Merge):** [PR #72](https://github.com/Justify87/ladies-explorer-android/pull/72) bindet den gerenderten Stopp an die sichtbare Profil-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410911578) erfolgreich.
 
 **Teilauftrag – Standalone-Retry und Back (REVIEW):** [Branch `fix/t10-8-profile-retry-back-admission`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-profile-retry-back-admission) bindet Back an Profil-Session, Retry zusätzlich an Listing, dargestellte Online-Berechtigung und Versuch. Automatische Lifecycle-Wiederherstellung bleibt lokal. JVM-Regressionen für Ersatz-Session, falsche Retry-Berechtigung und fehlgeschlagenen Retry. CI und Merge ausstehend.
 
