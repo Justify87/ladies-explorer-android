@@ -818,6 +818,17 @@ mod tests {
             overall_rating: Some(5),
             sympathy_rating: None,
             note: Some("Synthetic encounter".into()),
+            base_price_cents: Some(0),
+            services: vec![
+                crate::EncounterService {
+                    name: "Fixture A".into(),
+                    amount_cents: None,
+                },
+                crate::EncounterService {
+                    name: "Fixture B".into(),
+                    amount_cents: Some(0),
+                },
+            ],
         };
         let encounter = core
             .create_encounter(listing, source, encounter_values.clone())

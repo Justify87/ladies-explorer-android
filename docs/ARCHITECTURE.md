@@ -61,7 +61,7 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 | Suche | `search_runs`, `search_results` |
 | Gespeicherte Suchen | `saved_searches`, `saved_search_results` |
 | Identitätsevidenz | `identity_evidence`, `identity_events` |
-| Persönliche Begegnungen | `encounters` – typisierte CRUD-API; `encounter_services`, `price_lists`, `price_items` – Schema |
+| Persönliche Begegnungen | `encounters`, `encounter_services` – typisierte gemeinsame CRUD-API; `price_lists`, `price_items` – Schema |
 | Einstellungen | `app_settings` |
 
 ### SQLite-Vertrag
@@ -185,7 +185,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Notizkonflikte explizit auflösen; Identitäts-Merge blockiert bei betroffenen ungespeicherten Entwürfen.
 
 **Begegnungen:**
-- `encounters.rs` besitzt transaktionale CRUD- und Owner-/Editor-CAS-Prüfungen einschließlich optionaler Inseratszuordnung. `CoreStore` vermittelt ausschließlich typisierte native Zugriffe. Keine Begegnungsdaten in der Swipe-Vorausladung.
+- `encounters.rs` besitzt transaktionale CRUD- und Owner-/Editor-CAS-Prüfungen einschließlich optionaler Inseratszuordnung, Grundpreis und vollständiger persönlicher Leistungszeilen. Kindzeilen werden innerhalb derselben Transaktion gelesen und bei Änderung ersetzt; Löschen nutzt den Fremdschlüssel-Cascade. Gesamtbetrag wird nicht berechnet. `CoreStore` vermittelt ausschließlich typisierte native Zugriffe. Keine Begegnungsdaten in der Swipe-Vorausladung.
 - `EncounterEditor` hält einen einzelnen UI-Entwurf im ViewModel (nicht über Prozessende) und eine tokengebundene lokale Begegnungsprojektion. Der gemeinsame `ProfileFlow` fordert Reads nur für die geöffnete Sektion oder zur Wiederaufnahme des aktiven Entwurfs an. Der Editor behält den ursprünglichen CAS-Stand bei Kontextwiederaufnahme; veraltete Aktionen, Mehrfachschreibvorgänge, Navigation und Merge bei offenem Editor werden nicht zugelassen. Back/Abbrechen erfordert explizites Verwerfen eines Bearbeitungsentwurfs.
 - Begegnungsschreibvorgänge nutzen den gemeinsamen Mutationsguard in `MainViewModel`, drainieren bestätigte native Operationen und invalidieren nach Commit nur die Begegnungsprojektion. Ein anschließender Readfehler erlaubt Read-Retry, keinen Write-Retry. Personennotiz und andere Profilwerte bleiben getrennt.
 
