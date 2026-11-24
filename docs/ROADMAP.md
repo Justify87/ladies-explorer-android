@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. Nächste abhängige Aufgabe: M09.1 nach gesonderter Nutzerfreigabe; keine Umsetzung bereits begonnen. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1 ist ausdrücklich zur Umsetzung freigegeben; Arbeitsbranch und Prüfbelege siehe Aufgabe. M09.2 erst nach integrierter M09.1 und gesondertem Nutzerauftrag. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,14 +18,16 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.1 — Entdecken: gemeinsame Ergebnismenge und Profilnavigation
 
-**Status:** PLANNED.
+**Status:** DOING.
 
-**Abhängigkeit:** G08; gesonderter Nutzerauftrag.
+**Abhängigkeit:** G08 (integriert); Umsetzungsfreigabe erteilt, Merge ausstehend.
 
 - Swipe, Grid und Karte als drei Visualisierungen desselben ausgeführten Suchergebnisses einschließlich gemeinsamer Filter, stabiler Listing-/Personenidentität, Präferenz und Favorit führen. Lokalen Startbestand weiterhin vom ausgeführten Run trennen; keine neue Quellsuche bei Moduswechsel. Kartenprojektion auf die gemeinsame Mitgliedschaft umstellen; nur geografisch zuordenbare Ergebnisse erhalten Marker, nicht eine zweite fachliche Ergebnismenge. Bestehende getrennte DB-weite Kartenprojektion und etwaige Profil-/State-/ViewModel-Doppelungen ursächlich prüfen und abgelöste Pfade bereinigen.
 - Tap auf Grid-Kachel oder Öffnen eines Kartenprofils wechselt in die reguläre Swipe-Ansicht mit genau diesem Listing als Startprofil im gemeinsamen Run/Deck; keine Standalone-Sonderroute für diese Einstiege. Anschließend normale Links-/Rechtsentscheidung, Galerie, Profilscroll, Rail und Undo mit derselben Implementierung und gültigem Owner. Standalone-Kontexte außerhalb Entdecken erhalten.
 - Android-Back kehrt auch nach mehreren Swipes/Entscheidungen zum tatsächlichen Ursprung (Grid oder Karte) zurück. Grid-Scrollanker einschließlich Offset, Kartenausschnitt, Zoom, Ausrichtung, Auswahl, Filter und Run erhalten. Durch Entscheidungen wegfallende Elemente kontrolliert berücksichtigen; bei gültigem Anker keine sichtbare Rücksetzung, kein unnötiges Neuladen, keine veralteten Callbacks.
 - **Prüfung:** JVM-/native Navigations- und State-Regressionen für Grid/Map → ausgewähltes Profil → mehrere Entscheidungen/Undo → Back, identische Mitgliedschaft, Moduswechsel ohne Quell-I/O, Ownerwechsel, Lifecycle, ungültiger Anker und Fehler; Map-Rendering/Standortdetails in M09.11.
+
+**Arbeitsstand:** [Branch `feature/m09-1-shared-discovery`](https://github.com/Justify87/ladies-explorer-android/tree/feature/m09-1-shared-discovery). Gemeinsame Mitgliedschaft, native Kartenprojektion, regulärer Swipe-Einstieg, Rückkehranker und Regressionen umgesetzt; CI und Review-Abnahme ausstehend. Keine Geräteausführung behauptet.
 
 #### M09.2 — Entdecken: Header und bildbetonter Swipe-Hero
 
