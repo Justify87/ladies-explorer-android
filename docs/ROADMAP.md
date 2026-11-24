@@ -24,7 +24,9 @@ Nächster Schritt: [M06.4](#m064--gezielte-integration-und-abschluss-g06). M06.1
 
 #### M06.4 — Gezielte Integration und Abschluss (G06)
 
-**Status:** READY · **Abhängigkeit:** M06.1a/b und M06.2 abgeschlossen.
+**Status:** REVIEW · **Abhängigkeit:** M06.1a/b und M06.2 abgeschlossen.
+
+**Stand:** `review/m06-4-integration`, Basis `1dd7d0c`. Integrierter Ausgangsstand: [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45454318406), danach ausschließlich Registeränderungen. Reviewbefund: gleichdatierte Preislisten anhand des vorhandenen Erstellungszeitpunkts statt zufälliger ID ordnen; Regressionen zu Korrektur, Reihenfolge und bezahltem Betrag. Vollständiges CI-Gate für die Änderung noch nachweisen; kein Abschluss vor Merge.
 
 **Umfang:** Betroffene Rust-/UniFFI-/Kotlin-/Compose-Aufrufer, Datenprojektionen, Tests und Verträge auf Korrektheit, Redundanz und abgelöste Pfade prüfen. Keine Wiedereröffnung von M05 oder Vorwegnahme der M07-Gesamtintegration.
 
