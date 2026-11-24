@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.8 – nach Integration der Profil-Panel-Aktionen die bestehende G10.3-Regressionsmatrix anhand integrierter PRs, vorhandener Tests und CI-Belege abschließend bilanzieren; nur konkrete abnahmerelevante Lücken beheben, dann T10.8 auf DONE setzen.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: Abschluss M05.10 – vollständiges Android-/APK-Gate des integrierten Stands verifizieren und Abschluss-PR mergen.** M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -16,7 +16,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M03 Suche/Parser | DONE | [#4](https://github.com/Justify87/ladies-explorer-android/pull/4), [#8](https://github.com/Justify87/ladies-explorer-android/pull/8); abgeschlossen. |
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
-| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 mit [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) integriert; T10.8 mit [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57) teilintegriert; SavedSearch-Zeilenaktionen in [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) integriert; Ergebnisfenster-Pagination/Retry in [PR #60](https://github.com/Justify87/ladies-explorer-android/pull/60) integriert; SavedPeople-Pagination [PR #61](https://github.com/Justify87/ladies-explorer-android/pull/61), lokale Grid-Pagination [PR #62](https://github.com/Justify87/ladies-explorer-android/pull/62), Kartensteuerung [PR #63](https://github.com/Justify87/ladies-explorer-android/pull/63) und Grid-Schnellwahl [PR #64](https://github.com/Justify87/ladies-explorer-android/pull/64) mit Merge abgeschlossen; normaler Suchstart [PR #65](https://github.com/Justify87/ladies-explorer-android/pull/65) und Suchabbruch [PR #66](https://github.com/Justify87/ladies-explorer-android/pull/66) mit Merge abgeschlossen; T10.9 offen. |
+| M05.10 Unified Profile Experience | REVIEW | T10.0–T10.7 abgeschlossen; T10.8 [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75) integriert; T10.8/T10.9 Abschlussbilanz unten. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -68,68 +68,30 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 **Akzeptanz:**
 - [x] Abschluss mit erfolgreicher [CI #45013729939](https://github.com/Justify87/ladies-explorer-android/actions/runs/45013729939) in [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53): Ein cache-only Prefetch übersprang beim Current-Aufrücken die aktive Freshness-Policy; einmalige Quellenaktualisierung mit unverändertem Slot/Mutex und Regression für No-Redo/Local-only. Weitere entsprechende Defekte im geprüften T10.7-Umfang nicht belegt. Keine Beschleunigung ohne Messung behauptet.
 
-### T10.8 — DOING · Vertikale Integration (G10.3) ([PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57), [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) integriert)
+### T10.8 — REVIEW · Vertikale Integration (G10.3)
 
-**Abhängigkeit:** T10.7 abgeschlossen. **Referenzen:** P01–P51/X01–X11, [UI-Vertrag](DESIGN.md).
+**Integrierter Umfang:** [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75). Geräteprüfungen dieses Umfangs gemäß Merge-Regel DONE. Abschlussbasis `3ec501d540866d096275675d2f32d9c211a50cf1` (Dateibaum `6deeb940f9c0fb3e1d2ebd3c1c8f040e572c67d8`, identisch mit PR #75 Head `925baa93654f1d42ad597ce981d23b69cd87482e`). Vorhandene Testpfade und produktive Aufrufer gegen PRODUCT/DESIGN/ARCHITECTURE geprüft; keine neue Implementierungsroute.
 
-**Ziel:** Betroffene Profileinstiege über alle Schichten konsistent integrieren.
+| Abnahmebereich | Integrierte Belege / vorhandene Regressionen |
+| --- | --- |
+| Swipe/Grid/Karte/Suche/Gespeichert, Rückkehr und Profilöffnung | [#55](https://github.com/Justify87/ladies-explorer-android/pull/55), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#74](https://github.com/Justify87/ladies-explorer-android/pull/74); `ShellRouteTest`, `ProfileEntryAdmissionTest`, `SearchRunStateTest`, `SavedPeopleStateTest`, `SavedSearchPaneTest`. |
+| A/B, Informationsdichte, Accessibility, Medien und Altcode | Gemeinsame `ProfileShell`/`ProfileFlow` aus `DiscoverScreen` und `ProfileDetailScreen`; T10.3–T10.7, `ProfileHeroLayoutTest`, `ProfilePresentationTest`, `ProfilePhotoGestureTest`, `ProfilePanelsTest`, `ProfileShellDeviceTest`, `ProfileGestureDeviceTest`, `ProfileRestoreDeviceTest`, `GalleryVideoDeviceTest`. Instrumentierung gebaut, Geräteabnahme gemäß Merge-Regel; keine separate Geräteausführung behauptet. |
+| Präferenz/Favorit/Undo/Skip/Reset/Replay | [#54](https://github.com/Justify87/ladies-explorer-android/pull/54); `SwipeDeckStateTest`, `ProfileProjectionTest.productionPreferenceCommitUsesCasThenTraversesOnlyForExplicitDeckDecision`, `committedNeutralResetReprojectsWithoutVisitEvenIfFeedReadFails`; Rust `lib.rs`: `listing_favorite_checks_owner_and_expected_value_atomically`, `swipe_writes_and_undo_check_owner_and_previous_preference_atomically`. |
+| Merge/Dirty Notes/Late Write/Archivabbruch | [#54](https://github.com/Justify87/ladies-explorer-android/pull/54), [#72](https://github.com/Justify87/ladies-explorer-android/pull/72)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75); `StandaloneProfileOperationsTest`, `ProfileNoteStateTest`, `SwipeProfileWindowTest`; Rust `identity.rs`, `profile_detail.rs::note_cas_preserves_other_fields_and_rejects_wrong_owner`, `media.rs::archive_cancel_after_first_commit_defers_late_download_and_retry_reuses_asset`. |
+| Unabhängige Projektionen | `ProfileProjectionTest.actualDiscoveryPublisherKeepsSuccessfulSiblingAndRejectsOutdatedEpoch`, `ProfilePanelsTest`; Rust `source/storage.rs::merge_reprojects_existing_run_saved_people_saved_window_and_map_without_source`. |
+| SavedSearch-Ack/Revision | [#56](https://github.com/Justify87/ladies-explorer-android/pull/56), [#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60); `SavedSearchPaneTest`; Rust `saved_search.rs::changed_baseline_rejects_cursor_and_stale_acknowledgement`, `person_writes_advance_ack_revision_without_changing_saved_membership`. |
+| Fehler/Offline/Status/Radius/Pagination | [#57](https://github.com/Justify87/ladies-explorer-android/pull/57), [#61](https://github.com/Justify87/ladies-explorer-android/pull/61)–[#71](https://github.com/Justify87/ladies-explorer-android/pull/71), [#73](https://github.com/Justify87/ladies-explorer-android/pull/73); `SwipeProfileReadTest`, `SearchRunStateTest`, `SavedPeopleStateTest`, `ProfileEntryAdmissionTest`; Rust `discovery.rs`, `map.rs`, `source/storage.rs::saved_status_records_observations_and_rejects_stale_updates`, `saved_search.rs::only_complete_radius_verified_search_replaces_saved_baseline`. |
 
-**Integrierter Teilauftrag (F01–F05):** [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54) bindet gespeicherte Personen-/Grid-Schreibaktionen an gerenderte Tokens und native CAS; Standalone-Profile verweigern stille Ownerwechsel und erlauben Rebinding nach bestätigtem Merge.
+- [x] Oberflächen- und vertikale Regressionsmatrix abgeglichen; kein weiterer abnahmerelevanter Defekt im geprüften Umfang belegt. Keine allgemeine Fehlerfreiheit behauptet.
+- [ ] Technische Abnahme: keine zweite Implementierungsroute, kein belegter Funktionsverlust oder Scope-Drift. [CI #45412134217](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412134217) (PR #74) erfolgreich; [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) (PR #75, identischer integrierter Dateibaum) Core-/Vertragsprüfungen erfolgreich; abschließendes Android-/APK-Gate ausstehend.
 
-**Integrierter Teilauftrag – Profilöffnung:** [PR #55](https://github.com/Justify87/ladies-explorer-android/pull/55) bindet reine Profilöffnungen aus Grid, SavedPeople, normaler Suche, SavedSearch-Ergebnissen und Karte an aktuelle Surface-/Run-/Fenster-/Owner-Kontexte. Verzögerte Klicks nach Tab-, Filter-, Reprojektions-, Navigations- oder Lifecycle-Wechsel werden vor der Quellenoperation abgewiesen; [CI #45020251926](https://github.com/Justify87/ladies-explorer-android/actions/runs/45020251926) erfolgreich.
+### T10.9 — REVIEW · Abschluss M05.10 (G10)
 
-**Integrierter Teilauftrag – SavedSearch-Quittierung:** [PR #56](https://github.com/Justify87/ladies-explorer-android/pull/56) bindet explizite „Gelesen“-Aktionen an gerenderte Listen-/Ergebnisansicht, Revision, Ergebnisfenster und Aktionsgeneration. Verzögerte Aktionen nach Navigation, Reprojektion, Dialog oder Lifecycle-Wechsel werden vor dem nativen Ack verworfen; Rust-CAS bleibt die Commit-Grenze. [PR-CI #45029048049](https://github.com/Justify87/ladies-explorer-android/actions/runs/45029048049) und [main-CI #45030774068](https://github.com/Justify87/ladies-explorer-android/actions/runs/45030774068) erfolgreich.
+**Abhängigkeit:** T10.8, vor Abschluss vollständig zu bestätigen.
 
-**Integrierter Teilauftrag – SavedPeople-Statusaktionen:** [PR #57](https://github.com/Justify87/ladies-explorer-android/pull/57) bindet einzelne Statuschecks an die vorhandene gerenderte SavedPerson-Aktion und Batchchecks an Auswahl, Listenfenster und Aktionsgeneration. Verzögerte Prüfungen nach Tab-, Sortier-, Reprojektions- oder Lifecycle-Wechsel werden vor Netzwerk-I/O abgewiesen; [PR-CI #45032730497](https://github.com/Justify87/ladies-explorer-android/actions/runs/45032730497) erfolgreich.
-
-**Integrierter Teilauftrag – SavedSearch-Zeilenaktionen:** [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) bindet Zeilen-, Pane-, Dialog- und Editoraktionen an gerenderte Kontexte und schützt späte Editor-Reads. [PR-CI #45038090081](https://github.com/Justify87/ladies-explorer-android/actions/runs/45038090081) und [Main-CI #45039471481](https://github.com/Justify87/ladies-explorer-android/actions/runs/45039471481) erfolgreich.
-
-**Integrierter Teilauftrag – SavedSearch-Ergebnisfenster:** [PR #60](https://github.com/Justify87/ladies-explorer-android/pull/60) bindet manuelle/automatische Pagination und Retry/Reload an das gerenderte Fenster und seine Aktionsgeneration. JVM-Regressionen für Suchwechsel, Lifecycle, erneuten Read, Busy/gesperrte Operation und Fehler-Recovery ohne Ack; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45396569605) erfolgreich.
-
-**Abgeschlossener Teilauftrag – SavedPeople-Pagination:** [PR #61](https://github.com/Justify87/ladies-explorer-android/pull/61) bindet manuelle und automatische Regular-Pagination sowie Watchlist-Pagination an die gerenderte Fensterinstanz, Auswahl und Aktionsgeneration. JVM-Regression für Kontextwechsel, ersetzte Fenster, Busy und explizite Fehler-Recovery; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45398027633) erfolgreich. Geräteprüfungen mit Merge gemäß Merge-Regel DONE.
-
-**Abgeschlossener Teilauftrag – lokale Entdecken-/Grid-Pagination (DONE):** [PR #62](https://github.com/Justify87/ladies-explorer-android/pull/62) bindet manuelle und automatische Grid-Pagination an gerenderten Cursor und Aktionsgeneration; der zugelassene Swipe-Skip verwendet dieselbe lokale Lesefunktion. JVM-Regressionen für alte Kontexte, Cursorwechsel, Busy, aktive Suche und explizite Fehler-Recovery; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45399966122) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
-
-**Abgeschlossener Teilauftrag – Kartensteuerung (DONE mit Merge):** [PR #63](https://github.com/Justify87/ladies-explorer-android/pull/63) bindet Aktualisierung, Standortauflösung, Abbruch und Favoritenfilter an gerenderten Kartenstatus und Ansichtsgeneration. JVM-Regressionen für Kontext-/Filterwechsel, fehlende Standortkandidaten, Busy, Abbruch und erneuten Read; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45401460748) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
-
-**Abgeschlossener Teilauftrag – Grid-Schnellwahl (DONE mit Merge):** [PR #64](https://github.com/Justify87/ladies-explorer-android/pull/64) bindet die Grid-Verfügbarkeitswahl an gerenderten Run bzw. lokalen Entwurf und Ansichtsgeneration. JVM-Regressionen für Kontextwechsel, Busy, Runwechsel, Fehler/Abbruch und erneuten Versuch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45402502512) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
-
-**Abgeschlossener Teilauftrag – normaler Suchstart (DONE mit Merge):** [PR #65](https://github.com/Justify87/ladies-explorer-android/pull/65) bindet den Suchbutton an gerenderten Entwurf, lokale Sichtbarkeit und Ansichtsgeneration. JVM-Regressionen für Entwurfs-/Kontextwechsel, Busy, Fehler/Abbruch und erneuten Versuch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45403653759) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
-
-**Abgeschlossener Teilauftrag – Suchabbruch (DONE mit Merge):** [PR #66](https://github.com/Justify87/ladies-explorer-android/pull/66) bindet die Abbruchaktionen aus Filtern, Grid und Swipe an gerenderte Ansichtsgeneration, native Vorgangs-ID und bei Swipe an die sichtbare Session. JVM-Regressionen für veraltete Aktionen, Kontextwechsel, neue Versuche nach Fehler/Drain und wiederholten Abbruch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45405245577) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
-
-**Abgeschlossener Teilauftrag – Statusprüfungsabbruch (DONE mit Merge):** [PR #67](https://github.com/Justify87/ladies-explorer-android/pull/67) bindet den gerenderten Abbruch an Statusversuch und Ansichtsgeneration; interne Lifecycle-Abbrüche bleiben unabhängig. JVM-Regressionen für alte Versuche, Kontextwechsel, wiederholten Abbruch und Fortschrittsupdates; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45406923367) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
-
-**Abgeschlossener Teilauftrag – SavedPeople-Listensteuerung (DONE mit Merge):** [PR #68](https://github.com/Justify87/ladies-explorer-android/pull/68) bindet Tabwahl, Sortierung und explizites Laden an den gerenderten Auswahl-/Ansichtskontext; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45408392886) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE.
-
-**Abgeschlossener Teilauftrag – Grid-Aktualisierung (DONE mit Merge):** [PR #69](https://github.com/Justify87/ladies-explorer-android/pull/69) bindet manuelles Aktualisieren an gerenderten Run bzw. lokalen Bestand und Ansichtsgeneration. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45408924898) erfolgreich.
-
-**Abgeschlossener Teilauftrag – normale Filterentwurfsaktionen (DONE mit Merge):** [PR #70](https://github.com/Justify87/ladies-explorer-android/pull/70) bindet Entwurfsänderungen und Reset an den gerenderten Filterkontext; Reset zusätzlich an den Entwurf. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45409621564) erfolgreich.
-
-**Abgeschlossener Teilauftrag – Vorschau-Lifecycle (DONE mit Merge):** [PR #71](https://github.com/Justify87/ladies-explorer-android/pull/71) bindet Vorschau an STARTED-Lifecycle, eigene Lease und aktuellen Quellentwurf/Editor-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410399421) erfolgreich.
-
-**Abgeschlossener Teilauftrag – Standalone-Archivabbruch (DONE mit Merge):** [PR #72](https://github.com/Justify87/ladies-explorer-android/pull/72) bindet den gerenderten Stopp an die sichtbare Profil-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410911578) erfolgreich.
-
-**Abgeschlossener Teilauftrag – Standalone-Retry und Back (DONE mit Merge):** [PR #73](https://github.com/Justify87/ladies-explorer-android/pull/73) bindet Back an Profil-Session, Retry zusätzlich an Listing, dargestellte Online-Berechtigung und Versuch. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45411570068) erfolgreich.
-
-**Integrierter Teilauftrag – Notizentwurfsaktionen:** [PR #74](https://github.com/Justify87/ladies-explorer-android/pull/74) bindet Notizaktionen an den gerenderten Entwurf. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412134217) beim Merge noch nicht abschließend verifiziert.
-
-**Teilauftrag – Profil-Panel-Aktionen (REVIEW):** [Branch `fix/t10-8-profile-panel-actions`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-profile-panel-actions) bindet Facts-/Detail-Retry an Profilkontext und Read-Generation, Vergleichs-Dismiss an die gerenderte Vergleichsgeneration. JVM-Regressionen für identische Folgefehler und verspäteten Dialogabbruch. CI und Merge ausstehend.
-
-**Umfang:**
-- [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
-- [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision sowie Fehler/Offline/Status/Radius/Pagination.
-
-**Akzeptanz:**
-- [ ] Keine zweite Implementierungsroute, kein Funktionsverlust und kein Scope-Drift; konkrete technische Testbelege.
-
-### T10.9 — PLANNED · Abschluss M05.10 (G10)
-
-**Abhängigkeit:** T10.8.
-
-**Ziel / Akzeptanz:**
-- [ ] Abschlussreview, erfolgreiche ausgewählte technische Prüfungen, APK und integrierten Stand belegen; Ist-Dokumentation aktualisieren.
-- [ ] Keine ungelösten hohen In-Scope-Befunde; Abschluss mit Merge.
+- [x] Abschlussreview der betroffenen Aufrufer, gemeinsamen Profilprojektion, Testmatrix, Architekturgrenzen und Dokumentationskonsistenz durchgeführt; README, PRODUCT, DESIGN und ARCHITECTURE weiterhin maßgeblich. Keine weiteren In-Scope-Befunde hoher Schwere im geprüften Umfang.
+- [ ] Technischer Abschlussbeleg: [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) noch nicht vollständig abgeschlossen; vollständigen Build, JVM-Tests, Lint, APK-Architekturprüfung und build-Gate vor Merge bestätigen. Reguläre automatische CI speichert gemäß README kein Debug-APK-Artefakt; keine separate manuelle Veröffentlichung.
+- Abschluss mit Merge des reinen Dokumentations-PR; keine Code-, CI- oder Fachvertragsänderung. M06/M07 bleiben gesperrt bis Nutzerauftrag.
 
 ## Danach – M06
 
