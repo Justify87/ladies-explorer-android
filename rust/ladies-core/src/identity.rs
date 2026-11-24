@@ -895,7 +895,10 @@ mod tests {
         assert_eq!(merged.person_id, target);
         assert_eq!(merged.values, encounter_values);
         assert!(core.encounters(listing, source).is_err());
-        assert!(core.delete_encounter(listing, source, encounter.clone()).is_err());
+        assert!(
+            core.delete_encounter(listing, source, encounter.clone())
+                .is_err()
+        );
         assert!(core.delete_encounter(listing, target, encounter).is_err());
         // The listing survives; stale owner tokens must fail CAS and note writes.
         assert!(
