@@ -154,8 +154,7 @@ fn candidates(
     listing_ids: &[i64],
     run_id: Option<i64>,
 ) -> Result<Vec<Candidate>, CoreError> {
-    let ids =
-        serde_json::to_string(listing_ids).map_err(|e| CoreError::Storage(e.to_string()))?;
+    let ids = serde_json::to_string(listing_ids).map_err(|e| CoreError::Storage(e.to_string()))?;
     let db = core.connection()?;
     let mut statement = db.prepare(
         "SELECT l.listing_id,l.person_id,
