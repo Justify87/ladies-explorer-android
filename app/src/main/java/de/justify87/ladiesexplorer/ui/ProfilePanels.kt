@@ -358,7 +358,7 @@ private fun NotesPanel(
     ProfileGroup("Private Personennotiz") {
         val draft = state.draft
         val loading = demand.status != ProfileNoteDemand.Status.Settled || state.loading
-        val editable = owner != null && !busy && !loading && !state.readError
+        val editable = owner != null && !busy && !loading && state.canEdit()
         if (draft != null && owner != null) {
             OutlinedTextField(draft.text, { actions.edit(owner, it) },
                 modifier = Modifier.fillMaxWidth(), label = { Text("Notiz") },
@@ -368,18 +368,18 @@ private fun NotesPanel(
             if (draft.conflict) {
                 Text("Die gespeicherte Notiz hat sich geändert.", color = MaterialTheme.colorScheme.error)
                 SelectionContainer { Text("Gespeichert: ${draft.observed ?: "Keine Notiz"}") }
-                TextButton(onClick = { actions.useStored(owner) }, enabled = editable) {
+                TextButton(onClick = { actions.useStored(owner, draft) }, enabled = editable) {
                     Text("Gespeicherten Text übernehmen")
                 }
-                TextButton(onClick = { actions.keepDraft(owner) }, enabled = editable) {
+                TextButton(onClick = { actions.keepDraft(owner, draft) }, enabled = editable) {
                     Text("Eigenen Entwurf behalten")
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { actions.save(listingId, owner) },
-                    enabled = editable && draft.dirty && !draft.conflict) { Text("Speichern") }
-                TextButton(onClick = { actions.useStored(owner) },
-                    enabled = !busy && !loading && draft.dirty) { Text("Verwerfen") }
+                Button(onClick = { actions.save(listingId, owner, draft) },
+                    enabled = editable && state.canSave(draft)) { Text("Speichern") }
+                TextButton(onClick = { actions.useStored(owner, draft) },
+                    enabled = !busy && !loading && state.canDiscard(draft)) { Text("Verwerfen") }
             }
         } else if (owner == null) Text("Person nicht verfügbar.")
         if (loading || busy && draft != null) LinearProgressIndicator(Modifier.fillMaxWidth())
