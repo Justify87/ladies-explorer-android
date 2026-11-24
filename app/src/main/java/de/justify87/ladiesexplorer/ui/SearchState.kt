@@ -90,29 +90,29 @@ internal fun searchCancelMatches(
         discovery.actionGeneration != action.generation || discovery.actionSurface != action.surface) return false
     return when (action.surface) {
         ProfileActionSurface.NONE -> swipeVisible && action.swipeSession == discovery.swipeSessionId
-        ProfileActionSurface.GRID -> !swipeVisible && action.swipeSession == null
+        ProfileActionSurface.GRID, ProfileActionSurface.MAP -> !swipeVisible && action.swipeSession == null
         ProfileActionSurface.SEARCH -> !swipeVisible && action.swipeSession == null && saved.pane == SearchPane.Filters
         else -> false
     }
 }
 
-internal data class GridAvailabilityAction(
+internal data class DiscoveryAvailabilityAction(
     val runId: Long?,
     val draft: SearchDraft?,
     val generation: Long,
     val surface: ProfileActionSurface = ProfileActionSurface.GRID,
 )
 
-internal fun SearchUiState.gridAvailabilityAction(generation: Long, surface: ProfileActionSurface = ProfileActionSurface.GRID) =
-    GridAvailabilityAction(response?.searchRunId, if (response == null) SearchDraft.from(this) else null, generation, surface)
+internal fun SearchUiState.discoveryAvailabilityAction(generation: Long, surface: ProfileActionSurface = ProfileActionSurface.GRID) =
+    DiscoveryAvailabilityAction(response?.searchRunId, if (response == null) SearchDraft.from(this) else null, generation, surface)
 
-internal fun gridAvailabilityMatches(
-    discovery: DiscoverUiState, search: SearchUiState, action: GridAvailabilityAction,
+internal fun discoveryAvailabilityMatches(
+    discovery: DiscoverUiState, search: SearchUiState, action: DiscoveryAvailabilityAction,
 ): Boolean =
     action.surface in setOf(ProfileActionSurface.GRID, ProfileActionSurface.MAP) &&
         discovery.actionSurface == action.surface &&
         discovery.activeRunId == action.runId &&
-        search.gridAvailabilityAction(discovery.actionGeneration, action.surface) == action &&
+        search.discoveryAvailabilityAction(discovery.actionGeneration, action.surface) == action &&
         !discovery.loading && !discovery.busy && !search.loading && !search.actionBusy && !search.profileOpen
 
 internal data class SearchResultOpenAction(
