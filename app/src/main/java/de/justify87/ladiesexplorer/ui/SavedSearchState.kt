@@ -24,6 +24,7 @@ internal data class SavedSearchAckAction(
     val window: SavedResultWindow?,
     val generation: Long,
 )
+internal data class SavedSearchResultAction(val window: SavedResultWindow, val generation: Long)
 internal data class SavedSearchPaneAction(val generation: Long)
 internal data class SavedSearchRowAction(
     val search: SavedSearchInfo,
@@ -382,16 +383,23 @@ internal class SavedSearchController(
         readWindow(id, limits[id] ?: 100u)
     }
 
-    fun more() {
-        val result = state.value.result ?: return
-        if (state.value.busy || state.value.resultDirty || !result.hasMore || !canOperate()) return
+    private fun admittedResult(action: SavedSearchResultAction): SavedResultWindow? {
+        val s = state.value
+        return action.window.takeIf {
+            visible && canOperate() && !s.busy && !s.resultDirty && s.dialog == null &&
+                s.pane == SearchPane.SavedResults && s.actionGeneration == action.generation &&
+                s.result === it
+        }
+    }
+
+    fun more(action: SavedSearchResultAction) {
+        val result = admittedResult(action)?.takeIf { it.ready && it.hasMore } ?: return
         val next = (limits[result.id] ?: 100u).coerceAtMost(UInt.MAX_VALUE - 100u) + 100u
         readWindow(result.id, next)
     }
 
-    fun retryResults() {
-        val result = state.value.result ?: return
-        if (state.value.busy || !canOperate()) return
+    fun retryResults(action: SavedSearchResultAction) {
+        val result = admittedResult(action) ?: return
         readWindow(result.id, limits[result.id] ?: 100u)
     }
 
