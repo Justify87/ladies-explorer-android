@@ -416,29 +416,52 @@ mod tests {
             .unwrap();
         let first = create(&core, listing, person, values("2026-11-24", 100)).unwrap();
         let second = create(&core, listing, person, values("2026-11-24", 200)).unwrap();
-        let corrected = update(
-            &core,
-            listing,
-            person,
-            first,
-            values("2026-11-24", 300),
-        )
-        .unwrap();
+        let corrected = core
+            .update_price_list(listing, person, first, values("2026-11-24", 300))
+            .unwrap();
         assert_eq!(
             overview(&core, listing, person).unwrap().lists,
             vec![second.clone(), corrected.clone()]
         );
-        let older = update(
-            &core,
-            listing,
-            person,
-            second,
-            values("2026-11-23", 200),
-        )
-        .unwrap();
+        let older = core
+            .update_price_list(listing, person, second, values("2026-11-23", 200))
+            .unwrap();
         assert_eq!(
             overview(&core, listing, person).unwrap().lists,
             vec![corrected, older]
+        );
+    }
+
+    #[test]
+    fn same_day_history_does_not_use_random_id_as_creation_order() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "1".into(), None)
+            .unwrap();
+        let first = create(&core, listing, person, values("2026-11-24", 100)).unwrap();
+        let second = create(&core, listing, person, values("2026-11-24", 200)).unwrap();
+        let (newer, older) = if first.price_list_id < second.price_list_id {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE price_lists SET created_at=?1 WHERE price_list_id=?2",
+                params!["2026-11-24T12:00:00.001Z", newer.price_list_id],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE price_lists SET created_at=?1 WHERE price_list_id=?2",
+                params!["2026-11-24T12:00:00.000Z", older.price_list_id],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            overview(&core, listing, person).unwrap().lists,
+            vec![newer, older]
         );
     }
 
