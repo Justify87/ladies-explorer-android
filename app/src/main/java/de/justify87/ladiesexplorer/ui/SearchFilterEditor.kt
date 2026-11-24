@@ -50,6 +50,14 @@ private val groupLabels = mapOf(
     "treff" to "Treffpunkt", "location" to "Location", "zeiten" to "Zeiten",
 )
 
+private const val LOCAL_FILTER_TITLE = "Bilddarstellung und lokale Filter"
+private val imageModeLabels = listOf("ALL" to "Alle", "NATURAL" to "Ohne KI-Markierung", "AI" to "KI-markiert")
+
+internal fun matchesLocalFilterQuery(query: String): Boolean =
+    query.isBlank() || LOCAL_FILTER_TITLE.contains(query, ignoreCase = true) ||
+        imageModeLabels.any { (_, label) -> label.contains(query, ignoreCase = true) } ||
+        "Bilder Fotos Video Dislikes Likes Natürlich Studio FaceApp KI Betrieb Filter".contains(query, ignoreCase = true)
+
 internal fun LazyListScope.searchFilterEditor(
     state: SearchUiState,
     filterQuery: String,
@@ -171,10 +179,10 @@ internal fun LazyListScope.searchFilterEditor(
             }
         }
     }
-    if (filterQuery.isBlank() || "Bilddarstellung Bilder Fotos Video Dislikes Likes Natürlich Studio FaceApp KI Betrieb Filter".contains(filterQuery, ignoreCase = true)) item {
-        FilterCard("Bilddarstellung und lokale Filter") {
+    if (matchesLocalFilterQuery(filterQuery)) item {
+        FilterCard(LOCAL_FILTER_TITLE) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                listOf("ALL" to "Alle", "NATURAL" to "Ohne KI-Markierung", "AI" to "KI-markiert").forEach { (mode, label) ->
+                imageModeLabels.forEach { (mode, label) ->
                     FilterChip(selected = state.local.imageMode.ifBlank { "ALL" } == mode, enabled = enabled,
                         onClick = {
                             if (state.local.imageMode.ifBlank { "ALL" } != mode) {

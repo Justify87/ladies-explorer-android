@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: M05.11 (G11), T11.4 READY.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: M05.11 (G11), T11.4 DOING.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -127,13 +127,15 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - Suchliste wegen eigenständigem Zugriff auf nur im Grid ausgeblendete Likes erhalten; doppelter Filterwechsel und Trefferzahl im Warntext entfernt. Suchentwurf, Navigation und bestehende Aktionskontexte unverändert.
 - Gezielte JVM-Regressionen in `SavedPeopleStateTest`, `ProfilePanelsTest` und `SearchRunStateTest`; ARM64- und Instrumentierungs-APK, JVM-Tests, Lint, Rust-Tests, native DB-Regression, Clippy, Quell-/APK-Architekturprüfungen und Build-Gate erfolgreich. Geräteprüfungen mit Merge gemäß Merge-Regel DONE; keine separate Geräteausführung oder lokale Build-Ausführung behauptet.
 
-### T11.4 — READY · Enges Altcode- und Abschlussreview
+### T11.4 — DOING · Enges Altcode- und Abschlussreview
 
 **Abhängigkeit:** T11.1–T11.3 abgeschlossen. **Anker:** jeweils betroffene Kotlin-/Rust-/UniFFI-Aufrufer, Tests, `docs/` und bestehender [CI-Vertrag](../README.md#prüfung--ci).
 
 **Umfang:**
 - [ ] Ausschließlich im Zuge der vorigen Aufgaben eindeutig abgelöste Funktionen, State-Felder, Wrapper, FFI-Exporte, Kommentare und Tests vollständig bereinigen. Native Altdefinitionen, Serialisierung, Framework-Aufrufer und interne Schemaentwicklung nur nach belegter Entbehrlichkeit anfassen.
 - [ ] Betroffene UI→CoreStore→Rust→SQLite-Pfade und umgekehrte Aufrufer auf verbleibende Widersprüche, funktionale Regressionen und unnötige neue Abstraktionen reviewen; vorhandene gezielte Tests und vollständigen CI-Gate für den integrierten Abschlussstand belegen.
+
+**Zwischenstand:** Auf `main` bei `e5abe01d2f741c59b3a84ba73efa43f1740f4400` sind T11.1–T11.3 integriert. Die Filtersuche verwendete noch eine separate Schlagwortliste ohne die neuen KI-Markierungsbeschriftungen. Die Suchgruppe verwendet nun ihre gerenderten Modusbeschriftungen und den Gruppentitel direkt; bisherige Suchaliase bleiben erhalten. Regression in `SearchRunStateTest`. Vollständiger Abschlussreview und CI des resultierenden Stands sind noch nicht belegt; nach Prüfung Abschlussstatus aktualisieren.
 
 **Akzeptanz:** Keine offenen hohen In-Scope-Befunde, keine zweite fachliche Implementierungsroute, kein belegter Funktionsverlust und keine zusätzlichen Frameworks/Jobs. ROADMAP und tatsächlich geänderte Verträge im jeweiligen PR aktualisieren; Abschlussbelege nennen, danach Status DONE. Kein eigenmächtiger Merge; keine separate Geräteabnahme nach [Merge-Regel](#pflege).
 

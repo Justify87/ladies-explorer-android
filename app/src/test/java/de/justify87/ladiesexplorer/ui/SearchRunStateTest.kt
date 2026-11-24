@@ -15,6 +15,14 @@ import de.justify87.ladiesexplorer.core.FrequentFilter
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class SearchRunStateTest {
+    @Test fun localFilterSearchFindsRenderedMarkerLabelsAndExistingAliases() {
+        listOf("", "Ohne KI-Markierung", "ki-markiert", "Markierung",
+            "Bilddarstellung und lokale Filter", "Fotos", "Natürlich", "FaceApp").forEach {
+            assertTrue("Missing local filters for '$it'", matchesLocalFilterQuery(it))
+        }
+        assertFalse(matchesLocalFilterQuery("Haarfarbe"))
+    }
+
     private fun response(id: Long, partial: Boolean = false) = SearchResponse(
         query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}", 10u),
         local = defaultLocalVisibility(),
