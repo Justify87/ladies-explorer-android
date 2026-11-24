@@ -61,7 +61,7 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 | Suche | `search_runs`, `search_results` |
 | Gespeicherte Suchen | `saved_searches`, `saved_search_results` |
 | Identitätsevidenz | `identity_evidence`, `identity_events` |
-| Persönliche Begegnungen | `encounters`, `encounter_services` – typisierte gemeinsame CRUD-API; `price_lists`, `price_items` – Schema |
+| Persönliche Begegnungen | `encounters`, `encounter_services`, `price_lists`, `price_items` – typisierte lokale CRUD-APIs |
 | Einstellungen | `app_settings` |
 
 ### SQLite-Vertrag
@@ -186,7 +186,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 
 **Persönliche lokale Datensätze:**
 - `encounters.rs` besitzt transaktionale CRUD- und Owner-/Editor-CAS-Prüfungen einschließlich optionaler Inseratszuordnung, Grundpreis und vollständiger persönlicher Leistungszeilen. Kindzeilen werden innerhalb derselben Transaktion gelesen und bei Änderung ersetzt; Löschen nutzt den Fremdschlüssel-Cascade. Gesamtbetrag wird nicht berechnet.
-- `prices.rs` verwaltet manuelle EUR-Preislisten und Positionen in den vorhandenen Tabellen. Jede Korrektur vergleicht Owner, vollständige Werte und Positions-IDs; neue Positionen werden vor dem Löschen der alten eingefügt, damit ein älterer Editor auch nach einer Rückkorrektur nicht wieder gültig wird. Löschen ist atomar mit Cascade. Die native Preisübersicht sortiert nach Erfassungsdatum und ID; den letzten bekannten bezahlten Gesamtbetrag liest sie separat aus Begegnungen, nicht aus Preispositionen.
+- `prices.rs` verwaltet manuelle EUR-Preislisten und Positionen in den vorhandenen Tabellen. Jede Korrektur vergleicht Owner, vollständige Werte und Positions-IDs; neue Positionen werden vor dem Löschen der alten eingefügt, damit ein älterer Editor auch nach einer Rückkorrektur nicht wieder gültig wird. Löschen ist atomar mit Cascade. Die native Preisübersicht sortiert nach erfasstem Datum, internem Erstellungszeitpunkt und ID als stabilem Fallback. Neue Listen desselben Datums erhalten eine eindeutige Erstellungsreihenfolge über den vorhandenen `created_at`-Wert (bei gleichem oder rückläufigem Takt mindestens +1 ms); Korrekturen erhalten diese Reihenfolge. Bei historischen identischen Zeitstempeln ist die frühere Reihenfolge nicht rekonstruierbar; den letzten bekannten bezahlten Gesamtbetrag liest sie separat aus Begegnungen, nicht aus Preispositionen.
 - `CoreStore` vermittelt typisierte native Zugriffe. `ProfileRecordEditor` teilt Admission, Read-/Retry- und Entwurfszustand für Begegnungen und Preislisten. Pro ViewModel ist höchstens ein lokaler Datensatzeditor aktiv (nicht über Prozessende). Der gemeinsame `ProfileFlow` fordert Reads nur für die geöffnete Sektion oder zur Wiederaufnahme des aktiven Entwurfs an; keine Vorausladung persönlicher Datensätze.
 - Ein Entwurf behält den ursprünglichen CAS-Stand bei Kontextwiederaufnahme. Veraltete Aktionen, Mehrfachschreibvorgänge, Navigation und Merge bei offenem Editor werden nicht zugelassen. Back/Abbrechen erfordert explizites Verwerfen eines Bearbeitungsentwurfs.
 - Schreibvorgänge nutzen den gemeinsamen Mutationsguard in `MainViewModel`, drainieren bestätigte native Operationen und aktualisieren bedarfsgebunden lokale Datensatzprojektionen, nicht Discovery-/SavedSearch-/Quellprojektionen. Ein anschließender Readfehler erlaubt Read-Retry, keinen Write-Retry. Personennotiz und andere Profilwerte bleiben getrennt.

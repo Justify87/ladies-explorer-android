@@ -168,7 +168,7 @@ pub(crate) fn overview(
     let mut stmt = db.prepare(
         "SELECT price_list_id,person_id,listing_id,observed_at FROM price_lists
          WHERE person_id=?1 AND source='USER_ENTERED' AND currency='EUR'
-         ORDER BY substr(observed_at,1,10) DESC, price_list_id DESC",
+         ORDER BY substr(observed_at,1,10) DESC, created_at DESC, price_list_id DESC",
     )?;
     let mut lists = stmt
         .query_map([person_id], from_row)?
@@ -203,9 +203,13 @@ pub(crate) fn create(
     let tx = db.transaction()?;
     require_owner(&tx, listing_id, person_id)?;
     validate(&tx, person_id, &values)?;
+    // Preserve insertion order even when lists are recorded within the same clock tick.
     tx.execute(
-        "INSERT INTO price_lists (price_list_id,person_id,listing_id,observed_at)
-         VALUES ((random() & 9223372036854775807),?1,?2,?3)",
+        "INSERT INTO price_lists (price_list_id,person_id,listing_id,observed_at,created_at)
+         VALUES ((random() & 9223372036854775807),?1,?2,?3,
+                 MAX(strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                     COALESCE((SELECT strftime('%Y-%m-%dT%H:%M:%fZ',MAX(created_at),'+0.001 seconds')
+                               FROM price_lists), '')))",
         params![person_id, values.listing_id, values.observed_at],
     )?;
     let id = tx.last_insert_rowid();
@@ -356,8 +360,7 @@ mod tests {
         let second = create(&core, listing, person, values("2026-11-24", 1234)).unwrap();
         let latest = overview(&core, listing, person).unwrap();
         assert!(latest.last_paid.is_none());
-        let mut ids = vec![first.price_list_id, second.price_list_id];
-        ids.sort_unstable_by(|a, b| b.cmp(a));
+        let ids = vec![second.price_list_id, first.price_list_id];
         assert_eq!(
             latest
                 .lists
@@ -392,10 +395,74 @@ mod tests {
                 amount_cents: 0,
             })
         );
-        core.delete_encounter(listing, person, paid).unwrap();
+        let corrected = core
+            .update_encounter(listing, person, paid, encounter("2026-11-23", Some(250)))
+            .unwrap();
+        let result = overview(&core, listing, person).unwrap();
+        assert_eq!(result.last_paid.unwrap().amount_cents, 250);
+        assert_eq!(result.lists, latest.lists);
+        core.delete_encounter(listing, person, corrected).unwrap();
         let result = overview(&core, listing, person).unwrap();
         assert_eq!(result.last_paid.unwrap().amount_cents, 700);
         assert_eq!(result.lists, latest.lists);
+    }
+
+    #[test]
+    fn same_day_history_uses_creation_order_and_corrections_preserve_it() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "1".into(), None)
+            .unwrap();
+        let first = create(&core, listing, person, values("2026-11-24", 100)).unwrap();
+        let second = create(&core, listing, person, values("2026-11-24", 200)).unwrap();
+        let corrected = core
+            .update_price_list(listing, person, first, values("2026-11-24", 300))
+            .unwrap();
+        assert_eq!(
+            overview(&core, listing, person).unwrap().lists,
+            vec![second.clone(), corrected.clone()]
+        );
+        let older = core
+            .update_price_list(listing, person, second, values("2026-11-23", 200))
+            .unwrap();
+        assert_eq!(
+            overview(&core, listing, person).unwrap().lists,
+            vec![corrected, older]
+        );
+    }
+
+    #[test]
+    fn same_day_history_does_not_use_random_id_as_creation_order() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "1".into(), None)
+            .unwrap();
+        let first = create(&core, listing, person, values("2026-11-24", 100)).unwrap();
+        let second = create(&core, listing, person, values("2026-11-24", 200)).unwrap();
+        let (newer, older) = if first.price_list_id < second.price_list_id {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE price_lists SET created_at=?1 WHERE price_list_id=?2",
+                params!["2026-11-24T12:00:00.001Z", newer.price_list_id],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE price_lists SET created_at=?1 WHERE price_list_id=?2",
+                params!["2026-11-24T12:00:00.000Z", older.price_list_id],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            overview(&core, listing, person).unwrap().lists,
+            vec![newer, older]
+        );
     }
 
     #[test]

@@ -4,33 +4,9 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-Nächster Schritt: [M06.4](#m064--gezielte-integration-und-abschluss-g06). M06.1a/b und M06.2 abgeschlossen; M07 erst nach gesondertem Implementierungsauftrag beginnen; L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
+M06 / G06 abgeschlossen. Nächster vorgesehener Entwicklungsschritt: [M07.1](#m071--gezielte-gesamtintegration), erst nach gesondertem Implementierungsauftrag beginnen; L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
 
 ## Geplante Meilensteine
-
-### M06 — Persönliche Begegnungen und Preise
-
-**Ziel und Umfang:** Den bestätigten lokalen Mindestumfang gemäß [PRODUCT](PRODUCT.md#persönliche-begegnungen-und-preise) im bestehenden gemeinsamen Profil nutzbar machen. M06.1 umfasst Begegnungsbasis und Leistungsdetails; danach Angebotspreise und G06. Kein neuer Root-Bereich und keine Wiederaufnahme der Web-App-Parität.
-
-**Integrationsrahmen:** Die Tabellen `encounters`, `encounter_services`, `price_lists`, `price_items` in `schema.rs` und ihre bereits vorhandene Übertragung im Identitäts-Merge (`identity.rs`) nutzen. Betroffene Verträge und Aufrufer in `lib.rs`, `CoreStore.kt`, `ProfilePanels.kt::ProfileFlow`, `MainViewModel` und `StandaloneProfileOperations` vor der jeweiligen vertikalen Aufgabe prüfen. Bestehende Tabellen und Operationspfade bevorzugen; Schemaänderung nur bei belegter Integritätsnotwendigkeit mit datenerhaltender interner Schemaentwicklung. Keine zusätzlichen Netzwerkzugriffe, Frameworks, Stores oder spekulativen Abstraktionen.
-
-**Gemeinsame Akzeptanz für neue Schreibpfade** ([Operationsmodell](ARCHITECTURE.md#operations--und-konsistenzmodell), [Identität](ARCHITECTURE.md#historisierung-und-identitätsoperation), [UI-Hierarchie](DESIGN.md#informationshierarchie--progressive-offenlegung)):
-- Rust validiert Personen-/optionalen Inseratsowner, betroffenen Datensatz und erwarteten Bearbeitungsstand in derselben Transaktion.
-- UI-Aktionen bleiben an den sichtbaren Profil-/Editor-Kontext gebunden. Veraltete Callbacks, Mehrfachklicks und Merge-Konflikte dürfen keine falsche oder doppelte Mutation auslösen; ungespeicherte betroffene Entwürfe vor Merge schützen.
-- Bestätigten Commit und nachfolgenden Readfehler trennen, keine automatische Write-Wiederholung. Nur betroffene lokale Projektionen invalidieren; keine neuen Quellabrufe oder Begegnungs-/Preislisten-Prefetches.
-- Offline, Back, Cancel, Lifecycle und Fehlerzustände gezielt prüfen.
-
-**Abgrenzung (Nutzerentscheidung 24.11.2026):** M06.3 entfällt ersatzlos (globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, pauschale Karten-/Geocoding-Erweiterungen). Nicht nach M07 verschieben; nur bei neuem konkretem Bedarf und ausdrücklichem Auftrag neu bewerten. Bestehende Karte, SavedSearch, WhatsApp, Medienarchivierung und Quellhistorie erhalten.
-
-#### M06.4 — Gezielte Integration und Abschluss (G06)
-
-**Status:** READY · **Abhängigkeit:** M06.1a/b und M06.2 abgeschlossen.
-
-**Umfang:** Betroffene Rust-/UniFFI-/Kotlin-/Compose-Aufrufer, Datenprojektionen, Tests und Verträge auf Korrektheit, Redundanz und abgelöste Pfade prüfen. Keine Wiedereröffnung von M05 oder Vorwegnahme der M07-Gesamtintegration.
-
-**Akzeptanz:** Neue Funktionen in beiden Profilkontexten offline konsistent. Gezielte Regressionen belegen Identitäts-Merge einschließlich Kinddatensätzen, Entwurfs-/Stale-Owner-Schutz, atomare Writes, Cancel/Back/Lifecycle, unbekannte Werte, Readfehler nach Commit und unveränderte Swipe-/Galerie-/Notizverträge.
-
-**Prüfung und Abschluss:** Vollständiges bestehendes CI-Gate einschließlich Rust-/JVM-Regressionen, nativer DB-Regression, Clippy, Android-Build/Lint, Architekturprüfungen und Instrumentierungs-APK. Geräteprüfungen gemäß [Merge-Regel](#pflege). PR/Commit/CI, verbleibende konkrete Befunde und geänderte Fach-/Design-/Architekturverträge im Abschlussbeleg verlinken; G06 mit Merge abgeschlossen.
 
 ### M07 — Technischer Projektabschluss
 
@@ -90,6 +66,7 @@ Alle Einträge dieses Abschnitts sind DONE; Geräteprüfungen gemäß Merge-Rege
 | M06.1a | Begegnungsbasis: native personengebundene CRUD mit Owner-/Editor-CAS, gemeinsamer bedarfsgesteuerter Profilabschnitt und Editor für Swipe/Standalone, Entwurfs- und Commit-/Readfehler-Schutz; Rust-/JVM-Regressionen und Instrumentierungs-APK validiert | [#87](https://github.com/Justify87/ladies-explorer-android/pull/87), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45443347192), [geprüfter Commit](https://github.com/Justify87/ladies-explorer-android/commit/88f53965226683079a8eb57ddb59b9d4180b429d) |
 | M06.1b | Optionaler Grundpreis und persönliche Leistungszeilen im gemeinsamen Begegnungseditor; atomare CRUD, vollständiger Editor-CAS, Rollback, Cascade und Merge-Erhalt; unbekannte Beträge getrennt vom Gesamtpreis; Rust-/JVM-Regressionen und Instrumentierungs-APK validiert | [#88](https://github.com/Justify87/ladies-explorer-android/pull/88), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45450763583), [geprüfter Commit](https://github.com/Justify87/ladies-explorer-android/commit/f574ea0cbe0a8d91561059a45fc1b4fbf630407f) |
 | M06.2 | Manuelle personenbezogene EUR-Preislisten mit Datum und Positionen, historische Anzeige, atomare native CRUD mit Owner-/Editor-CAS und Merge-Erhalt, gemeinsamer Editor für beide Profilkontexte, separat abgeleiteter letzter bekannter bezahlter Gesamtbetrag; Rust-/JVM-Regressionen und Instrumentierungs-APK validiert | [#89](https://github.com/Justify87/ladies-explorer-android/pull/89), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45454318406), [Merge](https://github.com/Justify87/ladies-explorer-android/commit/10f850e263e6a64e5995b56aa5a1b191b29bc447) |
+| M06.4 / G06 | Integrations- und Aufruferreview der gemeinsamen lokalen Begegnungs-/Preisfunktionen; gleichdatierte Preislisten nach Erstellungsreihenfolge statt zufälliger ID sortiert, Korrektur und bezahlter Gesamtbetrag regressionsgesichert. Historisch identische Erstellungszeitstempel nur deterministisch per ID auflösbar; M06.3 gemäß Nutzerentscheidung 24.11.2026 ersatzlos entfallen (globale Statistik/Verlauf, Medienbrowser, zusätzliche Karten-/Geocoding-Funktionen; keine Verschiebung nach M07). Vollständiges CI-Gate grün, Geräteprüfung gemäß Merge-Regel. | [#90](https://github.com/Justify87/ladies-explorer-android/pull/90), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45455748491), [geprüfter Commit](https://github.com/Justify87/ladies-explorer-android/commit/96dc1e7ab09323895e2afd928e66664f04ab58b4), [Architektur](ARCHITECTURE.md#gemeinsame-profilarchitektur) |
 | DC01 | Obsolete Produktionspfade/UniFFI-Exporte entfernt, Testgrenzen korrigiert | [#49](https://github.com/Justify87/ladies-explorer-android/pull/49) |
 | DC02 | Altimport vor weiterer Featurearbeit entfernt, native synthetische v2-Fixtures; Nutzerentscheidung 20.11.2026: Web-App obsolet, keine Nutzerdatenmigration, native Schemaentwicklung und Android-Nutzerdaten erhalten | [#52](https://github.com/Justify87/ladies-explorer-android/pull/52), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/44828090537), [Produktsoll](PRODUCT.md#produktziel-und-grenzen) |
 
