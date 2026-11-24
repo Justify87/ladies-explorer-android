@@ -62,6 +62,7 @@ fn validate(db: &Connection, person_id: i64, values: &PriceListValues) -> Result
         |row| row.get(0),
     )?;
     if canonical.as_deref() != Some(values.observed_at.as_str())
+        || values.observed_at.starts_with("0000-")
         || values.items.is_empty()
         || values.items.iter().any(|item| {
             item.amount_cents < 0
@@ -147,7 +148,12 @@ fn insert_items(db: &Connection, id: i64, items: &[PriceItem]) -> Result<(), Cor
          VALUES (?1,?2,?3,?4)",
     )?;
     for item in items {
-        stmt.execute(params![id, item.label, item.duration_minutes, item.amount_cents])?;
+        stmt.execute(params![
+            id,
+            item.label,
+            item.duration_minutes,
+            item.amount_cents
+        ])?;
     }
     Ok(())
 }
@@ -204,8 +210,8 @@ pub(crate) fn create(
     )?;
     let id = tx.last_insert_rowid();
     insert_items(&tx, id, &values.items)?;
-    let result =
-        read_one(&tx, id)?.ok_or_else(|| CoreError::Storage("Created price list missing".into()))?;
+    let result = read_one(&tx, id)?
+        .ok_or_else(|| CoreError::Storage("Created price list missing".into()))?;
     tx.commit()?;
     Ok(result)
 }
@@ -225,7 +231,11 @@ pub(crate) fn update(
     if expected.values != values {
         tx.execute(
             "UPDATE price_lists SET listing_id=?1,observed_at=?2 WHERE price_list_id=?3",
-            params![values.listing_id, values.observed_at, expected.price_list_id],
+            params![
+                values.listing_id,
+                values.observed_at,
+                expected.price_list_id
+            ],
         )?;
         // Insert before deleting: the current item IDs are not recycled, even for date-only corrections.
         insert_items(&tx, expected.price_list_id, &values.items)?;
@@ -293,6 +303,7 @@ mod tests {
         assert!(overview(&core, foreign, person).is_err());
         let mut invalid = original.values.clone();
         invalid.listing_id = Some(foreign);
+        assert!(create(&core, listing, person, invalid.clone()).is_err());
         assert!(update(&core, listing, person, original.clone(), invalid).is_err());
         {
             let db = core.connection().unwrap();
@@ -302,17 +313,14 @@ mod tests {
             )
             .unwrap();
         }
-        assert!(create(&core, listing, person, values("2026-11-25", 77)).is_err());
-        assert!(
-            update(
-                &core,
-                listing,
-                person,
-                original.clone(),
-                values("2026-11-25", 77)
-            )
-            .is_err()
-        );
+        let mut failing = values("2026-11-25", 5);
+        failing.items.push(PriceItem {
+            label: None,
+            duration_minutes: None,
+            amount_cents: 77,
+        });
+        assert!(create(&core, listing, person, failing.clone()).is_err());
+        assert!(update(&core, listing, person, original.clone(), failing).is_err());
         assert_eq!(
             overview(&core, listing, person).unwrap().lists,
             vec![original.clone(), older.clone()]
@@ -325,21 +333,11 @@ mod tests {
             values("2026-11-24", 99),
         )
         .unwrap();
-        let reverted = update(
-            &core,
-            listing,
-            person,
-            corrected,
-            original.values.clone(),
-        )
-        .unwrap();
+        let reverted = update(&core, listing, person, corrected, original.values.clone()).unwrap();
         assert_ne!(reverted.item_ids, original.item_ids);
         assert!(delete(&core, listing, person, original).is_err());
         delete(&core, listing, person, reverted).unwrap();
-        assert_eq!(
-            overview(&core, listing, person).unwrap().lists,
-            vec![older]
-        );
+        assert_eq!(overview(&core, listing, person).unwrap().lists, vec![older]);
         let db = core.connection().unwrap();
         let count: i64 = db
             .query_row("SELECT COUNT(*) FROM price_items", [], |row| row.get(0))
@@ -409,6 +407,7 @@ mod tests {
             .unwrap();
         for invalid in [
             values("2026-02-30", 0),
+            values("0000-01-01", 0),
             values("2026-11-24", -1),
             PriceListValues {
                 items: Vec::new(),
