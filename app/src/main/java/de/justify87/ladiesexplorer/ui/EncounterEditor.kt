@@ -123,14 +123,16 @@ internal fun EncounterEditorDialog(editor: EncounterEditor) {
         Text("Persönliche Leistungsdetails", style = MaterialTheme.typography.titleSmall)
         d.services.forEachIndexed { index, service ->
             key(service.id) {
-                ProfileEditorField(service.name, "Leistung ${index + 1}", enabled) { value ->
-                    change { it.changeService(service.id) { line -> line.copy(name = value) } }
-                }
-                ProfileEditorField(service.amount, "Betrag ${index + 1} in EUR (optional)", enabled, KeyboardType.Decimal) { value ->
-                    change { it.changeService(service.id) { line -> line.copy(amount = value) } }
-                }
-                TextButton(enabled = enabled, onClick = { change { it.removeService(service.id) } }) {
-                    Text("Leistung ${index + 1} entfernen")
+                ProfileEditorGroup("Leistung ${index + 1}") {
+                    ProfileEditorField(service.name, "Leistung ${index + 1}", enabled) { value ->
+                        change { it.changeService(service.id) { line -> line.copy(name = value) } }
+                    }
+                    ProfileEditorField(service.amount, "Betrag ${index + 1} in EUR (optional)", enabled, KeyboardType.Decimal) { value ->
+                        change { it.changeService(service.id) { line -> line.copy(amount = value) } }
+                    }
+                    TextButton(enabled = enabled, onClick = { change { it.removeService(service.id) } }) {
+                        Text("Leistung ${index + 1} entfernen")
+                    }
                 }
             }
         }
@@ -149,7 +151,7 @@ internal fun EncounterEditorDialog(editor: EncounterEditor) {
 @Composable
 internal fun EncounterRow(row: Encounter, enabled: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
     val v = row.values
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    ProfileRecordCard {
         Text(displayTime(v.occurredAt, ZoneId.systemDefault()), style = MaterialTheme.typography.titleMedium)
         Text("Dauer: ${v.durationMinutes?.let { "$it Min." } ?: "Unbekannt"} · Bezahlt: ${v.totalPriceCents?.let { "${euro(it)} €" } ?: "Unbekannt"}")
         Text("Gesamt: ${v.overallRating?.let { "$it/5" } ?: "Unbekannt"} · Sympathie: ${v.sympathyRating?.let { "$it/5" } ?: "Unbekannt"}")
@@ -162,9 +164,6 @@ internal fun EncounterRow(row: Encounter, enabled: Boolean, onEdit: () -> Unit, 
         }
         v.listingId?.let { Text("Anzeige #$it", style = MaterialTheme.typography.bodySmall) }
         v.note?.let { Text(it) }
-        Row {
-            TextButton(enabled = enabled, onClick = onEdit) { Text("Bearbeiten") }
-            TextButton(enabled = enabled, onClick = onDelete) { Text("Löschen") }
-        }
+        ProfileRecordActions("Bearbeiten", enabled, onEdit, onDelete)
     }
 }
