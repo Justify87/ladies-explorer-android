@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-Nächster Schritt: [M06.1a](#m061a--begegnungsbasis). M06 und M07 jeweils erst nach gesondertem Implementierungsauftrag beginnen; L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
+Nächster Schritt: [M06.1b](#m061b--leistungsdetails). M06 begonnen; M07 erst nach gesondertem Implementierungsauftrag beginnen; L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
 
 ## Geplante Meilensteine
 
@@ -22,25 +22,9 @@ Nächster Schritt: [M06.1a](#m061a--begegnungsbasis). M06 und M07 jeweils erst n
 
 **Abgrenzung (Nutzerentscheidung 24.11.2026):** M06.3 entfällt ersatzlos (globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, pauschale Karten-/Geocoding-Erweiterungen). Nicht nach M07 verschieben; nur bei neuem konkretem Bedarf und ausdrücklichem Auftrag neu bewerten. Bestehende Karte, SavedSearch, WhatsApp, Medienarchivierung und Quellhistorie erhalten.
 
-#### M06.1a — Begegnungsbasis
-
-**Status:** DOING · **Abhängigkeit:** G11 abgeschlossen. · Branch `feature/m06-1a-encounters`.
-
-**Zwischenstand:** Native CRUD-/Owner-/Editor-CAS-Implementierung, UniFFI/CoreStore, gemeinsamer bedarfsgesteuerter Profilabschnitt und Editor einschließlich Admission/Drain/Entwurfsschutz sowie Rust-, JVM- und Android-Regressionen im Feature-Branch. CI der UI-Integration erfolgreich; finaler Stand mit zusätzlichen Regressionen und Review-Korrekturen noch zu validieren. Nächster Schritt: finalen CI-Lauf prüfen, gegebenenfalls Fehler korrigieren und erst danach zur Review-Freigabe übergehen. Kein Merge ohne Freigabe.
-
-**Umfang:** Typisierte native Read-/Create-/Update-/Delete-API über UniFFI/CoreStore, kompakte aufklappbare Begegnungssektion und ein gemeinsamer Editor für Swipe und Standalone. Zeitpunkt, optionale Dauer, tatsächlich bezahlter Gesamtbetrag, Gesamt-/Sympathiebewertung und private Begegnungsnotiz; keine separaten Editorpfade.
-
-**Akzeptanz:**
-- Begegnungen einer Person über verschiedene Inserate hinweg chronologisch lesen, anlegen, ändern und ausdrücklich löschen; optionalen Inseratsbezug sicher prüfen.
-- Unbekannte Werte von null unterscheiden; Bewertungen 1–5, Beträge nichtnegativ, angegebene Dauer positiv.
-- Back/Abbrechen verliert Entwürfe nicht stillschweigend; Fehler sichtbar, gespeicherte Daten bei fehlgeschlagenem Write unverändert.
-- Personennotiz, Präferenz, Favorit, Quellenhistorie und Swipe-Undo unverändert.
-
-**Prüfung:** Rust-CRUD-/Owner-/Merge-Regression einschließlich veraltetem Owner/Editorstand und Rollback, JVM-Editor-/Admission-/Commit-Readfehler-Regression und gezielte Android-Integration beider Profilkontexte. Vorhandene Testframeworks verwenden.
-
 #### M06.1b — Leistungsdetails
 
-**Status:** PLANNED · **Abhängigkeit:** M06.1a abgeschlossen.
+**Status:** READY · **Abhängigkeit:** M06.1a abgeschlossen.
 
 **Umfang:** Optionalen Grundpreis und einfache manuell erfasste Leistungszeilen (Bezeichnung, optionaler Betrag) im selben Begegnungseditor ergänzen. Keine separate Serviceverwaltung und kein zusätzlicher Kriterienkatalog.
 
@@ -130,6 +114,7 @@ Alle Einträge dieses Abschnitts sind DONE; Geräteprüfungen gemäß Merge-Rege
 | M05.0–M05.9 | Frontend-Parität; Nutzerabschluss 19.11.2026, keine Wiedereröffnung | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393 |
 | M05.10 / G10 | Unified Profile Experience; T10.0–T10.9 | [#76](https://github.com/Justify87/ladies-explorer-android/pull/76), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) |
 | M05.11 / G11 | Qualitätskonsolidierung nach G10; T11.1–T11.4 | [#83](https://github.com/Justify87/ladies-explorer-android/pull/83), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751) |
+| M06.1a | Begegnungsbasis: native personengebundene CRUD mit Owner-/Editor-CAS, gemeinsamer bedarfsgesteuerter Profilabschnitt und Editor für Swipe/Standalone, Entwurfs- und Commit-/Readfehler-Schutz; Rust-/JVM-Regressionen und Instrumentierungs-APK validiert | [#87](https://github.com/Justify87/ladies-explorer-android/pull/87), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45443347192), [geprüfter Commit](https://github.com/Justify87/ladies-explorer-android/commit/88f53965226683079a8eb57ddb59b9d4180b429d) |
 | DC01 | Obsolete Produktionspfade/UniFFI-Exporte entfernt, Testgrenzen korrigiert | [#49](https://github.com/Justify87/ladies-explorer-android/pull/49) |
 | DC02 | Altimport vor weiterer Featurearbeit entfernt, native synthetische v2-Fixtures; Nutzerentscheidung 20.11.2026: Web-App obsolet, keine Nutzerdatenmigration, native Schemaentwicklung und Android-Nutzerdaten erhalten | [#52](https://github.com/Justify87/ladies-explorer-android/pull/52), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/44828090537), [Produktsoll](PRODUCT.md#produktziel-und-grenzen) |
 
