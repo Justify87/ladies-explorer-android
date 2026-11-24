@@ -90,7 +90,7 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 1. Gemeinsamer Identitätsvorgang bindet Listing, erwarteten Source-Owner, gerenderten Kontext und Kandidat. UI-Admission schützt betroffene ungespeicherte Entwürfe.
 2. Rust validiert Owner und aktuelle Evidenz in **derselben Transaktion**. Widersprüchliche explizite LIKE-/DISLIKE- oder `repeat_interest`-Werte verhindern den Merge atomar; weitere Fachbedingungen: [PRODUCT](PRODUCT.md#personen-identität-und-historie).
 3. `NONE` beziehungsweise `UNKNOWN` übernehmen den bekannten Wert; Favoriten werden per OR vereinigt und nichtleere gespeicherte Notizen zusammengeführt. Nutzerzustand, Inserate, Quellprofile, Kennungen, Begegnungen und Historie bleiben erhalten; historische Personen-IDs in `identity_events` bestehen fort.
-4. Nach bestätigt erfolgreichem Commit betroffene lokale Projektionen, Entwürfe, Dialoge und Swipe-Slots invalidieren beziehungsweise neu lesen. Bei anschließendem Readfehler die Mutation **nicht** wiederholen.
+4. Nach bestätigt erfolgreichem Commit betroffene lokale Projektionen, Entwürfe, Dialoge und Swipe-Slots invalidieren beziehungsweise neu lesen. Ein durch Lifecycle-Stop widerrufener, weiterhin geöffneter Detailkontext übernimmt den bestätigten neuen Owner beim Commit und liest bei Resume lokal; ein durch Back geschlossener Kontext bleibt geschlossen. Bei anschließendem Readfehler die Mutation **nicht** wiederholen.
 
 ## Quellzugriff und Medien
 

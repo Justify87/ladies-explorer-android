@@ -183,6 +183,47 @@ class StandaloneProfileOperationsTest {
         assertEquals(2L, f.owner)
     }
 
+    @Test(timeout = 15_000) fun stopDuringConfirmedMergeRebindsStillOpenListingOnLocalResume() = runBlocking {
+        for (resumeBeforeCommit in listOf(false, true)) {
+            val f = Fixture(this)
+            f.openOffline()
+            val started = CompletableDeferred<Unit>()
+            val finish = CompletableDeferred<Unit>()
+            f.commit = { _, target -> started.complete(Unit); finish.awaitSignal(); f.owner = target }
+            val old = requireNotNull(f.search.value.detailIdentityToken())
+            f.confirmCurrent()
+            started.awaitSignal()
+            f.operations.setPresentationVisible(false)
+            assertTrue(f.search.value.profileOpen)
+            assertNull(f.search.value.detailIdentityToken())
+            assertTrue(f.discovery.value.busy)
+            if (resumeBeforeCommit) {
+                f.operations.setPresentationVisible(true)
+                yield()
+                assertNull(f.search.value.profile)
+            }
+            finish.complete(Unit)
+            f.idle()
+            if (!resumeBeforeCommit) {
+                assertNull(f.search.value.profile)
+                f.operations.setPresentationVisible(true)
+                f.idle()
+            }
+            assertTrue(f.search.value.profileOpen)
+            assertEquals(4L, f.search.value.profile?.listingId)
+            assertEquals(2L, f.search.value.profileIdentity?.personId)
+            assertNull(f.search.value.retryProfileListingId)
+            assertNull(f.search.value.actionError)
+            assertNotEquals(old.sessionId, f.search.value.profileSessionId)
+            f.operations.confirmIdentity(old, 2L)
+            f.idle()
+            assertEquals(1, f.calls.count { it.startsWith("confirm:") })
+            assertEquals(1, f.calls.count { it == "profile:4" })
+            assertFalse(f.calls.any { it.startsWith("source:") })
+            assertFalse(f.discovery.value.busy)
+        }
+    }
+
     @Test(timeout = 15_000) fun committedMergeReadFailureInvalidatesCapabilitiesAndRetryNeverRepeatsWrite() = runBlocking {
         val f = Fixture(this)
         f.openOffline()

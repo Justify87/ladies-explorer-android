@@ -18,7 +18,7 @@ M06 / G06 abgeschlossen. [M07.1](#m071--gezielte-gesamtintegration) nach gesonde
 
 **Status:** DOING · **Abhängigkeit:** G06 abgeschlossen · Branch `review/m07-1-integration`.
 
-**Arbeitsstand:** Auf Basis [`cb466958`](https://github.com/Justify87/ladies-explorer-android/commit/cb4669586992a717a64b2d80d55e62d14c2c8bd3) gezielte Integrationsprüfung; abhängige Preisübersicht bei bestätigtem Begegnungs-Commit explizit invalidiert. Vollständiges CI-Gate des korrigierten Code-/Buildstands und abschließender Diff-/Regressionsreview noch erforderlich.
+**Arbeitsstand:** Auf Basis [`cb466958`](https://github.com/Justify87/ladies-explorer-android/commit/cb4669586992a717a64b2d80d55e62d14c2c8bd3) gezielte Integrationsprüfung; abhängige Preisübersicht bei bestätigtem Begegnungs-Commit explizit invalidiert; bestätigter Identitäts-Merge erhält den noch geöffneten Detailkontext auch bei Lifecycle-Stop. Gezielte JVM- und native Merge-Regressionsbelege ergänzt ([PR #91](https://github.com/Justify87/ladies-explorer-android/pull/91)). Vollständiges CI-Gate des korrigierten Code-/Buildstands noch erforderlich.
 
 **Umfang:** Auf dem dann integrierten Code- und Teststand vier funktionsübergreifende Ketten anhand produktiver Aufrufer, vorhandener Regressionen und konkreter Befunde prüfen; G06 nicht duplizieren:
 - Suche → Swipe/Grid → gemeinsames Profil → bestätigte Entscheidung: aktive/lokale Ergebnismengen, Undo und Rückkehr konsistent.
