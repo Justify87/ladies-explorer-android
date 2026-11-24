@@ -438,7 +438,7 @@ private fun SwipeShellHeader(
     var info by remember(context, identity) { mutableStateOf(false) }
     if (info && identity != null) IdentityInfoDialog(identity) { info = false }
     Row(Modifier.fillMaxSize().padding(start = ShellMetrics.inset), verticalAlignment = Alignment.CenterVertically) {
-        ProfileShellTitle(shown?.title ?: "Ladies Explorer",
+        ProfileShellTitle(shown?.title ?: "Ladies",
             swipeContextShort(context.deck.runId != null, context.matchingRun, context.availability),
             shown?.let { listOfNotNull(it.status, it.shortDecision, it.place).joinToString(" · ") } ?: summary,
             presentation.budget.shortHeader, Modifier.weight(1f),

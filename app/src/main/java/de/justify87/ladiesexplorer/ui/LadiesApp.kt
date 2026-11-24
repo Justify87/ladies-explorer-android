@@ -246,14 +246,15 @@ fun LadiesApp(
                             ?: "Gespeicherte Ergebnisse"
                         savedEditorOpen -> "Suche bearbeiten"
                         savedOverviewOpen -> "Gespeicherte Suchen"
-                        route.root == RootDestination.Discover -> "Ladies Explorer"
-                        else -> route.root.title
+                        else -> "Ladies"
                     },
+                    subtitle = route.root.title.takeIf { !nested && route.root != RootDestination.Discover },
                     onBack = if (nested) ({ back() }) else null,
                     backEnabled = saved.operation != SavedOperation.Write,
                 ) {
-                    if (route.root == RootDestination.Discover) {
-                        ShellIconButton(onClick = { selectRoot(RootDestination.Search) }) {
+                    if (route.root != RootDestination.Search) {
+                        ShellIconButton(onClick = { selectRoot(RootDestination.Search) },
+                            enabled = !saved.blockingNavigation && !viewModel.hasProfileEditor) {
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
                         }
                     } else if (route.root == RootDestination.Search && pane == SearchPane.Filters) {

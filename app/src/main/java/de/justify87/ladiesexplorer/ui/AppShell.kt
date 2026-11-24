@@ -57,6 +57,7 @@ internal fun ShellHeaderSurface(modifier: Modifier = Modifier, content: @Composa
 @Composable
 internal fun AppHeader(
     title: String,
+    subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     backEnabled: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
@@ -72,8 +73,11 @@ internal fun AppHeader(
             if (onBack != null) ShellIconButton(onBack, backEnabled) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
             }
-            Text(title, Modifier.weight(1f).padding(vertical = ShellMetrics.gap),
-                style = MaterialTheme.typography.titleLarge)
+            Column(Modifier.weight(1f).padding(vertical = ShellMetrics.gap)) {
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                subtitle?.let { Text(it, style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
             actions()
         }
     }
