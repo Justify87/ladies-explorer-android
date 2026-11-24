@@ -213,10 +213,16 @@ fun LadiesApp(
         if (old != null && old != saved.editor?.session) searchStateHolder.removeState("editor/$old")
         previousEditorSession = saved.editor?.session
     }
+    val renderedProfileOpen = search.profileOpen
     val renderedProfileSession = search.profileSessionId
     val renderedRetryAction = search.detailRetryAction()
     fun back() {
         profileTouchGate.invalidate()
+        // A delayed detail Back must never fall through to the root route after closing.
+        if (renderedProfileOpen) {
+            viewModel.closeProfile(renderedProfileSession)
+            return
+        }
         if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen || savedResultsOpen)) {
             viewModel.savedSearch.back()
             return
