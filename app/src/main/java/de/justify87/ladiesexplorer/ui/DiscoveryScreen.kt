@@ -275,7 +275,7 @@ internal fun DiscoverScreen(
             availabilityEnabled && matchingRun && started, matchingRun, availability, state.replayLikes, state.canUndoSwipe,
             selectedMedia?.let { "${it.kind}:${it.url}:${it.localPath}" })
         val summary = if (state.activeRunId == null) "Lokaler Bestand · neutral"
-            else active?.let { "${it.city} · ${it.requestedRadiusKm} km" } ?: "Aktive Suche"
+            else active?.let { "${it.city} · ${it.requestedRadiusKm} km" } ?: "Suchlauf wird übernommen"
         val counts = if (state.activeRunId == null) "${state.cards.size} im Deck"
             else "Quelle: ${active?.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"} · ${state.activeVisibleCount} sichtbar · ${state.cards.size} im Deck"
         val notices = buildList {
@@ -347,8 +347,13 @@ internal fun DiscoverScreen(
             if (card == null) {
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item(key = "discover-context") {
+                        DiscoveryChrome(summary, availability, menuContext.availabilityEnabled, deckToken,
+                            DiscoverMode.Swipe, onMode = onSelectMode,
+                            onAvailability = { onAvailability(deckToken, it) })
+                    }
                     item {
-                        if (state.loading) CircularProgressIndicator()
+                        if (state.loading || searchLoading) CircularProgressIndicator()
                         else {
                             Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
                             Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
@@ -368,13 +373,13 @@ internal fun DiscoverScreen(
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices) {
                     item(key = "discover-context") {
-                        DiscoveryChrome(summary, availability, menuContext.availabilityEnabled, deckToken,
+                        DiscoveryChrome("$summary · ${state.cards.size} im Deck", availability, menuContext.availabilityEnabled, deckToken,
                             DiscoverMode.Swipe, onMode = onSelectMode,
                             onAvailability = { onAvailability(deckToken, it) })
                     }
                     item(key = "hero") {
                         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                        ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
+                            ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
                             onSwipe = if (actions) ({ decision ->
                                 choose(decision)
@@ -394,7 +399,7 @@ internal fun DiscoverScreen(
                         }
                     }
                     item(key = "header") {
-                        Text("Profilinfos", style = MaterialTheme.typography.labelMedium)
+                        Text("Profilinfos", style = MaterialTheme.typography.titleMedium)
                         if (profile != null) ProfileMetadata(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
                     }
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
@@ -452,12 +457,17 @@ private fun SwipeShellHeader(
     if (info && identity != null) IdentityInfoDialog(identity) { info = false }
     Row(Modifier.fillMaxSize().padding(start = ShellMetrics.inset), verticalAlignment = Alignment.CenterVertically) {
         ProfileShellTitle(shown?.title ?: "Ladies",
-            swipeContextShort(context.deck.runId != null, context.matchingRun, context.availability),
-            shown?.let { listOfNotNull(it.status, it.shortDecision, it.place).joinToString(" · ") } ?: summary,
+            shown?.compactSubtitle.orEmpty(),
+            shown?.decisions.orEmpty(),
             presentation.budget.shortHeader, Modifier.weight(1f),
             onClick = if (shown == null) null else onPhoto)
-        Box(Modifier.width(ShellMetrics.touch), contentAlignment = Alignment.Center) {
-            if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
+        if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
+        else if (context.profile != null && !presentation.budget.narrowHeader) {
+            ShellIconButton(onClick = onFavorite) {
+                Icon(if (context.profile.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                    contentDescription = if (context.profile.favorite) "Favorit entfernen" else "Als Favorit speichern",
+                    tint = if (context.profile.favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         if (!presentation.budget.narrowHeader) {
             if (presentation.photoShortcut) ShellIconButton(onClick = onPhoto) {

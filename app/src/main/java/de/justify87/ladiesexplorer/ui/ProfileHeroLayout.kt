@@ -20,7 +20,7 @@ internal data class ProfileShellBudget(
 }
 
 internal fun discoveryLeadingHeight(fontScale: Float): Float =
-    108f * maxOf(1f, fontScale)
+    116f * maxOf(1f, fontScale)
 
 // Context scrolls with the hero. On short viewports allow the hero to fill the body after scrolling.
 internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float, leadingHeight: Float = 0f): Float {

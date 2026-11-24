@@ -139,12 +139,13 @@ internal fun ProfileShellTitle(title: String, context: String, status: String, s
     Column(modifier.then(click).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
         if (short && LocalDensity.current.fontScale >= 1.5f) {
             // At large font sizes, expose full identity/status through the context action.
-            Text("$context · $title", style = MaterialTheme.typography.labelMedium,
+            Text(listOf(context, title).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.labelMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         } else {
             Text(title, style = if (short) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(context, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (context.isNotBlank()) Text(context, style = MaterialTheme.typography.labelMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!short && status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

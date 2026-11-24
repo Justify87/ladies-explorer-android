@@ -175,8 +175,8 @@ internal fun SavedSearchResultsScreen(
                         if (listing != null && person != null) {
                             onOpen(SavedSearchProfileOpenAction(result, card, generation))
                         }
-                    }, onLike = null)
-                Text(if (listing == null || person == null) "Kein lokales Profil" else card.city,
+                    }, onLike = null, place = card.city)
+                if (listing == null || person == null) Text("Kein lokales Profil",
                     style = MaterialTheme.typography.bodySmall, maxLines = 2)
             }
         }
