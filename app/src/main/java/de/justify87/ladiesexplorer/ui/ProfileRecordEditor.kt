@@ -196,11 +196,16 @@ internal fun <R, V, D, S> ProfileRecordDialog(
             dismissButton = { TextButton(onClick = { editor.keep(edit) }) { Text("Weiter bearbeiten") } })
         return
     }
+    val scroll = rememberScrollState()
+    val contextLost = !enabled && !edit.writing
+    LaunchedEffect(edit.id, edit.error, contextLost) {
+        if (edit.error != null || contextLost) scroll.scrollTo(0)
+    }
     AlertDialog(
         onDismissRequest = { editor.requestDismiss(edit) },
         title = { Text(if (edit.deleting) deleteTitle else if (edit.expected == null) newTitle else editTitle) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 edit.error?.let {
                     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.small) {
                         Text(it, Modifier.fillMaxWidth().padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
@@ -212,10 +217,7 @@ internal fun <R, V, D, S> ProfileRecordDialog(
                     if (editor.canResume(edit)) TextButton(onClick = { editor.resume(edit) },
                         modifier = Modifier.heightIn(min = 48.dp)) { Text("Im aktuellen Profil fortsetzen") }
                 }
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (edit.deleting) Text(deleteMessage) else fields(edit, enabled)
-                }
+                if (edit.deleting) Text(deleteMessage) else fields(edit, enabled)
             }
         },
         confirmButton = { Button(enabled = enabled, onClick = { editor.save(edit) }, modifier = Modifier.heightIn(min = 48.dp),
@@ -248,7 +250,6 @@ internal fun ProfileListingAssociation(
         Text(if (listingId == null) "Anzeige zuordnen" else "Anzeige #$listingId zugeordnet")
     }
 }
-
 
 @Composable
 internal fun ProfileRecordCard(content: @Composable ColumnScope.() -> Unit) {
