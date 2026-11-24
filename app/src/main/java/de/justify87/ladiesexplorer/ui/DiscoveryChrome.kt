@@ -45,7 +45,7 @@ internal fun DiscoveryChrome(summary: String, availability: AvailabilityMode, av
 }
 
 @Composable
-internal fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode),
+internal fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode) -> Unit,
     modifier: Modifier = Modifier.padding(horizontal = 16.dp)) {
     val scheme = MaterialTheme.colorScheme
     Surface(modifier.fillMaxWidth(), color = scheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) {

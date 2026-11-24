@@ -53,7 +53,7 @@ internal fun DiscoveryGridScreen(
         }
     }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(if (LocalDensity.current.fontScale >= 1.5f) 240.dp else 148.dp),
+        columns = profileGridCells(),
         state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -121,6 +121,10 @@ internal fun DiscoveryGridScreen(
         }
     }
 }
+
+@Composable
+internal fun profileGridCells(): GridCells =
+    GridCells.Adaptive(if (LocalDensity.current.fontScale >= 1.5f) 240.dp else 148.dp)
 
 @Composable
 internal fun ProfileGridCard(
