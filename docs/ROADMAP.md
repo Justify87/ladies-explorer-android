@@ -100,9 +100,11 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – Statusprüfungsabbruch (DONE mit Merge):** [PR #67](https://github.com/Justify87/ladies-explorer-android/pull/67) bindet den gerenderten Abbruch an Statusversuch und Ansichtsgeneration; interne Lifecycle-Abbrüche bleiben unabhängig. JVM-Regressionen für alte Versuche, Kontextwechsel, wiederholten Abbruch und Fortschrittsupdates; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45406923367) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
-**Integrierter Teilauftrag – SavedPeople-Listensteuerung:** [PR #68](https://github.com/Justify87/ladies-explorer-android/pull/68) bindet Tabwahl, Sortierung und explizites Laden an den gerenderten Auswahl-/Ansichtskontext. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45408392886) beim Merge noch nicht abschließend verifiziert.
+**Abgeschlossener Teilauftrag – SavedPeople-Listensteuerung (DONE mit Merge):** [PR #68](https://github.com/Justify87/ladies-explorer-android/pull/68) bindet Tabwahl, Sortierung und explizites Laden an den gerenderten Auswahl-/Ansichtskontext; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45408392886) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE.
 
-**Teilauftrag – Grid-Aktualisierung (REVIEW):** [Branch `fix/t10-8-grid-refresh-admission`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-grid-refresh-admission) bindet manuelles Aktualisieren an gerenderten Run bzw. lokalen Bestand und Ansichtsgeneration. JVM-Regressionen für Run-/Kontextwechsel, Busy, Pagination und erneuten Read nach Fehler. CI und Merge ausstehend.
+**Integrierter Teilauftrag – Grid-Aktualisierung:** [PR #69](https://github.com/Justify87/ladies-explorer-android/pull/69) bindet manuelles Aktualisieren an gerenderten Run bzw. lokalen Bestand und Ansichtsgeneration. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45408924898) beim Merge noch nicht abschließend verifiziert.
+
+**Teilauftrag – normale Filterentwurfsaktionen (REVIEW):** [Branch `fix/t10-8-search-draft-admission`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-search-draft-admission) bindet Entwurfsänderungen und Reset an den gerenderten Filterkontext; Reset zusätzlich an den Entwurf. JVM-Regressionen für Eingabefolge, Kontextwechsel, Busy und Erhalt des ausgeführten Runs. CI und Merge ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
