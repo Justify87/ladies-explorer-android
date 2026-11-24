@@ -94,6 +94,8 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – Grid-Schnellwahl (DONE mit Merge):** [PR #64](https://github.com/Justify87/ladies-explorer-android/pull/64) bindet die Grid-Verfügbarkeitswahl an gerenderten Run bzw. lokalen Entwurf und Ansichtsgeneration. JVM-Regressionen für Kontextwechsel, Busy, Runwechsel, Fehler/Abbruch und erneuten Versuch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45402502512) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
+**Teilauftrag – normaler Suchstart (REVIEW):** Branch `fix/t10-8-search-submit-admission` bindet den Suchbutton an gerenderten Entwurf, lokale Sichtbarkeit und Ansichtsgeneration; nur der aktive normale Filterkontext darf einen Run beginnen. JVM-Regressionen für Entwurfs-/Kontextwechsel, Busy, Fehler/Abbruch und erneuten Versuch ergänzt. Technische CI-Prüfung ausstehend; G10.3 bleibt offen.
+
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
 - [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision sowie Fehler/Offline/Status/Radius/Pagination.
