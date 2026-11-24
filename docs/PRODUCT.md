@@ -140,7 +140,18 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ## Weitere Produktgrenzen
 
-Begegnungen/Bewertungen, manuell erfasste Preislisten, weitere Kartenfunktionen, globale Statistik/Historie und eigenständiges Medienarchiv nur im ausdrücklich bestätigten Umfang gemäß ROADMAP. Vorhandene Tabellen allein sind keine zugesagte Funktion. Keine Legacy-Parität um ihrer selbst willen.
+### Persönliche Begegnungen und Preise
+
+Bestätigtes fachliches Soll für M06; Umsetzung und Status ausschließlich in [ROADMAP](ROADMAP.md#danach--m06--persönliche-begegnungen-und-preise).
+
+- Begegnungen gehören einer Person; ein optionales Inserat muss ihr zugeordnet sein. Zeitpunkt, optionale Dauer, Grund-/Gesamtpreis, Gesamt-/Sympathiebewertung (1–5), Begegnungsnotiz und einfache persönliche Leistungszeilen können bewusst erfasst, korrigiert und gelöscht werden. Personennotiz, Präferenz, Favorit, Quellinformationen und Begegnungsdaten bleiben unabhängig.
+- Angebotspreise werden ausschließlich manuell als datierte Preislisten in EUR erfasst. Eine neue Liste erhält die frühere Liste; Korrekturen und bestätigtes Löschen sind möglich. Die neueste erfasste Liste ist kein Nachweis aktueller Gültigkeit. Tatsächlich bezahlte Beträge werden ausschließlich aus Begegnungen abgeleitet und getrennt bezeichnet.
+- Fehlende Angaben bleiben unbekannt; keine erfundenen Beträge, Bewertungen oder automatische Übernahme zwischen Begegnung, Preisliste und Quelle. Keine Pflicht, alle vorhandenen Schemafelder zu verwenden.
+- Begegnungen und Preislisten sind im gemeinsamen Profil bedarfsorientiert zugänglich; keine zusätzliche Root-Navigation oder zweite Profilimplementierung. Alle persönlichen Daten bleiben lokal, ohne neuen Netzwerkzugriff.
+
+### Nicht vorgesehene Erweiterungen
+
+Globale Statistik, globaler Verlauf, eigenständiger Medienbrowser und weitere Karten-/Geocoding-Funktionen sind nicht Teil des bestätigten Umfangs. Bestehende Medienarchivierung, Quellhistorie und Kartenfunktionen bleiben unverändert. Neue Erweiterungen erst bei konkretem Bedarf und ausdrücklichem Auftrag; keine Legacy-Parität um ihrer selbst willen.
 
 ## Bestehende Regressionsreferenzen
 

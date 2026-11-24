@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**M05.11 (G11) abgeschlossen. Nächster Schritt: M06.1 nach gesondertem Nutzerauftrag.** M07 bleibt geplant. L01 unabhängig klären.
+**M05.11 (G11) abgeschlossen. Nächster Schritt: M06.1a nach gesondertem Nutzerauftrag.** M07 bleibt geplant. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -18,7 +18,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
 | M05.10 Unified Profile Experience | DONE | T10.0–T10.7 abgeschlossen; T10.8 [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75) integriert; T10.8/T10.9 Abschlussbilanz unten. |
 | M05.11 Gezielte Qualitätskonsolidierung | DONE | T11.1–T11.4 abgeschlossen; [PR #83](https://github.com/Justify87/ladies-explorer-android/pull/83), vollständige [CI #45425545751](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751). |
-| M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
+| M06 Persönliche Begegnungen und Preise | PLANNED | M06.1a/b, M06.2, G06; bewusst begrenzter lokaler Funktionsumfang. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
 Diagnose (Logging, Messungen, HTTP/HAR, TXT-Export) ist integriert [#7](https://github.com/Justify87/ladies-explorer-android/pull/7); abgeschlossen. Ursprüngliche M00–M02-Nummerierung wich von PR-Bezeichnungen ab; maßgeblich sind obige Zuordnung und Git. Kein Prozentwert aus ungleich großen Aufgaben.
@@ -136,13 +136,39 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - Vollständiger CI-Gate einschließlich ARM64-Debug- und Instrumentierungs-APK, JVM-Tests, Lint, Rust-Formatierung/-Tests, Clippy, nativer DB-Regression und Quell-/APK-Architekturprüfungen erfolgreich. Geräteprüfungen mit Merge gemäß Merge-Regel DONE; keine separate Geräte- oder lokale Build-Ausführung behauptet.
 - G11 abgeschlossen mit Merge von PR #83; M06/M07 nicht begonnen.
 
-## Danach – M06
+## Danach – M06 · Persönliche Begegnungen und Preise
 
-Erst nach M05.11 (G11) und gesondertem Nutzerauftrag. Schema `rust/ladies-core/src/schema.rs` (encounters, encounter_services, price_lists, price_items) vorhanden, keine daraus abgeleitete vollständige UI.
-- [ ] **M06.1 — PLANNED:** Begegnungen/Besuche, Service-Details, Gesamt-/Sympathiebewertung, private Begegnungsnotiz/Preisangaben: tatsächliche Daten/API und bestätigten fachlichen Bedarf abgleichen, fehlenden nativen Bearbeitungsumfang festlegen und umsetzen. Personennotiz getrennt; Persistenz-/Identitätsintegrität prüfen.
-- [ ] **M06.2 — PLANNED / Scope bestätigen:** manuelle Preislisten/-historie/letzter Preis gegen fachlichen Bedarf und Schema abgleichen; nur bestätigten UI-Umfang umsetzen, keine automatische Extraktion.
-- [ ] **M06.3 — PLANNED / Scope bestätigen:** globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, Karten-/Geocoding-Erweiterungen gegen Hauptplan abgleichen; keine Implementierung ohne Nutzerentscheidung. Vorhandene Karte/SavedSearch/WhatsApp nicht erneut entwickeln.
-- [ ] **M06.4 — PLANNED:** bestätigte neue Funktionen integriert prüfen und mit Merge abschließen.
+**Abhängigkeit:** M05.11 (G11) DONE. **Reihenfolge:** M06.1a → M06.1b → M06.2 → M06.4 (G06), jeweils auf integriertem Stand. **Start:** erst mit gesondertem Implementierungsauftrag. **Ziel:** wenige, tatsächlich nutzbare persönliche Funktionen im bestehenden Profil, vollständig lokal. Der fachliche Mindestumfang steht in [PRODUCT](PRODUCT.md#persönliche-begegnungen-und-preise). Kein neuer Root-Bereich, keine Wiederaufnahme der Web-App-Parität.
+
+**Codeanker und Vorgehen:** `schema.rs` enthält `encounters`, `encounter_services`, `price_lists`, `price_items`; `identity.rs` überträgt Begegnungen und Preislisten bereits im Merge. `lib.rs`, `CoreStore.kt`, `ProfilePanels.kt::ProfileFlow`, `MainViewModel` und `StandaloneProfileOperations` sind die vorhandenen Integrationspunkte. Vor jeder vertikalen Aufgabe nur den betroffenen Schema-/API-/Aufrufervertrag prüfen. Bestehende Tabellen und Operationspfade bevorzugen; Schemaänderung nur bei belegter Integritätsnotwendigkeit mit interner, datenerhaltender Schemaentwicklung. Keine neuen Frameworks, Stores, Netzwerkzugriffe oder spekulativen Abstraktionen.
+
+**Gemeinsame Akzeptanz für alle neuen Schreibpfade:** [ARCHITECTURE](ARCHITECTURE.md#operations--und-konsistenzmodell), [Identität](ARCHITECTURE.md#historisierung-und-identitätsoperation) und [DESIGN](DESIGN.md#informationshierarchie--progressive-offenlegung) erhalten. Rust validiert Personen-/optionalen Inseratsowner, betroffenen Datensatz und erwarteten Bearbeitungsstand in derselben Transaktion. UI bindet die Aktion an den sichtbaren Profil-/Editor-Kontext; veraltete Callbacks, Mehrfachklicks und Merge-Konflikte dürfen keine falsche oder doppelte Mutation auslösen. Ungespeicherte betroffene Entwürfe vor Merge schützen; bestätigten Commit und anschließenden Readfehler trennen, keine automatische Write-Wiederholung. Nur betroffene lokale Projektionen invalidieren; keine neuen Quellabrufe oder Begegnungs-/Preislisten-Prefetches. Offline, Back, Cancel, Lifecycle und Fehlerzustände gezielt prüfen.
+
+### M06.1 — PLANNED · Begegnungen im bestehenden Profil
+
+- [ ] **M06.1a — PLANNED:** Begegnungsbasis vertikal umsetzen: native typisierte Read-/Create-/Update-/Delete-API über UniFFI/CoreStore, kompakte aufklappbare Begegnungssektion und gemeinsamer Editor in Swipe und Standalone. Zeitpunkt, optionale Dauer, tatsächlich bezahlter Gesamtbetrag, Gesamt-/Sympathiebewertung und private Begegnungsnotiz. Kein separater Editorpfad je Profilkontext.
+- **Akzeptanz M06.1a:** Begegnungen einer Person aus verschiedenen Inseraten chronologisch lesen, anlegen, ändern und ausdrücklich löschen; optionalen Inseratsbezug sicher prüfen. Unbekannte Werte von null unterscheiden, Bewertungen 1–5, keine negativen Beträge oder nichtpositive angegebene Dauer. Abbrechen/Back verliert Entwürfe nicht stillschweigend; Fehler sichtbar, gespeicherte Daten unverändert bei fehlgeschlagenem Write. Keine Änderung von Personennotiz, Präferenz, Favorit, Quellenhistorie oder Swipe-Undo.
+- **Prüfung M06.1a:** Rust-CRUD-/Owner-/Merge-Regression (einschließlich veraltetem Owner/Editorstand und Rollback), JVM-Editor-/Admission-/Commit-Readfehler-Regression, gezielte Android-Integration beider Profilkontexte. Keine neuen Testframeworks.
+- [ ] **M06.1b — PLANNED:** Nur die nötigen Details ergänzen: optionaler Grundpreis und einfache manuell erfasste Leistungszeilen (Bezeichnung, optionaler Betrag); im selben Begegnungseditor bearbeiten. Keine separate Serviceverwaltung und kein zusätzlicher Kriterienkatalog.
+- **Akzeptanz M06.1b:** Begegnung und Leistungszeilen gemeinsam transaktional speichern, ändern und löschen; keine leeren Leistungsbezeichnungen, keine negativen Beträge, unbekannt bleibt unbekannt. Gesamtpreis nicht aus unvollständigen Einzelangaben erfinden. Leistungszeilen bei Merge vollständig erhalten, niemals mit Quellprofil-Diensten gleichsetzen. Gezielte Rust-/JVM-Regression der betroffenen Pfade; vorhandene Begegnungs- und Profiltests bleiben gültig.
+
+### M06.2 — PLANNED · Minimale manuelle Angebotspreise
+
+**Abhängigkeit:** M06.1a/b DONE. Nur personenbezogene manuell erfasste Preislisten mit Datum, Preispositionen und optionaler Dauer/Bezeichnung; bestehende Tabellen nutzen. Ein gemeinsamer kleiner Editor und bedarfsorientierte aktuelle/historische Anzeige im vorhandenen Profil. Kein eigenes Preis-Dashboard, kein automatisches Extrahieren oder Kopieren aus Begegnungen.
+
+- [ ] Native Read-/Create-/Update-/Delete-API und Profilintegration in einem vertikalen Schritt umsetzen. Neu erfasste Preisliste als eigener historischer Eintrag; Bearbeiten dient der ausdrücklichen Korrektur, Löschen erfordert Bestätigung.
+- **Akzeptanz:** Neueste erfasste Liste und frühere Listen eindeutig nach Datum/ID unterscheiden; keine Aussage über aktuell tatsächlich gültige Angebote. Beträge in EUR-Cent, nichtnegativ, Dauer falls angegeben positiv. Person/Inserat und Kindzeilen transaktional validieren; Merge erhält Listen und Positionen. Letzten bekannten bezahlten Gesamtbetrag aus Begegnungen ableiten und als solchen kennzeichnen, nicht als Angebotspreis übernehmen. Kein zweiter fachlicher Store und keine doppelte Preisprojektion.
+- **Prüfung:** Rust-CRUD-/Historien-/Owner-/Merge-Regression und JVM-Editor-/Kontext-/Fehlerregression; beide Profilkontexte gezielt prüfen.
+
+### M06.4 — PLANNED · Gezielte Integration und Abschluss (G06)
+
+**Abhängigkeit:** M06.1a/b und M06.2 DONE.
+
+- [ ] Betroffene Rust-/UniFFI-/Kotlin-/Compose-Aufrufer, Datenprojektionen, Tests und Verträge auf Korrektheit, Redundanz und abgelöste Pfade prüfen; neue Funktionen in beiden Profilkontexten offline konsistent.
+- **Akzeptanz:** Identitäts-Merge einschließlich Kinddatensätzen und Entwurfs-/Stale-Owner-Schutz, atomare Writes, Cancel/Back/Lifecycle, unbekannte Werte, Readfehler nach Commit und unveränderte Swipe-/Galerie-/Notizverträge anhand gezielter Regressionen belegt. Keine pauschale Wiedereröffnung von M05 und keine Vorwegnahme der M07-Gesamtintegration.
+- **Abnahme:** Bestehendes vollständiges CI-Gate erfolgreich; Rust-/JVM-Regressionen, native DB-Regression, Clippy, Android-Build/Lint und Architekturprüfungen. Instrumentierungs-APK bauen; Geräteprüfungen gemäß Merge-Regel. Abschlussbeleg mit PR/Commit/CI, verbleibenden konkreten Befunden und geänderten Fach-/Design-/Architekturverträgen; Abschluss mit Merge.
+
+**Scope-Entscheidung 24.11.2026:** Die bisherige M06.3 (globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, pauschale Karten-/Geocoding-Erweiterungen) entfällt ersatzlos aus dem aktiven Arbeitsregister. Keine automatische Verschiebung nach M07; nur bei neuem konkretem Bedarf und ausdrücklichem Auftrag neu bewerten. Bestehende Karte, SavedSearch, WhatsApp, Medienarchivierung und Quellhistorie bleiben erhalten. M06.4 behält seine bisherige Abschlussfunktion und ID.
 
 ## Später – M07
 
