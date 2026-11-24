@@ -306,7 +306,7 @@ internal fun DiscoverScreen(
                 }
             flight = SwipeFlight(id, deckToken.session, direction, liveDrag, heroSize,
                 (hero?.offset ?: 0) - layout.viewportStartOffset,
-                selected.takeIf { heroVisible && hero != null }, identity.takeIf { heroVisible })
+                selected.takeIf { heroVisible && hero != null })
         }
         val undo = { if (flight == null) onUndo(deckToken) }
         val skip = {
@@ -427,7 +427,8 @@ internal fun DiscoverScreen(
                         rotationZ = (motion.value / size.width.coerceAtLeast(1f) * 12f).coerceIn(-12f, 12f)
                         alpha = 1f - (kotlin.math.abs(motion.value) / kotlin.math.abs(old.destination)).coerceIn(0f, 1f) * .2f
                     }.clip(MaterialTheme.shapes.large).clearAndSetSemantics {}) {
-                    ProfileImage(oldMedia.url, oldMedia.localPath, Modifier.fillMaxSize(), allowRetry = false)
+                    ProfileImage(oldMedia.url, oldMedia.localPath, Modifier.fillMaxSize(),
+                        scale = androidx.compose.ui.layout.ContentScale.Fit, allowRetry = false)
 
                 }
             }
