@@ -122,11 +122,12 @@ internal fun ProfileFlow(
         if (noteExpanded && !busy) noteDemand.request(token, false, isProfileCurrent, noteActions.load)
     }
     val encountersExpanded = sections.expanded(ProfileSection.Encounters)
-    DisposableEffect(encounters, token, encountersExpanded, busy) {
+    val encountersDemanded = encountersExpanded || encounters?.matchesContext(token) == true
+    DisposableEffect(encounters, token, encountersDemanded, busy) {
         onDispose { encounters?.detach(token) }
     }
-    LaunchedEffect(encounters, token, encountersExpanded, busy) {
-        if (encountersExpanded && !busy && token != null) encounters?.load(token)
+    LaunchedEffect(encounters, token, encountersDemanded, busy) {
+        if (encountersDemanded && !busy && token != null) encounters?.load(token)
     }
     val encounterPanel = encounters?.panel?.takeIf { it.token == token }
     ComparisonDialog(panels, active = !busy)
@@ -558,13 +559,13 @@ private fun ProfileFlowRows.profileContent(
             item(key = "profile-encounters-head", read = ProfileRowRead.Encounters) {
                 val rows = encounterPanel?.rows
                 if (encounterPanel?.error != null) {
-                    TextButton(enabled = !actionsBusy, onClick = { onRetryEncounters(encounterPanel) }) { Text("Neu laden") }
+                    TextButton(enabled = !actionsBusy, onClick = { onRetryEncounters(checkNotNull(encounterPanel)) }) { Text("Neu laden") }
                 } else if (rows == null) {
                     if (!actionsBusy) CircularProgressIndicator(Modifier.size(24.dp))
                 } else {
                     if (rows.isEmpty()) Text("Keine Begegnungen gespeichert.")
                     TextButton(enabled = !actionsBusy && isCurrent(),
-                        onClick = { encounters.begin(encounterPanel) }) { Text("Begegnung hinzufügen") }
+                        onClick = { encounters.begin(checkNotNull(encounterPanel)) }) { Text("Begegnung hinzufügen") }
                 }
             }
             if (encounterPanel?.rows != null) items(encounterPanel.rows, key = { "encounter/${it.encounterId}" }, read = ProfileRowRead.Encounters) { row ->
