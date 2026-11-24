@@ -53,14 +53,16 @@ class ProfileHeroLayoutTest {
         assertEquals(180f, profileHeroHeight(600f, 400f, 180f), .01f)
     }
 
-    @Test fun identityHandoffFollowsMeasuredOverlayAndReversesWithoutChangingBudget() {
-        assertFalse(headerOwnsIdentity(0, 0, 546, 100, 0, 600))
-        assertFalse(headerOwnsIdentity(0, -445, 101, 100, 0, 600))
-        assertTrue(headerOwnsIdentity(0, -447, 99, 100, 0, 600))
-        assertTrue(headerOwnsIdentity(1, null, null, 100, 0, 600))
-        assertFalse(headerOwnsIdentity(0, -445, 101, 100, 0, 600))
-        assertTrue(headerOwnsIdentity(0, 0, 546, 100, 0, 400))
-        assertFalse(headerOwnsIdentity(0, null, null, 0, 0, 600))
+    @Test fun inlineIdentityUsesCanonicalSnapshotPlaceNotHiddenSourceMetadata() {
+        val profile = fixtureProfile().copy(city = "Dresden", postalCode = "01067",
+            hiddenLocation = "Offenbach am Main")
+        val identity = fixtureIdentity(1).copy(age = "29")
+        val shown = heroIdentity(profile, identity, false)
+        assertEquals("Fixture, 29", shown.title)
+        assertEquals("Dresden · 01067", shown.place)
+        assertEquals("Dresden · 01067 · Anzeige aktiv", shown.subtitle)
+        assertEquals("", heroIdentity(profile.copy(city = "", postalCode = null), identity, true).place)
+        assertEquals("Zuletzt bekannt: Anzeige aktiv", heroIdentity(profile, identity, true).status)
     }
 
     @Test fun mediaZonesLeaveAnIndependentCenter() {

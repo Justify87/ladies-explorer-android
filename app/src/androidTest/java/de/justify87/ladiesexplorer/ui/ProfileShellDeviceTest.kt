@@ -44,7 +44,7 @@ class ProfileShellDeviceTest {
                                 if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
                             }
                         }, rail = { Box(Modifier.fillMaxSize().testTag("rail")) },
-                    ) { _, _ ->
+                    ) { _ ->
                         Box(Modifier.fillMaxSize().testTag("body")) { BasicText("Profilinhalt") }
                     }
                 }
@@ -62,11 +62,9 @@ class ProfileShellDeviceTest {
         rule.runOnIdle { assertEquals(1, actionCount) }
     }
 
-    @Test fun measuredIdentityHandoffDoesNotResizeHeaderOrRail() {
+    @Test fun inlineIdentityHandoffDoesNotResizeHeaderOrRail() {
         lateinit var jump: (Int, Int) -> Unit
-        var heroPx = 0
-        var identityPx = 0
-        rule.setContent {
+         rule.setContent {
             MaterialTheme {
                 val list = rememberLazyListState()
                 val scope = rememberCoroutineScope()
@@ -78,14 +76,12 @@ class ProfileShellDeviceTest {
                             Text(if (presentation.identityInHeader) "B" else "A")
                         }
                     }, rail = { Box(Modifier.fillMaxSize().testTag("rail")) },
-                ) { presentation, measured ->
+                ) { presentation ->
                     LazyColumn(Modifier.fillMaxSize().testTag("body"), state = list) {
                         item(key = "hero") {
-                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight).onSizeChanged { heroPx = it.height }) {
-                                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(90.dp)
-                                    .onSizeChanged { identityPx = it.height; measured(it.height) })
-                            }
+                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
                         }
+                        item(key = "profile-heading") { Text("Fixture", Modifier.height(90.dp)) }
                         items(20) { Text("Detail $it", Modifier.height(48.dp)) }
                     }
                 }
@@ -94,14 +90,11 @@ class ProfileShellDeviceTest {
         rule.onNodeWithText("A").assertExists()
         val header = rule.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
         val rail = rule.onNodeWithTag("rail").fetchSemanticsNode().boundsInRoot
-        // Cross the measured overlay edge before the entire hero disappears.
-        rule.runOnIdle {
-            assertTrue(heroPx > identityPx && identityPx > 0)
-            jump(0, heroPx - identityPx + 1)
-        }
-        rule.waitForIdle()
-        rule.onNodeWithText("B").assertExists()
         rule.runOnIdle { jump(1, 0) }
+        rule.waitForIdle()
+        rule.onNodeWithText("Fixture").assertIsDisplayed()
+        rule.onNodeWithText("A").assertExists()
+        rule.runOnIdle { jump(2, 0) }
         rule.waitForIdle()
         rule.onNodeWithText("B").assertExists()
         assertEquals(header, rule.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot)
@@ -132,13 +125,10 @@ class ProfileShellDeviceTest {
                     header = { presentation, _, _ -> Text(if (presentation.identityInHeader) "B" else "A") },
                     rail = { SwipeDecisionControls(context, if (empty) null else "Fixture",
                         { actions.add("undo") }, { actions.add("skip") }, { actions.add(it.name) }) },
-                ) { presentation, measured ->
+                ) { presentation ->
                     LazyColumn(Modifier.fillMaxSize(), state = list) {
                         item(key = "hero") {
-                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight)) {
-                                Box(Modifier.align(Alignment.BottomCenter).height(80.dp).fillMaxWidth()
-                                    .onSizeChanged { measured(it.height) })
-                            }
+                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
                         }
                         items(20) { Text("Detail $it", Modifier.height(48.dp)) }
                     }
@@ -168,8 +158,8 @@ class ProfileShellDeviceTest {
                         media = listOf(ProfileMediaItem("IMAGE", "", null, 0u),
                             ProfileMediaItem("VIDEO", "https://example.invalid/video", null, 1u)),
                         height = 420.dp, actionsEnabled = false,
-                        isCurrent = { false }, selection = selection, identity = HeroIdentity("Fixture", place = "Ort"),
-                        actionToken = null, compact = false, headerOwnsIdentity = false, onIdentityMeasured = {},
+                        isCurrent = { false }, selection = selection,
+                        actionToken = null, compact = false,
                     )
                 }
             }

@@ -50,7 +50,7 @@ internal fun ProfileShell(
     rail: @Composable () -> Unit = {},
     fixedNoticeSlot: Boolean = false,
     heroLeadingHeight: Dp = 0.dp,
-    content: @Composable (ProfileShellPresentation, (Int) -> Unit) -> Unit,
+    content: @Composable (ProfileShellPresentation) -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val width = maxWidth.coerceAtMost(600.dp)
@@ -59,17 +59,15 @@ internal fun ProfileShell(
         val budget = profileShellBudget(width.value, height.value, rootHeight.value, fontScale,
             if (fixedNoticeSlot) false else notices.isNotEmpty(), hasRail)
         val heroHeight = profileHeroHeight(width.value, height.value + rootHeight.value, budget.body, heroLeadingHeight.value).dp
-        var identityHeight by remember(heroKey) { mutableIntStateOf(0) }
-        // Reading lazy layout inside derivedStateOf avoids raw per-pixel recomposition.
+        // Read measured lazy geometry without recomposing for every scroll pixel.
         val handoff by remember(listState, heroKey) {
-            derivedStateOf { listState.headerOwnsIdentity(heroKey, identityHeight) }
+            derivedStateOf { listState.headerOwnsIdentity(heroKey) }
         }
         val scrolled by remember(listState) {
             derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
         }
         val measuredBudget = budget.copy(compactGallery = budget.compactGallery || heroHeight < 320.dp)
-        val headerIdentity = measuredBudget.compactGallery || handoff
-        val presentation = ProfileShellPresentation(measuredBudget, heroHeight, headerIdentity, headerIdentity && scrolled)
+        val presentation = ProfileShellPresentation(measuredBudget, heroHeight, handoff, scrolled)
         val summary = notices.firstOrNull { it.warning } ?: notices.firstOrNull()
         val indicator = summary?.let { ProfileNoticeIndicator(it.label, it.warning) }
         val signature = notices.map { listOf(it.label, it.message, it.action, it.enabled, it.warning) }
@@ -125,7 +123,7 @@ internal fun ProfileShell(
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                content(presentation) { measured -> identityHeight = measured }
+                content(presentation)
             }
             if (budget.rail > 0f) Box(Modifier.fillMaxWidth().height(budget.rail.dp)) { rail() }
         }

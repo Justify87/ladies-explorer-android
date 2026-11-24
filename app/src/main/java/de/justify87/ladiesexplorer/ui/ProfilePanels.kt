@@ -95,6 +95,8 @@ internal fun ProfileFlow(
     userScrollEnabled: Boolean = true,
     encounters: EncounterEditor? = null,
     prices: PriceEditor? = null,
+    fallbackIdentity: HeroIdentity? = null,
+    afterHeading: ProfileFlowRows.() -> Unit = {},
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -156,6 +158,20 @@ internal fun ProfileFlow(
     }
     val rows = ProfileFlowRows(mediaSelection).apply {
         leading()
+        val phone = model?.profile?.phoneDisplay
+        if (phone?.let(::phoneForWhatsApp) != null) item(key = "profile-contact") {
+            ProfileContactActions(phone, busy, current)
+        }
+        val heading = model?.let { heroIdentity(it.profile, it.identity, it.fromArchive) } ?: fallbackIdentity
+        if (heading != null) item(key = "profile-heading") {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(heading.title, modifier = Modifier.semantics { heading() },
+                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                val details = listOfNotNull(heading.place.takeIf { it.isNotBlank() }, heading.status).joinToString(" · ")
+                if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        afterHeading()
         if (model != null) profileContent(model.profile, model.identity, model.person, model.media,
             panels, sections, model.candidates, model.history, busy,
             owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
@@ -510,15 +526,13 @@ private fun ProfileFlowRows.profileContent(
 ) {
     item(key = "profile-facts", read = ProfileRowRead.Facts) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ProfileGroup("Übersicht") {
-                val listingFields = listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() })
-                if (panels.facts == null && listingFields.isNotEmpty()) FieldGrid(listingFields)
-                FactsContent(panels, actionsBusy, isCurrent) { facts ->
-                    val (overview, traits) = facts.overviewAndTraits()
-                    if (facts.openingTimes.isNotEmpty()) ProfileGroup("Öffnungszeiten") { FieldValues(facts.openingTimes) }
-                    FieldGrid(overview + listingFields)
-                    if (traits.isNotEmpty()) ProfileGroup("Merkmale") { FieldValues(traits) }
-                }
+            val listingFields = listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() })
+            if (panels.facts == null && listingFields.isNotEmpty()) FieldGrid(listingFields)
+            FactsContent(panels, actionsBusy, isCurrent) { facts ->
+                val (overview, traits) = facts.overviewAndTraits()
+                if (facts.openingTimes.isNotEmpty()) ProfileGroup("Öffnungszeiten") { FieldValues(facts.openingTimes) }
+                FieldGrid(overview + listingFields)
+                if (traits.isNotEmpty()) ProfileGroup("Merkmale") { FieldValues(traits) }
             }
         }
     }
@@ -543,11 +557,6 @@ private fun ProfileFlowRows.profileContent(
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
-        }
-    }
-    if (!profile.phoneDisplay.isNullOrBlank()) item(key = "profile-contact") {
-        ProfileGroup("Kontakt") {
-            ProfileContactActions(profile.phoneDisplay, actionsBusy, isCurrent)
         }
     }
     item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections) }

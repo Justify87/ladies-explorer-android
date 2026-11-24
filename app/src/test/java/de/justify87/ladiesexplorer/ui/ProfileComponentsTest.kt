@@ -41,6 +41,21 @@ class ProfileComponentsTest {
         assertEquals("491234567890", phoneForWhatsApp("+49 1234567890"))
         assertNull(phoneForWhatsApp("123"))
         assertNull(phoneForWhatsApp(""))
+        assertNull(phoneForWhatsApp("invalid 491234567890"))
+        assertNull(phoneForWhatsApp("https://example.invalid/491234567890"))
+        assertNull(phoneForWhatsApp("+001234567890"))
+    }
+
+    @Test fun contactTargetsRequireValidNumberAndCurrentUnblockedOwner() {
+        val phone = "tel:0123 4567890"
+        assertEquals("tel:+491234567890", profileContactTarget(phone, false, false) { true })
+        assertEquals("https://wa.me/491234567890", profileContactTarget(phone, true, false) { true })
+        for (whatsapp in listOf(false, true)) {
+            assertNull(profileContactTarget(phone, whatsapp, false) { false })
+            assertNull(profileContactTarget(phone, whatsapp, true) { true })
+            assertNull(profileContactTarget(null, whatsapp, false) { true })
+            assertNull(profileContactTarget("123", whatsapp, false) { true })
+        }
     }
 
     @Test fun profileRailTogglesSelectedPreferenceToNoneRatherThanAnotherDecision() {

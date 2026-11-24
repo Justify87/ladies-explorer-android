@@ -17,14 +17,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -49,14 +44,24 @@ internal fun toggledProfilePreference(current: Preference, action: Preference): 
     if (current == action) Preference.NONE else action
 
 internal fun phoneForWhatsApp(phone: String): String? {
-    val digits = phone.filter { it in '0'..'9' }
+    val value = phone.trim().removePrefix("tel:").removePrefix("sms:")
+        .removePrefix("https://wa.me/").removePrefix("wa.me/").trim()
+    if (!value.matches(Regex("""\+?[0-9 ()\-./]+"""))) return null
+    val digits = value.filter { it in '0'..'9' }
     val normalized = when {
-        phone.trim().startsWith("+") -> digits
+        value.startsWith("+") -> digits
         digits.startsWith("00") -> digits.drop(2)
         digits.startsWith("0") -> "49${digits.drop(1)}"
         else -> digits
     }
-    return normalized.takeIf { it.length in 9..15 }
+    return normalized.takeIf { it.length in 9..15 && it.first() != '0' }
+}
+
+/** Bind both contact actions to the same validated snapshot number and current owner. */
+internal fun profileContactTarget(phone: String?, whatsapp: Boolean, busy: Boolean, isCurrent: () -> Boolean): String? {
+    if (busy || !isCurrent()) return null
+    val normalized = phone?.let(::phoneForWhatsApp) ?: return null
+    return if (whatsapp) "https://wa.me/$normalized" else "tel:+$normalized"
 }
 
 internal fun openExternal(context: Context, link: String, dial: Boolean = false) {
@@ -135,11 +140,8 @@ internal fun ProfileMediaHero(
     isCurrent: () -> Boolean,
     selection: ProfileMediaSelection,
     projectionAvailable: Boolean = true,
-    identity: HeroIdentity?,
     actionToken: ProfileIdentityToken?,
     compact: Boolean,
-    headerOwnsIdentity: Boolean,
-    onIdentityMeasured: (Int) -> Unit,
     onSwipe: ((Preference) -> Unit)? = null,
     touchGate: ProfileTouchGate? = null,
     heldDrag: Float? = null,
@@ -227,26 +229,7 @@ internal fun ProfileMediaHero(
                     }
                 }
             }
-            if (identity != null && !compact) {
-                val hidden = if (headerOwnsIdentity) Modifier.alpha(0f).clearAndSetSemantics {} else Modifier
-                HeroIdentityOverlay(identity, Modifier.align(Alignment.BottomCenter)
-                    .onSizeChanged { onIdentityMeasured(it.height) }.then(hidden).then(imageMotion))
-            }
         }
-    }
-}
-
-@Composable
-internal fun HeroIdentityOverlay(identity: HeroIdentity, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().background(Brush.verticalGradient(
-        listOf(Color.Black.copy(alpha = .65f), Color.Black.copy(alpha = .86f))))
-        .padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
-            maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(identity.compactSubtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
-            maxLines = 2, overflow = TextOverflow.Ellipsis)
-        if (identity.decisions.isNotBlank()) Text(identity.decisions, color = Color.White,
-            style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -280,39 +263,6 @@ internal fun ProfileImageDialog(item: ProfileMediaItem, onDismiss: () -> Unit) {
     }
 }
 
-/** Secondary source and archive metadata; identity belongs to the enclosing profile presentation. */
-@Composable
-internal fun ProfileMetadata(
-    profile: ProfileResponse,
-    identity: ProfileIdentity?,
-    person: PersonSummary?,
-    media: List<ProfileMediaItem>,
-    fromArchive: Boolean,
-) {
-    val badges = listOfNotNull(
-        "Archivierte Daten".takeIf { fromArchive },
-        when {
-            (person?.listingCount ?: 0u) > 1u -> "Person bekannt"
-            identity?.personNew == true -> "Person neu erkannt"
-            else -> null
-        },
-        "Anzeige neu".takeIf { identity?.listingNew == true },
-        "Video".takeIf { media.any { it.kind == "VIDEO" } || identity?.hasVideo == true },
-    )
-    Text("Zum Profil scrollen", style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
-    if (badges.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        badges.forEach { label ->
-            Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer) {
-                Text(label, Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-            }
-        }
-    }
-    profile.hiddenLocation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-}
-
 @Composable
 internal fun ProfileActionRail(
     person: PersonSummary?,
@@ -340,19 +290,22 @@ internal fun ProfileActionRail(
 
 @Composable
 internal fun ProfileContactActions(phone: String?, busy: Boolean, isCurrent: () -> Boolean) {
+    if (phone?.let(::phoneForWhatsApp) == null) return
     val context = LocalContext.current
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        val normalized = phone?.let(::phoneForWhatsApp)
-        OutlinedButton(enabled = !busy && !phone.isNullOrBlank(), modifier = Modifier.heightIn(min = 48.dp), onClick = {
-            if (isCurrent()) phone?.let { openExternal(context, "tel:${Uri.encode(it)}", dial = true) }
+        Button(enabled = !busy, modifier = Modifier.heightIn(min = 48.dp).shellFocus(), onClick = {
+            profileContactTarget(phone, false, busy, isCurrent)?.let { openExternal(context, it, dial = true) }
         }) {
             Icon(Icons.Default.Phone, null, Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text("Telefon")
         }
-        if (normalized != null) OutlinedButton(enabled = !busy, modifier = Modifier.heightIn(min = 48.dp), onClick = {
-            if (isCurrent()) openExternal(context, "https://wa.me/$normalized")
-        }) {
+        Button(enabled = !busy, modifier = Modifier.heightIn(min = 48.dp).shellFocus(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary,
+                contentColor = MaterialTheme.colorScheme.onTertiary),
+            onClick = {
+                profileContactTarget(phone, true, busy, isCurrent)?.let { openExternal(context, it) }
+            }) {
             Icon(Icons.Default.Email, null, Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text("WhatsApp")

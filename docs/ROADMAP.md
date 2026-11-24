@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.3 sind abgeschlossen. Nächste abhängige Aufgabe: M09.4 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.3 sind abgeschlossen. M09.4 nach gesonderter Nutzerfreigabe im Review; technische Abnahme und Merge ausstehend. Nächste abhängige Aufgabe: M09.5 erst nach integriertem M09.4 und gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,15 +18,16 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.4 — Profil: Informationshierarchie, Ortskorrektheit und Kontakte
 
-**Status:** PLANNED.
+**Status:** REVIEW — Branch `feature/m09-4-profile-hierarchy`; Nutzerauftrag erteilt, CI-/Merge-Abnahme ausstehend.
 
-**Abhängigkeit:** M09.2; gesonderter Nutzerauftrag.
+**Abhängigkeit:** M09.2 integriert; gesonderter Nutzerauftrag erteilt.
 
 - „Zum Profil scrollen“, Tags „Archivierte Daten“, „Person neu erkannt“, „Video“ und redundante Status-/Metadaten-Pills entfernen, Leerflächen auflösen. Technische Evidenz intern erhalten; relevante echte Fehler, Konflikte und Ownerwarnungen weiterhin erkennbar halten.
 - Falsche Ortsanzeige „Offenbach am Main“ ursächlich untersuchen: Platzhalter, Quellparse, Snapshot-/Owner-Zuordnung, veraltete oder falsch priorisierte Daten prüfen und an der verursachenden Schicht korrigieren. Keine erfundenen Orte, kein bloßes Hardcoding auf Leipzig; belegte Orte im Detailkontext korrekt zeigen. Bei nicht reproduzierbarem Befund Belege und verbleibende Unsicherheit dokumentieren.
 - „Übersicht“ durch tatsächlichen Anzeigentitel ersetzen, vergleichbare Schriftgröße und dezente Theme-Farbbetonung. Keine doppelte Namensüberschrift; belegtes Alter/Ort und weitere tatsächlich vorhandene Fachinformationen außerhalb des Hero zugänglich halten.
 - Telefon und WhatsApp unmittelbar unter den Profilbildern prominent und farblich klar unterscheidbar platzieren, gültige Daten und explizite Nutzerhandlung voraussetzen, bestehende Kontaktfunktion und Originalprofilzugriff erhalten. Filterübereinstimmung danach im oberen Detailbereich gemäß M09.6.
 - **Prüfung:** synthetische Orts-/Owner-/Snapshot-Regressionen, fehlende Werte, gemeinsame Swipe-/Standalone-Projektion, Kontaktposition und Intent-Admission, Layout und Kontrast.
+- **Reviewstand:** Unbeschränkter `[data-ort]`-Fallback als Fehlzuordnungspfad belegt und entfernt; Detailansicht nutzt kanonische Stadt/PLZ, alte Rohwerte bleiben erhalten. Aktive Snapshot-/Listing-Zuordnung und Owner-Guard geprüft. Konkreter gemeldeter Offenbach-Fall mangels Originaldaten nicht reproduziert; keine Änderung belegter Stadtwerte oder Datenmigration. Neue Rust-/JVM-Regressionen und gemeinsame native Layoutprobes; tatsächliche Geräteausführung nicht belegt. Vollständiges CI-Gate vor Merge prüfen.
 
 #### M09.5 — Gemeinsame progressive Abschnitte und Profilinhalte
 

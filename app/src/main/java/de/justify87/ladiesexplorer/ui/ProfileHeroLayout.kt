@@ -57,22 +57,11 @@ internal fun profileShellBudget(
     return ProfileShellBudget(header, notice, rail, body, short, width < 300f, compact)
 }
 
-/** Switch to the compact identity when the overlay crosses either viewport edge; keep measuring while hidden. */
-internal fun headerOwnsIdentity(
-    firstIndex: Int, heroStart: Int?, heroEnd: Int?, identityHeight: Int,
-    viewportStart: Int, viewportEnd: Int,
-): Boolean {
-    if (heroStart == null || heroEnd == null) return firstIndex > 0
-    if (identityHeight <= 0) return heroEnd <= viewportStart
-    val top = maxOf(heroStart, heroEnd - identityHeight)
-    return top < viewportStart || heroEnd > viewportEnd
-}
-
-internal fun LazyListState.headerOwnsIdentity(key: String, identityHeight: Int): Boolean {
+/** Never repeat the inline identity while any part of its row is visible. */
+internal fun LazyListState.headerOwnsIdentity(heroKey: String): Boolean {
     val layout = layoutInfo
-    val hero = layout.visibleItemsInfo.firstOrNull { it.key == key }
-    return headerOwnsIdentity(firstVisibleItemIndex, hero?.offset, hero?.let { it.offset + it.size },
-        identityHeight, layout.viewportStartOffset, layout.viewportEndOffset)
+    return layout.visibleItemsInfo.isNotEmpty() &&
+        layout.visibleItemsInfo.none { it.key == heroKey || it.key == "profile-heading" }
 }
 
 /** Reserve a non-clickable center for image feedback. */

@@ -60,7 +60,8 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 - Alle tatsächlich vorhandenen Informationen bleiben erreichbar; fehlende Werte nicht erfinden.
 - Galerie in Quellreihenfolge. Lokale archivierte Medien zuerst, dann Remote-Fallback; bei Fehler Platzhalter.
 - Reine Anzeige verändert weder Archiv noch Datenbestand. Eingebettete Videos und Darstellungsmodi nach [DESIGN](DESIGN.md#profile-und-medien).
-- Verknüpfte Anzeigen verwenden externe Original-URLs. Telefon, WhatsApp und Originalprofil nur durch ausdrückliche Nutzerhandlung; keine automatischen Aktionen.
+- Verknüpfte Anzeigen verwenden externe Original-URLs. Telefon und WhatsApp sind unmittelbar nach der Galerie nur bei gültiger, dem sichtbaren Profil zugeordneter Telefonnummer zugänglich. Telefon, WhatsApp und Originalprofil nur durch ausdrückliche Nutzerhandlung; keine automatischen Aktionen.
+- Der Detailort stammt aus Stadt und gegebenenfalls PLZ des aktiven Listing-Snapshots. Versteckte Orts-Rohwerte bleiben technische Evidenz, keine zusätzliche sichtbare Ortsangabe. Fehlende Angaben nicht durch andere Personen, Inserate oder unbelegte Ortswerte ersetzen.
 - Neu/bekannt, Video und Aktivität nur anhand von Evidenz. Vergleich ausdrücklich auslösen; keine künstlichen Scores oder Datenfelder für Mockups.
 
 ## Personen, Identität und Historie

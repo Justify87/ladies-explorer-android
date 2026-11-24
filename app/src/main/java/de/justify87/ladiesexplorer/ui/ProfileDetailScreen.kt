@@ -92,36 +92,34 @@ internal fun ProfileDetailScreen(
                 }
             }
         },
-    ) { presentation, onIdentityMeasured ->
+    ) { presentation ->
         ProfileFlow(state = detailListState, model = state.profileRead, filters = filters,
             token = renderedToken, actionsBusy = busy, notes = notes, noteActions = noteActions,
             isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
             modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest,
-            onGallerySelection = { selectedMedia = it }, encounters = encounters, prices = prices) {
+            onGallerySelection = { selectedMedia = it }, encounters = encounters, prices = prices,
+            afterHeading = {
+                if (profile != null && state.selectedPerson != null) item(key = "actions") {
+                    ProfileActionRail(state.selectedPerson, busy, onFavorite = { renderedToken?.let(onFavorite) },
+                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
+                }
+                state.mediaArchive?.takeIf { it.failed > 0u || it.deferred > 0u }?.let { report ->
+                    item(key = "archive-report") {
+                        Text("Archiv: ${report.failed} fehlgeschlagen · ${report.deferred} zurückgestellt",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }) {
             if (profile != null) {
                 item(key = "media") {
                     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                         ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
                             selection = mediaSelection,
-                            identity = identity, actionToken = renderedToken, actionsEnabled = !busy,
+                            actionToken = renderedToken, actionsEnabled = !busy,
                             isCurrent = { renderedToken?.let(isProfileCurrent) == true },
                             compact = presentation.budget.compactGallery,
-                            headerOwnsIdentity = presentation.identityInHeader,
-                            onIdentityMeasured = onIdentityMeasured, touchGate = touchGate,
+                            touchGate = touchGate,
                             playbackVisible = heroVisible)
-                    }
-                }
-                item(key = "identity") {
-                    ProfileMetadata(profile, state.profileIdentity, state.selectedPerson, state.profileMedia, state.profileFromArchive)
-                }
-                item(key = "actions") {
-                    ProfileActionRail(state.selectedPerson, busy, onFavorite = { renderedToken?.let(onFavorite) },
-                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
-                }
-                state.mediaArchive?.let { report ->
-                    item(key = "archive-report") {
-                        Text("Archiv: ${report.downloaded} geladen · ${report.reused} wiederverwendet · ${report.failed} fehlgeschlagen · ${report.deferred} zurückgestellt",
-                            style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

@@ -260,7 +260,6 @@ internal fun DiscoverScreen(
         var selectedMedia by remember { mutableStateOf<ProfileMediaItem?>(null) }
         var fullImage by remember(token) { mutableStateOf<ProfileMediaItem?>(null) }
         fullImage?.takeIf { token != null }?.let { ProfileImageDialog(it) { fullImage = null } }
-        val person = profile?.person
         val identity = profile?.let { heroIdentity(it.profile, it.identity, it.fromArchive,
             it.media.any { medium -> medium.kind == "VIDEO" } || it.identity.hasVideo,
             it.person.preference, it.person.favorite) }
@@ -326,7 +325,7 @@ internal fun DiscoverScreen(
                     onNotice, onOpenSearch, { onAvailability(deckToken, it) })
             },
             rail = { SwipeDecisionControls(controls, identity?.title, undo, skip, choose) },
-        ) { presentation, _ ->
+        ) { presentation ->
             Box(Modifier.fillMaxSize().clipToBounds()) {
             if (card == null) {
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
@@ -358,7 +357,26 @@ internal fun DiscoverScreen(
                     paddedDetails = true, photoRequest = photoRequest, onGallerySelection = { selectedMedia = it },
                     userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
-                    onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices) {
+                    onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices,
+                    fallbackIdentity = identity, afterHeading = {
+                    item(key = "profile-actions") {
+                        Column {
+                            TextButton(onClick = { photoRequest++ }) { Text("Zum Foto") }
+                            val image = selectedMedia?.takeIf { it.kind == "IMAGE" }
+                            if (image != null) TextButton(enabled = actions, onClick = {
+                                if (token?.let(isProfileCurrent) == true && selectedMedia == image) fullImage = image
+                            }) { Text("Bild groß anzeigen") }
+                            profile?.identity?.profileUrl?.let { url -> TextButton(enabled = actions, onClick = {
+                                if (token?.let(isProfileCurrent) == true) openExternal(context, url)
+                            }) { Text("Originalprofil öffnen") } }
+                            if (token != null && token.preference != Preference.NONE)
+                                TextButton(enabled = actions, onClick = { choose(Preference.NONE) }) { Text("Präferenz zurücksetzen") }
+                            SwipeDeckActions(controls, { onRefresh(deckToken) }, { onReset(deckToken) },
+                                { onReplayLikes(deckToken, !state.replayLikes) })
+                        }
+                    }
+                    if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
+                    }) {
                     item(key = "discover-context") {
                         DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode, Modifier)
                     }
@@ -379,43 +397,16 @@ internal fun DiscoverScreen(
                             playbackVisible = heroVisible,
                             galleryNavigationEnabled = !transitioning,
                             onMediaSettled = { settledMedia = it },
-                            identity = null, actionToken = token,
+                            actionToken = token,
                             favorite = identity?.favorite, onFavorite = { token?.takeIf(isProfileCurrent)?.let(onFavorite) },
                             imageScale = androidx.compose.ui.layout.ContentScale.Fit,
                             projectionAvailable = profile != null, actionsEnabled = actions,
                             isCurrent = { token?.let(isProfileCurrent) == true },
                             compact = presentation.budget.compactGallery,
-                            headerOwnsIdentity = false,
-                            onIdentityMeasured = {}, touchGate = touchGate)
+                            touchGate = touchGate)
                         }
                     }
-                    item(key = "header") {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            identity?.let {
-                                Text(it.title, style = MaterialTheme.typography.titleLarge)
-                                Text(it.subtitle, style = MaterialTheme.typography.bodyMedium)
-                                it.shortDecision?.let { decision -> Text(decision, style = MaterialTheme.typography.labelMedium) }
-                            }
-                            if (profile != null) ProfileMetadata(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
-                            TextButton(onClick = { photoRequest++ }) { Text("Zum Foto") }
-                        }
-                    }
-                    item(key = "profile-actions") {
-                        Column {
-                            val image = selectedMedia?.takeIf { it.kind == "IMAGE" }
-                            if (image != null) TextButton(enabled = actions, onClick = {
-                                if (token?.let(isProfileCurrent) == true && selectedMedia == image) fullImage = image
-                            }) { Text("Bild groß anzeigen") }
-                            profile?.identity?.profileUrl?.let { url -> TextButton(enabled = actions, onClick = {
-                                if (token?.let(isProfileCurrent) == true) openExternal(context, url)
-                            }) { Text("Originalprofil öffnen") } }
-                            if (token != null && token.preference != Preference.NONE)
-                                TextButton(enabled = actions, onClick = { choose(Preference.NONE) }) { Text("Präferenz zurücksetzen") }
-                            SwipeDeckActions(controls, { onRefresh(deckToken) }, { onReset(deckToken) },
-                                { onReplayLikes(deckToken, !state.replayLikes) })
-                        }
-                    }
-                    if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
+
                 }
             }
             val old = flight?.takeIf { it.card != cardIdentity }

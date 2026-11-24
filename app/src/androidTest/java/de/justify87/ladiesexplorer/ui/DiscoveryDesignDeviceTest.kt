@@ -48,7 +48,7 @@ class DiscoveryDesignDeviceTest {
                             Box(Modifier.fillMaxSize().testTag("rail")) {
                                 SwipeDecisionControls(context, "Fixture", {}, {}, {})
                             }
-                        }) { presentation, measured ->
+                        }) { presentation ->
                         LazyColumn(Modifier.fillMaxSize(), state = list,
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             item(key = "discover-context") {
@@ -61,9 +61,8 @@ class DiscoveryDesignDeviceTest {
                                     ProfileMediaHero(emptyList(), presentation.heroHeight,
                                         actionsEnabled = false, isCurrent = { false },
                                         selection = remember { ProfileMediaSelection() },
-                                        identity = null, favorite = false, onFavorite = {},
-                                        actionToken = null, compact = presentation.budget.compactGallery,
-                                        headerOwnsIdentity = presentation.identityInHeader, onIdentityMeasured = measured)
+                                        favorite = false, onFavorite = {},
+                                        actionToken = null, compact = presentation.budget.compactGallery)
                                 }
                             }
                             items(20) { Text("Detail $it", Modifier.height(48.dp)) }

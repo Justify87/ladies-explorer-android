@@ -24,12 +24,12 @@ import org.junit.Test
 class ProfileRestoreDeviceTest {
     @get:Rule val rule = createComposeRule()
 
-    private fun profile(snapshot: Long = 11) = ProfileReadModel(
+    private fun profile(snapshot: Long = 11, phone: String? = null) = ProfileReadModel(
         NativeProfileProjection(
             ProfileResponse(listingId = 4, snapshotId = snapshot, newSnapshot = false, advertId = "fixture",
                 name = "Fixture", city = "Fixture", description = "Fixture ".repeat(120), postalCode = null,
-                hiddenLocation = null, sourceProfileId = null, canonicalId = null,
-                phoneDisplay = null, publishedAt = null, traitsJson = "{}", servicesJson = "{}",
+                hiddenLocation = "Offenbach am Main", sourceProfileId = null, canonicalId = null,
+                phoneDisplay = phone, publishedAt = null, traitsJson = "{}", servicesJson = "{}",
                 openingTimesJson = "{}", media = emptyList()),
             ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null,
                 personNew = false, listingNew = false, hasVideo = false, age = null),
@@ -51,6 +51,44 @@ class ProfileRestoreDeviceTest {
         { _, _ -> factsRead() }, { PersonDetail(emptyList(), 0u, 0u, 0u, 0u) }, { _, _, _ -> emptyList() })
 
     private val notes = NoteEditorActions({ _, _ -> }, { _, _ -> }, { _, _, _ -> }, { _, _ -> }, { _, _ -> })
+
+    @Test fun sharedProfileShowsContactsDirectlyAfterGalleryAndOnlyCanonicalPlace() {
+        // Both contexts use the same ProfileFlow rows; no real contact intents are launched.
+        var model by mutableStateOf(profile(phone = "+49 170 1234567"))
+        var busy by mutableStateOf(false)
+        var standalone by mutableStateOf(false)
+        rule.setContent {
+            LadiesTheme(darkTheme = standalone) {
+                ProfileFlow(rememberLazyListState(), model, "{}", token(model), busy, emptyMap(), notes,
+                    isProfileCurrent = { true }, onConfirmIdentity = { _, _ -> },
+                    modifier = Modifier.fillMaxSize(), panelReads = reads { facts() }) {
+                    item(if (standalone) "media" else "hero") {
+                        Text("Galerie", Modifier.height(72.dp))
+                    }
+                }
+            }
+        }
+        repeat(2) {
+            val gallery = rule.onNodeWithText("Galerie").fetchSemanticsNode().boundsInRoot
+            val phone = rule.onNodeWithText("Telefon").fetchSemanticsNode().boundsInRoot
+            val whatsapp = rule.onNodeWithText("WhatsApp").fetchSemanticsNode().boundsInRoot
+            val heading = rule.onAllNodesWithText("Fixture", substring = false)[0].fetchSemanticsNode().boundsInRoot
+            assertTrue(phone.top >= gallery.bottom)
+            assertTrue(whatsapp.top >= gallery.bottom)
+            assertTrue(phone.bottom <= heading.top)
+            assertTrue(whatsapp.bottom <= heading.top)
+            rule.onNodeWithText("Fixture · Zuletzt bekannt: Anzeige aktiv").assertExists()
+            rule.onNodeWithText("Offenbach am Main").assertDoesNotExist()
+            rule.onNodeWithText("Übersicht").assertDoesNotExist()
+            rule.runOnIdle { busy = true }
+            rule.onNodeWithText("Telefon").assertIsNotEnabled()
+            rule.onNodeWithText("WhatsApp").assertIsNotEnabled()
+            rule.runOnIdle { busy = false; standalone = true }
+        }
+        rule.runOnIdle { model = profile(phone = null) }
+        rule.onNodeWithText("Telefon").assertDoesNotExist()
+        rule.onNodeWithText("WhatsApp").assertDoesNotExist()
+    }
 
     @Test fun lateUndoReceiptWaitsForRealRowsAndSurvivesSavedStateRecreation() {
         val tester = StateRestorationTester(rule)
