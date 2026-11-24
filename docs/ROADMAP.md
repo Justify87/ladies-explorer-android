@@ -24,7 +24,7 @@ Nächster Schritt: [M06.2](#m062--minimale-manuelle-angebotspreise). M06 begonne
 
 #### M06.2 — Minimale manuelle Angebotspreise
 
-**Status:** READY · **Abhängigkeit:** M06.1a/b abgeschlossen.
+**Status:** DOING · **Abhängigkeit:** M06.1a/b abgeschlossen. · Branch: [`feature/m06-2-manual-prices`](https://github.com/Justify87/ladies-explorer-android/tree/feature/m06-2-manual-prices).
 
 **Umfang:** Personenbezogene manuelle Preislisten mit Datum, Preispositionen und optionaler Dauer/Bezeichnung. Native Read-/Create-/Update-/Delete-API und Profilintegration in einem vertikalen Schritt: ein gemeinsamer kleiner Editor sowie bedarfsorientierte aktuelle/historische Anzeige. Bestehende Tabellen nutzen; kein Preis-Dashboard, kein automatisches Extrahieren oder Kopieren aus Begegnungen.
 
