@@ -619,19 +619,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             savedWindows.limits(state.savedKind, state.savedSort))
     }
 
-    fun selectSavedKind(kind: SavedPersonKind) {
-        val state = _discoverState.value
-        if (state.busy || state.loading || state.savedKind == kind) return
+    private fun admitsSavedPeopleControl(action: SavedPeopleControlAction): Boolean =
+        savedPeopleControlMatches(_discoverState.value, _searchUiState.value, action)
+
+    internal fun selectSavedKind(action: SavedPeopleControlAction, kind: SavedPersonKind) {
+        if (!admitsSavedPeopleControl(action) || action.kind == kind) return
         _discoverState.update { it.copy(savedKind = kind, savedPage = null, savedRecent = null,
             actionGeneration = it.actionGeneration + 1) }
         refreshDiscovery()
     }
 
-    fun selectSavedSort(sort: SavedPersonSort) {
-        val state = _discoverState.value
-        if (state.busy || state.loading || state.savedSort == sort) return
+    internal fun selectSavedSort(action: SavedPeopleControlAction, sort: SavedPersonSort) {
+        if (!admitsSavedPeopleControl(action) || action.sort == sort) return
         _discoverState.update { it.copy(savedSort = sort, savedPage = null, savedRecent = null,
             actionGeneration = it.actionGeneration + 1) }
+        refreshDiscovery()
+    }
+
+    internal fun refreshRenderedSavedPeople(action: SavedPeopleControlAction) {
+        if (!admitsSavedPeopleControl(action)) return
+        _discoverState.update { it.copy(actionGeneration = it.actionGeneration + 1) }
         refreshDiscovery()
     }
 

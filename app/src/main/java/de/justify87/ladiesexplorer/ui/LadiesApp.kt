@@ -464,9 +464,10 @@ fun LadiesApp(
                     } }
                     RootDestination.Saved -> SavedPeopleScreen(
                         state = discovery,
+                        controlsEnabled = savedPeopleControlMatches(discovery, search, discovery.savedPeopleControlAction()),
                         onKind = viewModel::selectSavedKind,
                         onSort = viewModel::selectSavedSort,
-                        onRefresh = viewModel::refreshDiscovery,
+                        onRefresh = viewModel::refreshRenderedSavedPeople,
                         onProfile = viewModel::openSavedPersonProfile,
                         onFavorite = viewModel::toggleFavorite,
                         onPreference = viewModel::choosePreference,

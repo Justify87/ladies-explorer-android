@@ -15,6 +15,31 @@ class SavedPeopleStateTest {
         savedPage = SavedPersonPage(listOf(row), 1u, 1u, 123L, null),
     )
 
+    @Test fun savedControlsRequireVisibleCurrentSelectionAndIdleReadContext() {
+        val state = displayed(row())
+        val search = SearchUiState()
+        val action = state.savedPeopleControlAction()
+        assertTrue(savedPeopleControlMatches(state, search, action))
+        assertFalse(savedPeopleControlMatches(state.copy(savedKind = SavedPersonKind.LIKE), search, action))
+        assertFalse(savedPeopleControlMatches(state.copy(savedSort = SavedPersonSort.NAME), search, action))
+        assertFalse(savedPeopleControlMatches(state.copy(actionSurface = ProfileActionSurface.NONE), search, action))
+        assertFalse(savedPeopleControlMatches(state.copy(actionSurface = ProfileActionSurface.GRID), search, action))
+        assertFalse(savedPeopleControlMatches(state.copy(loading = true), search, action))
+        assertFalse(savedPeopleControlMatches(state.copy(busy = true), search, action))
+        assertFalse(savedPeopleControlMatches(state, search.copy(profileOpen = true), action))
+        assertFalse(savedPeopleControlMatches(state, search.copy(loading = true), action))
+        assertFalse(savedPeopleControlMatches(state, search.copy(actionBusy = true), action))
+
+        // An explicit selection or reload may supersede local pagination.
+        assertTrue(savedPeopleControlMatches(state.copy(savedLoadingMore = true), search, action))
+        assertTrue(savedPeopleControlMatches(state.copy(savedRecentLoadingMore = true), search, action))
+
+        // Reload revokes old controls even when the replacement read fails.
+        val failed = state.copy(savedPage = null, savedError = "read failed", actionGeneration = 43L)
+        assertFalse(savedPeopleControlMatches(failed, search, action))
+        assertTrue(savedPeopleControlMatches(failed, search, failed.savedPeopleControlAction()))
+    }
+
     @Test fun savedActionsRequireRenderedRowTabAndWindowGeneration() {
         val original = row()
         val state = displayed(original)
