@@ -336,12 +336,68 @@ mod tests {
         assert_ne!(reverted.item_ids, original.item_ids);
         assert!(delete(&core, listing, person, original).is_err());
         delete(&core, listing, person, reverted).unwrap();
-        assert_eq!(overview(&core, listing, person).unwrap().lists, vec![older]);
+        assert_eq!(
+            overview(&core, listing, person).unwrap().lists,
+            vec![older]
+        );
         let db = core.connection().unwrap();
         let count: i64 = db
             .query_row("SELECT COUNT(*) FROM price_items", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn latest_recorded_prices_and_last_known_payment_are_independent() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "1".into(), None)
+            .unwrap();
+        let first = create(&core, listing, person, values("2026-11-24", 0)).unwrap();
+        let second = create(&core, listing, person, values("2026-11-24", 1234)).unwrap();
+        let latest = overview(&core, listing, person).unwrap();
+        assert!(latest.last_paid.is_none());
+        let mut ids = vec![first.price_list_id, second.price_list_id];
+        ids.sort_unstable_by(|a, b| b.cmp(a));
+        assert_eq!(
+            latest
+                .lists
+                .iter()
+                .map(|row| row.price_list_id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+
+        let encounter = |date: &str, total_price_cents| crate::EncounterValues {
+            listing_id: None,
+            occurred_at: format!("{date}T12:00:00.000Z"),
+            duration_minutes: None,
+            total_price_cents,
+            overall_rating: None,
+            sympathy_rating: None,
+            note: None,
+            base_price_cents: Some(444),
+            services: Vec::new(),
+        };
+        core.create_encounter(listing, person, encounter("2026-11-22", Some(700)))
+            .unwrap();
+        let paid = core
+            .create_encounter(listing, person, encounter("2026-11-23", Some(0)))
+            .unwrap();
+        core.create_encounter(listing, person, encounter("2026-11-24", None))
+            .unwrap();
+        assert_eq!(
+            overview(&core, listing, person).unwrap().last_paid,
+            Some(PaidEncounter {
+                occurred_at: paid.values.occurred_at.clone(),
+                amount_cents: 0,
+            })
+        );
+        core.delete_encounter(listing, person, paid).unwrap();
+        let result = overview(&core, listing, person).unwrap();
+        assert_eq!(result.last_paid.unwrap().amount_cents, 700);
+        assert_eq!(result.lists, latest.lists);
     }
 
     #[test]
