@@ -15,7 +15,7 @@ internal data class ProfileShellBudget(
     val narrowHeader: Boolean,
     val compactGallery: Boolean,
 ) {
-    val railInMenu get() = rail == 0f
+    val railInContent get() = rail == 0f
     val noticeInHeader get() = notice == 0f
 }
 
@@ -79,30 +79,12 @@ internal fun LazyListState.headerOwnsIdentity(key: String, identityHeight: Int):
 internal fun gallerySideFraction(width: Float, video: Boolean = false): Float =
     if (width <= 0f) 0f else if (video) .33f else .5f
 
-/** Menu actions remain bound to the profile/run where the menu opened. */
-internal data class SwipeMenuContext(
+/** Rendered deck controls retain their original deck and profile tokens. */
+internal data class SwipeControlsContext(
     val deck: SwipeDeckToken, val card: SwipeCardToken?, val profile: SwipeActionToken?,
-    val deckEnabled: Boolean, val availabilityEnabled: Boolean, val matchingRun: Boolean,
+    val deckEnabled: Boolean, val availabilityEnabled: Boolean,
     val availability: AvailabilityMode, val replay: Boolean, val canUndo: Boolean,
-    val medium: String? = null,
 )
-
-internal fun swipeMenuCurrent(opened: SwipeMenuContext?, current: SwipeMenuContext): Boolean =
-    opened != null && opened == current
-
-internal fun swipeContextLabel(summary: String, executed: Boolean, matchingRun: Boolean, availability: AvailabilityMode): String =
-    when {
-        !matchingRun -> "$summary · Swipe · Suchlauf wird übernommen"
-        executed -> "$summary · Swipe · ${availability.label}"
-        else -> "$summary · Swipe"
-    }
-
-internal fun swipeContextShort(hasRun: Boolean, matchingRun: Boolean, availability: AvailabilityMode): String =
-    when {
-        !matchingRun -> "Swipe · Suchwechsel"
-        hasRun -> "Suche · ${availability.label} · Swipe"
-        else -> "Lokal · Swipe"
-    }
 
 internal data class HeroIdentity(
     val name: String,
