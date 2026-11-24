@@ -141,7 +141,7 @@ internal fun SearchUiState.restoreGridLike(listingId: Long): SearchUiState =
 internal fun gridAnchorKey(key: Any): String = if (key is Long) "listing/$key" else key.toString()
 
 internal fun gridRestorePosition(keys: List<String>, anchor: String?, index: Int, offset: Int): Pair<Int, Int> {
-    val match = keys.indexOf(anchor)
+    val match = anchor?.let(keys::indexOf) ?: -1
     return if (match >= 0) match to offset.coerceAtLeast(0)
     else index.coerceIn(0, (keys.size - 1).coerceAtLeast(0)) to 0
 }
