@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 internal enum class ProfileSection(val label: String) {
-    Description("Beschreibung"), Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), History("Verlauf / verknüpfte Anzeigen")
+    Description("Beschreibung"), Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), Prices("Manuelle Angebotspreise"), History("Verlauf / verknüpfte Anzeigen")
 }
 
 @Stable
@@ -54,6 +54,23 @@ internal fun rememberProfileSections(): ProfileSections = rememberSaveable(
 ) { ProfileSections() }
 
 @Composable
+private fun <R, V, D, S> recordPanel(
+    editor: ProfileRecordEditor<R, V, D, S>?,
+    token: ProfileIdentityToken?,
+    expanded: Boolean,
+    busy: Boolean,
+): ProfileRecordPanel<S>? {
+    val demanded = expanded || editor?.matchesContext(token) == true
+    DisposableEffect(editor, token, demanded, busy) {
+        onDispose { editor?.detach(token) }
+    }
+    LaunchedEffect(editor, token, demanded, busy, editor?.readRevision) {
+        if (demanded && !busy && token != null) editor?.load(token)
+    }
+    return editor?.panel?.takeIf { it.token == token }
+}
+
+@Composable
 internal fun ProfileFlow(
     state: LazyListState,
     model: ProfileReadModel?,
@@ -76,6 +93,7 @@ internal fun ProfileFlow(
     onGallerySelection: (ProfileMediaItem?) -> Unit = {},
     userScrollEnabled: Boolean = true,
     encounters: EncounterEditor? = null,
+    prices: PriceEditor? = null,
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -121,15 +139,8 @@ internal fun ProfileFlow(
     LaunchedEffect(noteDemand, noteExpanded, token, busy) {
         if (noteExpanded && !busy) noteDemand.request(token, false, isProfileCurrent, noteActions.load)
     }
-    val encountersExpanded = sections.expanded(ProfileSection.Encounters)
-    val encountersDemanded = encountersExpanded || encounters?.matchesContext(token) == true
-    DisposableEffect(encounters, token, encountersDemanded, busy) {
-        onDispose { encounters?.detach(token) }
-    }
-    LaunchedEffect(encounters, token, encountersDemanded, busy, encounters?.readRevision) {
-        if (encountersDemanded && !busy && token != null) encounters?.load(token)
-    }
-    val encounterPanel = encounters?.panel?.takeIf { it.token == token }
+    val encounterPanel = recordPanel(encounters, token, sections.expanded(ProfileSection.Encounters), busy)
+    val pricePanel = recordPanel(prices, token, sections.expanded(ProfileSection.Prices), busy)
     ComparisonDialog(panels, active = !busy)
     var confirmation by remember(token) { mutableStateOf<Long?>(null) }
     val current = { token?.let(isProfileCurrent) == true }
@@ -151,6 +162,8 @@ internal fun ProfileFlow(
             onRetryNote = { if (!busy) noteDemand.request(token, true, isProfileCurrent, noteActions.load) },
             encounters = encounters, encounterPanel = encounterPanel,
             onRetryEncounters = { panel -> scope.launch { encounters?.retry(panel) } },
+            prices = prices, pricePanel = pricePanel,
+            onRetryPrices = { panel -> scope.launch { prices?.retry(panel) } },
             isCurrent = current,
             onConfirm = { target -> if (!busy && current()) confirmation = target })
     }.build()
@@ -185,7 +198,8 @@ internal fun ProfileFlow(
         ProfileRowRead.Facts -> panels.facts == null && panels.factsError == null
         ProfileRowRead.Detail -> panels.detail == null && panels.detailError == null
         ProfileRowRead.Note -> noteDemand.status != ProfileNoteDemand.Status.Settled || noteState.loading
-        ProfileRowRead.Encounters -> encounterPanel?.rows == null && encounterPanel?.error == null
+        ProfileRowRead.Encounters -> encounterPanel?.snapshot == null && encounterPanel?.error == null
+        ProfileRowRead.Prices -> pricePanel?.snapshot == null && pricePanel?.error == null
         null -> false
     }
     val readFailed = when (dependency) {
@@ -193,6 +207,7 @@ internal fun ProfileFlow(
         ProfileRowRead.Detail -> panels.detailError != null
         ProfileRowRead.Note -> noteState.readError
         ProfileRowRead.Encounters -> encounterPanel?.error != null
+        ProfileRowRead.Prices -> pricePanel?.error != null
         null -> false
     }
     LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor, readFailed,
@@ -473,6 +488,9 @@ private fun ProfileFlowRows.profileContent(
     encounters: EncounterEditor?,
     encounterPanel: EncounterPanel?,
     onRetryEncounters: (EncounterPanel) -> Unit,
+    prices: PriceEditor?,
+    pricePanel: PricePanel?,
+    onRetryPrices: (PricePanel) -> Unit,
     isCurrent: () -> Boolean,
     onConfirm: (Long) -> Unit,
 ) {
@@ -557,7 +575,7 @@ private fun ProfileFlowRows.profileContent(
         }
         if (sections.expanded(ProfileSection.Encounters)) {
             item(key = "profile-encounters-head", read = ProfileRowRead.Encounters) {
-                val rows = encounterPanel?.rows
+                val rows = encounterPanel?.snapshot
                 if (encounterPanel?.error != null) {
                     TextButton(enabled = !actionsBusy, onClick = { onRetryEncounters(checkNotNull(encounterPanel)) }) { Text("Neu laden") }
                 } else if (rows == null) {
@@ -568,10 +586,39 @@ private fun ProfileFlowRows.profileContent(
                         onClick = { encounters.begin(checkNotNull(encounterPanel)) }) { Text("Begegnung hinzufügen") }
                 }
             }
-            if (encounterPanel?.rows != null) items(encounterPanel.rows, key = { "encounter/${it.encounterId}" }, read = ProfileRowRead.Encounters) { row ->
+            if (encounterPanel?.snapshot != null) items(encounterPanel.snapshot, key = { "encounter/${it.encounterId}" }, read = ProfileRowRead.Encounters) { row ->
                 EncounterRow(row, !actionsBusy && isCurrent(),
                     onEdit = { encounters.begin(encounterPanel, row) },
                     onDelete = { encounters.begin(encounterPanel, row, deleting = true) })
+            }
+        }
+    }
+    if (prices != null) {
+        item(key = "prices-toggle", read = ProfileRowRead.Prices.takeIf { sections.expanded(ProfileSection.Prices) }) {
+            SectionToggle(ProfileSection.Prices, sections, pricePanel?.error, hintError = pricePanel?.error != null)
+        }
+        if (sections.expanded(ProfileSection.Prices)) {
+            item(key = "profile-prices-head", read = ProfileRowRead.Prices) {
+                val data = pricePanel?.snapshot
+                if (pricePanel?.error != null) {
+                    TextButton(enabled = !actionsBusy, onClick = { onRetryPrices(checkNotNull(pricePanel)) }) { Text("Neu laden") }
+                } else if (data == null) {
+                    if (!actionsBusy) CircularProgressIndicator(Modifier.size(24.dp))
+                } else {
+                    Text("Manuell erfasst · keine Aussage über aktuelle Gültigkeit.", style = MaterialTheme.typography.bodySmall)
+                    val paid = data.lastPaid
+                    Text(if (paid == null) "Zuletzt bekannter bezahlter Gesamtbetrag: Unbekannt"
+                        else "Zuletzt bekannter bezahlter Gesamtbetrag: ${euro(paid.amountCents)} € · ${displayTime(paid.occurredAt, java.time.ZoneId.systemDefault())}")
+                    if (data.lists.isEmpty()) Text("Keine Preislisten gespeichert.")
+                    TextButton(enabled = !actionsBusy && isCurrent(),
+                        onClick = { prices.begin(checkNotNull(pricePanel)) }) { Text("Preisliste hinzufügen") }
+                }
+            }
+            val overview = pricePanel?.snapshot
+            if (overview != null) items(overview.lists, key = { "price/${it.priceListId}" }, read = ProfileRowRead.Prices) { row ->
+                PriceListRow(row, row == overview.lists.first(), !actionsBusy && isCurrent(),
+                    onEdit = { prices.begin(checkNotNull(pricePanel), row) },
+                    onDelete = { prices.begin(checkNotNull(pricePanel), row, deleting = true) })
             }
         }
     }
