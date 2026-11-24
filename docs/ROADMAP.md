@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**M05.11 (G11) abgeschlossen. Nächster Schritt: M06.1a nach gesondertem Nutzerauftrag.** M07 bleibt geplant. L01 unabhängig klären.
+**M05.11 (G11) abgeschlossen. Nächster Schritt: M06.1a nach gesondertem Nutzerauftrag.** M07 ist als technischer Projektabschluss (G07) geplant. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -19,7 +19,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M05.10 Unified Profile Experience | DONE | T10.0–T10.7 abgeschlossen; T10.8 [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75) integriert; T10.8/T10.9 Abschlussbilanz unten. |
 | M05.11 Gezielte Qualitätskonsolidierung | DONE | T11.1–T11.4 abgeschlossen; [PR #83](https://github.com/Justify87/ladies-explorer-android/pull/83), vollständige [CI #45425545751](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751). |
 | M06 Persönliche Begegnungen und Preise | PLANNED | M06.1a/b, M06.2, G06; bewusst begrenzter lokaler Funktionsumfang. |
-| M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
+| M07 Technischer Projektabschluss | PLANNED | M07.1 gezielte Gesamtintegration, M07.3 Nutzungsreife und Abschluss (G07); nach G06. |
 
 Diagnose (Logging, Messungen, HTTP/HAR, TXT-Export) ist integriert [#7](https://github.com/Justify87/ladies-explorer-android/pull/7); abgeschlossen. Ursprüngliche M00–M02-Nummerierung wich von PR-Bezeichnungen ab; maßgeblich sind obige Zuordnung und Git. Kein Prozentwert aus ungleich großen Aufgaben.
 
@@ -170,12 +170,40 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Scope-Entscheidung 24.11.2026:** Die bisherige M06.3 (globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, pauschale Karten-/Geocoding-Erweiterungen) entfällt ersatzlos aus dem aktiven Arbeitsregister. Keine automatische Verschiebung nach M07; nur bei neuem konkretem Bedarf und ausdrücklichem Auftrag neu bewerten. Bestehende Karte, SavedSearch, WhatsApp, Medienarchivierung und Quellhistorie bleiben erhalten. M06.4 behält seine bisherige Abschlussfunktion und ID.
 
-## Später – M07
+## Später – M07 · Technischer Projektabschluss
 
-Nach M06 bzw. ausdrücklich freigegebenem Umfang.
-- [ ] **M07.1 — PLANNED:** technische Gesamtintegration und Stabilität der App anhand vorhandener automatisierter Regressionen, Code und konkreter Fehlerbefunde prüfen: Suche, gespeicherte Suchen, Profile/Medien/Identität, Karte, Lifecycle, Offline und Diagnose. Keine Wiedereröffnung bereits abgeschlossener Geräteprüfaufgaben.
-- [ ] **M07.2 — PLANNED / Scope bestätigen:** ausschließlich etwaigen zusätzlichen Bedarf an bewussten lokalen Diagnoseexporten klären; keine Nutzerdatenmigration einschließlich Backup/Restore gemäß [PRODUCT](PRODUCT.md#produktziel-und-grenzen). Keine Implementierung ohne ausdrückliche Freigabe.
-- [ ] **M07.3 — PLANNED:** abschließende Produkt-/Release-Reife, bekannte Restfehler und Distribution gegen bestätigten Scope prüfen; keine Veröffentlichung ohne Auftrag.
+**Abhängigkeit:** M06 (G06) DONE. **Reihenfolge:** M07.1 → M07.3 (G07), jeweils auf integriertem Stand. **Start:** erst mit gesondertem Implementierungsauftrag. **Ziel:** bestätigten initialen Produktumfang auf einem nachvollziehbar geprüften, lokal nutzbaren Stand abschließen. Nach G07 bedarfsorientierte Wartung und Weiterentwicklung statt vorsorglicher weiterer Meilensteine.
+
+**Arbeitsgrenzen:** M05.10/M05.11 und G06 als vorhandene Qualitäts- und Integrationsbelege nutzen; keine abgeschlossenen Aufgaben erneut öffnen. Nur konkrete abnahmerelevante Befunde ursächlich beheben, vorhandene Implementierungen und Tests bevorzugen. Keine pauschale Code-/Architektur-/UI-Überarbeitung, neue Features, zusätzlichen Diagnoseexporte, Nutzer-Backup/Restore/Migration, Wiederaufnahme verworfener M06-Funktionen oder Web-App-Parität. Keine neuen Frameworks, permanenten CI-Jobs, allgemeinen Aufrufgraphen oder Benchmarkprogramme ohne belegten Bedarf und gesonderten Auftrag.
+
+### M07.1 — PLANNED · Gezielte Gesamtintegration
+
+**Abhängigkeit:** G06 DONE. Auf dem dann aktuellen Code- und Teststand prüfen; G06 nicht duplizieren. Vier funktionsübergreifende Ketten anhand vorhandener Regressionen, produktiver Aufrufer und konkreter Befunde abgleichen:
+
+- [ ] Suche → Swipe/Grid → gemeinsames Profil → bestätigte Entscheidung; aktive/lokale Ergebnismengen, Undo und Rückkehr konsistent.
+- [ ] Profil in Swipe und Standalone → Begegnung/Preis → Rust/SQLite → erneutes lokales Lesen; persönliche Daten, Quellenhistorie, Notiz, Favorit und Präferenz getrennt.
+- [ ] Expliziter Identitäts-Merge → Erhalt aller zugehörigen Daten einschließlich Begegnungs-/Preispositionen → konsistente betroffene Profil-, Such-, SavedPeople-, SavedSearch- und Kartenprojektionen.
+- [ ] Mutation → Navigation/Back/Lifecycle → Offline/Wiederöffnung; Stale-Owner-/Entwurfs-/Cancel-/Drain-Verträge und Commit/Readfehler-Trennung erhalten. Bestehende Medien-, Karten- und Diagnoseverträge nur an betroffenen Übergängen prüfen.
+
+**Code-/Testanker:** `MainViewModel`, `StandaloneProfileOperations`, `ProfileFlow`, `CoreStore`, native API/Identität/Persistenz und die mit M06 integrierten Schreibpfade; vorhandene Rust-, JVM-, Android-Integrations- und Architekturregressionen, insbesondere SearchRun-, SwipeDeck-/SwipeProfileWindow-, ProfileProjection-, StandaloneProfileOperations-, SavedPeople-/SavedSearch-Tests und native Merge-Regressionen. Maßgeblich sind die nach G06 tatsächlichen Aufrufer und Testnamen.
+
+**Akzeptanz:** Geprüfte Ketten erfüllen [PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md) und [DESIGN](DESIGN.md); nachgewiesene abnahmerelevante Fehler im bestätigten Scope behoben und gezielt regressionsgesichert. Keine neue parallele Implementierungsroute oder unnötige Testdopplung. Begründete Nichtänderung ausdrücklich zulässig.
+
+**Abnahme:** Bestehendes vollständiges CI-Gate erfolgreich (Rust-/JVM-Tests, native DB-Regression, Clippy, Android-Build/Lint, Quell-/APK-Architekturprüfungen und Instrumentierungs-APK). Vorhandenen vollständigen Lauf für identischen relevanten Code-/Buildstand nutzen oder bei fehlendem Beleg regulären vollständigen Lauf ausführen; reiner Docs-Gate allein reicht nicht. Geräteprüfungen gemäß [Merge-Regel](#pflege), keine separate Nachabnahme. PR/Commit/CI und Befunde verlinken; Abschluss mit Merge.
+
+### M07.3 — PLANNED · Nutzungsreife und Abschluss (G07)
+
+**Abhängigkeit:** M07.1 DONE.
+
+- [ ] Bestätigten Produktumfang gegen integrierten Stand prüfen; verbleibende konkrete Fehler nach Auswirkung bewerten, abnahmeverhindernde Befunde beheben und andere nachvollziehbar dokumentieren. Keine neue Featurearbeit.
+- [ ] Installierbares ARM64-Debug-APK und native Datenintegrität am Abschlussstand anhand vorhandener vollständiger CI-/Buildbelege bestätigen; bei Bedarf bestehenden manuellen Workflow zur APK-Erzeugung nutzen. App-Start, DB-Status und Geräteintegration nach vorhandenem Prüfvertrag beurteilen, nicht ungeprüfte Geräteausführung behaupten.
+- [ ] PRODUCT, ARCHITECTURE, DESIGN, README und Arbeitsregister auf belegte Abweichungen prüfen; nur nötige Korrekturen. Abschlussbeleg mit integriertem Stand, PR/Commit, vollständigem CI-Gate und konkreten Restrisiken; keine Fehlerfreiheit behaupten.
+
+**Distribution (nur bei ausdrücklichem Auftrag):** Persönliche Nutzungsreife ist keine Freigabe öffentlicher Distribution. Falls ein Release-APK gewünscht wird, den vorhandenen minifizierten Release-Build einmalig gezielt qualifizieren, insbesondere native UniFFI/JNA/JNI-/libmpv-Schnittstellen und Installierbarkeit; Debug-CI ersetzt diesen Beleg nicht. Signierung/Versionierung nur entsprechend dem bestätigten Distributionsbedarf. L01 bleibt unabhängig und ist vor weiterer öffentlicher Distribution zu klären; ohne Klärung keine öffentliche Distributionsfreigabe. Keine automatische Veröffentlichung, Store-Anbindung oder neue Release-Infrastruktur.
+
+**Akzeptanz/Abnahme:** Bestätigter lokaler Produktumfang vollständig, keine bekannten abnahmeverhindernden Befunde, relevanter Code-/Buildstand durch vollständiges bestehendes CI-Gate belegt. Geräteprüfungen gemäß [Merge-Regel](#pflege); externe Quellenverfügbarkeit und nicht ausgeführte Geräteprüfungen nicht aus CI ableiten. Nicht beauftragte öffentliche Distribution blockiert den lokalen G07-Abschluss nicht. G07 mit Merge des Abschluss-PR DONE; anschließend keine automatische Fortsetzung ohne neuen konkreten Auftrag.
+
+**Scope-Entscheidung 24.11.2026:** Die bisherige M07-Planung wird vollständig ersetzt. M07.2 entfällt ersatzlos: TXT-/HAR-Speichern und -Teilen sind bereits vorhanden, zusätzlicher Bedarf nicht belegt. M07.1 und M07.3 behalten ihre IDs; keine Verschiebung gestrichener Aufgaben in andere Meilensteine.
 
 ## Unabhängige technische Bereinigung
 
