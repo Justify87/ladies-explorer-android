@@ -456,21 +456,24 @@ fun LadiesApp(
                         onCancelCheck = viewModel::cancelRenderedSavedStatus,
                         modifier = modifier,
                     )
-                    RootDestination.Settings -> SettingsScreen(
-                        state=home,
-                        replayLikes = discovery.replayLikes,
-                        replayEnabled = !home.loading && settingsReplayMatches(discovery, search, discovery.settingsReplayAction()),
-                        onReplayLikes = { viewModel.setSettingsReplayLikes(discovery.settingsReplayAction(), it) },
-                        onRefresh=viewModel::refresh,
-                        onSaveDiagnostics=onSaveDiagnostics,
-                        onShareDiagnostics=onShareDiagnostics,
-                        onDebugLogging=viewModel::setDebugLoggingEnabled,
-                        onCaptureMode=viewModel::setHttpCaptureMode,
-                        onClearHar=viewModel::clearHttpCapture,
-                        onSaveHar=onSaveHar,
-                        onShareHar=onShareHar,
-                        modifier=modifier,
-                    )
+                    RootDestination.Settings -> {
+                        val replayAction = discovery.settingsReplayAction()
+                        SettingsScreen(
+                            state=home,
+                            replayLikes = replayAction.expected,
+                            replayEnabled = !home.loading && settingsReplayMatches(discovery, search, replayAction),
+                            onReplayLikes = { viewModel.setSettingsReplayLikes(replayAction, it) },
+                            onRefresh=viewModel::refresh,
+                            onSaveDiagnostics=onSaveDiagnostics,
+                            onShareDiagnostics=onShareDiagnostics,
+                            onDebugLogging=viewModel::setDebugLoggingEnabled,
+                            onCaptureMode=viewModel::setHttpCaptureMode,
+                            onClearHar=viewModel::clearHttpCapture,
+                            onSaveHar=onSaveHar,
+                            onShareHar=onShareHar,
+                            modifier=modifier,
+                        )
+                    }
                 }
             }
         }

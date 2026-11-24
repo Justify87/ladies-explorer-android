@@ -1,10 +1,15 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +45,14 @@ internal fun ScreenChoice(
     FilterChip(
         selected = selected, onClick = onClick, enabled = enabled, label = label,
         modifier = modifier.heightIn(min = 48.dp),
+        leadingIcon = {
+            Box(Modifier.size(18.dp)) {
+                if (selected) Icon(Icons.Default.Check, contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = if (enabled) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+            }
+        },
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
             selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,

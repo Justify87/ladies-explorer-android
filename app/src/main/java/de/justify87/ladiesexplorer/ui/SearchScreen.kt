@@ -98,38 +98,38 @@ internal fun SearchScreen(
     BoxWithConstraints(modifier = modifier) {
         val inlineFooter = maxHeight < 360.dp || (maxHeight < 460.dp && LocalDensity.current.fontScale > 1.3f)
         val footer: @Composable () -> Unit = {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(when {
-                            state.searchCancelling -> "Suche wird beendet …"
-                            state.loading -> "Suche läuft …"
-                            !previewMatches -> "Quellzahl noch nicht geprüft"
-                            state.previewLoading -> "Quellzahl wird geprüft …"
-                            state.previewError != null -> "Vorschau nicht verfügbar"
-                            state.preview?.serverCount != null -> "${state.preview.serverCount} Treffer laut Quelle"
-                            state.preview != null -> "Quellzahl unbekannt (Radius/Metadaten nicht bestätigt)"
-                            else -> "Quellzahl noch nicht geprüft"
-                        }, style = MaterialTheme.typography.bodySmall)
-                        Text("Lokale Filter werden nach der Suche angewendet.", style = MaterialTheme.typography.labelSmall)
-                        if (state.response != null) Text("Der letzte Suchlauf bleibt bis zur neuen Suche erhalten.",
-                            style = MaterialTheme.typography.labelSmall)
-                        if (editor != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = onCancelEdit, enabled = !saved.blockingNavigation, modifier = Modifier.heightIn(min = 48.dp)) { Text("Abbrechen") }
-                            Button(onClick = { onSave(SavedEditorAction(editor, saved.actionGeneration)) }, enabled = enabled && editor.name.isNotBlank() && editor.name.length <= 100 && draft.city.isNotBlank(), modifier = Modifier.heightIn(min = 48.dp)) {
-                                Text(if (saved.operation == SavedOperation.Write) "Speichert …" else "Speichern")
-                            }
-                        } else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = {
-                                if (currentFilterContext === filterContext && onReset()) filterQuery = ""
-                            }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text("Reset") }
-                            Button(onClick = if (state.loading) onCancelSearch else ({ onSearch(SearchSubmitAction(draft, generation)) }),
-                                enabled = !state.searchCancelling && (state.loading || (canStartSearch && enabled && state.city.isNotBlank())), modifier = Modifier.heightIn(min = 48.dp)) {
-                                Text(if (state.searchCancelling) "Wird beendet …" else if (state.loading) "Abbrechen" else "Suchen")
-                            }
+            Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(when {
+                        state.searchCancelling -> "Suche wird beendet …"
+                        state.loading -> "Suche läuft …"
+                        !previewMatches -> "Quellzahl noch nicht geprüft"
+                        state.previewLoading -> "Quellzahl wird geprüft …"
+                        state.previewError != null -> "Vorschau nicht verfügbar"
+                        state.preview?.serverCount != null -> "${state.preview.serverCount} Treffer laut Quelle"
+                        state.preview != null -> "Quellzahl unbekannt (Radius/Metadaten nicht bestätigt)"
+                        else -> "Quellzahl noch nicht geprüft"
+                    }, style = MaterialTheme.typography.bodySmall)
+                    Text("Lokale Filter werden nach der Suche angewendet.", style = MaterialTheme.typography.labelSmall)
+                    if (state.response != null) Text("Der letzte Suchlauf bleibt bis zur neuen Suche erhalten.",
+                        style = MaterialTheme.typography.labelSmall)
+                    if (editor != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onCancelEdit, enabled = !saved.blockingNavigation, modifier = Modifier.heightIn(min = 48.dp)) { Text("Abbrechen") }
+                        Button(onClick = { onSave(SavedEditorAction(editor, saved.actionGeneration)) }, enabled = enabled && editor.name.isNotBlank() && editor.name.length <= 100 && draft.city.isNotBlank(), modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(if (saved.operation == SavedOperation.Write) "Speichert …" else "Speichern")
+                        }
+                    } else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            if (currentFilterContext === filterContext && onReset()) filterQuery = ""
+                        }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text("Reset") }
+                        Button(onClick = if (state.loading) onCancelSearch else ({ onSearch(SearchSubmitAction(draft, generation)) }),
+                            enabled = !state.searchCancelling && (state.loading || (canStartSearch && enabled && state.city.isNotBlank())), modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(if (state.searchCancelling) "Wird beendet …" else if (state.loading) "Abbrechen" else "Suchen")
                         }
                     }
                 }
+            }
         }
         Column(Modifier.fillMaxSize()) {
             LazyColumn(
