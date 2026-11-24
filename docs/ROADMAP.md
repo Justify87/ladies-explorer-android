@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.8 – Suchabbruch-Admission reviewen, danach verbleibende G10.3-Regressionsmatrix prüfen und belegte Defekte beheben.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: T10.8 – verbleibende G10.3-Regressionsmatrix prüfen und belegte Defekte beheben.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -16,7 +16,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M03 Suche/Parser | DONE | [#4](https://github.com/Justify87/ladies-explorer-android/pull/4), [#8](https://github.com/Justify87/ladies-explorer-android/pull/8); abgeschlossen. |
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
-| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 mit [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) integriert; T10.8 mit [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57) teilintegriert; SavedSearch-Zeilenaktionen in [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) integriert; Ergebnisfenster-Pagination/Retry in [PR #60](https://github.com/Justify87/ladies-explorer-android/pull/60) integriert; SavedPeople-Pagination [PR #61](https://github.com/Justify87/ladies-explorer-android/pull/61), lokale Grid-Pagination [PR #62](https://github.com/Justify87/ladies-explorer-android/pull/62), Kartensteuerung [PR #63](https://github.com/Justify87/ladies-explorer-android/pull/63) und Grid-Schnellwahl [PR #64](https://github.com/Justify87/ladies-explorer-android/pull/64) mit Merge abgeschlossen; T10.9 offen. |
+| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 mit [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) integriert; T10.8 mit [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57) teilintegriert; SavedSearch-Zeilenaktionen in [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) integriert; Ergebnisfenster-Pagination/Retry in [PR #60](https://github.com/Justify87/ladies-explorer-android/pull/60) integriert; SavedPeople-Pagination [PR #61](https://github.com/Justify87/ladies-explorer-android/pull/61), lokale Grid-Pagination [PR #62](https://github.com/Justify87/ladies-explorer-android/pull/62), Kartensteuerung [PR #63](https://github.com/Justify87/ladies-explorer-android/pull/63) und Grid-Schnellwahl [PR #64](https://github.com/Justify87/ladies-explorer-android/pull/64) mit Merge abgeschlossen; normaler Suchstart [PR #65](https://github.com/Justify87/ladies-explorer-android/pull/65) und Suchabbruch [PR #66](https://github.com/Justify87/ladies-explorer-android/pull/66) mit Merge abgeschlossen; T10.9 offen. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -96,7 +96,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – normaler Suchstart (DONE mit Merge):** [PR #65](https://github.com/Justify87/ladies-explorer-android/pull/65) bindet den Suchbutton an gerenderten Entwurf, lokale Sichtbarkeit und Ansichtsgeneration. JVM-Regressionen für Entwurfs-/Kontextwechsel, Busy, Fehler/Abbruch und erneuten Versuch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45403653759) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
-**Teilauftrag – Suchabbruch (REVIEW):** [PR #66](https://github.com/Justify87/ladies-explorer-android/pull/66). Bindet die Abbruchaktionen aus Filtern, Grid und Swipe an gerenderte Ansichtsgeneration, native Vorgangs-ID und bei Swipe an die sichtbare Session. Regressionen in `SearchRunStateTest` für veraltete Aktionen, Kontextwechsel, neue Versuche nach Fehler/Drain und wiederholten Abbruch. Technische CI-Prüfung ausstehend.
+**Abgeschlossener Teilauftrag – Suchabbruch (DONE mit Merge):** [PR #66](https://github.com/Justify87/ladies-explorer-android/pull/66) bindet die Abbruchaktionen aus Filtern, Grid und Swipe an gerenderte Ansichtsgeneration, native Vorgangs-ID und bei Swipe an die sichtbare Session. JVM-Regressionen für veraltete Aktionen, Kontextwechsel, neue Versuche nach Fehler/Drain und wiederholten Abbruch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45405245577) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
