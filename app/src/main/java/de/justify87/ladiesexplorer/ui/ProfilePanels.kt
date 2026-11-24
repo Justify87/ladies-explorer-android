@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 internal enum class ProfileSection(val label: String) {
-    Description("Beschreibung"), Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), History("Verlauf / verknüpfte Anzeigen")
+    Description("Beschreibung"), Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), History("Verlauf / verknüpfte Anzeigen")
 }
 
 @Stable
@@ -75,6 +75,7 @@ internal fun ProfileFlow(
     panelReads: ProfilePanelReads? = null,
     onGallerySelection: (ProfileMediaItem?) -> Unit = {},
     userScrollEnabled: Boolean = true,
+    encounters: EncounterEditor? = null,
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -120,6 +121,14 @@ internal fun ProfileFlow(
     LaunchedEffect(noteDemand, noteExpanded, token, busy) {
         if (noteExpanded && !busy) noteDemand.request(token, false, isProfileCurrent, noteActions.load)
     }
+    val encountersExpanded = sections.expanded(ProfileSection.Encounters)
+    DisposableEffect(encounters, token, encountersExpanded, busy) {
+        onDispose { encounters?.detach(token) }
+    }
+    LaunchedEffect(encounters, token, encountersExpanded, busy) {
+        if (encountersExpanded && !busy && token != null) encounters?.load(token)
+    }
+    val encounterPanel = encounters?.panel?.takeIf { it.token == token }
     ComparisonDialog(panels, active = !busy)
     var confirmation by remember(token) { mutableStateOf<Long?>(null) }
     val current = { token?.let(isProfileCurrent) == true }
@@ -139,6 +148,8 @@ internal fun ProfileFlow(
             owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
             noteDemand = noteDemand,
             onRetryNote = { if (!busy) noteDemand.request(token, true, isProfileCurrent, noteActions.load) },
+            encounters = encounters, encounterPanel = encounterPanel,
+            onRetryEncounters = { panel -> scope.launch { encounters?.retry(panel) } },
             isCurrent = current,
             onConfirm = { target -> if (!busy && current()) confirmation = target })
     }.build()
@@ -173,12 +184,14 @@ internal fun ProfileFlow(
         ProfileRowRead.Facts -> panels.facts == null && panels.factsError == null
         ProfileRowRead.Detail -> panels.detail == null && panels.detailError == null
         ProfileRowRead.Note -> noteDemand.status != ProfileNoteDemand.Status.Settled || noteState.loading
+        ProfileRowRead.Encounters -> encounterPanel?.rows == null && encounterPanel?.error == null
         null -> false
     }
     val readFailed = when (dependency) {
         ProfileRowRead.Facts -> panels.factsError != null
         ProfileRowRead.Detail -> panels.detailError != null
         ProfileRowRead.Note -> noteState.readError
+        ProfileRowRead.Encounters -> encounterPanel?.error != null
         null -> false
     }
     LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor, readFailed,
@@ -456,6 +469,9 @@ private fun ProfileFlowRows.profileContent(
     noteActions: NoteEditorActions,
     noteDemand: ProfileNoteDemand,
     onRetryNote: () -> Unit,
+    encounters: EncounterEditor?,
+    encounterPanel: EncounterPanel?,
+    onRetryEncounters: (EncounterPanel) -> Unit,
     isCurrent: () -> Boolean,
     onConfirm: (Long) -> Unit,
 ) {
@@ -533,6 +549,30 @@ private fun ProfileFlowRows.profileContent(
     }
     if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes", read = ProfileRowRead.Note) {
         NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy, noteDemand, onRetryNote)
+    }
+    if (encounters != null) {
+        item(key = "encounters-toggle", read = ProfileRowRead.Encounters.takeIf { sections.expanded(ProfileSection.Encounters) }) {
+            SectionToggle(ProfileSection.Encounters, sections, encounterPanel?.error, hintError = encounterPanel?.error != null)
+        }
+        if (sections.expanded(ProfileSection.Encounters)) {
+            item(key = "profile-encounters-head", read = ProfileRowRead.Encounters) {
+                val rows = encounterPanel?.rows
+                if (encounterPanel?.error != null) {
+                    TextButton(enabled = !actionsBusy, onClick = { onRetryEncounters(encounterPanel) }) { Text("Neu laden") }
+                } else if (rows == null) {
+                    if (!actionsBusy) CircularProgressIndicator(Modifier.size(24.dp))
+                } else {
+                    if (rows.isEmpty()) Text("Keine Begegnungen gespeichert.")
+                    TextButton(enabled = !actionsBusy && isCurrent(),
+                        onClick = { encounters.begin(encounterPanel) }) { Text("Begegnung hinzufügen") }
+                }
+            }
+            if (encounterPanel?.rows != null) items(encounterPanel.rows, key = { "encounter/${it.encounterId}" }, read = ProfileRowRead.Encounters) { row ->
+                EncounterRow(row, !actionsBusy && isCurrent(),
+                    onEdit = { encounters.begin(encounterPanel, row) },
+                    onDelete = { encounters.begin(encounterPanel, row, deleting = true) })
+            }
+        }
     }
     item(key = "history-toggle") { SectionToggle(ProfileSection.History, sections) }
     if (sections.expanded(ProfileSection.History)) {
