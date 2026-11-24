@@ -11,6 +11,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -319,6 +324,7 @@ internal fun DiscoverScreen(
         }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
             hasRail = true, notices = notices, noticeOwner = menuContext, fixedNoticeSlot = true,
+            heroLeadingHeight = discoveryLeadingHeight(LocalDensity.current.fontScale).dp,
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(
                     presentation = presentation, identity = identity, context = menuContext,
@@ -361,7 +367,13 @@ internal fun DiscoverScreen(
                     userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices) {
+                    item(key = "discover-context") {
+                        DiscoveryChrome(summary, availability, menuContext.availabilityEnabled, deckToken,
+                            DiscoverMode.Swipe, onMode = onSelectMode,
+                            onAvailability = { onAvailability(deckToken, it) })
+                    }
                     item(key = "hero") {
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                         ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
                             onSwipe = if (actions) ({ decision ->
@@ -379,6 +391,7 @@ internal fun DiscoverScreen(
                             compact = presentation.budget.compactGallery,
                             headerOwnsIdentity = presentation.identityInHeader,
                             onIdentityMeasured = onIdentityMeasured, touchGate = touchGate)
+                        }
                     }
                     item(key = "header") {
                         Text("Profilinfos", style = MaterialTheme.typography.labelMedium)
@@ -391,13 +404,13 @@ internal fun DiscoverScreen(
             val oldMedia = old?.media
             if (old != null && oldMedia != null && old.size.width > 0 && old.size.height > 0) {
                 val density = LocalDensity.current
-                Box(Modifier.offset { IntOffset(0, old.top) }
+                Box(Modifier.offset { IntOffset(12.dp.roundToPx(), old.top) }
                     .size(with(density) { old.size.width.toDp() }, with(density) { old.size.height.toDp() })
                     .graphicsLayer {
                         translationX = motion.value
                         rotationZ = (motion.value / size.width.coerceAtLeast(1f) * 12f).coerceIn(-12f, 12f)
                         alpha = 1f - (kotlin.math.abs(motion.value) / kotlin.math.abs(old.destination)).coerceIn(0f, 1f) * .2f
-                    }.clearAndSetSemantics {}) {
+                    }.clip(MaterialTheme.shapes.large).clearAndSetSemantics {}) {
                     ProfileImage(oldMedia.url, oldMedia.localPath, Modifier.fillMaxSize(), allowRetry = false)
                     old.identity?.let { HeroIdentityOverlay(it, Modifier.align(Alignment.BottomCenter)) }
                 }
@@ -442,7 +455,7 @@ private fun SwipeShellHeader(
             swipeContextShort(context.deck.runId != null, context.matchingRun, context.availability),
             shown?.let { listOfNotNull(it.status, it.shortDecision, it.place).joinToString(" · ") } ?: summary,
             presentation.budget.shortHeader, Modifier.weight(1f),
-            onClick = if (shown == null) null else ({ info = true }))
+            onClick = if (shown == null) null else onPhoto)
         Box(Modifier.width(ShellMetrics.touch), contentAlignment = Alignment.Center) {
             if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
         }
@@ -509,25 +522,38 @@ private fun SwipeShellHeader(
 @Composable
 internal fun SwipeDecisionControls(context: SwipeMenuContext, profileTitle: String?, onUndo: () -> Unit,
     onSkip: () -> Unit, onChoose: (Preference) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val compact = maxWidth < 340.dp || LocalDensity.current.fontScale >= 1.3f
+    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        val compact = maxHeight < 72.dp || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
+        val scheme = MaterialTheme.colorScheme
+        val dark = isSystemInDarkTheme()
+        val reject = if (dark) Color(0xFFF72F49) else scheme.error
+        val like = if (dark) Color(0xFF4CDA36) else scheme.tertiary
         Row(Modifier.fillMaxSize().semantics { contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen" },
             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            if (compact) {
-                IconButton(onClick = onUndo, enabled = context.deckEnabled && context.canUndo) {
-                    Icon(Icons.Default.Undo, "Undo")
-                }
-                IconButton(onClick = { onChoose(Preference.DISLIKE) }, enabled = context.profile != null) { Icon(Icons.Default.Close, "Nein") }
-                IconButton(onClick = onSkip, enabled = context.deckEnabled && context.card != null) { Icon(Icons.Default.SkipNext, "Später") }
-                IconButton(onClick = { onChoose(Preference.LIKE) }, enabled = context.profile != null) { Icon(Icons.Default.Favorite, "Gefällt") }
-            } else {
-                TextButton(onClick = onUndo, enabled = context.deckEnabled && context.canUndo, modifier = Modifier.fillMaxHeight()) { Text("Undo") }
-                OutlinedButton(onClick = { onChoose(Preference.DISLIKE) }, enabled = context.profile != null,
-                    modifier = Modifier.fillMaxHeight(), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Nein") }
-                TextButton(onClick = onSkip, enabled = context.deckEnabled && context.card != null, modifier = Modifier.fillMaxHeight()) { Text("Später") }
-                Button(onClick = { onChoose(Preference.LIKE) }, enabled = context.profile != null,
-                    modifier = Modifier.fillMaxHeight(), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Gefällt") }
-            }
+            DecisionAction("Undo", Icons.Default.Undo, context.deckEnabled && context.canUndo, compact,
+                scheme.surfaceContainerHigh, scheme.onSurface, onUndo)
+            DecisionAction("Nein", Icons.Default.Close, context.profile != null, compact,
+                reject, if (dark) Color(0xFF1E160F) else scheme.onError) { onChoose(Preference.DISLIKE) }
+            DecisionAction("Später", Icons.Default.SkipNext, context.deckEnabled && context.card != null, compact,
+                scheme.surfaceContainerHigh, scheme.onSurface, onSkip)
+            DecisionAction("Gefällt", Icons.Default.Favorite, context.profile != null, compact,
+                like, if (dark) Color(0xFF153A0C) else scheme.onTertiary) { onChoose(Preference.LIKE) }
         }
+    }
+}
+
+@Composable
+private fun DecisionAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean, compact: Boolean, background: Color, foreground: Color, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = onClick, enabled = enabled,
+            modifier = Modifier.size(48.dp).shellFocus().background(
+                if (enabled) background else MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)) {
+            Icon(icon, contentDescription = label,
+                tint = if (enabled) foreground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .38f))
+        }
+        if (!compact) Text(label, style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.clearAndSetSemantics {},
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

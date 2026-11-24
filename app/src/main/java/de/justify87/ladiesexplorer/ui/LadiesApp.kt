@@ -18,10 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
@@ -304,19 +302,27 @@ fun LadiesApp(
                 when (route.root) {
                     RootDestination.Discover -> Column(modifier = modifier) {
                         if (route.discovery == DiscoverMode.Grid) {
-                            Column(Modifier.padding(horizontal = 16.dp)) {
-                                val availabilityAction = search.gridAvailabilityAction(discovery.actionGeneration)
-                                AvailabilitySelector(search.headerAvailability(),
-                                    gridAvailabilityMatches(discovery, search, availabilityAction) && !home.loading && !saved.busy) {
-                                    viewModel.runGridAvailability(availabilityAction, it)
-                                }
-                            }
+                            val availabilityAction = search.gridAvailabilityAction(discovery.actionGeneration)
+                            val run = search.response
+                            DiscoveryChrome(
+                                summary = run?.let { "${it.city} · ${it.requestedRadiusKm} km" } ?: "Lokaler Bestand · neutral",
+                                availability = search.headerAvailability(),
+                                availabilityEnabled = gridAvailabilityMatches(discovery, search, availabilityAction) && !home.loading && !saved.busy,
+                                owner = availabilityAction,
+                                active = DiscoverMode.Grid,
+                                onMode = { mode ->
+                                    viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                                    route = route.select(mode)
+                                },
+                                onAvailability = { viewModel.runGridAvailability(availabilityAction, it) },
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
                         }
                         if (route.discovery == DiscoverMode.Grid) {
                             val cancelAction = SearchCancelAction(ProfileActionSurface.GRID, discovery.actionGeneration, search.searchAttemptId)
                             SearchRunStatus(search) { viewModel.cancelActiveSearch(cancelAction) }
                         }
-                        if (route.discovery != DiscoverMode.Swipe) DiscoverModeSwitcher(route.discovery, onSelect = {
+                        if (route.discovery == DiscoverMode.Map) DiscoverModeSwitcher(route.discovery, onSelect = {
                             viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
                             route = route.select(it)
                         })
@@ -482,30 +488,6 @@ private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
         }
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 3)
-        }
-    }
-}
-
-@Composable
-private fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        DiscoverMode.entries.forEach { mode ->
-            FilterChip(
-                modifier = Modifier.weight(1f),
-                selected = mode == active,
-                onClick = { onSelect(mode) },
-                label = { Text(mode.title) },
-                leadingIcon = { Icon(when (mode) {
-                    DiscoverMode.Map -> Icons.Default.Map
-                    DiscoverMode.Grid -> Icons.Default.GridView
-                    DiscoverMode.Swipe -> Icons.Default.FavoriteBorder
-                },
-                    contentDescription = null) },
-            )
         }
     }
 }
