@@ -126,7 +126,7 @@ internal fun ProfileFlow(
     DisposableEffect(encounters, token, encountersDemanded, busy) {
         onDispose { encounters?.detach(token) }
     }
-    LaunchedEffect(encounters, token, encountersDemanded, busy) {
+    LaunchedEffect(encounters, token, encountersDemanded, busy, encounters?.readRevision) {
         if (encountersDemanded && !busy && token != null) encounters?.load(token)
     }
     val encounterPanel = encounters?.panel?.takeIf { it.token == token }
