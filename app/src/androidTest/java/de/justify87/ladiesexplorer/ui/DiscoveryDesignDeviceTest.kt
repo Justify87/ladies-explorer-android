@@ -113,20 +113,22 @@ class DiscoveryDesignDeviceTest {
                 LadiesTheme(darkTheme = true) {
                     DiscoveryGridScreen(
                         discovery = DiscoverUiState(loading = false),
-                        search = SearchUiState(),
+                        search = SearchUiState(error = "Synthetischer Suchstatus"),
                         onRefresh = {}, onLoadMore = {}, onLike = {}, onProfile = {},
                         chrome = {
                             DiscoveryChrome("Lokaler Bestand", AvailabilityMode.All, true, "fixture",
                                 DiscoverMode.Grid, { actions.add(it) }, {})
-                            Text("Suchstatus", Modifier.heightIn(min = 80.dp))
                         },
-                        modifier = Modifier.width(360.dp).height(150.dp).testTag("short-grid"),
+                        onCancelSearch = {},
+                        modifier = Modifier.width(360.dp).height(150.dp),
                     )
                 }
             }
         }
-        val grid = rule.onNodeWithTag("short-grid")
-        grid.performScrollToIndex(2)
+        val grid = rule.onNode(hasScrollToIndexAction())
+        grid.performScrollToIndex(1)
+        rule.onNodeWithText("Synthetischer Suchstatus").assertIsDisplayed()
+        grid.performScrollToIndex(3)
         rule.onNodeWithText("Keine Treffer.").assertIsDisplayed()
         grid.performScrollToIndex(0)
         rule.onNodeWithText(DiscoverMode.Swipe.title).performClick()
