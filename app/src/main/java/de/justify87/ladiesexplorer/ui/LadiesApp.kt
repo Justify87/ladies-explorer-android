@@ -404,7 +404,7 @@ fun LadiesApp(
                                 DiscoveryGridScreen(
                                     discovery = discovery,
                                     search = search,
-                                    onRefresh = viewModel::refreshDiscovery,
+                                    onRefresh = viewModel::refreshRenderedGrid,
                                     onLoadMore = viewModel::loadMoreDiscovery,
                                     onLike = viewModel::toggleGridLike,
                                     onProfile = viewModel::openGridProfile,

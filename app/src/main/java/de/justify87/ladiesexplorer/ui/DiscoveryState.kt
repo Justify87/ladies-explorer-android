@@ -62,6 +62,14 @@ internal fun gridActionMatches(discovery: DiscoverUiState, search: SearchUiState
         search.response?.searchRunId == action.runId &&
         gridCards(discovery, search).firstOrNull { it.listingId == action.card.listingId } == action.card
 
+internal data class GridRefreshAction(val runId: Long?, val generation: Long)
+
+internal fun gridRefreshMatches(discovery: DiscoverUiState, search: SearchUiState, action: GridRefreshAction): Boolean =
+    discovery.actionSurface == ProfileActionSurface.GRID &&
+        discovery.actionGeneration == action.generation &&
+        search.response?.searchRunId == action.runId &&
+        !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy && !search.profileOpen
+
 internal data class GridPageAction(val cursor: DiscoveryCursor, val generation: Long)
 
 internal fun localDiscoveryPageMatches(discovery: DiscoverUiState, search: SearchUiState, cursor: DiscoveryCursor): Boolean =

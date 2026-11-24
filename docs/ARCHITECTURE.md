@@ -159,6 +159,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 **Unabhängige Projektionen:**
 - `DiscoveryProjectionPublisher` aktualisiert lokale Entdecken-/Grid- und Saved-People-Projektionen mit getrennter Fehlerbehandlung und gemeinsamer Gültigkeitsprüfung.
 - Lokale Grid-Pagination bindet manuellen und automatischen Callback an den gerenderten Cursor und die Aktionsgeneration. Nur die sichtbare Grid-Ansicht ohne aktiven Suchlauf oder konkurrierende Operation darf nachladen; die Admission widerruft alte Callbacks auch bei anschließendem Readfehler. Nach einem zugelassenen Swipe-Skip kann dieselbe lokale Lesefunktion ohne Grid-Callback nachladen. Die bestehende Projektionsepoch schützt die Publikation; kein automatischer Grid-Retry nach Readfehler.
+- Der manuelle Grid-Refresh bindet den gerenderten ausgeführten Run (oder lokalen Startbestand) und die Aktionsgeneration. Nur die sichtbare, nicht beschäftigte Ansicht darf vor I/O alte Aktionen widerrufen und den gemeinsamen lokalen Projektionsread auslösen; laufende lokale Pagination darf über die bestehende Projektionsepoch ersetzt werden. Fehler bleiben explizit erneut ladbar; interne Reprojektionen bleiben unabhängig.
 - Präsenz/Alter aus vorhandener eindeutiger Quellen-/Snapshot-Evidenz, keine dekorativen Profilanfragen.
 - Karte hat eigene DB-weite Projektion: [Karte und Sicherheitsgrenzen](#karte-und-sicherheitsgrenzen).
 
