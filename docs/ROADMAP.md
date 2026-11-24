@@ -96,7 +96,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – normaler Suchstart (DONE mit Merge):** [PR #65](https://github.com/Justify87/ladies-explorer-android/pull/65) bindet den Suchbutton an gerenderten Entwurf, lokale Sichtbarkeit und Ansichtsgeneration. JVM-Regressionen für Entwurfs-/Kontextwechsel, Busy, Fehler/Abbruch und erneuten Versuch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45403653759) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
-**Teilauftrag – Suchabbruch (REVIEW):** Branch `fix/t10-8-search-cancel-admission`. Bindet die Abbruchaktionen aus Filtern, Grid und Swipe an gerenderte Ansichtsgeneration und bei Swipe an die sichtbare Session. Regressionen in `SearchRunStateTest` für veraltete Aktionen, Kontextwechsel, neue Versuche nach Fehler/Drain und wiederholten Abbruch. Technische CI-Prüfung ausstehend.
+**Teilauftrag – Suchabbruch (REVIEW):** [PR #66](https://github.com/Justify87/ladies-explorer-android/pull/66). Bindet die Abbruchaktionen aus Filtern, Grid und Swipe an gerenderte Ansichtsgeneration und bei Swipe an die sichtbare Session. Regressionen in `SearchRunStateTest` für veraltete Aktionen, Kontextwechsel, neue Versuche nach Fehler/Drain und wiederholten Abbruch. Technische CI-Prüfung ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
