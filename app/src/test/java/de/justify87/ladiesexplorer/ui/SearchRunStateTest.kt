@@ -190,8 +190,13 @@ class SearchRunStateTest {
         assertFalse(searchCancelMatches(swipe, search, saved, false, swipeAction))
         assertFalse(searchCancelMatches(swipe.copy(swipeSessionId = 13), search, saved, true, swipeAction))
         assertFalse(searchCancelMatches(swipe, search, saved, true, swipeAction.copy(swipeSession = null)))
-        assertFalse(searchCancelMatches(grid.copy(actionSurface = ProfileActionSurface.MAP),
-            search, saved, false, SearchCancelAction(ProfileActionSurface.MAP, 7, search.searchAttemptId)))
+        val map = grid.copy(actionSurface = ProfileActionSurface.MAP, actionGeneration = 10)
+        val mapAction = SearchCancelAction(ProfileActionSurface.MAP, 10, search.searchAttemptId)
+        assertTrue(searchCancelMatches(map, search, saved, false, mapAction))
+        assertFalse(searchCancelMatches(grid, search, saved, false, mapAction))
+        assertFalse(searchCancelMatches(map, search, saved, false, gridAction))
+        assertFalse(searchCancelMatches(map.copy(actionGeneration = 11), search, saved, false, mapAction))
+        assertFalse(searchCancelMatches(map, search.copy(searchCancelling = true), saved, false, mapAction))
     }
 
     @Test fun searchCancelCannotSignalReplacementOwnerAfterFailureOrDrain() {
