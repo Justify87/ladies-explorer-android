@@ -725,7 +725,13 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(overview(&core, &member_ids(&core, false), None).unwrap().profiles.len(), 0);
+        assert_eq!(
+            overview(&core, &member_ids(&core, false), None)
+                .unwrap()
+                .profiles
+                .len(),
+            0
+        );
         save_cache(
             &core,
             "map:city:DE:leipzig",
@@ -807,7 +813,13 @@ mod tests {
         let core = seed();
         let _lease = core.geocoding.lock().unwrap();
         assert!(matches!(
-            resolve(&core, &member_ids(&core, false), None, 15, &RequestControl::new()),
+            resolve(
+                &core,
+                &member_ids(&core, false),
+                None,
+                15,
+                &RequestControl::new()
+            ),
             Err(CoreError::Source(reason)) if reason == "Standortauflösung läuft bereits"
         ));
     }
