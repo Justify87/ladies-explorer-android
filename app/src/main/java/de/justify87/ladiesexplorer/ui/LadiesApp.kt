@@ -391,7 +391,7 @@ fun LadiesApp(
                                     viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
                                     route = route.select(mode)
                                 },
-                                profileEnabled = !discovery.busy && !search.loading && !home.loading && !saved.busy,
+                                profileEnabled = !discovery.busy && !search.loading,
                                 modifier = Modifier.weight(1f),
                             )
                         }

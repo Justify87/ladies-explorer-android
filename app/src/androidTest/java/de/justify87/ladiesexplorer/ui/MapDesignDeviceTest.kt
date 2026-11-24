@@ -19,6 +19,7 @@ class MapDesignDeviceTest {
 
     @Test fun localSelectionAndCancelRemainAvailableWithoutMapTiles() {
         val profile = MapProfile(1L, 1L, "Fixture", "Leipzig", "Leipzig", 51.34, 12.37, "CITY", true, null)
+        val second = profile.copy(listingId = 2L, personId = 2L, name = "Fixture B")
         val actions = mutableListOf<String>()
         var resolving by mutableStateOf(false)
         var cancelling by mutableStateOf(false)
@@ -26,7 +27,7 @@ class MapDesignDeviceTest {
             LadiesTheme {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     MapDetails(
-                        state = MapUiState(overview = MapOverview(listOf(profile), 2u, 1u, 1u),
+                        state = MapUiState(overview = MapOverview(listOf(profile, second), 3u, 1u, 1u),
                             resolving = resolving, cancelling = cancelling),
                         tileState = MapTileState.Failed, active = profile, selectionCount = 2,
                         profileEnabled = true, onRefresh = { actions.add("refresh") },
@@ -47,6 +48,22 @@ class MapDesignDeviceTest {
         rule.onNodeWithText("2 Profile am ungefähren Ort").performScrollTo().performClick()
         rule.onNodeWithText("Profil öffnen").performScrollTo().performClick()
         rule.onNodeWithText("Kartierte Profile auswählen").performScrollTo().performClick()
-        rule.runOnIdle { assertEquals(listOf("tiles", "resolve", "cancel", "location", "Fixture", "all"), actions) }
+        rule.onNodeWithContentDescription("Auswahl lösen").performScrollTo().performClick()
+        rule.runOnIdle { assertEquals(listOf("tiles", "resolve", "cancel", "location", "Fixture", "all", "clear"), actions) }
+    }
+
+    @Test fun pickerExposesSelectedStateAndChoosesExactRenderedProfile() {
+        val a = MapProfile(1L, 1L, "Fixture A", "Leipzig", "Leipzig", 51.34, 12.37, "CITY", true, null)
+        val b = a.copy(listingId = 2L, personId = 2L, name = "Fixture B")
+        var chosen: MapProfile? = null
+        rule.setContent {
+            LadiesTheme {
+                MapProfilePicker(listOf(a, b), a.listingId, "Profile am ungefähren Ort",
+                    onDismiss = {}, onSelect = { chosen = it })
+            }
+        }
+        rule.onNodeWithText("✓ Fixture A").assertIsSelected()
+        rule.onNodeWithText("Fixture B").assertIsNotSelected().performClick()
+        rule.runOnIdle { assertEquals(b, chosen) }
     }
 }

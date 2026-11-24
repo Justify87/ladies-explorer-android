@@ -3,11 +3,12 @@ package de.justify87.ladiesexplorer.ui
 import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.res.Configuration
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -94,7 +95,7 @@ internal fun MapScreen(
     val selection = remember(points, selectedListingId) { mapSelection(points, selectedListingId) }
     val latestPoints by rememberUpdatedState(points)
     val detailsScroll = rememberScrollState()
-    LaunchedEffect(selectedListingId, state.resolving, tileState) {
+    LaunchedEffect(selectedListingId, state.resolving, tileState == MapTileState.Failed) {
         detailsScroll.scrollTo(0)
     }
     val scheme = MaterialTheme.colorScheme
@@ -331,7 +332,7 @@ private fun MapActionRow(
 }
 
 @Composable
-private fun MapProfilePicker(
+internal fun MapProfilePicker(
     profiles: List<MapProfile>,
     selectedListingId: Long?,
     title: String,
@@ -343,10 +344,11 @@ private fun MapProfilePicker(
         title = { Text(title) },
         text = {
             if (profiles.isEmpty()) Text("Keine kartierbaren Profile verfügbar.")
-            else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+            else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).selectableGroup()) {
                 items(profiles, key = { it.listingId }) { profile ->
                     Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()
-                        .clickable(onClickLabel = "Profil auf Karte auswählen") { onSelect(profile) }
+                        .selectable(selected = profile.listingId == selectedListingId, role = Role.RadioButton,
+                            onClick = { onSelect(profile) })
                         .padding(8.dp)) {
                         Text(if (profile.listingId == selectedListingId) "✓ ${profile.name}" else profile.name,
                             style = MaterialTheme.typography.bodyLarge)
