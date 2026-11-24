@@ -54,6 +54,25 @@ internal fun savedStatusBatchMatches(state: DiscoverUiState, action: SavedStatus
         state.savedKind == action.kind && state.savedSort == action.sort &&
         state.savedPage === action.page && !state.loading && !state.busy
 
+internal data class SavedPeoplePageAction(
+    val page: SavedPersonPage,
+    val kind: SavedPersonKind,
+    val sort: SavedPersonSort,
+    val generation: Long,
+    val watchlist: Boolean,
+)
+
+internal fun savedPeoplePageMatches(
+    state: DiscoverUiState, search: SearchUiState, action: SavedPeoplePageAction,
+): Boolean =
+    state.actionSurface == ProfileActionSurface.SAVED &&
+        state.actionGeneration == action.generation &&
+        state.savedKind == action.kind && state.savedSort == action.sort &&
+        (if (action.watchlist) state.savedRecent else state.savedPage) === action.page &&
+        action.page.nextCursor != null && !state.loading && !state.busy &&
+        !state.savedLoadingMore && !state.savedRecentLoadingMore &&
+        !search.profileOpen && !search.loading && !search.actionBusy
+
 /** Cancellation must not replay completed status writes. */
 internal suspend fun runSavedStatusBatch(
     targets: List<Long>,
