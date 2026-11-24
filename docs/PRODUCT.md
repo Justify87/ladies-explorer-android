@@ -21,7 +21,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 ### Parameter und Top 5
 
 - Suchparameter: Ort, Rubrik, Radius 5/10/20/30/50/70/100 km, Alters-/Größenbereich, Treffpunkt, Kategorien, Merkmale, Services und Seitenlimit 1–50; Werte gemäß belegtem Quellkatalog.
-- Alle/Jetzt/Heute werden kanonisch abgebildet. Nur die Schnellwahl im Entdecken-Header führt in allen drei Modi unmittelbar eine Suche aus; Suchentwürfe werden dadurch nicht stillschweigend übernommen.
+- Alle/Jetzt/Heute werden kanonisch abgebildet. Nur die Schnellwahl im Entdecken-Header führt in allen drei Modi unmittelbar eine Suche aus. Bei aktivem Run verwendet sie dessen ausgeführte Query; ohne aktiven Run den aktuellen Entwurf.
 - Top 5: tatsächlich abgeschlossene Suchläufe zählen, pro Lauf dedupliziert und stabil sortiert; Rubrik zählt mit. Vorschau und bloße Auswahl zählen nicht, definierte Standardwerte ausgenommen.
 
 ### Aktive Suche, Vorschau und Vollständigkeit
