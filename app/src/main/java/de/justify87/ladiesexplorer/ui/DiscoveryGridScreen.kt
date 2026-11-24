@@ -34,6 +34,7 @@ internal fun DiscoveryGridScreen(
     onLoadMore: (GridPageAction) -> Unit,
     onLike: (GridLikeAction) -> Unit,
     onProfile: (GridLikeAction) -> Unit,
+    chrome: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cards = gridCards(discovery, search)
@@ -60,6 +61,9 @@ internal fun DiscoveryGridScreen(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) { chrome() }
+        }
         item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
