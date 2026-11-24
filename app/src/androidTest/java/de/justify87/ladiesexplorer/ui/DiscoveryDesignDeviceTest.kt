@@ -30,14 +30,17 @@ class DiscoveryDesignDeviceTest {
                 pxPerDp = LocalDensity.current.density
                 val list = rememberLazyListState()
                 val deck = SwipeDeckToken(null, 1)
-                val context = SwipeMenuContext(deck, SwipeCardToken(deck, 4, 1),
+                val context = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1),
                     SwipeActionToken(null, 1, 4, 1, 11, 1, Preference.NONE, false, emptyList()),
-                    true, true, true, AvailabilityMode.All, false, true)
+                    true, true, AvailabilityMode.All, false, true)
                 Column(Modifier.fillMaxSize()) {
                     ProfileShell(Modifier.weight(1f), list, "hero", rootHeight = 64.dp,
                         hasRail = true, notices = emptyList(), noticeOwner = context,
                         heroLeadingHeight = discoveryLeadingHeight(LocalDensity.current.fontScale).dp,
-                        header = { _, _, _ -> Box(Modifier.fillMaxSize().testTag("header")) { Text("Ladies") } },
+                        header = { _, _, _ -> Row(Modifier.fillMaxSize().testTag("header")) {
+                            Text("Entdecken", Modifier.weight(1f))
+                            AvailabilityQuickChoice(AvailabilityMode.All, true, deck, {})
+                        } },
                         rail = {
                             Box(Modifier.fillMaxSize().testTag("rail")) {
                                 SwipeDecisionControls(context, "Fixture", {}, {}, {})
@@ -47,8 +50,7 @@ class DiscoveryDesignDeviceTest {
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             item(key = "discover-context") {
                                 Box(Modifier.padding(horizontal = 16.dp).testTag("context")) {
-                                    DiscoveryChrome("Lokaler Bestand", AvailabilityMode.All, true, deck,
-                                        DiscoverMode.Swipe, {}, {})
+                                    DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
                                 }
                             }
                             item(key = "hero") {
@@ -56,7 +58,7 @@ class DiscoveryDesignDeviceTest {
                                     ProfileMediaHero(emptyList(), presentation.heroHeight,
                                         actionsEnabled = false, isCurrent = { false },
                                         selection = remember { ProfileMediaSelection() },
-                                        identity = HeroIdentity("Fixture", place = "Ort"),
+                                        identity = null, favorite = false, onFavorite = {},
                                         actionToken = null, compact = presentation.budget.compactGallery,
                                         headerOwnsIdentity = presentation.identityInHeader, onIdentityMeasured = measured)
                                 }
@@ -92,8 +94,7 @@ class DiscoveryDesignDeviceTest {
             MaterialTheme {
                 var active by remember { mutableStateOf(DiscoverMode.Swipe) }
                 Column(Modifier.width(320.dp)) {
-                    DiscoveryChrome("Lokaler Bestand", AvailabilityMode.All, true, "fixture", active,
-                        onMode = { active = it; actions.add(it.name) }, onAvailability = {})
+                    DiscoverModeSwitcher(active, onSelect = { active = it; actions.add(it.name) }, modifier = Modifier)
                     ProfileGridCard("Fixture", "30", null, null, false, true,
                         onOpen = { actions.add("open") }, onLike = { actions.add("like") },
                         modifier = Modifier.testTag("card").width(160.dp), place = "Ort")
@@ -118,8 +119,7 @@ class DiscoveryDesignDeviceTest {
                         search = SearchUiState(error = "Synthetischer Suchstatus"),
                         onRefresh = {}, onLoadMore = {}, onLike = {}, onProfile = {},
                         chrome = {
-                            DiscoveryChrome("Lokaler Bestand", AvailabilityMode.All, true, "fixture",
-                                DiscoverMode.Grid, { actions.add(it) }, {})
+                            DiscoverModeSwitcher(DiscoverMode.Grid, { actions.add(it) }, Modifier)
                         },
                         onCancelSearch = {},
                         modifier = Modifier.width(360.dp).height(150.dp),
