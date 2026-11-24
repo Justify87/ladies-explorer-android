@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.8 – Ergebnisfenster-Pagination/Retry im Branch `fix/t10-8-saved-result-read-admission` technisch validieren und nach Nutzerfreigabe integrieren; danach verbleibende G10.3-Regressionsmatrix prüfen.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: T10.8 – Pagination gespeicherter Personen/Watchlist im Branch `fix/t10-8-saved-people-pagination-admission` technisch validieren und nach Nutzerfreigabe integrieren; danach verbleibende G10.3-Regressionsmatrix prüfen.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -16,7 +16,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M03 Suche/Parser | DONE | [#4](https://github.com/Justify87/ladies-explorer-android/pull/4), [#8](https://github.com/Justify87/ladies-explorer-android/pull/8); abgeschlossen. |
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
-| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 mit [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) integriert; T10.8 mit [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57) teilintegriert; SavedSearch-Zeilenaktionen in [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) integriert; Ergebnisfenster-Pagination/Retry in Arbeit; T10.9 offen. |
+| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 mit [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) integriert; T10.8 mit [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57) teilintegriert; SavedSearch-Zeilenaktionen in [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) integriert; Ergebnisfenster-Pagination/Retry in [PR #60](https://github.com/Justify87/ladies-explorer-android/pull/60) integriert; SavedPeople-Pagination in Arbeit; T10.9 offen. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -84,7 +84,9 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Integrierter Teilauftrag – SavedSearch-Zeilenaktionen:** [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) bindet Zeilen-, Pane-, Dialog- und Editoraktionen an gerenderte Kontexte und schützt späte Editor-Reads. [PR-CI #45038090081](https://github.com/Justify87/ladies-explorer-android/actions/runs/45038090081) und [Main-CI #45039471481](https://github.com/Justify87/ladies-explorer-android/actions/runs/45039471481) erfolgreich.
 
-**Laufender Teilauftrag – SavedSearch-Ergebnisfenster:** Branch `fix/t10-8-saved-result-read-admission` bindet manuelle/automatische Pagination und Retry/Reload an das gerenderte Fenster und seine Aktionsgeneration. JVM-Regressionen für Suchwechsel, Lifecycle, erneuten Read, Busy/gesperrte Operation und Fehler-Recovery ohne Ack ergänzt. Technische Validierung und Merge ausstehend.
+**Integrierter Teilauftrag – SavedSearch-Ergebnisfenster:** [PR #60](https://github.com/Justify87/ladies-explorer-android/pull/60) bindet manuelle/automatische Pagination und Retry/Reload an das gerenderte Fenster und seine Aktionsgeneration. JVM-Regressionen für Suchwechsel, Lifecycle, erneuten Read, Busy/gesperrte Operation und Fehler-Recovery ohne Ack; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45396569605) erfolgreich.
+
+**Laufender Teilauftrag – SavedPeople-Pagination:** Branch `fix/t10-8-saved-people-pagination-admission` bindet manuelle und automatische Regular-Pagination sowie Watchlist-Pagination an die gerenderte Fensterinstanz, Auswahl und Aktionsgeneration. JVM-Regression für Kontextwechsel, ersetzte Fenster, Busy und explizite Fehler-Recovery ergänzt. Technische Validierung und Merge ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
