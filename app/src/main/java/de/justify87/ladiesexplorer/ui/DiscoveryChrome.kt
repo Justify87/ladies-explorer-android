@@ -67,3 +67,29 @@ internal fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode)
         }
     }
 }
+
+internal fun hasDiscoverySearchStatus(state: SearchUiState): Boolean =
+    state.loading || state.error != null || state.response?.let { it.partial || !it.radiusVerified } == true
+
+@Composable
+internal fun DiscoverySearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val active = state.response
+        if (active != null && (active.partial || !active.radiusVerified)) {
+            Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelMedium)
+        }
+        if (state.loading) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Suche läuft …", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onCancel, enabled = !state.searchCancelling,
+                    modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(if (state.searchCancelling) "Wird beendet …" else "Abbrechen")
+                }
+            }
+        }
+        state.error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
