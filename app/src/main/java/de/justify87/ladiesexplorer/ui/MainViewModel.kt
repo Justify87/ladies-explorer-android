@@ -41,6 +41,7 @@ data class SavedStatusProgress(
     val running: Boolean = true,
     val cancelled: Boolean = false,
     val lastError: String? = null,
+    val attemptId: Long = 0L,
 )
 
 data class DiscoverUiState(
@@ -151,6 +152,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var mapEpoch = 0L
     private var mapControl: RequestControl? = null
     private var savedStatusControl: RequestControl? = null
+    private var savedStatusAttemptId = 0L
 
     private val searchOwner = DrainingOperation<RequestControl>()
     private val homeOwner = DrainingOperation<Unit>()
@@ -880,8 +882,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         checkSavedStatus(listingId)
     }
 
+    internal fun cancelRenderedSavedStatus(action: SavedStatusCancelAction) {
+        if (!savedStatusCancelMatches(_discoverState.value, _searchUiState.value, action)) return
+        cancelSavedStatus()
+    }
+
     fun cancelSavedStatus() {
         val control = savedStatusControl ?: return
+        val progress = _discoverState.value.savedStatusProgress ?: return
+        if (!progress.running || progress.cancelled) return
         control.cancel()
         _discoverState.update { state ->
             state.copy(savedStatusProgress = state.savedStatusProgress?.copy(cancelled = true))
@@ -894,7 +903,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _searchUiState.value.actionBusy || savedStatusControl != null) return
         val control = RequestControl()
         savedStatusControl = control
-        _discoverState.update { it.copy(savedStatusProgress = SavedStatusProgress()) }
+        val attemptId = ++savedStatusAttemptId
+        _discoverState.update { it.copy(savedStatusProgress = SavedStatusProgress(attemptId = attemptId)) }
         mutateDiscovery("Statusprüfung fehlgeschlagen", write = {
             try {
                 val targets = if (listingId == null) core.savedStatusTargets() else listOf(listingId)
