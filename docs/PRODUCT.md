@@ -21,7 +21,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 ### Parameter und Top 5
 
 - Suchparameter: Ort, Rubrik, Radius 5/10/20/30/50/70/100 km, Alters-/Größenbereich, Treffpunkt, Kategorien, Merkmale, Services und Seitenlimit 1–50; Werte gemäß belegtem Quellkatalog.
-- Alle/Jetzt/Heute werden kanonisch abgebildet. Nur die Schnellwahl im Header führt unmittelbar eine Suche aus.
+- Alle/Jetzt/Heute werden kanonisch abgebildet. Nur die Schnellwahl im Entdecken-Header führt in allen drei Modi unmittelbar eine Suche aus; Suchentwürfe werden dadurch nicht stillschweigend übernommen.
 - Top 5: tatsächlich abgeschlossene Suchläufe zählen, pro Lauf dedupliziert und stabil sortiert; Rubrik zählt mit. Vorschau und bloße Auswahl zählen nicht, definierte Standardwerte ausgenommen.
 
 ### Aktive Suche, Vorschau und Vollständigkeit
@@ -46,7 +46,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 - Swipe, Grid und Karte sind drei Ansichten **derselben ausgeführten Ergebnismenge** mit gemeinsamen Filtern, Listing-/Personenidentitäten, Präferenzen und Favoriten. Den neutralen, sichtbar lokalen Startbestand nicht mit einem aktiven Lauf vermischen; auch er besitzt eine gemeinsame Mitgliedschaft unabhängig vom Swipe-Fortschritt.
 - Eindeutige Inserate und stabile Reihenfolge; Moduswechsel startet keine neue Suche und erhält die gültige Position.
-- Like/Dislike und Favorit sind unabhängig. Geste und Buttons lösen dieselbe fachliche Entscheidung aus. Erst die bestätigte Entscheidung erlaubt Weitergehen.
+- Like/Dislike und Favorit sind unabhängig. Der Swipe-Hero bietet die Favoritenaktion oben rechts, die Präferenz über Rail oder Geste; erst die bestätigte Entscheidung erlaubt Weitergehen. Identität und Profilangaben stehen außerhalb des Bildes.
 - Später bleibt sessionlokal.
 - Undo stellt den vorherigen **vollständigen** Präferenzzustand und den gültigen Deckschritt wieder her; Präsentationswiederherstellung siehe [DESIGN](DESIGN.md#gesten-und-präsentation).
 - Reset/Replay starten Traversierung neu, ohne persistierte Entscheidungen zu löschen.
