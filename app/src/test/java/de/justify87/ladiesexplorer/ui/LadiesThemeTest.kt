@@ -30,6 +30,10 @@ class LadiesThemeTest {
             scheme.primary to scheme.surface,
             scheme.primary to scheme.background,
             scheme.error to scheme.surface,
+            scheme.primary to scheme.surfaceContainerHigh,
+            scheme.primary to scheme.surfaceContainerHighest,
+            scheme.onSurfaceVariant to scheme.surfaceContainerHighest,
+            scheme.error to scheme.surfaceContainerHighest,
         )
         pairs.forEach { (foreground, background) ->
             assertTrue("Insufficient contrast: $foreground on $background", contrast(foreground, background) >= 4.5f)
@@ -37,8 +41,11 @@ class LadiesThemeTest {
     }
 
     @Test fun brandAndReadableRoles() {
-        assertEquals(Color(0xFFD12D7C), ladiesLightColors.primary)
-        assertEquals(Color(0xFFFBFBFD), ladiesLightColors.background)
+        assertEquals(Color(0xFFFF510A), ladiesDarkColors.primaryContainer)
+        assertEquals(Color(0xFF202123), ladiesDarkColors.background)
+        assertEquals(Color(0xFFFAF8F6), ladiesLightColors.background)
+        assertTrue(contrast(shellFocusColor(true), ladiesDarkColors.surfaceContainerHighest) >= 3f)
+        assertTrue(contrast(shellFocusColor(false), ladiesLightColors.surfaceContainerHighest) >= 3f)
         verify(ladiesLightColors)
         verify(ladiesDarkColors)
     }

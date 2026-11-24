@@ -1,7 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -90,7 +89,7 @@ internal fun SearchScreen(
     }
     val previewMatches = target != null && state.previewTarget == target.draft.request() &&
         state.previewEditorSession == target.editorSession
-    Column(modifier = modifier.imePadding()) {
+    Column(modifier = modifier) {
     LazyColumn(
         state = listState,
         modifier = Modifier.weight(1f),

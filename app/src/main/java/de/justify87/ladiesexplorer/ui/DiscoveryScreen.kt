@@ -437,22 +437,22 @@ private fun SwipeShellHeader(
     val shown = identity.takeIf { presentation.identityInHeader }
     var info by remember(context, identity) { mutableStateOf(false) }
     if (info && identity != null) IdentityInfoDialog(identity) { info = false }
-    Row(Modifier.fillMaxSize().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        ProfileShellTitle(shown?.title ?: "Ladies Explorer",
+    Row(Modifier.fillMaxSize().padding(start = ShellMetrics.inset), verticalAlignment = Alignment.CenterVertically) {
+        ProfileShellTitle(shown?.title ?: "Ladies",
             swipeContextShort(context.deck.runId != null, context.matchingRun, context.availability),
             shown?.let { listOfNotNull(it.status, it.shortDecision, it.place).joinToString(" · ") } ?: summary,
             presentation.budget.shortHeader, Modifier.weight(1f),
             onClick = if (shown == null) null else ({ info = true }))
-        Box(Modifier.width(48.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.width(ShellMetrics.touch), contentAlignment = Alignment.Center) {
             if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
         }
         if (!presentation.budget.narrowHeader) {
-            if (presentation.photoShortcut) IconButton(onClick = onPhoto) {
+            if (presentation.photoShortcut) ShellIconButton(onClick = onPhoto) {
                 Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
-            } else IconButton(onClick = onSearch) { Icon(Icons.Default.Search, contentDescription = "Suche öffnen") }
+            } else ShellIconButton(onClick = onSearch) { Icon(Icons.Default.Search, contentDescription = "Suche öffnen") }
         }
         Box {
-            IconButton(onClick = { opened = context }) { Icon(Icons.Default.MoreVert, "Filter, Modus und Deckaktionen") }
+            ShellIconButton(onClick = { opened = context }) { Icon(Icons.Default.MoreVert, "Filter, Modus und Deckaktionen") }
             DropdownMenu(expanded = expanded, onDismissRequest = { opened = null }) {
                 if (identity != null) {
                     Text("${identity.title}\n${identity.subtitle}\n${identity.decisions}",

@@ -99,7 +99,7 @@ internal fun ProfileShell(
                 confirmButton = { TextButton(onClick = { dialog = false }) { Text("Schließen") } })
         }
         Column(Modifier.width(width).fillMaxHeight()) {
-            Box(Modifier.fillMaxWidth().height(budget.header.dp)) {
+            ShellHeaderSurface(Modifier.fillMaxWidth().height(budget.header.dp)) {
                 header(presentation, indicator.takeIf { budget.noticeInHeader }, { dialog = true })
             }
             if (budget.notice > 0f) {
@@ -134,7 +134,7 @@ internal fun ProfileShell(
 @Composable
 internal fun ProfileShellTitle(title: String, context: String, status: String, short: Boolean,
     modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
-    val click = if (onClick == null) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick)
+    val click = if (onClick == null) Modifier else Modifier.shellFocus().clickable(role = Role.Button, onClick = onClick)
     Column(modifier.then(click).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
         if (short && LocalDensity.current.fontScale >= 1.5f) {
             // At large font sizes, expose full identity/status through the context action.
@@ -164,7 +164,7 @@ internal fun IdentityInfoDialog(identity: HeroIdentity, dismiss: () -> Unit) {
 
 @Composable
 internal fun ProfileStatusButton(indicator: ProfileNoticeIndicator, onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
+    ShellIconButton(onClick = onClick) {
         Icon(if (indicator.warning) Icons.Default.Warning else Icons.Default.Info,
             contentDescription = "Status und Hinweise: ${indicator.label}",
             tint = if (indicator.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
