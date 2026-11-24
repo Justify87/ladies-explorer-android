@@ -377,6 +377,24 @@ mod tests {
         assert_eq!(list(&core, listing, person).unwrap(), vec![original.clone()]);
         {
             let db = core.connection().unwrap();
+            db.execute_batch(
+                "CREATE TEMP TRIGGER fail_service BEFORE INSERT ON encounter_services
+                 WHEN NEW.service_name='Fail' BEGIN SELECT RAISE(ABORT,'fixture'); END;",
+            )
+            .unwrap();
+        }
+        let mut failing = input.clone();
+        failing.base_price_cents = Some(1234);
+        failing.services.push(EncounterService {
+            name: "Fail".into(),
+            amount_cents: None,
+        });
+        assert!(create(&core, listing, person, failing.clone()).is_err());
+        assert!(update(&core, listing, person, original.clone(), failing).is_err());
+        assert_eq!(list(&core, listing, person).unwrap(), vec![original.clone()]);
+        {
+            let db = core.connection().unwrap();
+            db.execute_batch("DROP TRIGGER fail_service").unwrap();
             db.execute(
                 "UPDATE encounter_services SET amount_cents=0 WHERE encounter_id=?1",
                 [original.encounter_id],
