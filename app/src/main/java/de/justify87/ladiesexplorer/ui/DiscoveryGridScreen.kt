@@ -106,11 +106,7 @@ internal fun DiscoveryGridScreen(
                 }
                 item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (active) "Aktive Suche · ${cards.size} sichtbar" else "Lokaler Bestand · neutrale Deckprofile",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.weight(1f),
-                        )
+                        Spacer(Modifier.weight(1f))
                         TextButton(onClick = { onRefresh(refreshAction) },
                             enabled = gridRefreshMatches(discovery, search, refreshAction)) { Text("Aktualisieren") }
                     }
