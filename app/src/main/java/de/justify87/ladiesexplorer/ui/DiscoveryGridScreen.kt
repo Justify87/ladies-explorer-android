@@ -140,14 +140,16 @@ internal fun ProfileGridCard(
     Box(
         modifier.fillMaxWidth().heightIn(min = if (largeText) 220.dp else 0.dp).aspectRatio(1.03f).clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-             .shellFocus().clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen),
+            .shellFocus().clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen),
     ) {
         ProfileImage(thumbnailUrl, localPath, Modifier.matchParentSize(), description = "$name – Profilbild")
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(
             0f to Color.Transparent, .44f to Color.Black.copy(alpha = .02f),
             1f to Color.Black.copy(alpha = .82f),
         )))
-        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(12.dp)) {
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .65f), Color.Black.copy(alpha = .85f))))
+            .padding(12.dp)) {
             Text(listOfNotNull(name.ifBlank { "Inserat" }, age?.takeIf { it.isNotBlank() }).joinToString(" · "),
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                 color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -167,7 +169,7 @@ internal fun ProfileGridCard(
                 Icon(
                     if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     contentDescription = if (liked) "Like für $name entfernen" else "$name gefällt mir",
-                    tint = if (liked) MaterialTheme.colorScheme.primary else Color(0xFF6B7280),
+                    tint = if (liked) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF6B7280),
                 )
             }
         }

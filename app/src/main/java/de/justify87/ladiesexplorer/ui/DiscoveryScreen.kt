@@ -456,17 +456,21 @@ private fun SwipeShellHeader(
     var info by remember(context, identity) { mutableStateOf(false) }
     if (info && identity != null) IdentityInfoDialog(identity) { info = false }
     Row(Modifier.fillMaxSize().padding(start = ShellMetrics.inset), verticalAlignment = Alignment.CenterVertically) {
-        ProfileShellTitle(shown?.title ?: "Ladies",
-            shown?.compactSubtitle.orEmpty(),
-            shown?.decisions.orEmpty(),
-            presentation.budget.shortHeader, Modifier.weight(1f),
-            onClick = if (shown == null) null else onPhoto)
-        if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
-        else if (context.profile != null && !presentation.budget.narrowHeader) {
-            ShellIconButton(onClick = onFavorite) {
-                Icon(if (context.profile.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                    contentDescription = if (context.profile.favorite) "Favorit entfernen" else "Als Favorit speichern",
-                    tint = if (context.profile.favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+        if (shown == null && !presentation.budget.shortHeader) {
+            Text("Ladies", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+        } else {
+            ProfileShellTitle(shown?.title ?: "Ladies", shown?.compactSubtitle.orEmpty(),
+                shown?.decisions.orEmpty(), presentation.budget.shortHeader, Modifier.weight(1f),
+                onClick = shown?.let { onPhoto })
+        }
+        Box(Modifier.width(ShellMetrics.touch), contentAlignment = Alignment.Center) {
+            if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
+            else if (context.profile != null && !presentation.budget.narrowHeader) {
+                ShellIconButton(onClick = onFavorite) {
+                    Icon(if (context.profile.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = if (context.profile.favorite) "Favorit entfernen" else "Als Favorit speichern",
+                        tint = if (context.profile.favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         if (!presentation.budget.narrowHeader) {

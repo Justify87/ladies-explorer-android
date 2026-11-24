@@ -67,8 +67,9 @@ internal fun ProfileShell(
         val scrolled by remember(listState) {
             derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
         }
-        val headerIdentity = budget.compactGallery || handoff
-        val presentation = ProfileShellPresentation(budget, heroHeight, headerIdentity, headerIdentity && scrolled)
+        val measuredBudget = budget.copy(compactGallery = budget.compactGallery || heroHeight < 320.dp)
+        val headerIdentity = measuredBudget.compactGallery || handoff
+        val presentation = ProfileShellPresentation(measuredBudget, heroHeight, headerIdentity, headerIdentity && scrolled)
         val summary = notices.firstOrNull { it.warning } ?: notices.firstOrNull()
         val indicator = summary?.let { ProfileNoticeIndicator(it.label, it.warning) }
         val signature = notices.map { listOf(it.label, it.message, it.action, it.enabled, it.warning) }

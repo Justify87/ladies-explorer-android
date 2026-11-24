@@ -22,6 +22,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
@@ -220,15 +221,15 @@ internal fun ProfileMediaHero(
 
 @Composable
 internal fun HeroIdentityOverlay(identity: HeroIdentity, modifier: Modifier = Modifier) {
-    Surface(modifier.fillMaxWidth(), color = Color.Black.copy(alpha = .82f)) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(identity.compactSubtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (identity.decisions.isNotBlank()) Text(identity.decisions, color = Color.White,
-                style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+    Column(modifier.fillMaxWidth().background(Brush.verticalGradient(
+        listOf(Color.Black.copy(alpha = .65f), Color.Black.copy(alpha = .86f))))
+        .padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(identity.title, style = MaterialTheme.typography.headlineSmall, color = Color.White,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(identity.compactSubtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (identity.decisions.isNotBlank()) Text(identity.decisions, color = Color.White,
+            style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
