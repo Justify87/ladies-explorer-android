@@ -13,9 +13,9 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -539,7 +539,7 @@ internal fun SwipeDecisionControls(context: SwipeMenuContext, profileTitle: Stri
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         val compact = maxHeight < 72.dp || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
         val scheme = MaterialTheme.colorScheme
-        val dark = isSystemInDarkTheme()
+        val dark = scheme.surface.luminance() < .5f
         val reject = if (dark) Color(0xFFF72F49) else scheme.error
         val like = if (dark) Color(0xFF4CDA36) else scheme.tertiary
         Row(Modifier.fillMaxSize().semantics { contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen" },
