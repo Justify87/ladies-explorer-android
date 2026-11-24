@@ -271,9 +271,8 @@ internal fun DiscoverScreen(
             derivedStateOf { profileHeroVisible(listState, "hero") }
         }
         val availability = search.headerAvailability()
-        val menuContext = SwipeMenuContext(deckToken, cardToken, token.takeIf { !transitioning }, enabled && !transitioning,
-            availabilityEnabled && matchingRun && started, matchingRun, availability, state.replayLikes, state.canUndoSwipe,
-            selectedMedia?.let { "${it.kind}:${it.url}:${it.localPath}" })
+        val controls = SwipeControlsContext(deckToken, cardToken, token.takeIf { !transitioning }, enabled && !transitioning,
+            availabilityEnabled && matchingRun && started, availability, state.replayLikes, state.canUndoSwipe)
         val sourceContext = if (!matchingRun) "Suchwechsel" else if (active == null) "Lokaler Bestand" else "Aktive Suche"
         val notices = buildList {
             if (search.loading) add(ProfileNotice("Suche läuft", if (search.searchCancelling) "Suche wird beendet …" else "Suche läuft …",
@@ -320,13 +319,13 @@ internal fun DiscoverScreen(
             }
         }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
-            hasRail = true, notices = notices, noticeOwner = menuContext, fixedNoticeSlot = true,
+            hasRail = true, notices = notices, noticeOwner = controls, fixedNoticeSlot = true,
             heroLeadingHeight = discoveryLeadingHeight(LocalDensity.current.fontScale).dp,
             header = { presentation, compactNotice, onNotice ->
-                SwipeShellHeader(presentation, sourceContext, menuContext, compactNotice,
+                SwipeShellHeader(presentation, sourceContext, controls, compactNotice,
                     onNotice, onOpenSearch, { onAvailability(deckToken, it) })
             },
-            rail = { SwipeDecisionControls(menuContext, identity?.title, undo, skip, choose) },
+            rail = { SwipeDecisionControls(controls, identity?.title, undo, skip, choose) },
         ) { presentation, _ ->
             Box(Modifier.fillMaxSize().clipToBounds()) {
             if (card == null) {
@@ -335,8 +334,8 @@ internal fun DiscoverScreen(
                     item(key = "discover-context") {
                         DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode, Modifier)
                     }
-                    if (presentation.budget.railInMenu) item {
-                        SwipeDecisionControls(menuContext, identity?.title, undo, skip, choose,
+                    if (presentation.budget.railInContent) item {
+                        SwipeDecisionControls(controls, identity?.title, undo, skip, choose,
                             modifier = Modifier.fillMaxWidth().height(96.dp))
                     }
                     item {
@@ -344,7 +343,7 @@ internal fun DiscoverScreen(
                         else {
                             Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
                             Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
-                            SwipeDeckActions(menuContext, { onRefresh(deckToken) }, { onReset(deckToken) },
+                            SwipeDeckActions(controls, { onRefresh(deckToken) }, { onReset(deckToken) },
                                 { onReplayLikes(deckToken, !state.replayLikes) })
                         }
                     }
@@ -363,8 +362,8 @@ internal fun DiscoverScreen(
                     item(key = "discover-context") {
                         DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode)
                     }
-                    if (presentation.budget.railInMenu) item(key = "compact-decisions") {
-                        SwipeDecisionControls(menuContext, identity?.title, undo, skip, choose,
+                    if (presentation.budget.railInContent) item(key = "compact-decisions") {
+                        SwipeDecisionControls(controls, identity?.title, undo, skip, choose,
                             modifier = Modifier.fillMaxWidth().height(96.dp))
                     }
                     item(key = "hero") {
@@ -407,9 +406,12 @@ internal fun DiscoverScreen(
                             if (image != null) TextButton(enabled = actions, onClick = {
                                 if (token?.let(isProfileCurrent) == true && selectedMedia == image) fullImage = image
                             }) { Text("Bild groß anzeigen") }
-                            if (token?.preference != null && token.preference != Preference.NONE)
+                            profile?.identity?.profileUrl?.let { url -> TextButton(enabled = actions, onClick = {
+                                if (token?.let(isProfileCurrent) == true) openExternal(context, url)
+                            }) { Text("Originalprofil öffnen") } }
+                            if (token != null && token.preference != Preference.NONE)
                                 TextButton(enabled = actions, onClick = { choose(Preference.NONE) }) { Text("Präferenz zurücksetzen") }
-                            SwipeDeckActions(menuContext, { onRefresh(deckToken) }, { onReset(deckToken) },
+                            SwipeDeckActions(controls, { onRefresh(deckToken) }, { onReset(deckToken) },
                                 { onReplayLikes(deckToken, !state.replayLikes) })
                         }
                     }
@@ -444,7 +446,7 @@ fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: Str
 
 @Composable
 private fun SwipeShellHeader(
-    presentation: ProfileShellPresentation, sourceContext: String, context: SwipeMenuContext,
+    presentation: ProfileShellPresentation, sourceContext: String, context: SwipeControlsContext,
     compactNotice: ProfileNoticeIndicator?, onNotice: () -> Unit,
     onSearch: () -> Unit, onAvailability: (AvailabilityMode) -> Unit,
 ) {
@@ -459,7 +461,7 @@ private fun SwipeShellHeader(
 }
 
 @Composable
-private fun SwipeDeckActions(context: SwipeMenuContext, onRefresh: () -> Unit, onReset: () -> Unit, onReplay: () -> Unit) {
+private fun SwipeDeckActions(context: SwipeControlsContext, onRefresh: () -> Unit, onReset: () -> Unit, onReplay: () -> Unit) {
     FlowRow {
         TextButton(onClick = onRefresh, enabled = context.deckEnabled) { Text("Aktualisieren") }
         TextButton(onClick = onReset, enabled = context.deckEnabled) { Text("Deck neu beginnen") }
@@ -470,7 +472,7 @@ private fun SwipeDeckActions(context: SwipeMenuContext, onRefresh: () -> Unit, o
 }
 
 @Composable
-internal fun SwipeDecisionControls(context: SwipeMenuContext, profileTitle: String?, onUndo: () -> Unit,
+internal fun SwipeDecisionControls(context: SwipeControlsContext, profileTitle: String?, onUndo: () -> Unit,
     onSkip: () -> Unit, onChoose: (Preference) -> Unit, modifier: Modifier = Modifier.fillMaxSize()) {
     BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface)) {
         val compact = maxHeight < 72.dp || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
