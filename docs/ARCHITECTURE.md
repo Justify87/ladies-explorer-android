@@ -147,7 +147,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Normale Filteränderungen binden die sichtbare Filteransicht und deren Ansicht-/Pane-Generation; aufeinanderfolgende Eingaben ändern den aktuellen Entwurf ohne Snapshot-Sperre. Reset prüft zusätzlich den gerenderten Entwurf und widerruft die bisherigen UI-Aktionen. Beide erhalten den ausgeführten Run. Der lokale Wechsel zur Ergebnisansicht verwirft alte Filter-Callbacks.
 - Der normale Suchstart bindet den gerenderten Entwurf einschließlich lokaler Sichtbarkeitsregeln und Ansichtsgeneration an den sichtbaren Filterkontext. Veraltete oder gesperrte Aktionen erreichen keinen Quellabruf. Normale Suche und Schnellwahl verwenden denselben nativen Such-/Drain-Pfad.
 - Der Suchabbruch aus Filtern, Grid und Swipe bindet die gerenderte Ansichtsgeneration und die native Vorgangs-ID des laufenden Suchversuchs, bei Swipe zusätzlich die sichtbare Swipe-Session. Nur die aktuelle sichtbare, noch nicht abbrechende Suche darf den nativen Abbruch signalisieren. Der neue Suchstart widerruft alte Abbruch-Callbacks auch nach Fehler oder Abbruch; Lifecycle-Cleanup und native Drain-Grenze bleiben unabhängig.
-- Die Grid-Schnellwahl bindet die gerenderte Ansichtsgeneration und den ausgeführten Run, ohne aktiven Run den gerenderten Entwurf. Veraltete Callbacks erreichen keinen neuen Quellabruf; der Beginn eines Suchlaufs widerruft alte Grid-Aktionen auch bei Fehler oder Abbruch. Swipe und Grid nutzen weiterhin denselben Suchpfad.
+- Die Grid-/Karten-Schnellwahl bindet die gerenderte Oberfläche, Ansichtsgeneration und den ausgeführten Run, ohne aktiven Run den gerenderten Entwurf. Veraltete Callbacks erreichen keinen neuen Quellabruf; der Beginn eines Suchlaufs widerruft alte Aktionen auch bei Fehler oder Abbruch. Alle Modi nutzen denselben Suchpfad.
 - Rust liefert `activeSearchCards` in Positions-/ID-Reihenfolge mit aktuellen Owner-/Präferenz-/Favoritenzuordnungen. Grid liest diese aktive Ergebnismenge, **nicht** die bereits konsumierte Swipe-Queue.
 - Neutraler Startbestand verwendet Präferenz `NONE`; `DiscoverUiState.localCards` hält das lokal geladene Mitgliedschaftsfenster unabhängig von der Deck-Traversierung. `discoveryMembership` ist der gemeinsame Zugriff für die drei Modi. Ein expliziter Grid-/Karteneinstieg fokussiert das gültige Listing im bestehenden `SwipeSession` ohne künstliche Entscheidung oder Reset. Im aktiven Run bestimmen natives Filterergebnis, sessionlokale Traversierung und Replay-Likes-Policy gemeinsam zulässige Swipe-Karten. Fachvertrag: [PRODUCT](PRODUCT.md#entdecken-und-entscheidungen).
 
@@ -174,7 +174,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 
 **Oberfläche und sichtbarkeitsgebundene Reads:**
 - `ProfileShell`/`ProfileFlow` teilen Profiloberfläche, erhalten separate Navigations-/Operationskontexte. [DESIGN](DESIGN.md#profile-und-medien) bestimmt sichtbare Inhalte.
-- `ProfileHeroLayout` berechnet adaptives Budget aus gemessenen Constraints, Insets und Leisten. Headeridentität folgt realer Lazy-Geometrie, Decision Rail hat Menü-Fallback; Status/Busy dürfen Viewport nicht unkontrolliert verschieben.
+- `ProfileHeroLayout` berechnet adaptives Budget aus Constraints, Insets und Leisten. Die Standalone-Headeridentität folgt realer Lazy-Geometrie; Swipe zeigt Identität im Detailfluss und bei zu wenig Platz die Decision Rail inline im Scrollfluss. Status/Busy dürfen den Viewport nicht unkontrolliert verschieben.
 - `ProfilePanels`, `ProfilePanelReads` in `ProfilePanelState.kt` und `ProfileFlowRows` steuern lokale Reads nach Sichtbarkeit/Bedarf.
 - Facts und PersonDetail werden nur für gültiges Listing/Owner/Snapshot/Filter/Revision wiederverwendet. Expliziter Retry benötigt den aktuellen Profil-Token und die gerenderte Read-Generation. Der Vergleichsdialog schließt nur seine eigene Vergleichsgeneration; internes Cleanup bleibt unabhängig. Analyse, Historie und Vergleich erzeugen **keine** zusätzlichen Quellrequests durch bloße Darstellung; Snapshotvergleich prüft Owner und Listingzuordnung.
 
@@ -226,7 +226,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 **Read-/Cache-Policy:**
 - Lokal archivierten Bestand zuerst lokal lesen. Erstmalige Current-Freshness und spekulative Cache-first-Reads sind unterschiedliche Policies. Wird ein gültiger cache-only Prefetch im aktiven Run zum Current und verlangt dessen Policy Freshness, im selben Slot unter dem bestehenden Mutex genau einen Quellenversuch nachholen, sofern kein Current-Quellenversuch und keine Offline-Warnung vorliegen. Kein automatischer Wiederholungsversuch nach fehlgeschlagenem Refresh; Local-only, bevorzugt lokale Recovery und lokale Startbestände erzwingen keinen Refresh.
 - Fehler spekulativer Reads bis Promotion halten; lokaler Reprojektionsfehler löst **keinen** zweiten Source-Read aus.
-- Coil-Warming pro Slot, Revision und tatsächlicher Hero-Pixelgröße mit Crop-Skalierung begrenzen.
+- Coil-Warming pro Slot, Revision und tatsächlicher Hero-Pixelgröße mit Fit-Skalierung begrenzen.
 - Kein zweiter Mediencache und keine automatische Archivierung.
 
 ## Gespeicherte Personen und Suchen
