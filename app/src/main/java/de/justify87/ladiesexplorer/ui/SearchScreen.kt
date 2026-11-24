@@ -26,6 +26,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,8 +42,9 @@ internal fun SearchScreen(
     search: SearchUiState,
     saved: SavedSearchUiState,
     canStartSearch: Boolean,
+    canEditDraft: Boolean,
     onDraftChange: ((SearchDraft) -> SearchDraft) -> Unit,
-    onReset: () -> Unit,
+    onReset: () -> Boolean,
     onPreviewTarget: (SearchRequest?) -> Unit,
     onSearch: (SearchSubmitAction) -> Unit,
     onCancelSearch: () -> Unit,
@@ -56,7 +59,7 @@ internal fun SearchScreen(
     val editing = editor != null
     val draft = editor?.draft ?: SearchDraft.from(search)
     val state = draft.applyTo(search)
-    val enabled = !search.loading && !saved.busy && (!editing || canStartSearch)
+    val enabled = !search.loading && !saved.busy && (if (editing) canStartSearch else canEditDraft)
     var resultsVisible by rememberSaveable { mutableStateOf(false) }
     var filterQuery by rememberSaveable { mutableStateOf("") }
     var categoryExpanded by rememberSaveable { mutableStateOf(false) }
@@ -75,6 +78,11 @@ internal fun SearchScreen(
         }
     }
     val editorVisible = editing || !(resultsVisible && state.response != null)
+    val filterContext = remember(editorVisible) { Any() }
+    val currentFilterContext by rememberUpdatedState(filterContext)
+    val changeDraft: ((SearchDraft) -> SearchDraft) -> Unit = { change ->
+        if (editorVisible && currentFilterContext === filterContext) onDraftChange(change)
+    }
     val target = if (editorVisible && !search.loading && !saved.blockingNavigation)
         draft.request().copy(maxPages = 1u) else null
     DisposableEffect(target) {
@@ -148,15 +156,15 @@ internal fun SearchScreen(
                 categoryExpanded = categoryExpanded,
                 onCategoryExpanded = { categoryExpanded = it },
                 enabled = enabled,
-                onCity = { value -> onDraftChange { it.copy(city = value) } },
-                onRadius = { value -> onDraftChange { it.copy(radiusKm = value) } },
-                onCategory = { value -> onDraftChange { it.copy(category = value) } },
-                onAge = { min, max -> onDraftChange { it.copy(ageMin = min, ageMax = max) } },
-                onHeight = { min, max -> onDraftChange { it.copy(heightMin = min, heightMax = max) } },
-                onPages = { value -> onDraftChange { it.copy(maxPages = value) } },
-                onToggleFilter = { group, value -> onDraftChange { it.toggle(group, value) } },
-                onAvailability = { value -> onDraftChange { it.availability(value) } },
-                onLocalVisibility = { value -> onDraftChange { it.copy(local = value) } },
+                onCity = { value -> changeDraft { it.copy(city = value) } },
+                onRadius = { value -> changeDraft { it.copy(radiusKm = value) } },
+                onCategory = { value -> changeDraft { it.copy(category = value) } },
+                onAge = { min, max -> changeDraft { it.copy(ageMin = min, ageMax = max) } },
+                onHeight = { min, max -> changeDraft { it.copy(heightMin = min, heightMax = max) } },
+                onPages = { value -> changeDraft { it.copy(maxPages = value) } },
+                onToggleFilter = { group, value -> changeDraft { it.toggle(group, value) } },
+                onAvailability = { value -> changeDraft { it.availability(value) } },
+                onLocalVisibility = { value -> changeDraft { it.copy(local = value) } },
             )
             if (editing) item {
                 Text("Nicht unterstützte importierte Regeln sind nicht bearbeitbar. Unterstützte Filter bleiben erhalten.",
@@ -187,7 +195,9 @@ internal fun SearchScreen(
                             Text(if (saved.operation == SavedOperation.Write) "Speichert …" else "Speichern")
                         }
                     } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { filterQuery = ""; onReset() }, enabled = enabled) { Text("Reset") }
+                        OutlinedButton(onClick = {
+                            if (currentFilterContext === filterContext && onReset()) filterQuery = ""
+                        }, enabled = enabled) { Text("Reset") }
                         Button(onClick = if (state.loading) onCancelSearch else ({ onSearch(SearchSubmitAction(draft, generation)) }),
                             enabled = !state.searchCancelling && (state.loading || (canStartSearch && enabled && state.city.isNotBlank())), modifier = Modifier.weight(1f)) {
                             Text(if (state.searchCancelling) "Wird beendet …" else if (state.loading) "Abbrechen" else "Suchen")
