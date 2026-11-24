@@ -398,6 +398,8 @@ fun LadiesApp(
                                 onCancel = viewModel::cancelRenderedMapResolution,
                                 summary = search.response?.let { "${it.city} · ${it.requestedRadiusKm} km · Aktive Suche" }
                                     ?: "Lokaler Bestand · neutral",
+                                membershipCurrent = map.membership != null &&
+                                    map.membership == currentMapMembership(discovery, search),
                                 generation = discovery.actionGeneration,
                                 onProfile = { action ->
                                     if (route == renderedRoute && viewModel.openMapProfile(action)) {
