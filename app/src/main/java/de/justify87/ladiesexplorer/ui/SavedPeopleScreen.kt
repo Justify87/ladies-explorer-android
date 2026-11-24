@@ -91,7 +91,7 @@ internal fun SavedPeopleScreen(
         val batchAction = page?.let { SavedStatusBatchAction(it, state.savedKind, state.savedSort, state.actionGeneration) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { batchAction?.let(onCheckAll) }, enabled = enabled && batchAction != null) {
-                Text("Status aller Einträge prüfen")
+                Text("Status aller gespeicherten Anzeigen prüfen")
             }
             val progress = state.savedStatusProgress
             if (progress?.running == true) {
@@ -199,7 +199,7 @@ internal fun savedPersonActivityLabels(row: SavedPersonRow): List<String> {
             changed?.let { add("Geändert: $it") }
         }
         row.statusCheckedAt?.let {
-            add("Anzeigenstatus geprüft: ${it.take(16).replace('T', ' ')} UTC")
+            add("Letzte Statusbeobachtung: ${it.take(16).replace('T', ' ')} UTC")
         }
     }
 }

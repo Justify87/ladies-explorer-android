@@ -430,11 +430,11 @@ private fun HistoryValues(before: String?, after: String?) {
     }
 }
 
-internal fun profileAnalysisFields(imageCount: Int, personCount: UInt?, data: PersonDetail?): List<Pair<String, String>> =
+internal fun profileAnalysisFields(imageCount: Int, listingCount: UInt?, data: PersonDetail?): List<Pair<String, String>> =
     buildList {
         add("Bilder im aktuellen Profil" to imageCount.toString())
         if (data != null) {
-            if (personCount == null) add("Anzeigen" to data.listings.size.toString())
+            if (listingCount == null) add("Anzeigen" to data.listings.size.toString())
             add("Bekannte Namen" to data.knownNames.toString())
             add("Bekannte Orte" to data.knownCities.toString())
             add("Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString())

@@ -177,13 +177,11 @@ fun LadiesApp(
         viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
         viewModel.clearPreview()
         route = route.select(destination)
+        // The explicit entry read also consumes any pending overview invalidation.
+        if (destination == RootDestination.Search && saved.result == null) viewModel.refreshSearchDefinitions()
         viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
-        when (destination) {
-            RootDestination.Search -> if (saved.result == null) viewModel.refreshSearchDefinitions() else Unit
-            RootDestination.Settings -> viewModel.refresh()
-            else -> Unit
-        }
+        if (destination == RootDestination.Settings) viewModel.refresh()
     }
 
     LaunchedEffect(route.root, home.httpCaptureMode, search.profileOpen) {
@@ -232,6 +230,7 @@ fun LadiesApp(
             BackAction.CloseSavedResults -> viewModel.savedSearch.back()
             BackAction.Navigate -> {
                 viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                viewModel.savedSearch.setVisible(false)
                 route = route.back()
             }
             BackAction.System -> Unit

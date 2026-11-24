@@ -15,6 +15,8 @@ class SavedSearchPaneTest {
 
     private class Fake(private val item: SavedSearchInfo) : SavedSearchAccess {
         var list = listOf(item)
+        var listReads = 0
+        var onList: suspend () -> Unit = {}
         var cards = emptyList<SavedSearchCard>()
         var loaded = SearchDraft(city = "Dresden", selectedFilters = mapOf("zeiten" to setOf("jetzt geöffnet")))
         var onLoad: suspend () -> Unit = {}
@@ -32,8 +34,11 @@ class SavedSearchPaneTest {
         var onWrite: suspend () -> Unit = {}
         val windows = mutableListOf<UInt>()
         override suspend fun list(): List<SavedSearchInfo> {
+            listReads++
+            val snapshot = list
+            onList()
             if (readError) error("read failed")
-            return list
+            return snapshot
         }
         override suspend fun load(id: String): SearchDraft {
             loads++
@@ -247,7 +252,7 @@ class SavedSearchPaneTest {
         assertEquals(listOf(initial), c.state.value.result!!.cards)
         fake.cards = listOf(updated)
         fake.list = listOf(info(unread = true, revision = 2L))
-        c.refreshResultProjection()
+        c.refreshProjection()
         assertEquals(SavedOperation.Results, c.state.value.operation)
         gate.complete(Unit); idle(c)
         assertEquals(listOf(100u, 200u, 200u), fake.windows)
@@ -266,7 +271,7 @@ class SavedSearchPaneTest {
         c.more(resultAction(c)); idle(c)
         assertEquals(listOf(card), c.state.value.result!!.cards)
         fake.windowError = true
-        c.refreshResultProjection(); idle(c)
+        c.refreshProjection(); idle(c)
         val failed = c.state.value.result!!
         assertFalse(failed.ready)
         assertFalse(failed.hasMore)
@@ -291,17 +296,83 @@ class SavedSearchPaneTest {
         assertTrue(c.state.value.searches.single().unreadNewResults)
         assertNotNull(c.state.value.error)
     }
+    @Test(timeout = 15_000) fun overviewInvalidationRefreshesRevisionAndCoalescesWhileHiddenOrBusy() = runBlocking {
+        val fake = Fake(info(unread = true))
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        val original = ack(c)
+        c.setVisible(false)
+        fake.list = listOf(info(unread = true, revision = 2L))
+        repeat(4) { c.refreshProjection() }
+        assertEquals(1, fake.listReads)
+        c.setVisible(true); idle(c)
+        assertEquals(2, fake.listReads)
+        assertEquals(2L, ack(c).revision)
+        c.acknowledge(original)
+        assertEquals(0, fake.acknowledgements)
+
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        fake.onList = { started.complete(Unit); finish.awaitSignal() }
+        fake.list = listOf(info(unread = true, revision = 3L))
+        c.refreshProjection(); started.awaitSignal()
+        fake.list = listOf(info(unread = true, revision = 4L))
+        repeat(4) { c.refreshProjection() }
+        finish.complete(Unit); idle(c)
+        assertEquals(4, fake.listReads)
+        assertEquals(4L, ack(c).revision)
+        assertTrue(fake.windows.isEmpty())
+        c.acknowledge(ack(c)); idle(c)
+        assertEquals(1, fake.acknowledgements)
+        assertFalse(c.state.value.searches.single().unreadNewResults)
+    }
+
+    @Test(timeout = 15_000) fun discardedWindowReadReconcilesOverviewAfterBack() = runBlocking {
+        val fake = Fake(info(unread = true))
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        fake.onRead = { started.complete(Unit); finish.awaitSignal() }
+        fake.list = listOf(info(unread = true, revision = 2L))
+        c.refreshProjection(); started.awaitSignal()
+        c.back()
+        assertNull(c.state.value.result)
+        finish.complete(Unit); idle(c)
+        assertEquals(2, fake.listReads)
+        assertEquals(2L, ack(c).revision)
+        assertEquals(listOf(100u, 100u), fake.windows)
+        assertEquals(0, fake.acknowledgements)
+    }
+
+    @Test(timeout = 15_000) fun dirtyOverviewIsRefreshedWhenLeavingEditorWithoutChangingDraft() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.openEditor(row(c)); idle(c)
+        val editor = c.state.value.editor
+        fake.list = listOf(info(revision = 2L))
+        c.refreshProjection()
+        assertEquals(1, fake.listReads)
+        assertEquals(editor, c.state.value.editor)
+        c.back(); idle(c)
+        assertEquals(2, fake.listReads)
+        assertEquals(2L, c.state.value.searches.single().revision)
+        assertEquals(0, fake.writes)
+    }
+
     @Test(timeout = 15_000) fun hiddenInvalidationsCoalesceAndSuccessfulReadClearsOnlyItsError() = runBlocking {
         val fake = Fake(info()).apply { cards = listOf(fixtureCard()) }
         val c = controller(this, fake)
         c.open(paneAction(c)); idle(c)
         c.openResults(row(c)); idle(c)
         fake.windowError = true
-        c.refreshResultProjection(); idle(c)
+        c.refreshProjection(); idle(c)
         assertNotNull(c.state.value.windowError)
         c.setVisible(false)
         fake.windowError = false
-        repeat(5) { c.refreshResultProjection() }
+        repeat(5) { c.refreshProjection() }
         assertEquals(listOf(100u, 100u), fake.windows)
         assertTrue(c.state.value.resultDirty)
         assertFalse(c.state.value.busy)
@@ -371,7 +442,7 @@ class SavedSearchPaneTest {
         assertTrue(c.admitsProfileOpen(refreshed))
         fake.cards = listOf(card.copy(personId = 3L))
         fake.onRead = {}
-        c.refreshResultProjection()
+        c.refreshProjection()
         assertFalse(c.admitsProfileOpen(refreshed))
         idle(c)
         assertFalse(c.admitsProfileOpen(refreshed))

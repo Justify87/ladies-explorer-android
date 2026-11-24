@@ -110,6 +110,7 @@ internal class SavedSearchController(
     private val mutable = MutableStateFlow(SavedSearchUiState())
     val state: StateFlow<SavedSearchUiState> = mutable
     private var refreshPending = false
+    private var overviewDirty = false
     private var readTicket = 0L
     // Fail closed until the foreground route explicitly reports visibility.
     private var visible = false
@@ -133,12 +134,13 @@ internal class SavedSearchController(
                 if (refreshPending) {
                     refreshPending = false
                     refresh()
-                } else refreshDirtyWindow()
+                } else refreshDirtyProjection()
             }
         }
     }
 
     private suspend fun reload(committed: Boolean = false) {
+        overviewDirty = false
         try {
             val list = store.list()
             mutable.update { it.copy(searches = list, listAvailable = true, listError = null) }
@@ -156,7 +158,7 @@ internal class SavedSearchController(
         if (state.value.result != null) markResultDirty()
         if (state.value.busy) { refreshPending = true; return }
         val result = state.value.result
-        if (result != null && visible) refreshDirtyWindow()
+        if (result != null && visible) refreshDirtyProjection()
         else operation(SavedOperation.Refresh, clearError = false) { reload() }
     }
 
@@ -166,17 +168,21 @@ internal class SavedSearchController(
         }
     }
 
-    /** Coalesce invalidations until results are visible. */
-    fun refreshResultProjection() {
+    /** Native writes advance the revision of both overview and result acknowledgements. */
+    fun refreshProjection() {
+        overviewDirty = true
         markResultDirty()
-        refreshDirtyWindow()
+        refreshDirtyProjection()
     }
 
-    private fun refreshDirtyWindow() {
+    private fun refreshDirtyProjection() {
         val s = state.value
-        val result = s.result ?: return
-        if (visible && s.resultDirty && !s.busy) {
-            readWindow(result.id, limits[result.id] ?: 100u)
+        if (!visible || s.busy) return
+        val result = s.result
+        if (result != null) {
+            if (s.resultDirty) readWindow(result.id, limits[result.id] ?: 100u)
+        } else if (s.pane == SearchPane.SavedList && overviewDirty) {
+            operation(SavedOperation.Refresh, clearError = false) { reload() }
         }
     }
 
@@ -184,7 +190,7 @@ internal class SavedSearchController(
         if (visible == value) return
         visible = value
         mutable.update { it.copy(actionGeneration = it.actionGeneration + 1) }
-        if (value) refreshDirtyWindow()
+        if (value) refreshDirtyProjection()
     }
 
     /** A delayed grid click must still refer to the currently rendered result window. */
@@ -219,6 +225,7 @@ internal class SavedSearchController(
             else -> { session++; mutable.update { it.copy(overview = false, actionError = null,
                 actionGeneration = it.actionGeneration + 1) } }
         }
+        refreshDirtyProjection()
     }
 
     private fun admittedRow(action: SavedSearchRowAction): SavedSearchInfo? {
@@ -404,19 +411,25 @@ internal class SavedSearchController(
 
     private fun readWindow(id: String, limit: UInt) {
         val ticket = ++readTicket
+        overviewDirty = false
         mutable.update { it.copy(resultDirty = false, windowError = null) }
         operation(SavedOperation.Results, clearError = false) {
             val window = try {
                 store.window(id, limit)
             } catch (cancel: CancellationException) {
+                overviewDirty = true
                 throw cancel
             } catch (failure: Exception) {
+                overviewDirty = true
                 if (ticket == readTicket && state.value.result?.id == id) mutable.update {
                     it.copy(result = SavedResultWindow(id), windowError = failure.message ?: "Ergebnisse konnten nicht geladen werden")
                 }
                 return@operation
             }
-            if (ticket != readTicket || state.value.result?.id != id) return@operation
+            if (ticket != readTicket || state.value.result?.id != id) {
+                overviewDirty = true
+                return@operation
+            }
             limits[id] = limit
             mutable.update { it.copy(result = SavedResultWindow(id, window.cards, window.hasMore, true,
                     window.searches.firstOrNull { info -> info.searchId == id }?.revision, ticket),

@@ -50,6 +50,19 @@ private val groupLabels = mapOf(
     "treff" to "Treffpunkt", "location" to "Location", "zeiten" to "Zeiten",
 )
 
+private const val LOCAL_FILTER_TITLE = "Bilddarstellung und lokale Filter"
+private const val PHOTOS_ONLY_LABEL = "Nur mit Bildern"
+private const val VIDEO_ONLY_LABEL = "Nur mit Video"
+private const val HIDE_DISLIKES_LABEL = "Dislikes ausblenden"
+private const val HIDE_LIKES_LABEL = "Likes ausblenden"
+private val imageModeLabels = listOf("ALL" to "Alle", "NATURAL" to "Ohne KI-Markierung", "AI" to "KI-markiert")
+private val localFilterLabels = listOf(LOCAL_FILTER_TITLE, PHOTOS_ONLY_LABEL, VIDEO_ONLY_LABEL,
+    HIDE_DISLIKES_LABEL, HIDE_LIKES_LABEL) + imageModeLabels.map { it.second }
+
+internal fun matchesLocalFilterQuery(query: String): Boolean =
+    query.isBlank() || localFilterLabels.any { it.contains(query, ignoreCase = true) } ||
+        "Bilder Fotos Video Dislikes Likes Natürlich Studio FaceApp KI Betrieb Filter".contains(query, ignoreCase = true)
+
 internal fun LazyListScope.searchFilterEditor(
     state: SearchUiState,
     filterQuery: String,
@@ -171,10 +184,10 @@ internal fun LazyListScope.searchFilterEditor(
             }
         }
     }
-    if (filterQuery.isBlank() || "Bilddarstellung Bilder Fotos Video Dislikes Likes Natürlich Studio FaceApp KI Betrieb Filter".contains(filterQuery, ignoreCase = true)) item {
-        FilterCard("Bilddarstellung und lokale Filter") {
+    if (matchesLocalFilterQuery(filterQuery)) item {
+        FilterCard(LOCAL_FILTER_TITLE) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                listOf("ALL" to "Alle", "NATURAL" to "Ohne KI-Markierung", "AI" to "KI-markiert").forEach { (mode, label) ->
+                imageModeLabels.forEach { (mode, label) ->
                     FilterChip(selected = state.local.imageMode.ifBlank { "ALL" } == mode, enabled = enabled,
                         onClick = {
                             if (state.local.imageMode.ifBlank { "ALL" } != mode) {
@@ -183,16 +196,16 @@ internal fun LazyListScope.searchFilterEditor(
                         }, label = { Text(label) })
                 }
             }
-            LocalFilterRow("Nur mit Bildern", state.local.photosOnly, enabled) {
+            LocalFilterRow(PHOTOS_ONLY_LABEL, state.local.photosOnly, enabled) {
                 onLocalVisibility(state.local.copy(photosOnly = it))
             }
-            LocalFilterRow("Nur mit Video", state.local.videoOnly, enabled) {
+            LocalFilterRow(VIDEO_ONLY_LABEL, state.local.videoOnly, enabled) {
                 onLocalVisibility(state.local.copy(videoOnly = it))
             }
-            LocalFilterRow("Dislikes ausblenden", state.local.hideDislikes, enabled) {
+            LocalFilterRow(HIDE_DISLIKES_LABEL, state.local.hideDislikes, enabled) {
                 onLocalVisibility(state.local.copy(hideDislikes = it))
             }
-            LocalFilterRow("Likes ausblenden", state.local.hideLikes, enabled) {
+            LocalFilterRow(HIDE_LIKES_LABEL, state.local.hideLikes, enabled) {
                 onLocalVisibility(state.local.copy(hideLikes = it))
             }
             Text("Studio, FaceApp und Betriebsprofile: keine zuverlässigen nativen Klassifikationsdaten.",
