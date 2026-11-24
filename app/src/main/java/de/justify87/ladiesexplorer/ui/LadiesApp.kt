@@ -306,27 +306,6 @@ fun LadiesApp(
             stateHolder.SaveableStateProvider(route.stateKey) {
                 when (route.root) {
                     RootDestination.Discover -> Column(modifier = modifier) {
-                        if (route.discovery == DiscoverMode.Grid) {
-                            val availabilityAction = search.gridAvailabilityAction(discovery.actionGeneration)
-                            val run = search.response
-                            DiscoveryChrome(
-                                summary = run?.let { "${it.city} · ${it.requestedRadiusKm} km" } ?: "Lokaler Bestand · neutral",
-                                availability = search.headerAvailability(),
-                                availabilityEnabled = gridAvailabilityMatches(discovery, search, availabilityAction) && !home.loading && !saved.busy,
-                                owner = availabilityAction,
-                                active = DiscoverMode.Grid,
-                                onMode = { mode ->
-                                    viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
-                                    route = route.select(mode)
-                                },
-                                onAvailability = { viewModel.runGridAvailability(availabilityAction, it) },
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                            )
-                        }
-                        if (route.discovery == DiscoverMode.Grid) {
-                            val cancelAction = SearchCancelAction(ProfileActionSurface.GRID, discovery.actionGeneration, search.searchAttemptId)
-                            SearchRunStatus(search) { viewModel.cancelActiveSearch(cancelAction) }
-                        }
                         if (route.discovery == DiscoverMode.Swipe) {
                             val cancelAction = SearchCancelAction(ProfileActionSurface.NONE,
                                 discovery.actionGeneration, search.searchAttemptId, discovery.swipeSessionId)
@@ -380,6 +359,25 @@ fun LadiesApp(
                                     onLoadMore = viewModel::loadMoreDiscovery,
                                     onLike = viewModel::toggleGridLike,
                                     onProfile = viewModel::openGridProfile,
+                                    chrome = {
+                                        val availabilityAction = search.gridAvailabilityAction(discovery.actionGeneration)
+                                        val run = search.response
+                                        DiscoveryChrome(
+                                            summary = run?.let { "${it.city} · ${it.requestedRadiusKm} km" } ?: "Lokaler Bestand · neutral",
+                                            availability = search.headerAvailability(),
+                                            availabilityEnabled = gridAvailabilityMatches(discovery, search, availabilityAction) && !home.loading && !saved.busy,
+                                            owner = availabilityAction,
+                                            active = DiscoverMode.Grid,
+                                            onMode = { mode ->
+                                                viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                                                route = route.select(mode)
+                                            },
+                                            onAvailability = { viewModel.runGridAvailability(availabilityAction, it) },
+                                            modifier = Modifier,
+                                        )
+                                        val cancelAction = SearchCancelAction(ProfileActionSurface.GRID, discovery.actionGeneration, search.searchAttemptId)
+                                        SearchRunStatus(search) { viewModel.cancelActiveSearch(cancelAction) }
+                                    },
                                     modifier = Modifier.weight(1f),
                                 )
                             }
