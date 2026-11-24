@@ -45,6 +45,48 @@ class SearchRunStateTest {
         assertEquals(old.response, pending.endRun("source failure").response)
     }
 
+    @Test fun previewTargetUsesSourceDraftAndCurrentEditorSessionOnly() {
+        val search = SearchUiState(city = " Dresden ")
+        val saved = SavedSearchUiState()
+        val normal = searchPreviewTarget(search, saved)!!
+        assertEquals("Dresden", normal.draft.city)
+        assertEquals(1u, normal.draft.maxPages)
+        assertEquals(null, normal.editorSession)
+        assertEquals(normal, searchPreviewTarget(search.copy(maxPages = 20u,
+            local = search.local.copy(hideLikes = true)), saved))
+        assertFalse(normal == searchPreviewTarget(search.copy(radiusKm = 50u), saved))
+        assertEquals(null, searchPreviewTarget(search.beginRun(), saved))
+        assertEquals(null, searchPreviewTarget(search.copy(profileOpen = true), saved))
+        assertEquals(null, searchPreviewTarget(search, saved.copy(overview = true)))
+        val editor = SavedEditor("fixture", 7L, "Test", SearchDraft.from(search))
+        val editing = saved.copy(editor = editor)
+        val editorTarget = searchPreviewTarget(search, editing)!!
+        assertEquals(7L, editorTarget.editorSession)
+        assertEquals(normal.draft, editorTarget.draft)
+        assertFalse(normal == editorTarget)
+        assertFalse(editorTarget == searchPreviewTarget(search, editing.copy(editor = editor.copy(session = 8L))))
+        assertEquals(null, searchPreviewTarget(search, editing.copy(operation = SavedOperation.Write)))
+    }
+
+    @Test fun latePreviewReleaseCannotCancelReplacementWithIdenticalTarget() {
+        val target = searchPreviewTarget(SearchUiState(), SavedSearchUiState())!!
+        val owner = SearchPreviewOwner()
+        val first = SearchPreviewLease(target)
+        val replacement = SearchPreviewLease(target)
+        owner.replace(first)
+        assertTrue(owner.accepts(first))
+        owner.replace(replacement)
+        assertFalse(owner.accepts(first))
+        assertFalse(owner.release(first))
+        assertTrue(owner.accepts(replacement))
+        assertTrue(owner.release(replacement))
+        assertFalse(owner.accepts(replacement))
+        owner.replace(first)
+        owner.clear()
+        assertFalse(owner.accepts(first))
+        assertFalse(owner.release(first))
+    }
+
     @Test fun normalDraftEditsRequireCurrentFilterContextButAllowSequentialInput() {
         val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 7)
         val saved = SavedSearchUiState(actionGeneration = 4)
