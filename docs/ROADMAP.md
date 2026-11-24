@@ -100,7 +100,9 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – Statusprüfungsabbruch (DONE mit Merge):** [PR #67](https://github.com/Justify87/ladies-explorer-android/pull/67) bindet den gerenderten Abbruch an Statusversuch und Ansichtsgeneration; interne Lifecycle-Abbrüche bleiben unabhängig. JVM-Regressionen für alte Versuche, Kontextwechsel, wiederholten Abbruch und Fortschrittsupdates; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45406923367) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
-**Teilauftrag – SavedPeople-Listensteuerung (REVIEW):** [Branch `fix/t10-8-saved-people-controls`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-saved-people-controls) bindet Tabwahl, Sortierung und explizites Laden an den gerenderten Auswahl-/Ansichtskontext. JVM-Regressionen für Kontextwechsel, Busy, fehlgeschlagenen Reload und kontrolliertes Ersetzen lokaler Pagination. CI und Merge ausstehend.
+**Integrierter Teilauftrag – SavedPeople-Listensteuerung:** [PR #68](https://github.com/Justify87/ladies-explorer-android/pull/68) bindet Tabwahl, Sortierung und explizites Laden an den gerenderten Auswahl-/Ansichtskontext. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45408392886) beim Merge noch nicht abschließend verifiziert.
+
+**Teilauftrag – Grid-Aktualisierung (REVIEW):** [Branch `fix/t10-8-grid-refresh-admission`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-grid-refresh-admission) bindet manuelles Aktualisieren an gerenderten Run bzw. lokalen Bestand und Ansichtsgeneration. JVM-Regressionen für Run-/Kontextwechsel, Busy, Pagination und erneuten Read nach Fehler. CI und Merge ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
