@@ -33,9 +33,10 @@ private val savedKinds = listOf(
 @Composable
 internal fun SavedPeopleScreen(
     state: DiscoverUiState,
-    onKind: (SavedPersonKind) -> Unit,
-    onSort: (SavedPersonSort) -> Unit,
-    onRefresh: () -> Unit,
+    controlsEnabled: Boolean,
+    onKind: (SavedPeopleControlAction, SavedPersonKind) -> Unit,
+    onSort: (SavedPeopleControlAction, SavedPersonSort) -> Unit,
+    onRefresh: (SavedPeopleControlAction) -> Unit,
     onProfile: (SavedPersonAction) -> Unit,
     onFavorite: (SavedPersonAction) -> Unit,
     onPreference: (SavedPersonAction, Preference) -> Unit,
@@ -47,6 +48,7 @@ internal fun SavedPeopleScreen(
 ) {
     val scrollMemory = rememberSaveableStateHolder()
     val enabled = !state.loading && !state.busy
+    val controlAction = state.savedPeopleControlAction()
     val page = state.savedPage
     val recent = state.savedRecent
     Column(modifier.fillMaxSize().padding(horizontal = 12.dp)) {
@@ -54,8 +56,8 @@ internal fun SavedPeopleScreen(
             savedKinds.forEach { (kind, label) ->
                 FilterChip(
                     selected = state.savedKind == kind,
-                    onClick = { onKind(kind) },
-                    enabled = enabled,
+                    onClick = { onKind(controlAction, kind) },
+                    enabled = controlsEnabled,
                     modifier = Modifier.weight(1f),
                     label = { Text(label, maxLines = 1) },
                 )
@@ -72,18 +74,19 @@ internal fun SavedPeopleScreen(
                 "${it.total} ${if (it.total == 1u) singular else label}"
             } ?: label,
                 style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            var sortMenu by remember { mutableStateOf(false) }
+            var sortMenu by remember(controlAction, controlsEnabled) { mutableStateOf(false) }
             Box {
-                TextButton(onClick = { sortMenu = true }, enabled = enabled) {
+                TextButton(onClick = { sortMenu = true }, enabled = controlsEnabled) {
                     Text(if (state.savedSort == SavedPersonSort.DATE) "Datum" else "Name")
                 }
                 DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                     listOf(SavedPersonSort.DATE to "Datum", SavedPersonSort.NAME to "Name").forEach { (sort, text) ->
-                        DropdownMenuItem(text = { Text(text) }, onClick = { sortMenu = false; onSort(sort) })
+                        DropdownMenuItem(text = { Text(text) }, enabled = controlsEnabled,
+                            onClick = { sortMenu = false; onSort(controlAction, sort) })
                     }
                 }
             }
-            TextButton(onClick = onRefresh, enabled = !state.busy) { Text("Laden") }
+            TextButton(onClick = { onRefresh(controlAction) }, enabled = controlsEnabled) { Text("Laden") }
         }
         val batchAction = page?.let { SavedStatusBatchAction(it, state.savedKind, state.savedSort, state.actionGeneration) }
         Row(verticalAlignment = Alignment.CenterVertically) {
