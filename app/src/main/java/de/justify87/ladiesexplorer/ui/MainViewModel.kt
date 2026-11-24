@@ -309,7 +309,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private val swipeInvalidation by lazy {
-        SwipeProjectionInvalidation(savedSearch::refreshResultProjection, ::refreshDiscovery, ::refreshMap)
+        SwipeProjectionInvalidation(savedSearch::refreshProjection, ::refreshDiscovery, ::refreshMap)
     }
 
     private val profileOperations by lazy {
@@ -323,7 +323,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ProfileProjectionCallbacks(
                 epoch = { discoveryEpoch }, nextEpoch = { ++discoveryEpoch },
                 pending = { swipeInvalidation.pending }, projectDiscovery = ::projectDiscovery,
-                discovery = ::refreshDiscovery, savedSearch = savedSearch::refreshResultProjection,
+                discovery = ::refreshDiscovery, savedSearch = savedSearch::refreshProjection,
                 map = ::refreshMap, home = ::refresh,
                 admitSwipe = { admittedSwipe(it) != null },
                 beginMerge = { invalidateSwipeActions() },
@@ -828,14 +828,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     },
                     afterWrite = {
                         // Revision can change without a membership change.
-                        savedSearch.refreshResultProjection()
+                        savedSearch.refreshProjection()
                         if (refreshProfileWindow) invalidateSwipeProfilesLocally()
                         afterWrite()
                     },
                     onWriteFailure = onWriteFailure,
                     recoverWriteFailure = {
                         invalidateSwipeProfilesLocally()
-                        savedSearch.refreshResultProjection()
+                        savedSearch.refreshProjection()
                         recoverWriteFailure()
                     },
                 )
@@ -950,7 +950,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             } catch (cancel: CancellationException) {
                 // Coroutine cancellation bypasses writeAndProject's normal reconciliation.
-                savedSearch.refreshResultProjection()
+                savedSearch.refreshProjection()
                 throw cancel
             } finally {
                 savedStatusControl = null
