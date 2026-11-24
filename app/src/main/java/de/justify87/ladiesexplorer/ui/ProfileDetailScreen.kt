@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
 
 @Composable
@@ -100,6 +101,7 @@ internal fun ProfileDetailScreen(
             if (profile != null) {
                 item(key = "media") {
                     ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
+                        modifier = Modifier.padding(horizontal = 12.dp),
                         selection = mediaSelection,
                         identity = identity, actionToken = renderedToken, actionsEnabled = !busy,
                         isCurrent = { renderedToken?.let(isProfileCurrent) == true },
@@ -109,7 +111,6 @@ internal fun ProfileDetailScreen(
                         playbackVisible = heroVisible)
                 }
                 item(key = "identity") {
-                    Text("Profilinfos", style = MaterialTheme.typography.labelMedium)
                     ProfileMetadata(profile, state.profileIdentity, state.selectedPerson, state.profileMedia, state.profileFromArchive)
                 }
                 item(key = "actions") {
