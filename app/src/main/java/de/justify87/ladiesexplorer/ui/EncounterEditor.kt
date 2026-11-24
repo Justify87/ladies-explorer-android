@@ -109,6 +109,8 @@ internal class EncounterEditor(
         private set
     var edit by mutableStateOf<EncounterEdit?>(null, referentialEqualityPolicy())
         private set
+    var readRevision by mutableLongStateOf(0L)
+        private set
     private var nextId = 0L
     private var committedOwner: Long? = null
 
@@ -150,7 +152,8 @@ internal class EncounterEditor(
     }
 
     fun canEdit(rendered: EncounterEdit): Boolean =
-        edit?.id == rendered.id && edit?.token == rendered.token && edit?.writing == false && current(rendered.token)
+        edit?.id == rendered.id && edit?.token == rendered.token && edit?.writing == false &&
+            panel?.token == rendered.token && current(rendered.token)
 
     fun change(rendered: EncounterEdit, transform: (EncounterDraft) -> EncounterDraft) {
         val active = edit ?: return
@@ -167,7 +170,7 @@ internal class EncounterEditor(
 
     fun canResume(rendered: EncounterEdit): Boolean {
         val token = panel?.token ?: return false
-        return edit === rendered && !rendered.writing && !current(rendered.token) &&
+        return edit === rendered && !rendered.writing && !rendered.discardRequested && !current(rendered.token) &&
             token != rendered.token && matchesContext(token) &&
             current(token)
     }
@@ -210,6 +213,7 @@ internal class EncounterEditor(
         if (edit !== writing) return
         committedOwner = writing.token.ownerId
         panel = null
+        readRevision++
         edit = null
     }
 
@@ -221,7 +225,7 @@ internal class EncounterEditor(
 @Composable
 internal fun EncounterEditorDialog(editor: EncounterEditor) {
     val edit = editor.edit ?: return
-    val enabled = editor.panel?.token == edit.token && editor.canEdit(edit)
+    val enabled = editor.canEdit(edit)
     if (edit.discardRequested) {
         AlertDialog(onDismissRequest = { editor.keep(edit) }, title = { Text("Entwurf verwerfen?") },
             text = { Text("Ungespeicherte Änderungen gehen verloren.") },
@@ -284,6 +288,7 @@ internal fun EncounterRow(row: Encounter, enabled: Boolean, onEdit: () -> Unit, 
         Text(displayTime(v.occurredAt, ZoneId.systemDefault()), style = MaterialTheme.typography.titleMedium)
         Text("Dauer: ${v.durationMinutes?.let { "$it Min." } ?: "Unbekannt"} · Bezahlt: ${v.totalPriceCents?.let { "${euro(it)} €" } ?: "Unbekannt"}")
         Text("Gesamt: ${v.overallRating?.let { "$it/5" } ?: "Unbekannt"} · Sympathie: ${v.sympathyRating?.let { "$it/5" } ?: "Unbekannt"}")
+        v.listingId?.let { Text("Anzeige #$it", style = MaterialTheme.typography.bodySmall) }
         v.note?.let { Text(it) }
         Row {
             TextButton(enabled = enabled, onClick = onEdit) { Text("Bearbeiten") }
