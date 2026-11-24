@@ -34,6 +34,17 @@ internal data class NoteEditorState(
     )
 
     fun committed(note: String?) = NoteEditorState(draft = NoteDraft.from(note))
+
+    fun canEdit() = draft != null && !loading && !readError
+
+    fun canDiscard(rendered: NoteDraft) =
+        !loading && draft == rendered && rendered.dirty
+
+    fun canKeep(rendered: NoteDraft) =
+        canDiscard(rendered) && !readError && rendered.conflict
+
+    fun canSave(rendered: NoteDraft) =
+        canDiscard(rendered) && !readError && !rendered.conflict
 }
 
 internal fun Map<Long, NoteEditorState>.updateNote(
@@ -47,9 +58,9 @@ internal fun Map<Long, NoteEditorState>.dirtyOwners(vararg owners: Long): List<L
 internal data class NoteEditorActions(
     val load: suspend (Long, Long) -> Unit,
     val edit: (Long, String) -> Unit,
-    val save: (Long, Long) -> Unit,
-    val useStored: (Long) -> Unit,
-    val keepDraft: (Long) -> Unit,
+    val save: (Long, Long, NoteDraft) -> Unit,
+    val useStored: (Long, NoteDraft) -> Unit,
+    val keepDraft: (Long, NoteDraft) -> Unit,
 )
 
 /** Callbacks carry the rendered owner and context. */
@@ -62,9 +73,9 @@ internal fun NoteEditorActions.boundTo(
     return NoteEditorActions(
         load = { listing, owner -> if (admitted(owner, listing)) load(listing, owner) },
         edit = { owner, value -> if (admitted(owner)) edit(owner, value) },
-        save = { listing, owner -> if (admitted(owner, listing)) save(listing, owner) },
-        useStored = { owner -> if (admitted(owner)) useStored(owner) },
-        keepDraft = { owner -> if (admitted(owner)) keepDraft(owner) },
+        save = { listing, owner, draft -> if (admitted(owner, listing)) save(listing, owner, draft) },
+        useStored = { owner, draft -> if (admitted(owner)) useStored(owner, draft) },
+        keepDraft = { owner, draft -> if (admitted(owner)) keepDraft(owner, draft) },
     )
 }
 
