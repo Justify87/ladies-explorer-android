@@ -4,7 +4,155 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M08.0–M08.6 wurden gesondert beauftragt und zum Abschluss einschließlich Merge freigegeben. Keine weitere abhängige Entwicklungsaufgabe vorgesehen. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. Nächste abhängige Aufgabe: M09.1 nach gesonderter Nutzerfreigabe; keine Umsetzung bereits begonnen. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+
+## Geplante Meilensteine
+
+### M09 — Praxiskonsolidierung nach G08
+
+**Freigabe:** Nutzerfeedback vom 24.11.2026 nach praktischer App-Nutzung; Aufnahme aller Anforderungen in das Register beauftragt. Umsetzung und Merge der einzelnen Aufgaben sind gesondert freizugeben. M00–M08/G08 bleiben DONE; L01 bleibt unabhängig.
+
+**Ziel:** Entdecken, Profile, Suche, Einstellungen und Karte auf den tatsächlichen Nutzungsablauf ausrichten: Medienfläche und Informationsdichte erhöhen, relevante Informationen unmittelbar zeigen, sekundäre Informationen progressiv offenlegen, technische Bedienlast entfernen und die drei Entdecken-Modi auf einem gemeinsamen Ergebnis- und Navigationsvertrag konsolidieren.
+
+**Umfang und Vertragsänderungen:** Die folgenden Aufgaben präzisieren ausdrücklich neue Nutzerentscheidungen gegenüber G08. Bei ihrer Umsetzung die jeweils betroffenen Aussagen in [PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md) und [DESIGN](DESIGN.md) im selben PR konsistent mit dem resultierenden Code ersetzen; insbesondere DB-weite Karte im Entdecken-Tab, manuelle Standortauflösung, Seitenlimit, Grid-Herz-Aktion, Hero-Overlay, Profilhierarchie und Filterstatus-UI. Unbetroffene Fach-, Datenintegritäts-, Owner-/CAS-, Lifecycle-, Sicherheits- und Diagnoseverträge bleiben gültig. Keine Änderung des Referenzprototyps ohne ausdrücklichen Auftrag. Dark und Light, zugängliche nicht überlappende 48-dp-Interaktionsflächen (sichtbare Elemente dürfen kleiner sein), adaptive Layouts und vorhandene gemeinsame Komponenten erhalten. KISS/YAGNI; keine neuen Parallelpfade, keine Wiedereröffnung abgeschlossener Meilensteine. Abhängigkeiten unten bezeichnen integrierten Stand; Aufgaben seriell nach [AGENTS](../AGENTS.md#arbeitszyklus) ausführen.
+
+#### M09.1 — Entdecken: gemeinsame Ergebnismenge und Profilnavigation
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** G08; gesonderter Nutzerauftrag.
+
+- Swipe, Grid und Karte als drei Visualisierungen desselben ausgeführten Suchergebnisses einschließlich gemeinsamer Filter, stabiler Listing-/Personenidentität, Präferenz und Favorit führen. Lokalen Startbestand weiterhin vom ausgeführten Run trennen; keine neue Quellsuche bei Moduswechsel. Kartenprojektion auf die gemeinsame Mitgliedschaft umstellen; nur geografisch zuordenbare Ergebnisse erhalten Marker, nicht eine zweite fachliche Ergebnismenge. Bestehende getrennte DB-weite Kartenprojektion und etwaige Profil-/State-/ViewModel-Doppelungen ursächlich prüfen und abgelöste Pfade bereinigen.
+- Tap auf Grid-Kachel oder Öffnen eines Kartenprofils wechselt in die reguläre Swipe-Ansicht mit genau diesem Listing als Startprofil im gemeinsamen Run/Deck; keine Standalone-Sonderroute für diese Einstiege. Anschließend normale Links-/Rechtsentscheidung, Galerie, Profilscroll, Rail und Undo mit derselben Implementierung und gültigem Owner. Standalone-Kontexte außerhalb Entdecken erhalten.
+- Android-Back kehrt auch nach mehreren Swipes/Entscheidungen zum tatsächlichen Ursprung (Grid oder Karte) zurück. Grid-Scrollanker einschließlich Offset, Kartenausschnitt, Zoom, Ausrichtung, Auswahl, Filter und Run erhalten. Durch Entscheidungen wegfallende Elemente kontrolliert berücksichtigen; bei gültigem Anker keine sichtbare Rücksetzung, kein unnötiges Neuladen, keine veralteten Callbacks.
+- **Prüfung:** JVM-/native Navigations- und State-Regressionen für Grid/Map → ausgewähltes Profil → mehrere Entscheidungen/Undo → Back, identische Mitgliedschaft, Moduswechsel ohne Quell-I/O, Ownerwechsel, Lifecycle, ungültiger Anker und Fehler; Map-Rendering/Standortdetails in M09.11.
+
+#### M09.2 — Entdecken: Header und bildbetonter Swipe-Hero
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.1; gesonderter Nutzerauftrag.
+
+- Veraltetes Drei-Punkte-Menü oben rechts vollständig entfernen; exklusive Menüpfade, Einträge und Tests bereinigen, weiterhin benötigte Funktionen zugänglich halten.
+- Favorit aus dem Header entfernen und als kleines halbtransparentes, kontrastgesichertes Overlay oben rechts im Swipe-Profilbild anzeigen; aktiven/inaktiven Zustand unterscheidbar halten, Favorit unabhängig von Präferenz, Galerie-Taps/Video/Swipe nicht beeinträchtigen.
+- Schnellwahl „Alle/Heute“ einschließlich vorhandener Optionen an die ehemalige Favoritenposition im Header verschieben; bisherige eigene Menüzeile entfernen, Schnellwahlsemantik erhalten.
+- Statistikzeile Ort/Entfernung/Ergebnisanzahl vollständig entfernen. Abstand zwischen Entdecken-Titel und Swipe/Grid/Karte auf erforderliches Minimum reduzieren; sichtbare Modussegmente kompakter in der Höhe gestalten. Freien Platz insbesondere dem größeren Hero geben, Bildproportionen berücksichtigen und unnötigen Beschnitt vermeiden.
+- Unteres Hero-Textoverlay einschließlich Hintergrund/Scrim vollständig entfernen: kein Anzeigentitel, Name, Alter, Ort, zuletzt bekannt/aktiv, neutral, Favorit-/Videohinweis oder sonstige Zusatzinformation im Bild. Separates Favoriten-Overlay und erforderliche Medien-/Fehleraktionen erhalten; tatsächliche Profilinformationen im Detailfluss gemäß M09.4.
+- **Prüfung:** native Layout-/Gestenprobes für alle Modi, Hero-Fläche, Touchziele, Kontrast, Galerie/Video, kurze Höhen, Font Scale und Dark/Light; bestehende Such-/Favorit-/Entscheidungsverträge.
+
+#### M09.3 — Entdecken-Grid: kompakte Karten und horizontale Entscheidungen
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.2; gesonderter Nutzerauftrag.
+
+- Anzeigentitel, Ort, bisherigen unteren Informationscontainer und großen Herz-Aktionsbutton der Entdecken-Kacheln entfernen. Nur belegtes Alter dezent im Profilbild sowie kleines Herz als dreistufige Statusanzeige: gefüllt = LIKE, grau/ungefüllt = NONE, durchgestrichen = DISLIKE. Keine Altersschätzung; Kontrast und zugängliche Zustandsbeschreibung, Bildfläche priorisieren. Statusanzeige kein zusätzlicher großer Bewertungsbutton.
+- Rechtswischen auf einer Kachel = Like, Linkswischen = Dislike. Dezentes Bewegungs-/Entscheidungsfeedback konsistent mit Swipe; Gestenschwelle nach vorhandenem Gestenvertrag. Vertikales Scrollen, Tap zur Profilöffnung, Kindinteraktionen und zugängliche nicht-gestische Entscheidungsmöglichkeit bleiben zuverlässig.
+- Bestehende atomare erwartungsgeprüfte Präferenzoperationen und Undo soweit fachlich gültig wiederverwenden; keine parallele Bewertungslogik, keine fiktiven Deck-Visits. Erst Commit bestätigt Entscheidung; bei Fehler unveränderter bzw. wiederhergestellter Zustand. Grid/Swipe/Map/Profile synchron; Sichtbarkeit durch gemeinsame Regeln gemäß M09.9 statt widersprüchlicher exklusiver Grid-Hide-Sonderlogik.
+- **Prüfung:** native Gesten-/Scroll-/Tap-Arbitration, drei Zustände, Like/Dislike/Undo, Fehlermutation, veralteter Owner/Run, konsistente Projektion und Rückkehranker.
+
+#### M09.4 — Profil: Informationshierarchie, Ortskorrektheit und Kontakte
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.2; gesonderter Nutzerauftrag.
+
+- „Zum Profil scrollen“, Tags „Archivierte Daten“, „Person neu erkannt“, „Video“ und redundante Status-/Metadaten-Pills entfernen, Leerflächen auflösen. Technische Evidenz intern erhalten; relevante echte Fehler, Konflikte und Ownerwarnungen weiterhin erkennbar halten.
+- Falsche Ortsanzeige „Offenbach am Main“ ursächlich untersuchen: Platzhalter, Quellparse, Snapshot-/Owner-Zuordnung, veraltete oder falsch priorisierte Daten prüfen und an der verursachenden Schicht korrigieren. Keine erfundenen Orte, kein bloßes Hardcoding auf Leipzig; belegte Orte im Detailkontext korrekt zeigen. Bei nicht reproduzierbarem Befund Belege und verbleibende Unsicherheit dokumentieren.
+- „Übersicht“ durch tatsächlichen Anzeigentitel ersetzen, vergleichbare Schriftgröße und dezente Theme-Farbbetonung. Keine doppelte Namensüberschrift; belegtes Alter/Ort und weitere tatsächlich vorhandene Fachinformationen außerhalb des Hero zugänglich halten.
+- Telefon und WhatsApp unmittelbar unter den Profilbildern prominent und farblich klar unterscheidbar platzieren, gültige Daten und explizite Nutzerhandlung voraussetzen, bestehende Kontaktfunktion und Originalprofilzugriff erhalten. Filterübereinstimmung danach im oberen Detailbereich gemäß M09.6.
+- **Prüfung:** synthetische Orts-/Owner-/Snapshot-Regressionen, fehlende Werte, gemeinsame Swipe-/Standalone-Projektion, Kontaktposition und Intent-Admission, Layout und Kontrast.
+
+#### M09.5 — Gemeinsame progressive Abschnitte und Profilinhalte
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.4; gesonderter Nutzerauftrag.
+
+- Einheitliches natives Ein-/Ausklappmuster für Profile und Suche schaffen bzw. vorhandenes konsolidieren: abgerundeter Hintergrund, kompakte Überschrift und Indikator, konsistente Abstände; alle Inhalte, Texte, Metadaten, Buttons und Editoren visuell innerhalb ihres zugehörigen Containers. Keine frei zwischen Abschnitten hängenden Inhalte, keine redundanten Controls. Scrollanker beim Öffnen/Schließen erhalten, keine Mutation durch Öffnen.
+- „Über das Profil“ als abgerundeten Abschnitt standardmäßig vollständig eingeklappt ohne Textvorschau; „Mehr anzeigen“ öffnet Originaltext vollständig, anschließend einklappbar. Öffnungszeiten, Merkmale und vollständige Dienste ebenfalls ein-/ausklappbar und zunächst geschlossen. Bestehende Analyse-, Notiz-, Begegnungs-, Preislisten-, Verlaufs-/Historienabschnitte einschließlich „Anzeige entdeckt“, verknüpfter Anzeigen und ihrer Aktionen konsistent gestalten; Filterübereinstimmung als bewusst sichtbare Ausnahme in M09.6.
+- Dienste fachlich anhand der tatsächlichen Quellstruktur, Parser-/Projektion und Gruppenzuordnung analysieren; Ursache mehrfacher „Service“-Überschriften beheben, zusammengehörige Werte verständlich gruppieren, Typografie und Hierarchie für schnelle Erfassung verbessern. Relevante belegte Angaben und Unsicherheiten nicht verlieren, keine erfundenen Gruppen.
+- Redundante leere Zustände und Hinweistexte insbesondere bei manuellen Angebotspreisen entfernen: „Keine Aussage über aktuelle Gültigkeit“, „Zuletzt bekannter bezahlter Gesamtbetrag unbekannt“, „Keine Preislisten gespeichert“ nicht pauschal anzeigen. Fehlende optionale Werte/Abschnitte ohne Erklärtext weglassen; vorhandene historische Beträge, Listen, Editiermöglichkeiten und bei konkreten Daten notwendige Aktualitäts-/Herkunftshinweise erhalten. Tatsächliche Fehler und Konflikte nicht verstecken.
+- **Prüfung:** gemeinsame native Abschnittsprobes, geschlossen/geöffnet, Text- und Aktionszuordnung, Anker, Quellgruppen-/Leerzustandsregressionen; bestehende lokale CRUD-, Owner-/CAS-, Entwurfs-, Read-/Merge-/Lifecycle-Verträge.
+
+#### M09.6 — Profil: relevante Filterübereinstimmung
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.5; gesonderter Nutzerauftrag.
+
+- Bisherige „Filterbelege“ fachlich und visuell revidieren; verständliche Bezeichnung (z. B. „Übereinstimmung mit deiner Suche“). Oben im Profil nach Galerie/Kontakten, vor sekundären Detailabschnitten, unmittelbar sichtbar und standardmäßig offen; keine redundante zweite Liste weiter unten. Vollständige Dienste und Merkmale bleiben darunter geschlossen zugänglich.
+- Nur tatsächlich wirksame Filter des zum Profil gehörenden ausgeführten Runs bzw. gültigen Suchkontexts (nicht ungespeicherter Entwurf) auswerten. Relevante Eigenschaften, Dienste, Alters-/Größenbereiche, Entfernung und sonstige gewählte Kriterien zusammenführen und konkrete belegte passende Werte hervorheben. Bestehende Filterlogik und Quellbelege verwenden; Ja/Nein/Unbekannt unterscheidbar, Unbekannt nicht als Treffer behandeln.
+- Grad der Übereinstimmung schnell erfassbar machen, nur anhand fachlich korrekter Filtersemantik (einschließlich Alternativen innerhalb einer Gruppe); keine künstliche gewichtete Bewertung oder Scheingenauigkeit. Bei fehlendem gültigen Filterkontext keinen erfundenen Match anzeigen.
+- **Prüfung:** Rust-/JVM-Regressionen für kombinierte Filter, Alternativen, fehlende/negative Evidenz, Run-/Ownerwechsel und lokale Sichtbarkeit; native Darstellung des kompakten Match-Abschnitts.
+
+#### M09.7 — Suche: kompakter Editor, Filtertext und Abschnittszustand
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.5; gesonderter Nutzerauftrag.
+
+- Gesamten Filtereditor vertikal verdichten: sichtbare Höhe und Innenabstände von Umkreis- und Verfügbarkeitsauswahl, Rubriken, Treffpunkten, Eigenschaften/Figurtyp/Brustgröße und allen weiteren Filterelementen reduzieren, kleinere lesbare Typografie, kompaktes Ortseingabefeld; Touchziele, adaptive Breiten und IME erhalten.
+- Oberen sichtbaren Statusblock „Filterentwurf“, „Letzter Suchlauf“ usw. entfernen. Fachliche Trennung Draft/Preview/Run, Zugriff auf letzten gültigen Lauf, Top 5, Fehler/Teilresultat, gespeicherte Suchen und Zustandsverwaltung erhalten.
+- Treffpunkte, Rubriken, Eigenschaften und weitere geeignete Gruppen mit demselben Abschnittsmuster wie im Profil (M09.5) darstellen. „Alle Rubriken“, „Weniger anzeigen“ und redundante Gruppenschalter durch einheitliche Ausklappmechanik ersetzen. Auf-/Zuklappzustände beim Verlassen und Wiederöffnen des Suche-Tabs erhalten; keine unnötige globale Persistenzpflicht.
+- Filtertext dynamisch auf sämtliche passenden Filterelemente und ihre übergeordneten Gruppen einschränken; nicht passende Gruppen und Einzeloptionen vollständig ausblenden, passende Gruppen temporär öffnen. Fachliche Auswahl auch bei ausgeblendeter Option unverändert halten. Beim Löschen des Texts vorherigen normalen Abschnittszustand wiederherstellen.
+- **Prüfung:** JVM-Suche nach Gruppen-/Wertbezeichnungen, Teiltreffer, keine Treffer, Auswahlerhalt und Wiederherstellung; native Dichte-/Touch-/Font-/IME-Probes; gemeinsamer Editor und gespeicherte Definitionen ohne unbeauftragte Änderung.
+
+#### M09.8 — Suche: Aktionsleiste und automatische Pagination
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.7; gesonderter Nutzerauftrag.
+
+- Schwebende Suchaktionsleiste kompakter neu gestalten; Trefferanzahl in Suchbutton integrieren und Quellvorschau, lokalen/letzten Ergebniscount und unbekannten Wert fachlich korrekt unterscheiden. „Lokale Filter werden nach der Suche angewendet“ und „Der letzte Suchlauf bleibt bis zur neuen Suche erhalten“ entfernen. Reset erhalten; „Aktuelle Suche als Standard speichern“ ergänzen, explizit aktuellen gültigen Entwurf einschließlich Filter dauerhaft als Ausgangskonfiguration speichern. Keine implizite Suche, SavedSearch-Änderung oder Quittierung; Reset-/Startverhalten und Speichern prüfen.
+- Manuelles Seitenlimit aus der normalen Suche und aus nutzerseitig gespeicherten Suchdefinitionen entfernen (auch nicht in erweiterte Einstellungen verschieben). Historischer Befund: in M03 als vorsorgliche Obergrenze eingeführt ([PR #4](https://github.com/Justify87/ladies-explorer-android/pull/4)); kein belegter Endlos-Paginationsfehler in der untersuchten Android-Historie, vorherige Web-App orientierte sich an Quellseitenzahl.
+- Reguläre Suche lädt automatisch alle nachweislich verfügbaren Ergebnisse innerhalb des gewählten Radius. Quell-Pagination, Radiusübergang/Radiusbestätigung, Deduplizierung, Request-Pausen, Cancel/Drain, HTTP-/Parserfehler und Partial-/Vollständigkeitssemantik erhalten. Fehlende/fehlerhafte Seitenzahlen, wiederholte Seiten und unkontrollierte Anfragen absichern; erforderliche interne Sicherheitsobergrenze evidenzbasiert statt willkürlicher Nutzergrenze. Einseitige nicht persistierende Vorschau bewusst erhalten.
+- Such-/FFI-/Persistenz-/SavedSearch-Verträge und Altdefinitionen kompatibel bereinigen, vorhandene Android-Daten erhalten; veraltete Limits dürfen die neue reguläre Suche nicht unbemerkt abschneiden. Unvollständige Resultate nie als vollständig ausgeben.
+- **Prüfung:** Rust-Transportfixtures für mehrere/mehr als zehn Seiten, Radiusgrenze, unplausible/fehlende Metadaten, wiederholte Seiten, Teilresultat/Cancel, Vorschau; JVM-/Persistenzregressionen für Standard, Reset, Altdefinition, Suchbutton und korrekte Counts.
+
+#### M09.9 — Einstellungen: Hierarchie und globale Ergebnissichtbarkeit
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.3, M09.8; gesonderter Nutzerauftrag.
+
+- Einstellungs-Tab aus Nutzersicht neu strukturieren: kompakte Hauptseite mit wenigen tatsächlichen fachlichen Gruppen, echte navigierbare Untermenüs mit konsistentem Back; keine erfundenen Einstellungsoptionen. Logging, HTTP-Aufzeichnung, Diagnose, technische Status-/Exportfunktionen in eigenes Untermenü „Diagnose und Fehlerbehebung“ auslagern. Gewöhnliche Einstellungen leicht erreichbar; DB-/Core-Status, Replay-Likes, Diagnose-/Capture-/Exportverträge unverändert verfügbar. Keine automatische Aufzeichnung oder Weitergabe.
+- Unter Suche zwei unabhängige dauerhaft gespeicherte Optionen „Likes ausblenden“ und „Dislikes ausblenden“ ergänzen. Global wirksam auf vorhandene und künftige Suchergebnisse in Swipe/Grid/Map, ohne neuen Quelllauf; beide aktiv = nur unbewertete Ergebnisse. Keine Löschung oder Präferenzänderung; gespeicherte Personen-/Favoritenansichten nicht ausblenden.
+- Bestehende lokale Sichtbarkeitsregeln, gespeicherte Suchdefinitionen, Replay-Likes und globale Optionen ohne redundante Implementierung konsolidieren. Globale Ausblendung als zusätzliche wirksame Sichtbarkeitsbedingung behandeln; keine konkurrierenden Ausblendungspfade. Standardwerte und kompatible Übernahme vorhandener Einstellungen begründet festlegen, nicht still Nutzerdaten umdeuten.
+- **Prüfung:** alle vier Toggle-Kombinationen, unmittelbare Reprojektion über alle Modi, Neustart, Undo, Replay/Reset, SavedPeople-/SavedSearch-Verträge, Fehler/Lifecycle; native Untermenü-/Back-/Layoutprobes und Diagnose-Schutzregressionen.
+
+#### M09.10 — Karte: Standortdaten und automatische Aufbereitung
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.1; gesonderter Nutzerauftrag.
+
+- Lang laufenden, fehlschlagenden bisherigen „Standort auflösen“-Vorgang ursächlich untersuchen (Quelle, Cache, Provider, Fehler/Timeout, Lease und Persistenz); Befund belegen, nicht lediglich UI entfernen.
+- Standortinformationen bei regulärer Datenerfassung vorgelagert und einheitlich der jeweiligen Anzeige/ihrem belegten Standort in SQLite zuordnen. Vorhandene Koordinaten, Herkunft und Genauigkeit wiederverwenden; bestehende Datensätze bedarfsgesteuert automatisch nachpflegen, migrationssicher ohne Datenverlust. Kein erneutes Auflösen bereits gültiger Standorte, keine Kartenoberfläche als Beschaffungspflicht.
+- Abstufung nach bestverfügbarer belegter Genauigkeit: verlässlich bekannte konkrete Position/zulässig vorhandene Adresse, ansonsten PLZ-/Stadtteilbereich, ansonsten Stadt. Annäherungen und Genauigkeit persistieren und visuell von konkreter Position unterscheiden; keine erfundenen Adressen/Ersatzkoordinaten oder Präzision bei unbekanntem Ort. Ohne verlässlichen Ort kein Marker.
+- Manuelle Auflösung durch automatische, begrenzte, abbrechbare und nicht blockierende Aufbereitung ersetzen. Rust-Core als zuständige Schicht, bestehende Cache-/Negativcache-, Provider-Pausen-, Lease-/Cancel-, Fehler-/Offline-Verträge bewahren bzw. zielgerichtet anpassen. Providerbedingungen und Eignung für automatische Auflösung prüfen; kein unkontrolliertes Bulk-Geocoding. Keine privaten oder versteckten Adressen bzw. Profilinformationen an externe Geocoder, kein GPS, Routing oder versteckter Standort. Konkrete Position nur bei zulässiger, tatsächlich belegter Datengrundlage; falls dafür eine Änderung einer verbindlichen Datenschutz-/Providergrenze erforderlich wäre, diese nicht eigenmächtig vornehmen, stattdessen zulässige grobe Stufe verwenden und Blocker benennen.
+- **Prüfung:** synthetische Rust-/SQLite-Fixtures für Genauigkeit, Cache-Hit, Backfill, Quellen-/Owneränderung, Migration, Provider-/Transportfehler, Cancel/Lease/Rate-Limit und Offline; keine realen Profil-/Adressdaten in Tests, keine neuen Providerzugriffe ohne belegte Eignung.
+
+#### M09.11 — Karte: reaktive Darstellung, Cluster und maximale Fläche
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.1, M09.9, M09.10; gesonderter Nutzerauftrag.
+
+- Ursache der leeren Karte über SQLite → Rust → UniFFI/Kotlin → GeoJSON/MapLibre-Style/Source/Layer untersuchen und beheben. Karte beim Eintritt automatisch mit geografisch zuordenbaren Profilen des gemeinsamen Suchergebnisses befüllen; kein manueller Reload, kein erneuter Quelllauf. Neue Runs, Standortauflösung, Daten-/Bewertungsänderungen und globale Filter reaktiv übernehmen; lokale Daten und Fehler-/Offline-Fallback bleiben zugänglich.
+- Cluster in niedrigen Zoomstufen sichtbar, beim Hineinzoomen schrittweise in kleinere Cluster und einzelne Marker auflösen; gleiche Koordinaten mit mehreren Profilen zugänglich auswählen. Genauigkeitsstufen sichtbar unterscheidbar ohne fiktive Präzision. Auswahl öffnet reguläres Swipe-Profil gemäß M09.1; Back erhält Kamera, Zoom, Ausrichtung und Auswahl.
+- „Standort auflösen“, „Aktualisieren“, Postleitzahlzentren-/Adress-Erläuterung, Statistik (z. B. 214 von 218, vier ohne Position) und „Ungefähre Ortslagen unabhängig von der Suche“ entfernen. Überflüssige Container/Abstände beseitigen; Karte maximal zwischen gemeinsamem Modusumschalter und unterer Root-Navigation ausdehnen. MapLibre-Logo unten links entfernen, soweit technisch und lizenzrechtlich zulässig; erforderliche Attribution/Quellenangaben erhalten.
+- **Prüfung:** JVM-/native synthetische Cluster-/Marker-/Gleichort-/Style-/Lifecycle-Probes, aktualisierte Mitgliedschaft und Standortgenauigkeit, Back/Kamera, Filter/Undo, Offline-/Fehlerfall, sichtbare Fläche und Attribution; tatsächliche Provider-/Geräteausführung nur bei belegtem Test behaupten.
+
+#### M09.12 / G09 — Gesamtintegration und Abschluss
+
+**Status:** PLANNED.
+
+**Abhängigkeit:** M09.1–M09.11 integriert; gesonderter Nutzerauftrag.
+
+- Alle Kriterien M09.1–M09.11 auf integriertem Stand abgleichen; insbesondere gemeinsamer Run → Grid/Map → Swipe → Back, persistente globale Sichtbarkeit, Standard/Reset/Preview/Pagination, Filterübereinstimmung, Ortsdaten → automatische Karte → Cluster, gemeinsame progressive Abschnitte, Kontakte und Diagnose-Untermenü.
+- Betroffene Aufrufer, States, FFI, Persistenz, Tests und Dokumentation auf Abweichungen, Altpfade, unnötige Abstraktionen und widersprüchliche Verträge prüfen. Belegte In-Scope-Befunde ursächlich beheben; keine unabhängigen Erweiterungen. Dark/Light, kleine/kurze Fenster, Font Scale, Touch-/Fokus, Fehler/Cancel/Lifecycle und Datenintegrität risikogerecht prüfen.
+- Vollständiges vorgesehenes CI-Gate und konkrete PR-/CI-/Commit-Belege; Geräteprüfungen nach [Merge-Regel](#pflege). Kein tatsächlicher Gerätetest, reale Quellen-/Providerverfügbarkeit oder gemessene Verbesserung ohne Beleg behaupten. Abschluss und Entwicklungsstand anhand der integrierten Kriterien aktualisieren.
 
 ## Unabhängige Aufgaben
 
