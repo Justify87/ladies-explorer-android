@@ -149,10 +149,14 @@ internal open class ProfileRecordEditor<R, V, D, S>(
 
     fun committed(writing: ProfileRecordEdit<R, D>) {
         if (edit !== writing) return
-        committedOwner = writing.token.ownerId
-        panel = null
-        readRevision++
+        invalidateAfterCommit(writing.token.ownerId)
         edit = null
+    }
+
+    fun invalidateAfterCommit(ownerId: Long) {
+        committedOwner = ownerId
+        if (panel?.token?.ownerId == ownerId) panel = null
+        readRevision++
     }
 
     fun failed(writing: ProfileRecordEdit<R, D>, message: String) {

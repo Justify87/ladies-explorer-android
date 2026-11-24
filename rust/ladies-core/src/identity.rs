@@ -873,11 +873,78 @@ mod tests {
             .unwrap();
             refresh(&db, listing).unwrap();
         }
+        let saved_search = core
+            .save_search_definition(
+                "Fixture search".into(),
+                crate::SearchRequest::for_test(),
+                crate::LocalVisibility::default(),
+            )
+            .unwrap();
+        {
+            let db = core.connection().unwrap();
+            db.execute("INSERT INTO search_runs (search_run_id) VALUES (1)", [])
+                .unwrap();
+            db.execute(
+                "INSERT INTO search_results (search_run_id,listing_id,position,name)
+                 VALUES (1,?1,1,'From'),(1,?2,2,'To')",
+                params![listing, target_listing],
+            )
+            .unwrap();
+            db.execute(
+                "INSERT INTO saved_search_results
+                 (saved_search_id,result_key,snapshot_json,position,present,visible)
+                 VALUES (?1,'1','{}',1,1,1),(?1,'2','{}',2,1,1)",
+                [&saved_search],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE saved_searches SET unread_new_results=1 WHERE saved_search_id=?1",
+                [&saved_search],
+            )
+            .unwrap();
+        }
+        let before = core.saved_search_window(saved_search.clone(), 10).unwrap();
+        assert_eq!(before.cards[0].person_id, Some(source));
+        assert_eq!(before.cards[1].person_id, Some(target));
+        assert_eq!(core.map_overview(false).unwrap().total_profiles, 2);
         assert_eq!(crate::identity::list(&core, listing).unwrap().len(), 1);
         let expected_snapshot = snapshot_id(&core, listing);
         core.confirm_identity_match(listing, source, expected_snapshot, target)
             .unwrap();
         assert_eq!(core.status().unwrap().person_count, 1);
+        let projection = core.profile_projection(listing).unwrap().unwrap();
+        assert_eq!(projection.identity.person_id, target);
+        assert_eq!(projection.person.person_id, target);
+        assert!(projection.person.favorite);
+        let active = core
+            .active_search_cards(1, crate::LocalVisibility::default())
+            .unwrap();
+        assert_eq!(
+            active
+                .iter()
+                .map(|card| card.listing_id)
+                .collect::<Vec<_>>(),
+            vec![listing, target_listing]
+        );
+        assert!(
+            active
+                .iter()
+                .all(|card| card.person_id == target && card.favorite)
+        );
+        let after = core.saved_search_window(saved_search, 10).unwrap();
+        assert_eq!(after.cards.len(), 2);
+        assert_eq!(after.cards[0].listing_id, Some(listing));
+        assert_eq!(after.cards[1].listing_id, Some(target_listing));
+        assert!(
+            after
+                .cards
+                .iter()
+                .all(|card| card.person_id == Some(target))
+        );
+        assert!(after.searches[0].unread_new_results);
+        assert_ne!(before.searches[0].revision, after.searches[0].revision);
+        assert_eq!(core.map_overview(false).unwrap().total_profiles, 1);
+        assert_eq!(core.map_overview(true).unwrap().total_profiles, 1);
         assert!(core.get_person(target).unwrap().unwrap().favorite);
         let saved = core
             .saved_people_window(

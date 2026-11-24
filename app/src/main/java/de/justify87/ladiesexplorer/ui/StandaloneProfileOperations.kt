@@ -426,10 +426,12 @@ internal class StandaloneProfileOperations<C : Any>(
                     }
                     _profileNotes.update { it - sourceOwner - targetPersonId }
                     projections.mergeCommitted(token, targetPersonId)
-                    if (detailCurrent() && requestedPersonId == sourceOwner) {
-                        // Only a committed, user-confirmed merge may rebind this detail session.
+                    if (detailRequest != null && _searchUiState.value.profileOpen &&
+                        requestedListingId == listingId && requestedPersonId == sourceOwner) {
+                        // ON_STOP revokes delivery, but the open listing survives the confirmed merge.
+                        // Back clears the request; a new open is excluded by the shared write guard.
                         requestedPersonId = targetPersonId
-                        revokeDetail(detailRequest!!, listingId)
+                        revokeDetail(_searchUiState.value.profileSessionId, listingId)
                     }
                 }
                 coroutineContext.ensureActive()

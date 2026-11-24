@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M06 / G06 abgeschlossen. Nächster vorgesehener Entwicklungsschritt: [M07.1](#m071--gezielte-gesamtintegration), erst nach gesondertem Implementierungsauftrag beginnen; L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
+M06 / G06 und M07.1 abgeschlossen. Nächster vorgesehener Entwicklungsschritt: [M07.3](#m073--nutzungsreife-und-abschluss-g07); L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
 
 ## Geplante Meilensteine
 
@@ -14,23 +14,9 @@ M06 / G06 abgeschlossen. Nächster vorgesehener Entwicklungsschritt: [M07.1](#m0
 
 **Abgrenzung (Nutzerentscheidung 24.11.2026):** Keine pauschale Code-/Architektur-/UI-Überarbeitung, neue Features, zusätzliche Diagnoseexporte, Nutzer-Backup/Restore/Migration, Wiederaufnahme gestrichener M06-Funktionen oder Web-App-Parität. M07.2 entfällt ersatzlos: TXT-/HAR-Speichern und -Teilen bereits vorhanden, zusätzlicher Bedarf nicht belegt. Nicht in andere Meilensteine verschieben. Keine neuen Frameworks, permanenten CI-Jobs, allgemeinen Aufrufgraphen oder Benchmarkprogramme ohne belegten Bedarf und gesonderten Auftrag.
 
-#### M07.1 — Gezielte Gesamtintegration
-
-**Status:** PLANNED · **Abhängigkeit:** G06 abgeschlossen.
-
-**Umfang:** Auf dem dann integrierten Code- und Teststand vier funktionsübergreifende Ketten anhand produktiver Aufrufer, vorhandener Regressionen und konkreter Befunde prüfen; G06 nicht duplizieren:
-- Suche → Swipe/Grid → gemeinsames Profil → bestätigte Entscheidung: aktive/lokale Ergebnismengen, Undo und Rückkehr konsistent.
-- Swipe-/Standalone-Profil → Begegnung/Preis → Rust/SQLite → erneutes lokales Lesen: persönliche Daten, Quellenhistorie, Notiz, Favorit und Präferenz getrennt.
-- Expliziter Identitäts-Merge → Erhalt aller zugehörigen Daten einschließlich Begegnungs-/Preispositionen → konsistente betroffene Profil-, Such-, SavedPeople-, SavedSearch- und Kartenprojektionen.
-- Mutation → Navigation/Back/Lifecycle → Offline/Wiederöffnung: Stale-Owner-/Entwurfs-/Cancel-/Drain-Verträge und Commit/Readfehler-Trennung erhalten. Medien-, Karten- und Diagnoseverträge nur an betroffenen Übergängen prüfen.
-
-**Akzeptanz:** Geprüfte Ketten erfüllen PRODUCT, ARCHITECTURE und DESIGN. Nachgewiesene abnahmerelevante Fehler im bestätigten Scope sind behoben und gezielt regressionsgesichert; keine parallele Implementierungsroute oder unnötige Testdopplung. Begründete Nichtänderung zulässig.
-
-**Prüfung und Abschluss:** Tatsächliche Aufrufer und Tests nach G06 sind maßgeblich; bestehende Rust-, JVM-, Android-Integrations- und Architekturregressionen nutzen. Orientierung: SearchRun, SwipeDeck/SwipeProfileWindow, ProfileProjection, StandaloneProfileOperations, SavedPeople/SavedSearch und native Merge-Regressionen. Vollständiges CI-Gate (Rust-/JVM-Tests, native DB-Regression, Clippy, Android-Build/Lint, Quell-/APK-Architekturprüfungen und Instrumentierungs-APK) für identischen relevanten Code-/Buildstand belegen oder regulär ausführen; reiner Docs-Gate reicht nicht. Geräteprüfungen gemäß [Merge-Regel](#pflege); PR/Commit/CI und Befunde verlinken. Abschluss mit Merge.
-
 #### M07.3 — Nutzungsreife und Abschluss (G07)
 
-**Status:** PLANNED · **Abhängigkeit:** M07.1 abgeschlossen.
+**Status:** READY · **Abhängigkeit:** M07.1 abgeschlossen.
 
 **Umfang und Akzeptanz:**
 - Bestätigten Produktumfang am integrierten Stand prüfen; konkrete Fehler nach Auswirkung bewerten, abnahmeverhindernde Befunde beheben, andere nachvollziehbar dokumentieren. Keine neue Featurearbeit.
@@ -67,6 +53,7 @@ Alle Einträge dieses Abschnitts sind DONE; Geräteprüfungen gemäß Merge-Rege
 | M06.1b | Optionaler Grundpreis und persönliche Leistungszeilen im gemeinsamen Begegnungseditor; atomare CRUD, vollständiger Editor-CAS, Rollback, Cascade und Merge-Erhalt; unbekannte Beträge getrennt vom Gesamtpreis; Rust-/JVM-Regressionen und Instrumentierungs-APK validiert | [#88](https://github.com/Justify87/ladies-explorer-android/pull/88), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45450763583), [geprüfter Commit](https://github.com/Justify87/ladies-explorer-android/commit/f574ea0cbe0a8d91561059a45fc1b4fbf630407f) |
 | M06.2 | Manuelle personenbezogene EUR-Preislisten mit Datum und Positionen, historische Anzeige, atomare native CRUD mit Owner-/Editor-CAS und Merge-Erhalt, gemeinsamer Editor für beide Profilkontexte, separat abgeleiteter letzter bekannter bezahlter Gesamtbetrag; Rust-/JVM-Regressionen und Instrumentierungs-APK validiert | [#89](https://github.com/Justify87/ladies-explorer-android/pull/89), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45454318406), [Merge](https://github.com/Justify87/ladies-explorer-android/commit/10f850e263e6a64e5995b56aa5a1b191b29bc447) |
 | M06.4 / G06 | Integrations- und Aufruferreview der gemeinsamen lokalen Begegnungs-/Preisfunktionen; gleichdatierte Preislisten nach Erstellungsreihenfolge statt zufälliger ID sortiert, Korrektur und bezahlter Gesamtbetrag regressionsgesichert. Historisch identische Erstellungszeitstempel nur deterministisch per ID auflösbar; M06.3 gemäß Nutzerentscheidung 24.11.2026 ersatzlos entfallen (globale Statistik/Verlauf, Medienbrowser, zusätzliche Karten-/Geocoding-Funktionen; keine Verschiebung nach M07). Vollständiges CI-Gate grün, Geräteprüfung gemäß Merge-Regel. | [#90](https://github.com/Justify87/ladies-explorer-android/pull/90), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45455748491), [geprüfter Commit](https://github.com/Justify87/ladies-explorer-android/commit/96dc1e7ab09323895e2afd928e66664f04ab58b4), [Architektur](ARCHITECTURE.md#gemeinsame-profilarchitektur) |
+| M07.1 | Vier funktionsübergreifende Integrationsketten auf G06 geprüft; Preisübersicht nach Begegnungs-Commit explizit invalidiert, bestätigten Identitäts-Merge über Lifecycle-Stop hinweg konsistent gehalten; gezielte JVM-/native Merge-Regressionen, vollständiges CI-Gate einschließlich Instrumentierungs-APK erfolgreich. Geräteprüfung gemäß Merge-Regel; keine tatsächliche Geräteausführung behauptet. | [#91](https://github.com/Justify87/ladies-explorer-android/pull/91), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45459671704), [geprüfter Commit](https://github.com/Justify87/ladies-explorer-android/commit/d0274466a5836893cef338d7c8d3b857fc474c7c) |
 | DC01 | Obsolete Produktionspfade/UniFFI-Exporte entfernt, Testgrenzen korrigiert | [#49](https://github.com/Justify87/ladies-explorer-android/pull/49) |
 | DC02 | Altimport vor weiterer Featurearbeit entfernt, native synthetische v2-Fixtures; Nutzerentscheidung 20.11.2026: Web-App obsolet, keine Nutzerdatenmigration, native Schemaentwicklung und Android-Nutzerdaten erhalten | [#52](https://github.com/Justify87/ladies-explorer-android/pull/52), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/44828090537), [Produktsoll](PRODUCT.md#produktziel-und-grenzen) |
 
