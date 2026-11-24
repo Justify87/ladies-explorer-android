@@ -176,7 +176,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - `ProfileShell`/`ProfileFlow` teilen Profiloberfläche, erhalten separate Navigations-/Operationskontexte. [DESIGN](DESIGN.md#profile-und-medien) bestimmt sichtbare Inhalte.
 - `ProfileHeroLayout` berechnet adaptives Budget aus gemessenen Constraints, Insets und Leisten. Headeridentität folgt realer Lazy-Geometrie, Decision Rail hat Menü-Fallback; Status/Busy dürfen Viewport nicht unkontrolliert verschieben.
 - `ProfilePanels`, `ProfilePanelReads` in `ProfilePanelState.kt` und `ProfileFlowRows` steuern lokale Reads nach Sichtbarkeit/Bedarf.
-- Facts und PersonDetail werden nur für gültiges Listing/Owner/Snapshot/Filter/Revision wiederverwendet. Analyse, Historie und Vergleich erzeugen **keine** zusätzlichen Quellrequests durch bloße Darstellung; Snapshotvergleich prüft Owner und Listingzuordnung.
+- Facts und PersonDetail werden nur für gültiges Listing/Owner/Snapshot/Filter/Revision wiederverwendet. Expliziter Retry benötigt den aktuellen Profil-Token und die gerenderte Read-Generation. Der Vergleichsdialog schließt nur seine eigene Vergleichsgeneration; internes Cleanup bleibt unabhängig. Analyse, Historie und Vergleich erzeugen **keine** zusätzlichen Quellrequests durch bloße Darstellung; Snapshotvergleich prüft Owner und Listingzuordnung.
 
 **Notiz / Konflikt und Lifecycle:**
 - Notiz-Reads/Retry besitzen einen gemeinsamen projektionsgebundenen Job. Entwürfe und Tickets sind im ViewModel ownergebunden, über Navigation/Rotation, **nicht** Prozessende erhalten.
