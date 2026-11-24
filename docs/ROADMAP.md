@@ -24,7 +24,7 @@ Nächster Schritt: [M06.2](#m062--minimale-manuelle-angebotspreise). M06 begonne
 
 #### M06.2 — Minimale manuelle Angebotspreise
 
-**Status:** DOING · **Abhängigkeit:** M06.1a/b abgeschlossen. · Branch: [`feature/m06-2-manual-prices`](https://github.com/Justify87/ladies-explorer-android/tree/feature/m06-2-manual-prices).
+**Status:** REVIEW · **Abhängigkeit:** M06.1a/b abgeschlossen. · [PR #89](https://github.com/Justify87/ladies-explorer-android/pull/89).
 
 **Umfang:** Personenbezogene manuelle Preislisten mit Datum, Preispositionen und optionaler Dauer/Bezeichnung. Native Read-/Create-/Update-/Delete-API und Profilintegration in einem vertikalen Schritt: ein gemeinsamer kleiner Editor sowie bedarfsorientierte aktuelle/historische Anzeige. Bestehende Tabellen nutzen; kein Preis-Dashboard, kein automatisches Extrahieren oder Kopieren aus Begegnungen.
 
@@ -35,6 +35,8 @@ Nächster Schritt: [M06.2](#m062--minimale-manuelle-angebotspreise). M06 begonne
 - Letzten bekannten bezahlten Gesamtbetrag aus Begegnungen ableiten und als solchen kennzeichnen, nicht als Angebotspreis übernehmen. Kein zweiter fachlicher Store oder doppelte Preisprojektion.
 
 **Prüfung:** Rust-CRUD-/Historien-/Owner-/Merge-Regression, JVM-Editor-/Kontext-/Fehlerregression; beide Profilkontexte gezielt prüfen.
+
+**Beleg:** Vollständiges [CI-Gate](https://github.com/Justify87/ladies-explorer-android/actions/runs/45453523710) erfolgreich auf [`5b7e931`](https://github.com/Justify87/ladies-explorer-android/commit/5b7e931e9b3c4422f2d01a231242a313bde6f4b9). Instrumentierungs-APK gebaut, tatsächliche Geräteausführung nicht belegt; Merge-Regel gilt. Architektur-/Designvertrag angepasst. Nächster Schritt: Nutzerfreigabe und Merge von #89; M06.4 erst danach.
 
 #### M06.4 — Gezielte Integration und Abschluss (G06)
 
