@@ -1,6 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -194,25 +196,36 @@ internal fun <R, V, D, S> ProfileRecordDialog(
             dismissButton = { TextButton(onClick = { editor.keep(edit) }) { Text("Weiter bearbeiten") } })
         return
     }
+    val scroll = rememberScrollState()
+    val contextLost = !enabled && !edit.writing
+    LaunchedEffect(edit.id, edit.error, contextLost) {
+        if (edit.error != null || contextLost) scroll.scrollTo(0)
+    }
     AlertDialog(
         onDismissRequest = { editor.requestDismiss(edit) },
         title = { Text(if (edit.deleting) deleteTitle else if (edit.expected == null) newTitle else editTitle) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (edit.deleting) Text(deleteMessage)
-                else {
-                    fields(edit, enabled)
+            Column(Modifier.verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                edit.error?.let {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.small) {
+                        Text(it, Modifier.fillMaxWidth().padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
                 }
-                edit.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (edit.writing) CircularProgressIndicator(Modifier.size(24.dp))
+                if (edit.writing) LinearProgressIndicator(Modifier.fillMaxWidth())
                 else if (!enabled) {
                     Text("Der ursprüngliche Profilkontext ist nicht mehr aktiv. Der Entwurf bleibt erhalten.")
-                    if (editor.canResume(edit)) TextButton(onClick = { editor.resume(edit) }) { Text("Im aktuellen Profil fortsetzen") }
+                    if (editor.canResume(edit)) TextButton(onClick = { editor.resume(edit) },
+                        modifier = Modifier.heightIn(min = 48.dp)) { Text("Im aktuellen Profil fortsetzen") }
                 }
+                if (edit.deleting) Text(deleteMessage) else fields(edit, enabled)
             }
         },
-        confirmButton = { TextButton(enabled = enabled, onClick = { editor.save(edit) }) { Text(if (edit.deleting) "Löschen" else "Speichern") } },
-        dismissButton = { TextButton(enabled = !edit.writing, onClick = { editor.requestDismiss(edit) }) { Text("Abbrechen") } },
+        confirmButton = { Button(enabled = enabled, onClick = { editor.save(edit) }, modifier = Modifier.heightIn(min = 48.dp),
+            colors = if (edit.deleting) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError) else ButtonDefaults.buttonColors()) {
+            Text(if (edit.deleting) "Löschen" else "Speichern")
+        } },
+        dismissButton = { TextButton(enabled = !edit.writing, modifier = Modifier.heightIn(min = 48.dp), onClick = { editor.requestDismiss(edit) }) { Text("Abbrechen") } },
     )
 }
 
@@ -223,7 +236,7 @@ internal fun ProfileEditorField(
 ) {
     OutlinedTextField(value, onChange, enabled = enabled, label = { Text(label) },
         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-        modifier = Modifier.fillMaxWidth())
+        modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small)
 }
 
 @Composable
@@ -238,3 +251,30 @@ internal fun ProfileListingAssociation(
     }
 }
 
+@Composable
+internal fun ProfileRecordCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp), content = content)
+    }
+}
+
+@Composable
+internal fun ProfileRecordActions(editLabel: String, enabled: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedButton(enabled = enabled, onClick = onEdit, modifier = Modifier.heightIn(min = 48.dp)) { Text(editLabel) }
+        TextButton(enabled = enabled, onClick = onDelete, modifier = Modifier.heightIn(min = 48.dp),
+            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Löschen") }
+    }
+}
+
+@Composable
+internal fun ProfileEditorGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
+            content()
+        }
+    }
+}

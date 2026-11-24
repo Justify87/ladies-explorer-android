@@ -93,18 +93,19 @@ internal fun PriceEditorDialog(editor: PriceEditor) {
         ProfileEditorField(d.dateText, "Datum (TT.MM.JJJJ)", enabled) { value -> change { it.copy(dateText = value) } }
         d.items.forEachIndexed { index, item ->
             key(item.id) {
-                Text("Position ${index + 1}", style = MaterialTheme.typography.titleSmall)
-                ProfileEditorField(item.label, "Bezeichnung (optional)", enabled) { value ->
-                    change { it.changeItem(item.id) { line -> line.copy(label = value) } }
-                }
-                ProfileEditorField(item.duration, "Dauer in Minuten (optional)", enabled, KeyboardType.Number) { value ->
-                    change { it.changeItem(item.id) { line -> line.copy(duration = value) } }
-                }
-                ProfileEditorField(item.amount, "Betrag in EUR", enabled, KeyboardType.Decimal) { value ->
-                    change { it.changeItem(item.id) { line -> line.copy(amount = value) } }
-                }
-                TextButton(enabled = enabled, onClick = { change { it.removeItem(item.id) } }) {
-                    Text("Position ${index + 1} entfernen")
+                ProfileEditorGroup("Position ${index + 1}") {
+                    ProfileEditorField(item.label, "Bezeichnung (optional)", enabled) { value ->
+                        change { it.changeItem(item.id) { line -> line.copy(label = value) } }
+                    }
+                    ProfileEditorField(item.duration, "Dauer in Minuten (optional)", enabled, KeyboardType.Number) { value ->
+                        change { it.changeItem(item.id) { line -> line.copy(duration = value) } }
+                    }
+                    ProfileEditorField(item.amount, "Betrag in EUR", enabled, KeyboardType.Decimal) { value ->
+                        change { it.changeItem(item.id) { line -> line.copy(amount = value) } }
+                    }
+                    TextButton(enabled = enabled, onClick = { change { it.removeItem(item.id) } }) {
+                        Text("Position ${index + 1} entfernen")
+                    }
                 }
             }
         }
@@ -117,16 +118,13 @@ internal fun PriceEditorDialog(editor: PriceEditor) {
 
 @Composable
 internal fun PriceListRow(row: PriceList, latest: Boolean, enabled: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    ProfileRecordCard {
         Text(if (latest) "Neueste erfasste Liste" else "Frühere Liste", style = MaterialTheme.typography.labelMedium)
         Text(displayPriceDate(row.values.observedAt), style = MaterialTheme.typography.titleMedium)
         row.values.items.forEach { item ->
             Text(listOfNotNull(item.label, item.durationMinutes?.let { "$it Min." }, "${euro(item.amountCents)} €").joinToString(" · "))
         }
         row.values.listingId?.let { Text("Anzeige #$it", style = MaterialTheme.typography.bodySmall) }
-        Row {
-            TextButton(enabled = enabled, onClick = onEdit) { Text("Korrigieren") }
-            TextButton(enabled = enabled, onClick = onDelete) { Text("Löschen") }
-        }
+        ProfileRecordActions("Korrigieren", enabled, onEdit, onDelete)
     }
 }

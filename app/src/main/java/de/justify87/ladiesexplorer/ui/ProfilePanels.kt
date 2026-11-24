@@ -1,5 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -260,17 +261,30 @@ private fun SectionToggle(
 ) {
     val expanded = sections.expanded(section)
     TextButton(onClick = { sections.toggle(section) },
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+        shape = MaterialTheme.shapes.medium,
+        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.medium)
+            .shellFocus().semantics {
             stateDescription = if (expanded) "Ausgeklappt" else "Eingeklappt"
         }) {
+        Icon(when (section) {
+            ProfileSection.Analysis -> Icons.Default.Info
+            ProfileSection.Notes, ProfileSection.Description -> Icons.Default.Edit
+            ProfileSection.Encounters, ProfileSection.History -> Icons.Default.DateRange
+            ProfileSection.Prices, ProfileSection.Services -> Icons.Default.List
+        }, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(section.label, modifier = Modifier.semantics { heading() },
-                style = MaterialTheme.typography.titleMedium)
+                style = MaterialTheme.typography.titleSmall)
             hint?.let { Text(it, style = MaterialTheme.typography.bodySmall,
                 color = if (hintError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
+        Spacer(Modifier.width(8.dp))
         Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-            contentDescription = null)
+            contentDescription = null, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -298,21 +312,21 @@ private fun FieldGrid(rows: List<Pair<String, String>>) {
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val fontScale = LocalDensity.current.fontScale
-        val columns = when {
-            maxWidth < 300.dp || fontScale > 1.5f -> 1
-            else -> 2
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            rows.chunked(columns).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.forEach { (label, value) ->
-                        Column(Modifier.weight(1f)) {
-                            Text(label, style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(value, style = MaterialTheme.typography.bodyMedium)
+        val columns = if (maxWidth < 340.dp || fontScale >= 1.5f) 1 else 2
+        Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                rows.chunked(columns).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { (label, value) ->
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(label, style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(value, style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
+                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                     }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -391,7 +405,7 @@ private fun NotesPanel(
         if (draft != null && owner != null) {
             OutlinedTextField(draft.text, { actions.edit(owner, it) },
                 modifier = Modifier.fillMaxWidth(), label = { Text("Notiz") },
-                minLines = 4, enabled = editable)
+                minLines = 4, enabled = editable, shape = MaterialTheme.shapes.small)
             Text("Entwurf bleibt beim Profilwechsel erhalten. Erst Speichern schreibt in die Datenbank.",
                 style = MaterialTheme.typography.bodySmall)
             if (draft.conflict) {
@@ -404,10 +418,10 @@ private fun NotesPanel(
                     Text("Eigenen Entwurf behalten")
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { actions.save(listingId, owner, draft) },
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Button(modifier = Modifier.heightIn(min = 48.dp), onClick = { actions.save(listingId, owner, draft) },
                     enabled = editable && state.canSave(draft)) { Text("Speichern") }
-                TextButton(onClick = { actions.useStored(owner, draft) },
+                TextButton(modifier = Modifier.heightIn(min = 48.dp), onClick = { actions.useStored(owner, draft) },
                     enabled = !busy && !loading && state.canDiscard(draft)) { Text("Verwerfen") }
             }
         } else if (owner == null) Text("Person nicht verfügbar.")
@@ -582,7 +596,7 @@ private fun ProfileFlowRows.profileContent(
                     if (!actionsBusy) CircularProgressIndicator(Modifier.size(24.dp))
                 } else {
                     if (rows.isEmpty()) Text("Keine Begegnungen gespeichert.")
-                    TextButton(enabled = !actionsBusy && isCurrent(),
+                    OutlinedButton(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !actionsBusy && isCurrent(),
                         onClick = { encounters.begin(checkNotNull(encounterPanel)) }) { Text("Begegnung hinzufügen") }
                 }
             }
@@ -610,7 +624,7 @@ private fun ProfileFlowRows.profileContent(
                     Text(if (paid == null) "Zuletzt bekannter bezahlter Gesamtbetrag: Unbekannt"
                         else "Zuletzt bekannter bezahlter Gesamtbetrag: ${euro(paid.amountCents)} € · ${displayTime(paid.occurredAt, java.time.ZoneId.systemDefault())}")
                     if (data.lists.isEmpty()) Text("Keine Preislisten gespeichert.")
-                    TextButton(enabled = !actionsBusy && isCurrent(),
+                    OutlinedButton(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !actionsBusy && isCurrent(),
                         onClick = { prices.begin(checkNotNull(pricePanel)) }) { Text("Preisliste hinzufügen") }
                 }
             }

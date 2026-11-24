@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import de.justify87.ladiesexplorer.core.*
@@ -60,8 +61,10 @@ class PriceProfileDeviceTest {
             { _, _, _ -> emptyList() },
         )
         val notes = NoteEditorActions({ _, _ -> }, { _, _ -> }, { _, _, _ -> }, { _, _ -> }, { _, _ -> })
+        var pxPerDp = 1f
         rule.setContent {
-            MaterialTheme {
+            pxPerDp = LocalDensity.current.density
+            MaterialTheme(colorScheme = if (token is SwipeActionToken) ladiesDarkColors else ladiesLightColors) {
                 ProfileFlow(rememberLazyListState(), model, "{}", token, false, emptyMap(), notes,
                     { it == token && editor.edit == null }, { _, _ -> },
                     modifier = Modifier.fillMaxSize().testTag("price-flow"),
@@ -73,15 +76,23 @@ class PriceProfileDeviceTest {
         }
         rule.runOnIdle { assertEquals(0, reads) }
         rule.onNodeWithTag("price-flow").performScrollToKey("prices-toggle")
-        rule.onNodeWithText("Manuelle Angebotspreise").performClick()
+        val section = rule.onNodeWithText("Manuelle Angebotspreise")
+        assertTrue(section.fetchSemanticsNode().boundsInRoot.height >= 48 * pxPerDp - 1f)
+        section.performClick()
         rule.onNodeWithTag("price-flow").performScrollToKey("profile-prices-head")
         rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag: 0,42 €", substring = true).assertExists()
-        rule.onNodeWithText("Preisliste hinzufügen").performClick()
+        val add = rule.onNodeWithText("Preisliste hinzufügen")
+        assertTrue(add.fetchSemanticsNode().boundsInRoot.height >= 48 * pxPerDp - 1f)
+        add.performClick()
         rule.onNodeWithText("Neue Preisliste").assertExists()
         rule.onNodeWithText("Abbrechen").performClick()
         rule.onNodeWithText("Entwurf verwerfen?").assertExists()
         rule.onNodeWithText("Weiter bearbeiten").performClick()
-        rule.onNodeWithText("Datum (TT.MM.JJJJ)").performTextReplacement("24.11.2026")
+        rule.onNodeWithText("Datum (TT.MM.JJJJ)").performTextReplacement("ungültig")
+        rule.onNodeWithText("Speichern").performClick()
+        rule.onNodeWithText("Datum bitte als TT.MM.JJJJ eingeben.").assertExists()
+        rule.runOnIdle { assertEquals(0, writes); assertNotNull(editor.edit) }
+        rule.onNodeWithText("Datum (TT.MM.JJJJ)").performScrollTo().performTextReplacement("24.11.2026")
         rule.onNodeWithText("Betrag in EUR").performScrollTo().performTextReplacement("12,34")
         rule.onNodeWithText("Speichern").performClick()
         rule.onNodeWithTag("price-flow").performScrollToKey("price/1")
