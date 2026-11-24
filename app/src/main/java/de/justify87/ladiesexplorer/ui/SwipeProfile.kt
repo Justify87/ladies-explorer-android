@@ -109,7 +109,7 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
     for (models in media) for (model in models) {
         currentCoroutineContext().ensureActive()
         val result = loader.execute(ImageRequest.Builder(context).data(model)
-            .size(size.width, size.height).scale(Scale.FILL).build())
+            .size(size.width, size.height).scale(Scale.FIT).build())
         if (result is SuccessResult) break
     }
 }
