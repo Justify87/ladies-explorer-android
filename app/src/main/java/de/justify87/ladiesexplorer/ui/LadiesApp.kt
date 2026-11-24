@@ -352,6 +352,8 @@ fun LadiesApp(
                             )
                         } else if (route.discovery == DiscoverMode.Grid) {
                             key(search.response?.searchRunId) {
+                                val cancelAction = SearchCancelAction(ProfileActionSurface.GRID,
+                                    discovery.actionGeneration, search.searchAttemptId)
                                 DiscoveryGridScreen(
                                     discovery = discovery,
                                     search = search,
@@ -376,10 +378,7 @@ fun LadiesApp(
                                             modifier = Modifier,
                                         )
                                     },
-                                    onCancelSearch = {
-                                        viewModel.cancelActiveSearch(SearchCancelAction(ProfileActionSurface.GRID,
-                                            discovery.actionGeneration, search.searchAttemptId))
-                                    },
+                                    onCancelSearch = { viewModel.cancelActiveSearch(cancelAction) },
                                     modifier = Modifier.weight(1f),
                                 )
                             }
