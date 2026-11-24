@@ -473,7 +473,7 @@ fun LadiesApp(
                         onLoadMore = viewModel::loadMoreSavedPeople,
                         onCheckAll = viewModel::checkAllSavedStatus,
                         onCheckSingle = viewModel::checkSingleSavedStatus,
-                        onCancelCheck = viewModel::cancelSavedStatus,
+                        onCancelCheck = viewModel::cancelRenderedSavedStatus,
                         modifier = modifier,
                     )
                     RootDestination.Settings -> SettingsScreen(
