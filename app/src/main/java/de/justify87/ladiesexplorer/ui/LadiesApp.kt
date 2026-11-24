@@ -340,8 +340,10 @@ fun LadiesApp(
                     RootDestination.Discover -> Column(modifier = modifier) {
                         if (route.discovery == DiscoverMode.Grid) {
                             Column(Modifier.padding(horizontal = 16.dp)) {
-                                AvailabilitySelector(search.headerAvailability(), !search.loading && !home.loading && !discovery.busy && !saved.busy) {
-                                    viewModel.runAvailability(it)
+                                val availabilityAction = search.gridAvailabilityAction(discovery.actionGeneration)
+                                AvailabilitySelector(search.headerAvailability(),
+                                    gridAvailabilityMatches(discovery, search, availabilityAction) && !home.loading && !saved.busy) {
+                                    viewModel.runGridAvailability(availabilityAction, it)
                                 }
                             }
                         }

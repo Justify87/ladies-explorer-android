@@ -427,7 +427,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         runAvailability(mode)
     }
 
-    fun runAvailability(mode: AvailabilityMode) {
+    internal fun runGridAvailability(action: GridAvailabilityAction, mode: AvailabilityMode) {
+        if (!gridAvailabilityMatches(_discoverState.value, _searchUiState.value, action)) return
+        runAvailability(mode)
+    }
+
+    private fun runAvailability(mode: AvailabilityMode) {
         val state = _searchUiState.value
         val active = state.response
         val draft = SearchDraft.from(state)
@@ -475,6 +480,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (searchOwner.occupied || _searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
         val input = _searchUiState.value
         invalidateSwipeActions(invalidateProfiles = true)
+        // Revoke rendered grid actions even if this source run fails or is cancelled.
+        _discoverState.update { it.copy(actionGeneration = it.actionGeneration + 1) }
         cancelPreview()
         val control = RequestControl()
         val ticket = checkNotNull(searchOwner.start(control))
