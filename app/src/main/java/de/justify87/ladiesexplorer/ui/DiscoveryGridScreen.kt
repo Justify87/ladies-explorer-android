@@ -31,7 +31,7 @@ internal fun DiscoveryGridScreen(
     discovery: DiscoverUiState,
     search: SearchUiState,
     onRefresh: () -> Unit,
-    onLoadMore: () -> Unit,
+    onLoadMore: (GridPageAction) -> Unit,
     onLike: (GridLikeAction) -> Unit,
     onProfile: (GridLikeAction) -> Unit,
     modifier: Modifier = Modifier,
@@ -40,15 +40,15 @@ internal fun DiscoveryGridScreen(
     val active = search.response != null
     val enabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy
     val listState = rememberLazyGridState()
-    val nextCursor = if (active) null else discovery.nextCursor
-    val canPage = nextCursor != null && enabled && !discovery.loadingMore
-    LaunchedEffect(listState, nextCursor, canPage, discovery.error) {
-        if (canPage && discovery.error == null) {
+    val pageAction = if (active) null else discovery.nextCursor?.let { GridPageAction(it, discovery.actionGeneration) }
+    val canPage = pageAction != null && gridPageMatches(discovery, search, pageAction)
+    LaunchedEffect(listState, pageAction, canPage, discovery.error) {
+        if (pageAction != null && canPage && discovery.error == null) {
             snapshotFlow {
                 val layout = listState.layoutInfo
                 nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
             }.first { it }
-            onLoadMore()
+            onLoadMore(pageAction)
         }
     }
     LazyVerticalGrid(
@@ -103,14 +103,14 @@ internal fun DiscoveryGridScreen(
                 onLike = { onLike(action) },
             )
         }
-        if (nextCursor != null) {
+        if (pageAction != null) {
             item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
                 if (discovery.loadingMore) {
                     Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(Modifier.size(24.dp))
                     }
                 } else {
-                    TextButton(onClick = onLoadMore, enabled = canPage, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { onLoadMore(pageAction) }, enabled = canPage, modifier = Modifier.fillMaxWidth()) {
                         Text("Weitere Profile")
                     }
                 }

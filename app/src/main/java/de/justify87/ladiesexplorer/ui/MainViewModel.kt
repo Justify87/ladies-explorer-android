@@ -648,13 +648,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun loadMoreDiscovery() {
-        if (_searchUiState.value.response != null) return
-        val state = _discoverState.value
-        val cursor = state.nextCursor ?: return
-        if (state.loading || state.loadingMore || state.busy) return
+    internal fun loadMoreDiscovery(action: GridPageAction) {
+        if (!gridPageMatches(_discoverState.value, _searchUiState.value, action)) return
+        loadMoreLocalDiscovery(action.cursor)
+    }
+
+    private fun loadMoreLocalDiscovery(cursor: DiscoveryCursor) {
+        if (!localDiscoveryPageMatches(_discoverState.value, _searchUiState.value, cursor)) return
         val epoch = discoveryEpoch
-        _discoverState.update { it.copy(loadingMore = true, error = null) }
+        _discoverState.update {
+            it.copy(loadingMore = true, error = null, actionGeneration = it.actionGeneration + 1)
+        }
         viewModelScope.launch {
             try {
                 val page = core.discoveryCards(cursor = cursor, excludedPeople = swipeSession.excludedPeople)
@@ -740,7 +744,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _discoverState.update {
             it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true, swipeRestore = null)
         }
-        if (_discoverState.value.cards.size < 10) loadMoreDiscovery()
+        val state = _discoverState.value
+        if (state.cards.size < 10) state.nextCursor?.let(::loadMoreLocalDiscovery)
     }
 
     /** A committed write and failed projection are distinct outcomes. */
