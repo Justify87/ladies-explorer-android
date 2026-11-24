@@ -1,6 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -37,6 +39,40 @@ class PriceEditorTest {
             draft.changeItem(0) { it.copy(amount = "99999999999999999999999999") },
             draft.changeItem(0) { it.copy(duration = "0") },
         )) assertTrue(runCatching { invalid.values(null) }.isFailure)
+    }
+
+    @Test(timeout = 15000) fun encounterCommitRevokesPriceOverviewEvenWithoutTokenOrBusyChange() = runBlocking {
+        val detail = DetailIdentityToken(1, 4, 1, 11, 1, Preference.NONE, false, emptyList())
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val updated = data.copy(lastPaid = PaidEncounter("2026-11-24T12:00:00.000Z", 0))
+        var reads = 0
+        val editor = PriceEditor({ it == detail }, { _, _ ->
+            when (++reads) {
+                1 -> data
+                2 -> {
+                    started.complete(Unit)
+                    release.awaitSignal()
+                    data
+                }
+                else -> updated
+            }
+        }, { _, _ -> error("No price write") })
+        editor.load(detail)
+        val rendered = checkNotNull(editor.panel)
+        assertEquals(data, rendered.snapshot)
+        val old = launch { editor.load(detail) }
+        started.awaitSignal()
+        editor.invalidateAfterCommit(detail.ownerId)
+        assertNull(editor.panel)
+        assertEquals(1L, editor.readRevision)
+        editor.begin(rendered, row)
+        assertNull(editor.edit)
+        editor.load(detail)
+        release.complete(Unit)
+        old.join()
+        assertEquals(updated, editor.panel?.snapshot)
+        assertEquals(3, reads)
     }
 
     @Test(timeout = 15000) fun sharedAdmissionAndCommitReadFailure() = runBlocking {

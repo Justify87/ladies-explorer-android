@@ -183,6 +183,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 edit.expected == null -> core.createEncounter(token.listingId, token.ownerId, checkNotNull(values))
                 else -> core.updateEncounter(token.listingId, token.ownerId, edit.expected, checkNotNull(values))
             }
+            prices.invalidateAfterCommit(token.ownerId)
         }
 
     private fun submitPrice(edit: PriceEdit, values: PriceListValues?) =
