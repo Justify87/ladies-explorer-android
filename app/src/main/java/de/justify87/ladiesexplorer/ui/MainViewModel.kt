@@ -577,6 +577,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         savedLoadingMore = false, savedRecentLoadingMore = false, error = null, actionGeneration = it.actionGeneration + 1)
                 }
                 _searchUiState.update { it.acceptRun(result, cards) }
+                refreshMap()
                 acceptedRun = true
             } catch (cancellation: CancellationException) {
                 if (searchOwner.accepts(ticket)) _searchUiState.update { it.endRun() }
