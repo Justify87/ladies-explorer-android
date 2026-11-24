@@ -29,6 +29,7 @@ internal fun ProfileDetailScreen(
     touchGate: ProfileTouchGate? = null,
     modifier: Modifier = Modifier,
     encounters: EncounterEditor? = null,
+    prices: PriceEditor? = null,
 ) {
     val profile = state.profile
     val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
@@ -95,7 +96,7 @@ internal fun ProfileDetailScreen(
             token = renderedToken, actionsBusy = busy, notes = notes, noteActions = noteActions,
             isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
             modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest,
-            onGallerySelection = { selectedMedia = it }, encounters = encounters) {
+            onGallerySelection = { selectedMedia = it }, encounters = encounters, prices = prices) {
             if (profile != null) {
                 item(key = "media") {
                     ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
