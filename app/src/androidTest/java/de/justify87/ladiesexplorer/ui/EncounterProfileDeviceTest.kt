@@ -81,6 +81,10 @@ class EncounterProfileDeviceTest {
         rule.onNodeWithText("Weiter bearbeiten").performClick()
         rule.onNodeWithText("Neue Begegnung").assertExists()
         rule.onNodeWithText("Zeitpunkt (TT.MM.JJJJ HH:mm)").performTextReplacement("24.11.2026 13:00")
+        rule.onNodeWithText("Grundpreis in EUR (optional)").performScrollTo().performTextReplacement("0")
+        rule.onNodeWithText("Leistung hinzufügen").performScrollTo().performClick()
+        rule.onNodeWithText("Leistung 1").performScrollTo().performTextReplacement("Fixture service")
+        rule.onNodeWithText("Betrag 1 in EUR (optional)").performScrollTo().performTextReplacement("12,34")
         rule.onNodeWithText("Speichern").performClick()
         rule.onNodeWithTag("encounter-flow").performScrollToKey("encounter/5")
         rule.onNodeWithText("Bearbeiten").assertExists()
@@ -89,6 +93,10 @@ class EncounterProfileDeviceTest {
             assertEquals(2, reads)
             assertNull(editor.edit)
             assertEquals(1, rows.size)
+            val values = rows.single().values
+            assertEquals(0L, values.basePriceCents)
+            assertNull(values.totalPriceCents)
+            assertEquals(listOf(EncounterService("Fixture service", 1234)), values.services)
         }
     }
 }
