@@ -123,7 +123,7 @@ internal fun EncounterEditorDialog(editor: EncounterEditor) {
         Text("Persönliche Leistungsdetails", style = MaterialTheme.typography.titleSmall)
         d.services.forEachIndexed { index, service ->
             key(service.id) {
-                ProfileEditorGroup("Leistung ${index + 1}") {
+                ProfileEditorGroup("Leistungsposition ${index + 1}") {
                     ProfileEditorField(service.name, "Leistung ${index + 1}", enabled) { value ->
                         change { it.changeService(service.id) { line -> line.copy(name = value) } }
                     }
