@@ -82,7 +82,7 @@ class EncounterEditorTest {
         release.complete(Unit)
         old.join()
         assertEquals(other, editor.panel?.token)
-        assertEquals(emptyList<Encounter>(), editor.panel?.rows)
+        assertEquals(emptyList<Encounter>(), editor.panel?.snapshot)
         editor.begin(stale)
         editor.begin(checkNotNull(editor.panel), row)
         assertNull(editor.edit)
@@ -153,7 +153,7 @@ class EncounterEditorTest {
         assertTrue(checkNotNull(editor.panel?.error).startsWith("Änderung gespeichert"))
         failRead = false
         editor.retry(checkNotNull(editor.panel))
-        assertEquals(listOf(row), editor.panel?.rows)
+        assertEquals(listOf(row), editor.panel?.snapshot)
         assertEquals(2, writes.size)
     }
 
