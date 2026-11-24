@@ -232,7 +232,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 2. Explizite Checks benötigen **vor I/O und erneut beim Commit** gültige gespeicherte LADIES-Mitgliedschaft (Favorit oder Präferenz ungleich `NONE`).
 3. Rust prüft vor Commit transaktional Owner, URL, Advert-ID und Beobachtungsrevision.
 4. Nur bestätigte Beobachtungen – einschließlich gültiger Suchkarten als positiver `ACTIVE`-Beleg – aktualisieren Status und Statuszeit; Status-only schreibt Beobachtung und bei bestätigtem Wechsel ein Ereignis, aber keine Inhalts-/Personenreihenfolge oder Medieningestion.
-5. `SavedPeopleState` hält Fenster und sequenziellen Statusablauf. Navigation/`ON_STOP` cancelt; bereits gespeicherte Teilergebnisse bleiben und werden lokal reprojiziert.
+5. `SavedPeopleState` hält Fenster und sequenziellen Statusablauf. Der gerenderte Abbruch bindet die Statusversuchs-ID und Ansichtsgeneration; nur der sichtbare, laufende und noch nicht abbrechende Versuch ist zulässig. Navigation/`ON_STOP` cancelt unabhängig davon; bereits gespeicherte Teilergebnisse bleiben und werden lokal reprojiziert.
 
 Fachliche Fälle/Fehler: [PRODUCT](PRODUCT.md#gespeicherte-personen).
 
