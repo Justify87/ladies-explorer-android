@@ -53,6 +53,7 @@ internal fun SavedSearchOverview(
                 }
             },
             confirmButton = { TextButton(onClick = { controller.confirmDialog(SavedDialogAction(dialog, state.actionGeneration)) },
+                colors = ButtonDefaults.textButtonColors(contentColor = if (deleting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary),
                 enabled = actions && (deleting || dialog.name.isNotBlank() && dialog.name.length <= 100)) {
                 Text(if (deleting) "Löschen" else "Speichern")
             } },
@@ -80,26 +81,28 @@ internal fun SavedSearchOverview(
         if (state.listAvailable && state.searches.isEmpty() && !state.busy) item { Text("Noch keine gespeicherte Suche.") }
         items(state.searches, key = { it.searchId }) { saved ->
             val rowAction = SavedSearchRowAction(saved, state.actionGeneration)
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(saved.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        if (saved.unreadNewResults) Badge { Text("Neu") }
-                    }
-                    Text(if (saved.definitionSupported) "${saved.city} · ${saved.radiusKm} km"
-                        else "Importierte Definition nicht ausführbar", style = MaterialTheme.typography.bodySmall)
-                    Text(savedDeltaText(saved), color = MaterialTheme.colorScheme.primary)
-                    saved.lastRunAt?.let { Text("Letzter vollständiger Lauf: ${it.take(16)}", style = MaterialTheme.typography.labelSmall) }
-                    if (saved.localFilterSummary.isNotBlank()) Text(saved.localFilterSummary, style = MaterialTheme.typography.bodySmall)
-                    saved.lastError?.let { Text("Letzte Prüfung unvollständig/fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                    FlowRow {
-                        TextButton(onClick = { controller.openResults(rowAction) }, enabled = actions) { Text("Öffnen") }
-                        TextButton(onClick = { controller.check(rowAction) }, enabled = actions && saved.definitionSupported) { Text("Prüfen") }
-                        TextButton(onClick = { controller.openEditor(rowAction) }, enabled = actions && saved.definitionSupported) { Text("Ändern") }
-                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Rename, rowAction) }, enabled = actions) { Text("Umbenennen") }
-                        TextButton(onClick = { controller.showDialog(SavedDialogKind.Delete, rowAction) }, enabled = actions) { Text("Löschen") }
-                        if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(SavedSearchAckAction(saved.searchId, saved.revision, null, state.actionGeneration)) }, enabled = actions) { Text("Gelesen") }
-                    }
+            ScreenGroup {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(saved.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    if (saved.unreadNewResults) Text("Neu", color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge)
+                }
+                Text(if (saved.definitionSupported) "${saved.city} · ${saved.radiusKm} km"
+                    else "Importierte Definition nicht ausführbar", style = MaterialTheme.typography.bodySmall)
+                Text(savedDeltaText(saved), color = MaterialTheme.colorScheme.primary)
+                saved.lastRunAt?.let { Text("Letzter vollständiger Lauf: ${it.take(16)}", style = MaterialTheme.typography.labelSmall) }
+                if (saved.localFilterSummary.isNotBlank()) Text(saved.localFilterSummary, style = MaterialTheme.typography.bodySmall)
+                saved.lastError?.let { Text("Letzte Prüfung unvollständig/fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { controller.openResults(rowAction) }, enabled = actions,
+                        modifier = Modifier.heightIn(min = 48.dp)) { Text("Öffnen") }
+                    OutlinedButton(onClick = { controller.check(rowAction) }, enabled = actions && saved.definitionSupported,
+                        modifier = Modifier.heightIn(min = 48.dp)) { Text("Prüfen") }
+                    TextButton(onClick = { controller.openEditor(rowAction) }, enabled = actions && saved.definitionSupported) { Text("Ändern") }
+                    TextButton(onClick = { controller.showDialog(SavedDialogKind.Rename, rowAction) }, enabled = actions) { Text("Umbenennen") }
+                    TextButton(onClick = { controller.showDialog(SavedDialogKind.Delete, rowAction) }, enabled = actions,
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Löschen") }
+                    if (saved.unreadNewResults) TextButton(onClick = { controller.acknowledge(SavedSearchAckAction(saved.searchId, saved.revision, null, state.actionGeneration)) }, enabled = actions) { Text("Als gelesen markieren") }
                 }
             }
         }
@@ -146,8 +149,8 @@ internal fun SavedSearchResultsScreen(
         contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
-            Column {
-                Text(info?.let(::savedDeltaText) ?: "${result.cards.size} geladene Treffer")
+            ScreenGroup {
+                Text(info?.let(::savedDeltaText) ?: "${result.cards.size} geladene Treffer", style = MaterialTheme.typography.titleSmall)
                 Text("${result.cards.size} geladen · aktuelle lokale Profildaten", style = MaterialTheme.typography.bodySmall)
                 info?.lastError?.let { Text("Letzte Prüfung fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error) }
                 TextButton(onClick = { onRetry(resultAction) }, enabled = enabled && !state.busy) { Text("Aktualisieren") }

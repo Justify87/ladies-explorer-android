@@ -11,7 +11,21 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 
-enum class ProfileActionSurface { NONE, GRID, SAVED, SEARCH, SAVED_RESULTS, MAP }
+enum class ProfileActionSurface { NONE, GRID, SAVED, SEARCH, SAVED_RESULTS, MAP, SETTINGS }
+
+internal data class SettingsReplayAction(val generation: Long, val deck: SwipeDeckToken, val expected: Boolean)
+
+internal fun DiscoverUiState.settingsReplayAction() =
+    SettingsReplayAction(actionGeneration, deckToken(), replayLikes)
+
+internal fun settingsReplayMatches(
+    discovery: DiscoverUiState, search: SearchUiState, action: SettingsReplayAction,
+): Boolean =
+    discovery.actionSurface == ProfileActionSurface.SETTINGS &&
+        discovery.actionGeneration == action.generation &&
+        discovery.replayLikes == action.expected &&
+        !search.profileOpen && !search.actionBusy &&
+        currentSwipeDeck(discovery, search.loading, action.deck)
 
 internal data class MapControlAction(val rendered: MapUiState, val generation: Long)
 

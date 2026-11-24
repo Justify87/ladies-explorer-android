@@ -836,7 +836,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     internal fun setReplayLikes(token: SwipeDeckToken, replay: Boolean) {
-        if (!admittedDeck(token) || swipeSession.replayLikes == replay) return
+        if (!admittedDeck(token)) return
+        applyReplayLikes(replay)
+    }
+
+    internal fun setSettingsReplayLikes(action: SettingsReplayAction, replay: Boolean) {
+        if (hasProfileEditor || swipeVisible || _uiState.value.loading ||
+            !settingsReplayMatches(_discoverState.value, _searchUiState.value, action)) return
+        applyReplayLikes(replay)
+    }
+
+    private fun applyReplayLikes(replay: Boolean) {
+        if (swipeSession.replayLikes == replay) return
         invalidateSwipeActions()
         swipeSession.replayLikes = replay
         core.setReplayLikes(replay)
