@@ -134,4 +134,31 @@ class DiscoveryDesignDeviceTest {
         rule.onNodeWithText(DiscoverMode.Swipe.title).performClick()
         rule.runOnIdle { assertEquals(listOf(DiscoverMode.Swipe), actions) }
     }
+
+    @Test fun longIdentityCannotOverlapGridLikeTargetAtIncreasedFontScale() {
+        val name = "Sehr langer synthetischer Profilname"
+        var font by mutableFloatStateOf(1.3f)
+        var likes = 0
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, font)) {
+                LadiesTheme(darkTheme = true) {
+                    ProfileGridCard(name, "30", null, null, false, true, {}, { likes++ },
+                        modifier = Modifier.width(160.dp).testTag("long-card"),
+                        place = "Langer synthetischer Ortsname")
+                }
+            }
+        }
+        for (scale in listOf(1.3f, 2f)) {
+            rule.runOnIdle { font = scale }
+            val like = rule.onNodeWithContentDescription("$name gefällt mir")
+            val target = like.fetchSemanticsNode().boundsInRoot
+            val identity = rule.onNodeWithText("$name · 30", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val card = rule.onNodeWithTag("long-card").fetchSemanticsNode().boundsInRoot
+            assertTrue(target.bottom <= identity.top + 1f)
+            assertTrue(card.height >= card.width / 1.03f - 1f)
+            like.performClick()
+        }
+        rule.runOnIdle { assertEquals(2, likes) }
+    }
 }
