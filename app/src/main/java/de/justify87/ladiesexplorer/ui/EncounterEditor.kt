@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Encounter
 import de.justify87.ladiesexplorer.core.EncounterService
 import de.justify87.ladiesexplorer.core.EncounterValues
-import kotlinx.coroutines.CancellationException
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -97,7 +96,7 @@ internal data class EncounterDraft(
     }
 }
 
-private fun optionalCents(amount: String): Long? {
+internal fun optionalCents(amount: String): Long? {
     if (amount.isBlank()) return null
     val normalized = amount.trim().replace(',', '.')
     require(Regex("[0-9]+(\\.[0-9]{1,2})?").matches(normalized)) {
@@ -106,152 +105,25 @@ private fun optionalCents(amount: String): Long? {
     return normalized.toBigDecimal().movePointRight(2).longValueExact()
 }
 
-private fun displayTime(value: String, zone: ZoneId): String =
+internal fun displayTime(value: String, zone: ZoneId): String =
     Instant.parse(value).atZone(zone).format(encounterTime)
 
-private fun euro(cents: Long): String =
+internal fun euro(cents: Long): String =
     java.math.BigDecimal.valueOf(cents, 2).toPlainString().replace('.', ',')
 
-internal data class EncounterPanel(
-    val token: ProfileIdentityToken,
-    val rows: List<Encounter>? = null,
-    val error: String? = null,
-)
+internal typealias EncounterPanel = ProfileRecordPanel<List<Encounter>>
+internal typealias EncounterEdit = ProfileRecordEdit<Encounter, EncounterDraft>
 
-internal data class EncounterEdit(
-    val id: Long,
-    val token: ProfileIdentityToken,
-    val expected: Encounter?,
-    val draft: EncounterDraft,
-    val zone: ZoneId,
-    val deleting: Boolean = false,
-    val writing: Boolean = false,
-    val discardRequested: Boolean = false,
-    val error: String? = null,
-)
-
-/** Presentation state only; Rust remains the authority for every write. */
 internal class EncounterEditor(
-    private val current: (ProfileIdentityToken) -> Boolean,
-    private val read: suspend (Long, Long) -> List<Encounter>,
-    private val submit: (EncounterEdit, EncounterValues?) -> Unit,
-) {
-    var panel by mutableStateOf<EncounterPanel?>(null, referentialEqualityPolicy())
-        private set
-    var edit by mutableStateOf<EncounterEdit?>(null, referentialEqualityPolicy())
-        private set
-    var readRevision by mutableLongStateOf(0L)
-        private set
-    private var nextId = 0L
-    private var committedOwner: Long? = null
-
-    suspend fun load(token: ProfileIdentityToken) {
-        if (!current(token)) return
-        val pending = EncounterPanel(token)
-        panel = pending
-        try {
-            val rows = read(token.listingId, token.ownerId)
-            if (panel === pending && current(token)) {
-                panel = pending.copy(rows = rows)
-                if (committedOwner == token.ownerId) committedOwner = null
-            }
-        } catch (cancel: CancellationException) {
-            if (panel === pending) panel = null
-            throw cancel
-        } catch (_: Exception) {
-            if (panel === pending && current(token)) {
-                panel = pending.copy(error = if (committedOwner == token.ownerId)
-                    "Änderung gespeichert; Begegnungen konnten nicht neu geladen werden."
-                    else "Begegnungen konnten nicht geladen werden.")
-            }
-        }
-    }
-
-    fun detach(token: ProfileIdentityToken?) {
-        if (panel?.token == token) panel = null
-    }
-
-    suspend fun retry(rendered: EncounterPanel) {
-        if (panel === rendered && rendered.error != null) load(rendered.token)
-    }
-
-    fun begin(rendered: EncounterPanel, row: Encounter? = null, deleting: Boolean = false) {
-        if (edit != null || panel !== rendered || rendered.rows == null || !current(rendered.token) ||
-            (row != null && row !in rendered.rows) || (deleting && row == null)) return
-        val zone = ZoneId.systemDefault()
-        edit = EncounterEdit(++nextId, rendered.token, row, EncounterDraft.from(row, zone), zone, deleting)
-    }
-
-    fun canEdit(rendered: EncounterEdit): Boolean =
-        edit?.id == rendered.id && edit?.token == rendered.token && edit?.writing == false &&
-            panel?.token == rendered.token && current(rendered.token)
-
-    fun change(rendered: EncounterEdit, transform: (EncounterDraft) -> EncounterDraft) {
-        val active = edit ?: return
-        if (!canEdit(rendered) || active.deleting || active.discardRequested) return
-        edit = active.copy(draft = transform(active.draft), error = null)
-    }
-
-    // A resumed profile must explicitly reauthorize a retained draft; never replace its CAS snapshot.
-    fun matchesContext(token: ProfileIdentityToken?): Boolean {
-        val original = edit?.token ?: return false
-        return token != null && token::class == original::class &&
-            token.listingId == original.listingId && token.ownerId == original.ownerId
-    }
-
-    fun canResume(rendered: EncounterEdit): Boolean {
-        val token = panel?.token ?: return false
-        return edit === rendered && !rendered.writing && !rendered.discardRequested && !current(rendered.token) &&
-            token != rendered.token && matchesContext(token) &&
-            current(token)
-    }
-
-    fun resume(rendered: EncounterEdit) {
-        if (canResume(rendered)) edit = rendered.copy(token = checkNotNull(panel).token)
-    }
-
-    fun requestDismiss(rendered: EncounterEdit) {
-        if (edit !== rendered || rendered.writing) return
-        if (rendered.deleting) edit = null
-        else edit = rendered.copy(discardRequested = true)
-    }
-
-    fun keep(rendered: EncounterEdit) {
-        if (edit === rendered && rendered.discardRequested) edit = rendered.copy(discardRequested = false)
-    }
-
-    fun discard(rendered: EncounterEdit) {
-        if (edit === rendered && rendered.discardRequested && !rendered.writing) edit = null
-    }
-
-    fun save(rendered: EncounterEdit) {
-        if (edit !== rendered || !canEdit(rendered) || rendered.discardRequested) return
-        val values = try {
-            if (rendered.deleting) null else rendered.draft.values(rendered.expected, rendered.zone)
-        } catch (_: java.time.DateTimeException) {
-            edit = rendered.copy(error = "Zeitpunkt bitte als TT.MM.JJJJ HH:mm eingeben.")
-            return
-        } catch (failure: Exception) {
-            edit = rendered.copy(error = failure.message ?: "Ungültige Eingabe")
-            return
-        }
-        val writing = rendered.copy(writing = true, error = null)
-        edit = writing
-        submit(writing, values)
-    }
-
-    fun committed(writing: EncounterEdit) {
-        if (edit !== writing) return
-        committedOwner = writing.token.ownerId
-        panel = null
-        readRevision++
-        edit = null
-    }
-
-    fun failed(writing: EncounterEdit, message: String) {
-        if (edit === writing) edit = writing.copy(writing = false, error = message)
-    }
-}
+    current: (ProfileIdentityToken) -> Boolean,
+    read: suspend (Long, Long) -> List<Encounter>,
+    submit: (EncounterEdit, EncounterValues?) -> Unit,
+    canBegin: () -> Boolean = { true },
+) : ProfileRecordEditor<Encounter, EncounterValues, EncounterDraft, List<Encounter>>(
+    current, read, { it }, { row, zone -> EncounterDraft.from(row, zone) },
+    { draft, row, zone -> draft.values(row, zone) }, "Begegnungen",
+    "Zeitpunkt bitte als TT.MM.JJJJ HH:mm eingeben.", canBegin, submit,
+)
 
 @Composable
 internal fun EncounterEditorDialog(editor: EncounterEditor) {
@@ -273,18 +145,18 @@ internal fun EncounterEditorDialog(editor: EncounterEditor) {
                 else {
                     val d = edit.draft
                     fun change(transform: (EncounterDraft) -> EncounterDraft) = editor.change(edit, transform)
-                    EncounterField(d.whenText, "Zeitpunkt (TT.MM.JJJJ HH:mm)", enabled) { value -> change { it.copy(whenText = value) } }
+                    ProfileEditorField(d.whenText, "Zeitpunkt (TT.MM.JJJJ HH:mm)", enabled) { value -> change { it.copy(whenText = value) } }
                     Text("Zeitzone: ${edit.zone.id}", style = MaterialTheme.typography.bodySmall)
-                    EncounterField(d.duration, "Dauer in Minuten (optional)", enabled, KeyboardType.Number) { value -> change { it.copy(duration = value) } }
-                    EncounterField(d.amount, "Bezahlt in EUR (optional)", enabled, KeyboardType.Decimal) { value -> change { it.copy(amount = value) } }
-                    EncounterField(d.baseAmount, "Grundpreis in EUR (optional)", enabled, KeyboardType.Decimal) { value -> change { it.copy(baseAmount = value) } }
+                    ProfileEditorField(d.duration, "Dauer in Minuten (optional)", enabled, KeyboardType.Number) { value -> change { it.copy(duration = value) } }
+                    ProfileEditorField(d.amount, "Bezahlt in EUR (optional)", enabled, KeyboardType.Decimal) { value -> change { it.copy(amount = value) } }
+                    ProfileEditorField(d.baseAmount, "Grundpreis in EUR (optional)", enabled, KeyboardType.Decimal) { value -> change { it.copy(baseAmount = value) } }
                     Text("Persönliche Leistungsdetails", style = MaterialTheme.typography.titleSmall)
                     d.services.forEachIndexed { index, service ->
                         key(service.id) {
-                            EncounterField(service.name, "Leistung ${index + 1}", enabled) { value ->
+                            ProfileEditorField(service.name, "Leistung ${index + 1}", enabled) { value ->
                                 change { it.changeService(service.id) { line -> line.copy(name = value) } }
                             }
-                            EncounterField(service.amount, "Betrag ${index + 1} in EUR (optional)", enabled, KeyboardType.Decimal) { value ->
+                            ProfileEditorField(service.amount, "Betrag ${index + 1} in EUR (optional)", enabled, KeyboardType.Decimal) { value ->
                                 change { it.changeService(service.id) { line -> line.copy(amount = value) } }
                             }
                             TextButton(enabled = enabled, onClick = { change { it.removeService(service.id) } }) {
@@ -293,8 +165,8 @@ internal fun EncounterEditorDialog(editor: EncounterEditor) {
                         }
                     }
                     TextButton(enabled = enabled, onClick = { change { it.addService() } }) { Text("Leistung hinzufügen") }
-                    EncounterField(d.overall, "Gesamtbewertung 1–5 (optional)", enabled, KeyboardType.Number) { value -> change { it.copy(overall = value) } }
-                    EncounterField(d.sympathy, "Sympathie 1–5 (optional)", enabled, KeyboardType.Number) { value -> change { it.copy(sympathy = value) } }
+                    ProfileEditorField(d.overall, "Gesamtbewertung 1–5 (optional)", enabled, KeyboardType.Number) { value -> change { it.copy(overall = value) } }
+                    ProfileEditorField(d.sympathy, "Sympathie 1–5 (optional)", enabled, KeyboardType.Number) { value -> change { it.copy(sympathy = value) } }
                     OutlinedTextField(d.note, { value -> change { it.copy(note = value) } },
                         enabled = enabled, label = { Text("Private Begegnungsnotiz") },
                         modifier = Modifier.fillMaxWidth(), minLines = 2)
@@ -319,7 +191,7 @@ internal fun EncounterEditorDialog(editor: EncounterEditor) {
 }
 
 @Composable
-private fun EncounterField(
+internal fun ProfileEditorField(
     value: String, label: String, enabled: Boolean,
     keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit,
 ) {
