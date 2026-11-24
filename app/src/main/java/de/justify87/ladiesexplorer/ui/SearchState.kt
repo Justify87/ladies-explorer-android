@@ -7,6 +7,22 @@ import de.justify87.ladiesexplorer.core.SearchRequest
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal data class SearchDraftEditAction(val generation: Long, val paneGeneration: Long)
+
+internal fun searchDraftEditMatches(
+    discovery: DiscoverUiState, search: SearchUiState, saved: SavedSearchUiState, action: SearchDraftEditAction,
+): Boolean =
+    discovery.actionSurface == ProfileActionSurface.SEARCH &&
+        discovery.actionGeneration == action.generation &&
+        saved.pane == SearchPane.Filters && saved.actionGeneration == action.paneGeneration && !saved.busy &&
+        !search.loading && !search.actionBusy && !search.profileOpen
+
+internal fun searchDraftResetMatches(
+    discovery: DiscoverUiState, search: SearchUiState, saved: SavedSearchUiState,
+    action: SearchDraftEditAction, renderedDraft: SearchDraft,
+): Boolean =
+    searchDraftEditMatches(discovery, search, saved, action) && SearchDraft.from(search) == renderedDraft
+
 internal data class SearchSubmitAction(
     val draft: SearchDraft,
     val generation: Long,

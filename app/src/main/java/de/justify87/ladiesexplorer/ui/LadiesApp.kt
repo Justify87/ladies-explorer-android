@@ -196,6 +196,7 @@ fun LadiesApp(
 
     val pane = saved.pane
     val renderedPaneAction = SavedSearchPaneAction(saved.actionGeneration)
+    val draftAction = SearchDraftEditAction(discovery.actionGeneration, saved.actionGeneration)
     val renderedEditorAction = saved.editor?.let { SavedEditorAction(it, saved.actionGeneration) }
     val searchCancelAction = SearchCancelAction(ProfileActionSurface.SEARCH, discovery.actionGeneration, search.searchAttemptId)
     LaunchedEffect(savedSearchRouteVisible, lifecycle) {
@@ -444,13 +445,14 @@ fun LadiesApp(
                     else -> SearchScreen(
                         search = search, saved = saved,
                         canStartSearch = !home.loading && !discovery.busy,
+                        canEditDraft = searchDraftEditMatches(discovery, search, saved, draftAction),
                         onDraftChange = if (pane == SearchPane.SavedEditor) {
                             { change ->
                                 renderedEditorAction?.let { viewModel.savedSearch.editDraft(it, change) }
                                 Unit
                             }
-                        } else viewModel::editSearchDraft,
-                        onReset = viewModel::resetSearchDraft,
+                        } else { change -> viewModel.editSearchDraft(draftAction, change) },
+                        onReset = { viewModel.resetSearchDraft(draftAction, SearchDraft.from(search)) },
                         onPreviewTarget = viewModel::setPreviewTarget,
                         onSearch = viewModel::submitSearch,
                         onCancelSearch = { viewModel.cancelActiveSearch(searchCancelAction) },

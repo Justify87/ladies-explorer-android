@@ -45,6 +45,44 @@ class SearchRunStateTest {
         assertEquals(old.response, pending.endRun("source failure").response)
     }
 
+    @Test fun normalDraftEditsRequireCurrentFilterContextButAllowSequentialInput() {
+        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 7)
+        val saved = SavedSearchUiState(actionGeneration = 4)
+        val search = SearchUiState(city = "Dresden")
+        val action = SearchDraftEditAction(7, 4)
+        assertTrue(searchDraftEditMatches(discovery, search, saved, action))
+        assertTrue(searchDraftEditMatches(discovery, search.copy(city = "Berlin", radiusKm = 50u), saved, action))
+        assertFalse(searchDraftEditMatches(discovery.copy(actionSurface = ProfileActionSurface.NONE), search, saved, action))
+        assertFalse(searchDraftEditMatches(discovery.copy(actionSurface = ProfileActionSurface.GRID), search, saved, action))
+        assertFalse(searchDraftEditMatches(discovery.copy(actionGeneration = 8), search, saved, action))
+        assertFalse(searchDraftEditMatches(discovery, search, saved.copy(overview = true), action))
+        assertFalse(searchDraftEditMatches(discovery, search, saved.copy(actionGeneration = 5), action))
+        assertFalse(searchDraftEditMatches(discovery, search, saved.copy(operation = SavedOperation.Write), action))
+        assertFalse(searchDraftEditMatches(discovery, search.beginRun(), saved, action))
+        assertFalse(searchDraftEditMatches(discovery, search.copy(profileOpen = true), saved, action))
+        assertFalse(searchDraftEditMatches(discovery, search.copy(actionBusy = true), saved, action))
+    }
+
+    @Test fun resetRequiresRenderedDraftAndRevokesOldEditContextWithoutChangingRun() {
+        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 7)
+        val saved = SavedSearchUiState(actionGeneration = 4)
+        val search = SearchUiState(city = "Dresden").acceptRun(response(1), listOf(card(1))).hideGridLike(1)
+        val action = SearchDraftEditAction(7, 4)
+        val rendered = SearchDraft.from(search)
+        assertTrue(searchDraftResetMatches(discovery, search, saved, action, rendered))
+        assertFalse(searchDraftResetMatches(discovery, search.copy(city = "Berlin"), saved, action, rendered))
+        val blank = search.copy(city = "")
+        assertTrue(searchDraftResetMatches(discovery, blank, saved, action, SearchDraft.from(blank)))
+        val reset = search.applyDraftChange(SearchDraft().applyTo(search))
+        val next = discovery.copy(actionGeneration = 8)
+        assertEquals(SearchDraft(), SearchDraft.from(reset))
+        assertEquals(search.response, reset.response)
+        assertEquals(search.activeCards, reset.activeCards)
+        assertEquals(search.gridHiddenLikes, reset.gridHiddenLikes)
+        assertFalse(searchDraftEditMatches(next, reset, saved, action))
+        assertTrue(searchDraftEditMatches(next, reset, saved, action.copy(generation = 8)))
+    }
+
     @Test fun submitSearchRejectsOldDraftSurfacePaneAndBusyState() {
         val search = SearchUiState(city = "Dresden")
         val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 7)

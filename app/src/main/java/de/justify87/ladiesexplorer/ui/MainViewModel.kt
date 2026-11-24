@@ -412,16 +412,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    internal fun editSearchDraft(change: (SearchDraft) -> SearchDraft) {
+    internal fun editSearchDraft(action: SearchDraftEditAction, change: (SearchDraft) -> SearchDraft) {
         val current = _searchUiState.value
-        if (current.loading || savedSearch.state.value.busy) return
+        if (!searchDraftEditMatches(_discoverState.value, current, savedSearch.state.value, action)) return
         val draft = SearchDraft.from(current)
         val next = change(draft)
         if (draft == next) return
         _searchUiState.update { it.applyDraftChange(next.applyTo(it)) }
     }
 
-    fun resetSearchDraft() = editSearchDraft { SearchDraft() }
+    internal fun resetSearchDraft(action: SearchDraftEditAction, renderedDraft: SearchDraft): Boolean {
+        if (!searchDraftResetMatches(_discoverState.value, _searchUiState.value, savedSearch.state.value,
+                action, renderedDraft)) return false
+        editSearchDraft(action) { SearchDraft() }
+        _discoverState.update { it.copy(actionGeneration = it.actionGeneration + 1) }
+        return true
+    }
 
     /** Check swipe admission against live state, not the last Compose frame. */
     internal fun runSwipeAvailability(token: SwipeDeckToken, mode: AvailabilityMode) {
