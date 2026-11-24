@@ -274,10 +274,7 @@ internal fun DiscoverScreen(
         val menuContext = SwipeMenuContext(deckToken, cardToken, token.takeIf { !transitioning }, enabled && !transitioning,
             availabilityEnabled && matchingRun && started, matchingRun, availability, state.replayLikes, state.canUndoSwipe,
             selectedMedia?.let { "${it.kind}:${it.url}:${it.localPath}" })
-        val summary = if (state.activeRunId == null) "Lokaler Bestand · neutral"
-            else active?.let { "${it.city} · ${it.requestedRadiusKm} km" } ?: "Suchlauf wird übernommen"
-        val counts = if (state.activeRunId == null) "${state.cards.size} im Deck"
-            else "Quelle: ${active?.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"} · ${state.activeVisibleCount} sichtbar · ${state.cards.size} im Deck"
+        val sourceContext = if (!matchingRun) "Suchwechsel" else if (active == null) "Lokaler Bestand" else "Aktive Suche"
         val notices = buildList {
             if (search.loading) add(ProfileNotice("Suche läuft", if (search.searchCancelling) "Suche wird beendet …" else "Suche läuft …",
                 "Abbrechen", !search.searchCancelling, onCancelSearch))
@@ -326,38 +323,29 @@ internal fun DiscoverScreen(
             hasRail = true, notices = notices, noticeOwner = menuContext, fixedNoticeSlot = true,
             heroLeadingHeight = discoveryLeadingHeight(LocalDensity.current.fontScale).dp,
             header = { presentation, compactNotice, onNotice ->
-                SwipeShellHeader(
-                    presentation = presentation, identity = identity, context = menuContext,
-                    summary = summary, counts = counts, executed = active != null, compactNotice = compactNotice,
-                    onNotice = onNotice, onPhoto = { photoRequest++ }, onSearch = onOpenSearch,
-                    onMode = onSelectMode, onAvailability = { onAvailability(deckToken, it) }, onRefresh = { onRefresh(deckToken) },
-                    onReset = { onReset(deckToken) }, onReplay = { onReplayLikes(deckToken, !state.replayLikes) },
-                    onFavorite = { token?.let(onFavorite) }, onChoose = choose, onUndo = undo, onSkip = skip,
-                    onOpenImage = selectedMedia?.takeIf { it.kind == "IMAGE" }?.let { item ->
-                        { if (token?.let(isProfileCurrent) == true) fullImage = item }
-                    },
-                    onOriginal = profile?.identity?.profileUrl?.let { url ->
-                        { if (token?.let(isProfileCurrent) == true) openExternal(context, url) }
-                    },
-                )
+                SwipeShellHeader(presentation, sourceContext, menuContext, compactNotice,
+                    onNotice, onOpenSearch, { onAvailability(deckToken, it) })
             },
             rail = { SwipeDecisionControls(menuContext, identity?.title, undo, skip, choose) },
-        ) { presentation, onIdentityMeasured ->
+        ) { presentation, _ ->
             Box(Modifier.fillMaxSize().clipToBounds()) {
             if (card == null) {
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     item(key = "discover-context") {
-                        DiscoveryChrome(summary, availability, menuContext.availabilityEnabled, deckToken,
-                            DiscoverMode.Swipe, onMode = onSelectMode,
-                            onAvailability = { onAvailability(deckToken, it) })
+                        DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode, Modifier)
+                    }
+                    if (presentation.budget.railInMenu) item {
+                        SwipeDecisionControls(menuContext, identity?.title, undo, skip, choose,
+                            modifier = Modifier.fillMaxWidth().height(96.dp))
                     }
                     item {
                         if (state.loading || searchLoading) CircularProgressIndicator()
                         else {
                             Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
                             Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
-                            OutlinedButton(onClick = { if (flight == null) onReset(deckToken) }, enabled = enabled && !transitioning) { Text("Deck neu beginnen") }
+                            SwipeDeckActions(menuContext, { onRefresh(deckToken) }, { onReset(deckToken) },
+                                { onReplayLikes(deckToken, !state.replayLikes) })
                         }
                     }
                 }
@@ -373,9 +361,11 @@ internal fun DiscoverScreen(
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices) {
                     item(key = "discover-context") {
-                        DiscoveryChrome("$summary · ${state.cards.size} im Deck", availability, menuContext.availabilityEnabled, deckToken,
-                            DiscoverMode.Swipe, onMode = onSelectMode,
-                            onAvailability = { onAvailability(deckToken, it) })
+                        DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode)
+                    }
+                    if (presentation.budget.railInMenu) item(key = "compact-decisions") {
+                        SwipeDecisionControls(menuContext, identity?.title, undo, skip, choose,
+                            modifier = Modifier.fillMaxWidth().height(96.dp))
                     }
                     item(key = "hero") {
                         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
@@ -390,17 +380,38 @@ internal fun DiscoverScreen(
                             playbackVisible = heroVisible,
                             galleryNavigationEnabled = !transitioning,
                             onMediaSettled = { settledMedia = it },
-                            identity = identity, actionToken = token,
+                            identity = null, actionToken = token,
+                            favorite = identity?.favorite, onFavorite = { token?.takeIf(isProfileCurrent)?.let(onFavorite) },
+                            imageScale = androidx.compose.ui.layout.ContentScale.Fit,
                             projectionAvailable = profile != null, actionsEnabled = actions,
                             isCurrent = { token?.let(isProfileCurrent) == true },
                             compact = presentation.budget.compactGallery,
-                            headerOwnsIdentity = presentation.identityInHeader,
-                            onIdentityMeasured = onIdentityMeasured, touchGate = touchGate)
+                            headerOwnsIdentity = false,
+                            onIdentityMeasured = {}, touchGate = touchGate)
                         }
                     }
                     item(key = "header") {
-                        if (profile != null) ProfileMetadata(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
-                        else Text("Profilinfos", style = MaterialTheme.typography.titleMedium)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            identity?.let {
+                                Text(it.title, style = MaterialTheme.typography.titleLarge)
+                                Text(it.subtitle, style = MaterialTheme.typography.bodyMedium)
+                                it.shortDecision?.let { decision -> Text(decision, style = MaterialTheme.typography.labelMedium) }
+                            }
+                            if (profile != null) ProfileMetadata(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
+                            TextButton(onClick = { photoRequest++ }) { Text("Zum Foto") }
+                        }
+                    }
+                    item(key = "profile-actions") {
+                        Column {
+                            val image = selectedMedia?.takeIf { it.kind == "IMAGE" }
+                            if (image != null) TextButton(enabled = actions, onClick = {
+                                if (token?.let(isProfileCurrent) == true && selectedMedia == image) fullImage = image
+                            }) { Text("Bild groß anzeigen") }
+                            if (token?.preference != null && token.preference != Preference.NONE)
+                                TextButton(enabled = actions, onClick = { choose(Preference.NONE) }) { Text("Präferenz zurücksetzen") }
+                            SwipeDeckActions(menuContext, { onRefresh(deckToken) }, { onReset(deckToken) },
+                                { onReplayLikes(deckToken, !state.replayLikes) })
+                        }
                     }
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                 }
@@ -417,7 +428,7 @@ internal fun DiscoverScreen(
                         alpha = 1f - (kotlin.math.abs(motion.value) / kotlin.math.abs(old.destination)).coerceIn(0f, 1f) * .2f
                     }.clip(MaterialTheme.shapes.large).clearAndSetSemantics {}) {
                     ProfileImage(oldMedia.url, oldMedia.localPath, Modifier.fillMaxSize(), allowRetry = false)
-                    old.identity?.let { HeroIdentityOverlay(it, Modifier.align(Alignment.BottomCenter)) }
+
                 }
             }
             }
@@ -430,120 +441,44 @@ fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: Str
     ProfileImage(url = url, localPath = localPath, modifier = modifier)
 }
 
-/** Menu actions retain their opening context. */
 @Composable
 private fun SwipeShellHeader(
-    presentation: ProfileShellPresentation, identity: HeroIdentity?, context: SwipeMenuContext,
-    summary: String, counts: String, executed: Boolean, compactNotice: ProfileNoticeIndicator?,
-    onNotice: () -> Unit, onPhoto: () -> Unit, onSearch: () -> Unit,
-    onMode: (DiscoverMode) -> Unit, onAvailability: (AvailabilityMode) -> Unit,
-    onRefresh: () -> Unit, onReset: () -> Unit, onReplay: () -> Unit, onFavorite: () -> Unit,
-    onChoose: (Preference) -> Unit, onUndo: () -> Unit, onSkip: () -> Unit,
-    onOpenImage: (() -> Unit)?, onOriginal: (() -> Unit)?,
+    presentation: ProfileShellPresentation, sourceContext: String, context: SwipeMenuContext,
+    compactNotice: ProfileNoticeIndicator?, onNotice: () -> Unit,
+    onSearch: () -> Unit, onAvailability: (AvailabilityMode) -> Unit,
 ) {
-    var opened by remember { mutableStateOf<SwipeMenuContext?>(null) }
-    val latest by rememberUpdatedState(context)
-    DisposableEffect(Unit) { onDispose { opened = null } }
-    val openContext = opened
-    val expanded = swipeMenuCurrent(openContext, context)
-    LaunchedEffect(context) { if (!swipeMenuCurrent(opened, context)) opened = null }
-    fun dispatch(action: () -> Unit) {
-        if (opened != openContext || !swipeMenuCurrent(openContext, latest)) return
-        opened = null
-        action()
+    Row(Modifier.fillMaxSize().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        ProfileShellTitle("Entdecken", sourceContext, "", presentation.budget.shortHeader, Modifier.weight(1f))
+        if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
+        if (!presentation.budget.narrowHeader) ShellIconButton(onClick = onSearch) {
+            Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
+        }
+        AvailabilityQuickChoice(context.availability, context.availabilityEnabled, context.deck, onAvailability)
     }
-    val shown = identity.takeIf { presentation.identityInHeader }
-    var info by remember(context, identity) { mutableStateOf(false) }
-    if (info && identity != null) IdentityInfoDialog(identity) { info = false }
-    Row(Modifier.fillMaxSize().padding(start = ShellMetrics.inset), verticalAlignment = Alignment.CenterVertically) {
-        if (shown == null && !presentation.budget.shortHeader) {
-            Text("Ladies", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-        } else {
-            ProfileShellTitle(shown?.title ?: "Ladies", shown?.compactSubtitle.orEmpty(),
-                shown?.decisions.orEmpty(), presentation.budget.shortHeader, Modifier.weight(1f),
-                onClick = shown?.let { onPhoto })
-        }
-        Box(Modifier.width(ShellMetrics.touch), contentAlignment = Alignment.Center) {
-            if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
-            else if (context.profile != null && !presentation.budget.narrowHeader) {
-                ShellIconButton(onClick = onFavorite) {
-                    Icon(if (context.profile.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        contentDescription = if (context.profile.favorite) "Favorit entfernen" else "Als Favorit speichern",
-                        tint = if (context.profile.favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        if (!presentation.budget.narrowHeader) {
-            if (presentation.photoShortcut) ShellIconButton(onClick = onPhoto) {
-                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Zum Foto")
-            } else ShellIconButton(onClick = onSearch) { Icon(Icons.Default.Search, contentDescription = "Suche öffnen") }
-        }
-        Box {
-            ShellIconButton(onClick = { opened = context }) { Icon(Icons.Default.MoreVert, "Filter, Modus und Deckaktionen") }
-            DropdownMenu(expanded = expanded, onDismissRequest = { opened = null }) {
-                if (identity != null) {
-                    Text("${identity.title}\n${identity.subtitle}\n${identity.decisions}",
-                        Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
-                    DropdownMenuItem(text = { Text("Vollständige Profilinformationen") }, onClick = { dispatch { info = true } })
-                }
-                Text(swipeContextLabel(summary, executed, context.matchingRun, context.availability),
-                    Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.titleSmall)
-                Text(counts, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
-                if (compactNotice != null) DropdownMenuItem(text = { Text("Status und Hinweise") }, onClick = { dispatch(onNotice) })
-                if (presentation.photoShortcut && context.card != null) DropdownMenuItem(text = { Text("Zum Foto") }, onClick = { dispatch(onPhoto) })
-                if (presentation.budget.railInMenu && (context.card != null || context.canUndo)) {
-                    DropdownMenuItem(text = { Text("Undo") }, enabled = context.deckEnabled && context.canUndo, onClick = { dispatch(onUndo) })
-                    DropdownMenuItem(text = { Text("Nein") }, enabled = context.profile != null, onClick = { dispatch { onChoose(Preference.DISLIKE) } })
-                    DropdownMenuItem(text = { Text("Später") }, enabled = context.deckEnabled && context.card != null, onClick = { dispatch(onSkip) })
-                    DropdownMenuItem(text = { Text("Gefällt") }, enabled = context.profile != null, onClick = { dispatch { onChoose(Preference.LIKE) } })
-                    HorizontalDivider()
-                }
-                DropdownMenuItem(text = { Text("Suche und Filter öffnen") }, onClick = { dispatch(onSearch) })
-                Text(when {
-                    !context.matchingRun -> "Suchlauf wird übernommen"
-                    executed -> "Ausgeführte Verfügbarkeit"
-                    else -> "Verfügbarkeit (Suchentwurf)"
-                },
-                    Modifier.padding(12.dp), style = MaterialTheme.typography.labelMedium)
-                AvailabilityMode.entries.forEach { mode ->
-                    DropdownMenuItem(text = { Text(if (context.availability == mode) "✓ ${mode.label}" else mode.label) },
-                        enabled = context.availabilityEnabled, onClick = { dispatch { onAvailability(mode) } })
-                }
-                HorizontalDivider()
-                DiscoverMode.entries.forEach { mode ->
-                    DropdownMenuItem(text = { Text(if (mode == DiscoverMode.Swipe) "✓ ${mode.title}" else mode.title) },
-                        onClick = { dispatch { onMode(mode) } })
-                }
-                HorizontalDivider()
-                DropdownMenuItem(text = { Text("Aktualisieren") }, enabled = context.deckEnabled, onClick = { dispatch(onRefresh) })
-                DropdownMenuItem(text = { Text("Deck zurücksetzen") }, enabled = context.deckEnabled, onClick = { dispatch(onReset) })
-                if (context.deck.runId != null) DropdownMenuItem(text = { Text(if (context.replay) "Likes nicht erneut zeigen" else "Likes erneut zeigen") },
-                    enabled = context.deckEnabled, onClick = { dispatch(onReplay) })
-                context.profile?.let { profile ->
-                    HorizontalDivider()
-                    onOpenImage?.let { action -> DropdownMenuItem(text = { Text("Bild groß anzeigen") }, onClick = { dispatch(action) }) }
-                    onOriginal?.let { action -> DropdownMenuItem(text = { Text("Originalprofil öffnen") }, onClick = { dispatch(action) }) }
-                    DropdownMenuItem(text = { Text(if (profile.favorite) "Favorit entfernen" else "Als Favorit speichern") },
-                        onClick = { dispatch(onFavorite) })
-                    if (profile.preference != Preference.NONE) DropdownMenuItem(text = { Text("Präferenz zurücksetzen") },
-                        onClick = { dispatch { onChoose(Preference.NONE) } })
-                }
-            }
+}
+
+@Composable
+private fun SwipeDeckActions(context: SwipeMenuContext, onRefresh: () -> Unit, onReset: () -> Unit, onReplay: () -> Unit) {
+    FlowRow {
+        TextButton(onClick = onRefresh, enabled = context.deckEnabled) { Text("Aktualisieren") }
+        TextButton(onClick = onReset, enabled = context.deckEnabled) { Text("Deck neu beginnen") }
+        if (context.deck.runId != null) TextButton(onClick = onReplay, enabled = context.deckEnabled) {
+            Text(if (context.replay) "Likes nicht erneut zeigen" else "Likes erneut zeigen")
         }
     }
 }
 
 @Composable
 internal fun SwipeDecisionControls(context: SwipeMenuContext, profileTitle: String?, onUndo: () -> Unit,
-    onSkip: () -> Unit, onChoose: (Preference) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+    onSkip: () -> Unit, onChoose: (Preference) -> Unit, modifier: Modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface)) {
         val compact = maxHeight < 72.dp || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
         val scheme = MaterialTheme.colorScheme
         val dark = scheme.surface.luminance() < .5f
         val reject = if (dark) Color(0xFFF72F49) else scheme.error
         val like = if (dark) Color(0xFF4CDA36) else scheme.tertiary
-        Row(Modifier.fillMaxSize().semantics { contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen" },
-            horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        FlowRow(Modifier.fillMaxSize().semantics { contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen" },
+            horizontalArrangement = Arrangement.SpaceEvenly, verticalArrangement = Arrangement.Center) {
             DecisionAction("Undo", Icons.Default.Undo, context.deckEnabled && context.canUndo, compact,
                 scheme.surfaceContainerHigh, scheme.onSurface, onUndo)
             DecisionAction("Nein", Icons.Default.Close, context.profile != null, compact,
