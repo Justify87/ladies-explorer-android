@@ -100,15 +100,16 @@ internal fun ProfileDetailScreen(
             onGallerySelection = { selectedMedia = it }, encounters = encounters, prices = prices) {
             if (profile != null) {
                 item(key = "media") {
-                    ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        selection = mediaSelection,
-                        identity = identity, actionToken = renderedToken, actionsEnabled = !busy,
-                        isCurrent = { renderedToken?.let(isProfileCurrent) == true },
-                        compact = presentation.budget.compactGallery,
-                        headerOwnsIdentity = presentation.identityInHeader,
-                        onIdentityMeasured = onIdentityMeasured, touchGate = touchGate,
-                        playbackVisible = heroVisible)
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                        ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
+                            selection = mediaSelection,
+                            identity = identity, actionToken = renderedToken, actionsEnabled = !busy,
+                            isCurrent = { renderedToken?.let(isProfileCurrent) == true },
+                            compact = presentation.budget.compactGallery,
+                            headerOwnsIdentity = presentation.identityInHeader,
+                            onIdentityMeasured = onIdentityMeasured, touchGate = touchGate,
+                            playbackVisible = heroVisible)
+                    }
                 }
                 item(key = "identity") {
                     ProfileMetadata(profile, state.profileIdentity, state.selectedPerson, state.profileMedia, state.profileFromArchive)
