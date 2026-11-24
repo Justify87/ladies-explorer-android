@@ -38,7 +38,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ### Lokale Filter
 
-- Unterstützt: nur Fotos/Video, Likes/Dislikes ausblenden sowie ALL/AI/NATURAL **nur** auf vorhandenen Markern.
+- Unterstützt: nur Fotos/Video, Likes/Dislikes ausblenden sowie ALL/AI/NATURAL **nur** auf vorhandenen Markern. AI bedeutet „KI-markiert“, die bestehende Definition NATURAL bedeutet „Ohne KI-Markierung“, nicht nachgewiesene Natürlichkeit. Ohne Marker bleibt die tatsächliche Bildherkunft unbekannt; gespeicherte Definitionen und Sichtbarkeitsregeln bleiben unverändert.
 - STUDIO/FACEAPP/Business sind ohne belastbare Daten nicht unterstützt; keine URL-Heuristik.
 - Replay-Likes und Hide-Likes unterscheiden. Normale und gespeicherte Suche verwenden identische Sichtbarkeitsregeln.
 
@@ -93,7 +93,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 | Unterstützte Detailseite ohne ID | Kann Inhalte liefern, Status bleibt `UNKNOWN`; explizite Prüfung zählt als Fehler |
 | Falsche ID/Pfad, Prüfseite, Timeout oder Transportfehler | **Kein** Beweis für Inaktivität und kein bestätigter `UNAVAILABLE`-Wechsel |
 
-- Nur bestätigte Quellenbeobachtungen ändern Status; Statuszeit ist die letzte bestätigte Quellenbeobachtung.
+- Nur bestätigte Quellenbeobachtungen ändern Status; Statuszeit ist die letzte bestätigte Quellenbeobachtung. Profil und gespeicherte Personen zeigen nicht belegte Statuswerte (auch historische INACTIVE/REMOVED) als unbekannt statt als bestätigte Nichtverfügbarkeit.
 - Status-only ändert weder Inhalts-/Personenreihenfolge noch archivierte Medien.
 - Abbruch erhält bereits bestätigte Teilresultate.
 

@@ -174,7 +174,7 @@ internal fun LazyListScope.searchFilterEditor(
     if (filterQuery.isBlank() || "Bilddarstellung Bilder Fotos Video Dislikes Likes Natürlich Studio FaceApp KI Betrieb Filter".contains(filterQuery, ignoreCase = true)) item {
         FilterCard("Bilddarstellung und lokale Filter") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                listOf("ALL" to "Alle", "NATURAL" to "Natürlich", "AI" to "KI-markiert").forEach { (mode, label) ->
+                listOf("ALL" to "Alle", "NATURAL" to "Ohne KI-Markierung", "AI" to "KI-markiert").forEach { (mode, label) ->
                     FilterChip(selected = state.local.imageMode.ifBlank { "ALL" } == mode, enabled = enabled,
                         onClick = {
                             if (state.local.imageMode.ifBlank { "ALL" } != mode) {

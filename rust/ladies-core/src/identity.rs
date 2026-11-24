@@ -45,8 +45,8 @@ pub(crate) fn normalize_phone(input: Option<&str>) -> Option<String> {
         .chars()
         .filter(char::is_ascii_digit)
         .collect::<String>();
-    if digits.starts_with("0049") {
-        digits.replace_range(..4, "49");
+    if digits.starts_with("00") {
+        digits.replace_range(..2, "");
     } else if digits.starts_with('0') {
         digits.replace_range(..1, "49");
     }
@@ -210,11 +210,17 @@ pub(crate) fn candidates(
     let Some(snapshot_id) = snapshot_id else {
         return Ok(Vec::new());
     };
-    let (source_id, phone): (Option<String>, Option<String>) = db.query_row(
-        "SELECT external_profile_id, normalized_phone FROM listing_snapshots WHERE snapshot_id=?1",
-        [snapshot_id],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    )?;
+    let (source_id, stored_phone, raw_phone): (Option<String>, Option<String>, Option<String>) =
+        db.query_row(
+            "SELECT external_profile_id, normalized_phone, phone_display
+             FROM listing_snapshots WHERE snapshot_id=?1",
+            [snapshot_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+    let phone = match raw_phone.as_deref() {
+        Some(raw) => normalize_phone(Some(raw)),
+        None => stored_phone,
+    };
     let mut matches: HashMap<i64, Evidence> = HashMap::new();
     if let Some(source) = source_id {
         let mut q = db.prepare(
@@ -226,12 +232,33 @@ pub(crate) fn candidates(
         }
     }
     if let Some(phone) = phone {
+        // Older native rows treated a non-German 00 prefix as a German trunk prefix.
+        // Keep the indexed historical key, but require its raw value to confirm the match.
+        let historical_key = if phone.starts_with("+49") {
+            phone.clone()
+        } else {
+            format!("+490{}", phone.trim_start_matches('+'))
+        };
         let mut q = db.prepare(
-            "SELECT DISTINCT person_id FROM person_identifiers
-             WHERE kind='PHONE' AND normalized_value=?1 AND person_id!=?2",
+            "SELECT person_id, normalized_value, raw_value FROM person_identifiers
+             WHERE kind='PHONE' AND normalized_value IN (?1,?2) AND person_id!=?3",
         )?;
-        for id in q.query_map(params![phone, owner], |r| r.get::<_, i64>(0))? {
-            matches.entry(id?).or_default().phone = true;
+        let rows = q.query_map(params![phone, historical_key, owner], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (id, key, raw) = row?;
+            let confirmed = match raw.as_deref() {
+                Some(raw) => normalize_phone(Some(raw)).as_deref() == Some(phone.as_str()),
+                None => key == phone,
+            };
+            if confirmed {
+                matches.entry(id).or_default().phone = true;
+            }
         }
     }
     let new_hashes = hashes(db, snapshot_id)?;
@@ -572,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn phone_normalization_matches_legacy() {
+    fn phone_normalization_preserves_german_numbers_and_handles_international_prefixes() {
         assert_eq!(
             normalize_phone(Some("tel:0170 1234567")).as_deref(),
             Some("+491701234567")
@@ -585,8 +612,63 @@ mod tests {
             normalize_phone(Some("wa.me/491701234567")).as_deref(),
             Some("+491701234567")
         );
+        assert_eq!(
+            normalize_phone(Some("0044 1234567890")).as_deref(),
+            Some("+441234567890")
+        );
+        assert_eq!(
+            normalize_phone(Some("+44 1234567890")).as_deref(),
+            Some("+441234567890")
+        );
+        assert_eq!(normalize_phone(Some("00")).as_deref(), None);
         assert_eq!(normalize_phone(Some("")).as_deref(), None);
     }
+
+    #[test]
+    fn historical_international_phone_keys_require_matching_raw_evidence() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let owner = core.create_person(Some("Owner".into())).unwrap();
+        let matching = core.create_person(Some("Matching".into())).unwrap();
+        let other = core.create_person(Some("Other".into())).unwrap();
+        let listing = core
+            .add_listing(owner, None, "LADIES".into(), "100".into(), None)
+            .unwrap();
+        let db = core.connection().unwrap();
+        let old_key = "+490441234567890";
+        db.execute(
+            "INSERT INTO person_identifiers (person_id,kind,normalized_value,raw_value)
+             VALUES (?1,'PHONE',?3,'0044 1234567890'),(?2,'PHONE',?3,'+490441234567890')",
+            params![matching, other, old_key],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO listing_snapshots (listing_id,fingerprint,normalized_phone,phone_display)
+             VALUES (?1,'historical',?2,'0044 1234567890')",
+            params![listing, old_key],
+        )
+        .unwrap();
+        let snapshot = db.last_insert_rowid();
+        db.execute(
+            "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+            params![snapshot, listing],
+        )
+        .unwrap();
+        let found = candidates(&db, listing).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].person_id, matching);
+        assert!(found[0].phone_match);
+        let persisted: String = db
+            .query_row(
+                "SELECT normalized_phone FROM listing_snapshots WHERE snapshot_id=?1",
+                [snapshot],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(persisted, old_key);
+        assert_eq!(current_owner(&db, listing).unwrap().0, owner);
+        assert_eq!(core.status().unwrap().person_count, 3);
+    }
+
     #[test]
     fn augmenting_paths_recover_independent_picture_matches() {
         assert_eq!(compare_images(&[1, 0], &[0, 63]).1, 2);
