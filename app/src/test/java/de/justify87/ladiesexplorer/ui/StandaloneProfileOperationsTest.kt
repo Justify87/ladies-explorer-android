@@ -412,7 +412,9 @@ class StandaloneProfileOperationsTest {
         f.operations.loadProfile(4L, 1L) {}
         started.awaitSignal()
         assertTrue(f.search.value.archiving)
-        f.operations.cancelMediaArchive()
+        val session = f.search.value.profileSessionId
+        f.operations.cancelMediaArchive(session)
+        f.operations.cancelMediaArchive(session)
         assertEquals(1, f.controls.single().cancelled)
         assertTrue(f.search.value.archiving)
         assertTrue(coroutineContext[Job]!!.children.single().isActive)
@@ -425,6 +427,55 @@ class StandaloneProfileOperationsTest {
         assertEquals(2, f.profileChanges)
         assertNull(f.search.value.mediaArchive)
         assertFalse(f.search.value.profileOpen)
+    }
+
+    @Test(timeout = 15_000) fun staleArchiveStopCannotCancelReplacementOfSameProfile() = runBlocking {
+        val f = Fixture(this)
+        val firstStarted = CompletableDeferred<Unit>()
+        val firstFinish = CompletableDeferred<Unit>()
+        val secondStarted = CompletableDeferred<Unit>()
+        val secondFinish = CompletableDeferred<Unit>()
+        f.source = { fixtureProfile() }
+        f.archive = { snapshot, control ->
+            if (control === f.controls.first()) {
+                firstStarted.complete(Unit)
+                firstFinish.awaitSignal()
+            } else {
+                secondStarted.complete(Unit)
+                secondFinish.awaitSignal()
+            }
+            MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u)
+        }
+        try {
+            f.operations.loadProfile(4L, 1L) {}
+            firstStarted.awaitSignal()
+            val old = f.search.value.profileSessionId
+            f.operations.closeProfile()
+            assertEquals(1, f.controls.single().cancelled)
+            f.operations.loadProfile(4L, 1L) {}
+            val current = f.search.value.profileSessionId
+            assertNotEquals(old, current)
+            f.operations.cancelMediaArchive(current)
+            assertEquals(1, f.controls.single().cancelled)
+            firstFinish.complete(Unit)
+            secondStarted.awaitSignal()
+            assertTrue(f.search.value.archiving)
+            f.operations.cancelMediaArchive(old)
+            assertEquals(0, f.controls.last().cancelled)
+            f.operations.cancelMediaArchive(current)
+            f.operations.cancelMediaArchive(current)
+            assertEquals(1, f.controls.last().cancelled)
+            assertTrue(f.search.value.archiving)
+            secondFinish.complete(Unit)
+            f.idle()
+            assertFalse(f.search.value.archiving)
+            f.operations.cancelMediaArchive(current)
+            assertEquals(1, f.controls.last().cancelled)
+            assertEquals(2, f.calls.count { it.startsWith("archive:") })
+        } finally {
+            firstFinish.complete(Unit)
+            secondFinish.complete(Unit)
+        }
     }
 
     @Test(timeout = 15_000) fun partialArchiveFailureStillReprojectsCommittedMediaAndRevokesOldToken() = runBlocking {

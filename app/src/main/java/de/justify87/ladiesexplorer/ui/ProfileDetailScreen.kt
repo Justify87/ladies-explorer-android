@@ -22,7 +22,7 @@ internal fun ProfileDetailScreen(
     onPreference: (ProfileIdentityToken, Preference) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
-    onCancelArchive: () -> Unit,
+    onCancelArchive: (Long) -> Unit,
     onRetryProfile: () -> Unit,
     onBack: () -> Unit,
     actionsBusy: Boolean,
@@ -54,7 +54,8 @@ internal fun ProfileDetailScreen(
         if (state.retryProfileListingId != null) add(ProfileNotice("Profil erneut laden", "Profil konnte nicht vollständig geladen werden.",
             if (state.profileSourceRetryAllowed) "Online abrufen" else "Erneut laden",
             !state.actionBusy && !actionsBusy, onRetryProfile, warning = true))
-        if (state.archiving) add(ProfileNotice("Medienarchiv", "Medien werden lokal archiviert", "Stoppen", true, onCancelArchive))
+        if (state.archiving) add(ProfileNotice("Medienarchiv", "Medien werden lokal archiviert", "Stoppen", true,
+            { onCancelArchive(state.profileSessionId) }))
         state.mediaWarning?.let { add(ProfileNotice("Archivhinweis", it, warning = true)) }
         if (actionsBusy || state.actionBusy) add(ProfileNotice("Wird verarbeitet", "Profilaktion wird verarbeitet."))
     }

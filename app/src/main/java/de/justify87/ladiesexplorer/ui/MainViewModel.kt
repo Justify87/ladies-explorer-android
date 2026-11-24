@@ -361,7 +361,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 
-    fun cancelMediaArchive() = profileOperations.cancelMediaArchive()
+    internal fun cancelMediaArchive(session: Long) = profileOperations.cancelMediaArchive(session)
 
     fun closeProfile() = profileOperations.closeProfile()
 

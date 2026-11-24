@@ -106,7 +106,9 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – normale Filterentwurfsaktionen (DONE mit Merge):** [PR #70](https://github.com/Justify87/ladies-explorer-android/pull/70) bindet Entwurfsänderungen und Reset an den gerenderten Filterkontext; Reset zusätzlich an den Entwurf. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45409621564) erfolgreich.
 
-**Teilauftrag – Vorschau-Lifecycle (REVIEW):** [Branch `fix/t10-8-preview-lifecycle`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-preview-lifecycle) bindet Vorschau an STARTED-Lifecycle, eigene Lease und aktuellen Quellentwurf/Editor-Session. JVM-Regressionen für identischen Ersatzrequest, verspäteten Release, Pane-/Entwurfswechsel und unveränderte lokale Filter. CI und Merge ausstehend.
+**Integrierter Teilauftrag – Vorschau-Lifecycle:** [PR #71](https://github.com/Justify87/ladies-explorer-android/pull/71) bindet Vorschau an STARTED-Lifecycle, eigene Lease und aktuellen Quellentwurf/Editor-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410399421) beim Merge noch nicht abschließend verifiziert.
+
+**Teilauftrag – Standalone-Archivabbruch (REVIEW):** [Branch `fix/t10-8-profile-archive-cancel`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-profile-archive-cancel) bindet den gerenderten Stopp an die sichtbare Profil-Session. JVM-Regressionen für denselben erneut geöffneten Profilkontext, verspäteten Stopp, mehrfachen Cancel und nativen Drain. CI und Merge ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.

@@ -136,7 +136,10 @@ internal class StandaloneProfileOperations<C : Any>(
         archiveCall?.cancel(io.cancelArchive)
     }
 
-    fun cancelMediaArchive() {
+    fun cancelMediaArchive(session: Long) {
+        val active = _searchUiState.value
+        if (!presentationVisible || !active.profileOpen || !active.archiving ||
+            active.profileSessionId != session || !profileGeneration.isCurrent(session)) return
         // Cancellation signals the call; it owns the slot until drain.
         archiveCall?.cancel(io.cancelArchive)
     }
