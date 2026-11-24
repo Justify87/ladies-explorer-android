@@ -65,10 +65,10 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 ### Root-Navigation und Entdecken
 
 - **Verbindlich:** Header, Inhalt, gegebenenfalls Decision Rail und Root-Navigation folgen einem gemeinsamen Scroll- und `WindowInsets`-Vertrag. Fixierte Flächen verdecken weder den letzten Listeneintrag noch aktive Meldungen; Edge-to-Edge, IME und Systemgesten nativ berücksichtigen.
-- **Verbindlich:** Vier Root-Ziele `Entdecken`, `Suche`, `Gespeichert`, `Einstellungen` teilen dieselbe App-Bar und Bottom-Navigation. Such- und Einstellungsüberschriften verwenden ein gemeinsames Abschnittsmuster; Branding/Suche/Mehr bleiben konsistent. Standalone-Profile besitzen Back/Mehr, aber keine Root-Navigation.
+- **Verbindlich:** Vier Root-Ziele `Entdecken`, `Suche`, `Gespeichert`, `Einstellungen` teilen dieselbe App-Bar und Bottom-Navigation. Such- und Einstellungsüberschriften verwenden ein gemeinsames Abschnittsmuster; Branding und Suche bleiben konsistent; Entdecken besitzt eine Schnellwahl statt eines Sammelmenüs. Standalone-Profile besitzen Back/Mehr, aber keine Root-Navigation.
 - **Verbindlich:** Entdecken hat die Modi `Swipe`, `Grid`, `Karte` mit demselben Umschalter und unverändertem Platz; ein Moduswechsel startet keine neue Suche. Ausgeführter Suchlauf und neutraler lokaler Ausgangsbestand sind sichtbar getrennt; innerhalb jedes Kontexts teilen alle drei Modi die Mitgliedschaft. Grid-/Kartenprofilöffnung führt in reguläres Swipe mit genau dem gewählten Listing. Android-Back kehrt auch nach Entscheidungen und Undo zum Ursprung zurück; gültigen Grid-Schlüssel samt Offset beziehungsweise Kamera, Zoom, Ausrichtung und Listing-/Owner-Auswahl erhalten. Ungültige Anker kontrolliert ersetzen.
-- **Verbindlich:** Alle/Jetzt/Heute im Entdecken-Kontext ist eine Schnellwahl, die unmittelbar einen Suchlauf auslösen darf; eine entsprechende Änderung im Suchentwurf führt ohne ausdrückliches `Suchen` keinen Suchlauf aus. Aktiver Run/Radius/Verfügbarkeit und Teilresultate dürfen nicht als neutraler lokaler Bestand erscheinen.
-- **Richtwert:** Der Header folgt der 56-dp-Rolle, Kontext- und Moduszeile der kompakten v3-Komposition. Keine unnötige doppelte Titelleiste oder Paddingkette.
+- **Verbindlich:** Alle/Jetzt/Heute im Entdecken-Kontext ist eine Schnellwahl, die unmittelbar einen Suchlauf auslösen darf; eine entsprechende Änderung im Suchentwurf führt ohne ausdrückliches `Suchen` keinen Suchlauf aus. Aktiver Run und neutraler lokaler Bestand sind im Header unterscheidbar; Verfügbarkeit steht in der Schnellwahl, Teilresultate und Fehler bleiben sichtbar. Keine Statistikzeile für Ort, Radius oder Ergebnisanzahl in Entdecken.
+- **Richtwert:** Der Header folgt der 56-dp-Rolle mit integrierter Schnellwahl; darunter nur der kompakte Modusumschalter mit 48-dp-Touchzielen. Keine doppelte Titelleiste oder Paddingkette.
 
 ### Grid
 
@@ -104,18 +104,18 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 ### UX-Vertrag — zwei Zustände, ein Scrollfluss
 
 **A – Start am Hero:**
-- **Verbindlich:** Kompakte Marken-/Such-/Kontext- und Modusdarstellung, unmittelbar darunter ein großer Hero mit Foto in Cover-Darstellung. Keine dauerhafte Galerie-Leiste, Storysegmente, Zähler, Pfeile oder Gestentutorials. Name, Alter, belegter Ort/Status kontrastgesichert am unteren Bildrand; kleines Detail-Peek deutet Vertikalscrollen an.
+- **Verbindlich:** Kompakter Entdecken-Header mit Schnellwahl, unmittelbar darunter Moduswahl und großer Swipe-Hero mit Foto in Fit-Darstellung. Kein unteres Textoverlay oder Scrim; Name, Alter und belegter Ort/Status folgen im Detailfluss. Oben rechts ein kleines halbtransparentes kontrastgesichertes Favoriten-Icon mit separatem 48-dp-Ziel. Keine dauerhafte Galerie-Leiste, Storysegmente, Zähler, Pfeile oder Gestentutorials. Standalone behält seine Identitätsdarstellung.
 - **Verbindlich:** Decision Rail direkt über der Root-Navigation mit `Undo`, `Nein`, `Später`, `Gefällt`; Nein/Gefällt primär, Undo/Später sekundär. Favorit ist separat erreichbar. Die sichtbare Karte bleibt bis zur bestätigten Entscheidung oder eindeutigem Kontextwechsel bestehen. Keine zweite Decision Rail innerhalb des Profils.
 
 **B – Details nach vertikalem Scrollen:**
-- **Verbindlich:** **Derselbe vertikale Scrollfluss**; kein zweites Modal, keine zweite Profilroute, kein verschachtelter Detail-Scroller. Oberer Kontext scrollt aus oder kollabiert koordiniert. Wenn das Identitäts-Overlay nicht mehr sichtbar ist, ein kompakter Profilheader mit belegter Identität und verfügbarem Status – ohne doppelte dauerhafte Namensüberschrift.
+- **Verbindlich:** **Derselbe vertikale Scrollfluss**; kein zweites Modal, keine zweite Profilroute, kein verschachtelter Detail-Scroller. Oberer Kontext scrollt aus oder kollabiert koordiniert. In Swipe steht die belegte Identität außerhalb des Mediums im Detailfluss; Standalone übergibt die Identität bei nicht mehr sichtbarem Overlay an den kompakten Header. Keine doppelte dauerhafte Namensüberschrift.
 - **Verbindlich:** Rail bleibt für das aktuell sichtbare Profil erreichbar. Details werden vertikal gescrollt, horizontale Profilentscheidung nur am Hero. Tap auf kompakte Identität oder ein zugänglicher „Zum Foto“-Befehl führt zum Hero zurück, ohne neue Navigation. Zurückscrollen erhält den gewählten Galerieindex.
 - **Verbindlich:** Headerwechsel ohne Layoutsprung, ungewolltes Neuladen oder Scroll-Reset; aktive Fehler, Teilresultate und Ownerwarnungen bleiben sichtbar. Standalone verwendet denselben Inhalt und Galerie, aber Back statt Deck-Rail und **keine** Swipe-Entscheidung.
 
 ### Messbarer Flächenvertrag und responsive Darstellung
 
-- **Verbindlich:** Die v3-Komposition mit **zwei** kompakten Kontext-/Moduszeilen ersetzt die alte Vorgabe von maximal einer Zusatzzeile. Damit sind auch die früheren festen Vorgaben „Hero-Beginn ≤14 % H“ und „Hero-Höhe mindestens 65 % H“ aufgehoben. Diese Werte dürfen nicht parallel zum neuen Layout erzwungen werden.
-- **Richtwert:** Browserreferenz bei 390 × 844 CSS-px ungefähr `x=12`, `y=171`, Breite `366`, Höhe `534` (ca. 63 % der Gesamthöhe). Keine unveränderte dp-Übertragung; `H` ist nativ **nach Systeminsets** und mit Header, Rail und Root-Navigation zu messen. Hero so groß wie sinnvoll, ohne Touchziele, Identität, Rail oder Status zu verdecken.
+- **Verbindlich:** Entdecken verwendet eine kompakte Moduszeile unter dem Header mit integrierter Schnellwahl. Die früheren festen Vorgaben „Hero-Beginn ≤14 % H“ und „Hero-Höhe mindestens 65 % H“ gelten nicht. Der Hero nutzt die frei werdende Fläche ohne Überdeckung der Bedienziele.
+- **Richtwert:** Der unveränderte v3-Prototyp ist keine verbindliche Swipe-Hero-Flächenvorgabe mehr. `H` ist nativ **nach Systeminsets** und mit Header, Rail und Root-Navigation zu messen. Hero so groß wie sinnvoll, ohne Touchziele, Rail oder Status zu verdecken.
 - **Verbindlich:** Bei 360 × 740, 390 × 844, 430 × 932 und 600 dp, hoher Schriftgröße, kurzen Höhen, Querformat und IME adaptiv reagieren. Zuerst unnötige sekundäre Controls/Abstände reduzieren, dann Peek verkleinern; erst danach den Hero stärker verkleinern. Kein abgeschnittener Inhalt, zweite Scrollachse oder fehlende Aktion. Breitere Fenster begrenzen Inhalte, skalieren nicht den ganzen Screen.
 
 ### Informationshierarchie — progressive Offenlegung
@@ -140,15 +140,15 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 ### Gesten und Präsentation
 
 **Verbindlich – Galerie, Video und Handlungsvorrang:**
-- Medien in Quellreihenfolge; verfügbare lokale Archivdatei bevorzugen, dann zulässigen Remote-Fallback, bei Fehler Platzhalter mit Retry. Original/Fit als ausdrücklich erreichbare Medienaktion im Profilmenü, nicht als dauerhafte Galerie-Chrome.
+- Medien in Quellreihenfolge; verfügbare lokale Archivdatei bevorzugen, dann zulässigen Remote-Fallback, bei Fehler Platzhalter mit Retry. Vollbild/Fit ist in Swipe im Detailfluss und in Standalone im Profilmenü ausdrücklich erreichbar, nicht als dauerhafte Galerie-Chrome.
 - Seitliche Tapzonen wechseln Bilder, am Rand ohne Überlauf. Bei Video mittiges Play/Pause mit Vorrang vor Tapzonen; Wiedergabe eingebettet und stumm, Autoplay/Loop nur bei sichtbarem Medium und gültigem Lifecycle. Stop/Surface-/Tempfile-/Retry-Grenzen gemäß [ARCHITECTURE](ARCHITECTURE.md#persistentes-archiv-und-anzeige). Keine Medienarchivierung durch reines Anzeigen.
-- Kindinteraktionen (Video, Menü, Zurück, Vollbild, Retry, Kontakt, Editor, Rail) gehen Gesten vor. Standalone besitzt Galerie-Taps, aber keine Entscheidungs-Swipe-Geste.
+- Kindinteraktionen (Favorit, Video, Menü in Standalone, Zurück, Vollbild, Retry, Kontakt, Editor, Rail) gehen Gesten vor. Standalone besitzt Galerie-Taps, aber keine Entscheidungs-Swipe-Geste.
 
 **Verbindlich – Entscheidungsgeste:**
 - Horizontaler Swipe entscheidet **nur im Hero** bei eindeutig dominanter horizontaler Achse und Distanz mindestens `max(72 dp, 25 % der Kartenbreite)`; Fling allein genügt nicht. Vertikal- und Diagonalscrollen löst keine Entscheidung aus.
 - Mehrdeutiger Achsenverlauf, Long-Press vor Lock, Mehrfinger, Cancel, Back, Busy oder Owner-/Run-Wechsel verbieten den Commit. Nach Drag folgt kein Galerie-Tap; Drag-Feedback bleibt rein präsentational. Unterschwellige Bewegung und Writefehler federn zurück; erst bestätigter fachlicher Commit erlaubt den Exit.
 - Buttons und Geste verwenden dieselben fachlichen Entscheidungsoperationen. `Später` ist sessionlokal, `Favorit` von Like/Dislike unabhängig. Undo stellt den letzten **noch gültigen vollständigen** Präferenz-/Deckzustand und nach Möglichkeit Foto-, Scroll- und Abschnittsposition wieder her; bei ungültiger Referenz kontrollierter Hero-Fallback. Reset/Replay starten Traversierung neu, löschen keine Präferenzen. Standalone-Präferenz, Rücksetzung auf Neutral und Favoritenwechsel erzeugen keine Deck-Visits.
-- Back, Moduswechsel und Rotation erhalten gültige Kontext-/Medienposition; neue Suche oder eindeutig neuer Owner startet am Hero. Bei kleinem Fenster/hoher Font Scale bleiben Rail-Aktionen über zugängliche Alternativen erreichbar; kein dauerhaftes zweites Menü als Hauptbedienung.
+- Back, Moduswechsel und Rotation erhalten gültige Kontext-/Medienposition; neue Suche oder eindeutig neuer Owner startet am Hero. Bei kleinem Fenster/hoher Font Scale bleiben Rail-Aktionen bei Bedarf inline im Scrollfluss erreichbar. Aktualisierung, Reset, Replay und Profilaktionen sind in Swipe im Detailfluss erreichbar; kein Sammelmenü.
 
 ## Native Übertragung
 
