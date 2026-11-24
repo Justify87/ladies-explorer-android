@@ -403,11 +403,7 @@ impl LadiesCore {
         profile_detail::save_note(self, listing_id, person_id, expected, note)
     }
 
-    pub fn encounters(
-        &self,
-        listing_id: i64,
-        person_id: i64,
-    ) -> Result<Vec<Encounter>, CoreError> {
+    pub fn encounters(&self, listing_id: i64, person_id: i64) -> Result<Vec<Encounter>, CoreError> {
         encounters::list(self, listing_id, person_id)
     }
 
