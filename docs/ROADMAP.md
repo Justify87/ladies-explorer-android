@@ -18,7 +18,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.2 — Entdecken: Header und bildbetonter Swipe-Hero
 
-**Status:** REVIEW — Branch `feature/m09-2-discovery-hero`; vollständiges CI-Gate ausstehend.
+**Status:** REVIEW — [PR #103](https://github.com/Justify87/ladies-explorer-android/pull/103), Branch `feature/m09-2-discovery-hero`. [CI #781](https://github.com/Justify87/ladies-explorer-android/actions/runs/45509995047): Core/Architektur erfolgreich; Android-Instrumentierung durch veralteten Testtyp fehlgeschlagen, Aufrufer in `5527947` korrigiert. Nächster Schritt: vollständiges CI-Gate auf korrigiertem Stand prüfen, Befunde beheben und Abschlussbeleg ergänzen.
 
 **Abhängigkeit:** M09.1; Nutzerauftrag zur Umsetzung erteilt. Merge separat.
 
