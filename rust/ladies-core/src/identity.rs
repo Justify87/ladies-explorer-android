@@ -906,7 +906,10 @@ mod tests {
         let before = core.saved_search_window(saved_search.clone(), 10).unwrap();
         assert_eq!(before.cards[0].person_id, Some(source));
         assert_eq!(before.cards[1].person_id, Some(target));
-        assert_eq!(core.map_overview(false).unwrap().total_profiles, 2);
+        let map = core
+            .map_overview(vec![listing, target_listing], Some(1))
+            .unwrap();
+        assert_eq!(map.total_profiles, 2);
         assert_eq!(crate::identity::list(&core, listing).unwrap().len(), 1);
         let expected_snapshot = snapshot_id(&core, listing);
         core.confirm_identity_match(listing, source, expected_snapshot, target)
@@ -943,8 +946,16 @@ mod tests {
         );
         assert!(after.searches[0].unread_new_results);
         assert_ne!(before.searches[0].revision, after.searches[0].revision);
-        assert_eq!(core.map_overview(false).unwrap().total_profiles, 1);
-        assert_eq!(core.map_overview(true).unwrap().total_profiles, 1);
+        // A merge changes owners, not the two executed-run listings.
+        let map = core
+            .map_overview(active.iter().map(|card| card.listing_id).collect(), Some(1))
+            .unwrap();
+        assert_eq!(map.total_profiles, 2);
+        assert!(
+            map.profiles
+                .iter()
+                .all(|profile| profile.person_id == target && profile.favorite)
+        );
         assert!(core.get_person(target).unwrap().unwrap().favorite);
         let saved = core
             .saved_people_window(
