@@ -59,6 +59,37 @@ class SavedPeopleStateTest {
         assertFalse(savedStatusBatchMatches(state.copy(busy = true), action))
     }
 
+    @Test fun paginationRequiresExactRenderedWindowAndAvailableOperation() {
+        val cursor = SavedPersonCursor(SavedPersonKind.FAVORITE, SavedPersonSort.DATE,
+            SavedPersonSection.REGULAR, 123L, 1L, "key", 1L)
+        val page = displayed(row()).savedPage!!.copy(nextCursor = cursor)
+        val recent = page.copy(nextCursor = cursor.copy(section = SavedPersonSection.RECENT))
+        val state = displayed(row()).copy(savedPage = page, savedRecent = recent)
+        val search = SearchUiState()
+        val regularAction = SavedPeoplePageAction(page, state.savedKind, state.savedSort, 42L, false)
+        val recentAction = SavedPeoplePageAction(recent, state.savedKind, state.savedSort, 42L, true)
+        for (action in listOf(regularAction, recentAction)) {
+            assertTrue(savedPeoplePageMatches(state, search, action))
+            assertFalse(savedPeoplePageMatches(state.copy(savedKind = SavedPersonKind.LIKE), search, action))
+            assertFalse(savedPeoplePageMatches(state.copy(savedSort = SavedPersonSort.NAME), search, action))
+            assertFalse(savedPeoplePageMatches(state.copy(actionSurface = ProfileActionSurface.NONE), search, action))
+            assertFalse(savedPeoplePageMatches(state.copy(actionGeneration = 43L), search, action))
+            assertFalse(savedPeoplePageMatches(state.copy(loading = true), search, action))
+            assertFalse(savedPeoplePageMatches(state.copy(busy = true), search, action))
+            assertFalse(savedPeoplePageMatches(state.copy(savedLoadingMore = true), search, action))
+            assertFalse(savedPeoplePageMatches(state.copy(savedRecentLoadingMore = true), search, action))
+            assertFalse(savedPeoplePageMatches(state, search.copy(profileOpen = true), action))
+            assertFalse(savedPeoplePageMatches(state, search.copy(loading = true), action))
+            assertFalse(savedPeoplePageMatches(state, search.copy(actionBusy = true), action))
+            assertFalse(savedPeoplePageMatches(state, search, action.copy(watchlist = !action.watchlist)))
+        }
+        assertFalse(savedPeoplePageMatches(state.copy(savedPage = page.copy()), search, regularAction))
+        assertFalse(savedPeoplePageMatches(state.copy(savedRecent = recent.copy()), search, recentAction))
+        val exhausted = page.copy(nextCursor = null)
+        assertFalse(savedPeoplePageMatches(state.copy(savedPage = exhausted), search, regularAction.copy(page = exhausted)))
+        assertTrue(savedPeoplePageMatches(state.copy(savedError = "read failed"), search, regularAction))
+    }
+
     @Test fun singleStatusUsesExistingRenderedRowAdmissionAndCannotTargetCardlessPerson() {
         val person = row().copy(card = fixtureCard(8L, 1L))
         val state = displayed(person)
