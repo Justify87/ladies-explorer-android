@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: M05.11 (G11), T11.4 DOING.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
+**M05.11 (G11) abgeschlossen. Nächster Schritt: M06.1 nach gesondertem Nutzerauftrag.** M07 bleibt geplant. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -17,7 +17,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
 | M05.10 Unified Profile Experience | DONE | T10.0–T10.7 abgeschlossen; T10.8 [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75) integriert; T10.8/T10.9 Abschlussbilanz unten. |
-| M05.11 Gezielte Qualitätskonsolidierung | DOING | T11.1–T11.4: belegte Inkonsistenzen und Redundanzen vor M06 gezielt beheben; keine großflächige Neuarchitektur. |
+| M05.11 Gezielte Qualitätskonsolidierung | DONE | T11.1–T11.4 abgeschlossen; [PR #83](https://github.com/Justify87/ladies-explorer-android/pull/83), vollständige [CI #45425545751](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751). |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -94,7 +94,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - [x] Technischer Abschlussbeleg: [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) mit erfolgreichem ARM64-Debug-APK-/Instrumentierungs-APK-Build, JVM-Tests, Lint, Rust-Tests, synthetischer nativer DB-Regression, Clippy, Quell-/APK-Architekturprüfungen und abschließendem build-Gate. Reguläre automatische CI speichert gemäß README kein Debug-APK-Artefakt; keine separate manuelle Veröffentlichung.
 - Abschluss mit Merge von [PR #76](https://github.com/Justify87/ladies-explorer-android/pull/76); keine Code-, CI- oder Fachvertragsänderung. M06/M07 bleiben gesperrt bis Nutzerauftrag.
 
-## Jetzt – M05.11 (G11) · Gezielte Qualitätskonsolidierung
+## Abgeschlossen – M05.11 (G11) · Gezielte Qualitätskonsolidierung
 
 **Abhängigkeit:** M05.10 DONE. **Reihenfolge:** vor M06; M06/M07 bleiben ohne gesonderten Nutzerauftrag ungestartet. **Ziel:** Nachgewiesene fachliche Widersprüche, unnötige Zustands-/Aufrufdoppelungen und sichtbare Redundanzen ursächlich beheben, ohne die bewährte Kotlin-/Rust-Architektur oder den Hobbyprojektumfang aufzublähen.
 
@@ -127,17 +127,14 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - Suchliste wegen eigenständigem Zugriff auf nur im Grid ausgeblendete Likes erhalten; doppelter Filterwechsel und Trefferzahl im Warntext entfernt. Suchentwurf, Navigation und bestehende Aktionskontexte unverändert.
 - Gezielte JVM-Regressionen in `SavedPeopleStateTest`, `ProfilePanelsTest` und `SearchRunStateTest`; ARM64- und Instrumentierungs-APK, JVM-Tests, Lint, Rust-Tests, native DB-Regression, Clippy, Quell-/APK-Architekturprüfungen und Build-Gate erfolgreich. Geräteprüfungen mit Merge gemäß Merge-Regel DONE; keine separate Geräteausführung oder lokale Build-Ausführung behauptet.
 
-### T11.4 — DOING · Enges Altcode- und Abschlussreview
+### T11.4 — DONE · Enges Altcode- und Abschlussreview (G11)
 
-**Abhängigkeit:** T11.1–T11.3 abgeschlossen. **Anker:** jeweils betroffene Kotlin-/Rust-/UniFFI-Aufrufer, Tests, `docs/` und bestehender [CI-Vertrag](../README.md#prüfung--ci).
+**Abschlussbeleg:** [PR #83](https://github.com/Justify87/ladies-explorer-android/pull/83), geprüfter Implementierungsstand `afdbc3e1698f8f0fc732b1482202ed9ff2b465a4`, vollständige [CI #45425545751](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751) erfolgreich. Merge ausdrücklich freigegeben am 24.11.2026.
 
-**Umfang:**
-- [x] Ausschließlich im Zuge der vorigen Aufgaben eindeutig abgelöste Funktionen, State-Felder, Wrapper, FFI-Exporte, Kommentare und Tests vollständig bereinigen. Native Altdefinitionen, Serialisierung, Framework-Aufrufer und interne Schemaentwicklung nur nach belegter Entbehrlichkeit anfassen.
-- [ ] Betroffene UI→CoreStore→Rust→SQLite-Pfade und umgekehrte Aufrufer auf verbleibende Widersprüche, funktionale Regressionen und unnötige neue Abstraktionen reviewen; vorhandene gezielte Tests und vollständigen CI-Gate für den integrierten Abschlussstand belegen.
-
-**Reviewstand:** [PR #83](https://github.com/Justify87/ladies-explorer-android/pull/83), Basis `e5abe01d2f741c59b3a84ba73efa43f1740f4400`. Statischer Abschlussreview der Änderungen aus T11.1–T11.3 einschließlich produktiver Aufrufer, nativer Schreib-/Lesepfade, Rückprojektionen, relevanter JVM-/Rust-Regressionen und Fachverträge durchgeführt. Konkrete Befunde: Filtersuche verwendet gerenderte Beschriftungen; SavedSearch-Invalidierung erfasst auch die revisionierte Übersicht, einschließlich Rückkehr aus Editor/verworfenem Fensterread; Root-Back widerruft Sichtbarkeit synchron; Statusbeschriftungen entsprechen Quellenbeobachtung und Batchumfang. Abgelöster `refreshResultProjection`-Name und alte Aufrufer entfernt. Historische Telefonschlüssel, Definitionen, native Exporte, Grid-Like-Sonderpfad sowie unabhängige Karten-/Profil-Recovery bewusst erhalten; keine Schema- oder FFI-Änderung. Regressionen in `SearchRunStateTest`, `SavedSearchPaneTest` und `SavedPeopleStateTest`. Basis-CI [#45423535106](https://github.com/Justify87/ladies-explorer-android/actions/runs/45423535106) und erster PR-Stand [#45424012692](https://github.com/Justify87/ladies-explorer-android/actions/runs/45424012692) erfolgreich; vollständiger CI-Gate für den erweiterten PR steht noch aus. Keine lokale vollständige Build-/Testausführung behauptet.
-
-**Akzeptanz:** Keine offenen hohen In-Scope-Befunde, keine zweite fachliche Implementierungsroute, kein belegter Funktionsverlust und keine zusätzlichen Frameworks/Jobs. ROADMAP und tatsächlich geänderte Verträge im jeweiligen PR aktualisieren; Abschlussbelege nennen, danach Status DONE. Kein eigenmächtiger Merge; keine separate Geräteabnahme nach [Merge-Regel](#pflege).
+- Betroffene Aufrufer, Kotlin-/Rust-/UniFFI-/SQLite-Pfade, Rückprojektionen, Tests und Fachverträge aus T11.1–T11.3 statisch überprüft. Filtersuche an gerenderte Labels gekoppelt; SavedSearch-Übersicht und Ergebnisfenster gemeinsam invalidiert; Sichtbarkeit bei Root-Back synchron widerrufen; Statusbeschriftungen präzisiert. Abgelöste Aufrufer bereinigt.
+- Historische Telefonschlüssel, native Definitionen und Exporte, Grid-Like-Sonderpfad sowie unabhängige Karten-/Profil-Recovery begründet erhalten. Keine neue fachliche Implementierungsroute, Schemaänderung, Abhängigkeit oder CI-Job. Keine weiteren hohen In-Scope-Befunde belegt.
+- Vollständiger CI-Gate einschließlich ARM64-Debug- und Instrumentierungs-APK, JVM-Tests, Lint, Rust-Formatierung/-Tests, Clippy, nativer DB-Regression und Quell-/APK-Architekturprüfungen erfolgreich. Geräteprüfungen mit Merge gemäß Merge-Regel DONE; keine separate Geräte- oder lokale Build-Ausführung behauptet.
+- G11 abgeschlossen mit Merge von PR #83; M06/M07 nicht begonnen.
 
 ## Danach – M06
 
