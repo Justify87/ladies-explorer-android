@@ -197,6 +197,7 @@ fun LadiesApp(
     val pane = saved.pane
     val renderedPaneAction = SavedSearchPaneAction(saved.actionGeneration)
     val renderedEditorAction = saved.editor?.let { SavedEditorAction(it, saved.actionGeneration) }
+    val searchCancelAction = SearchCancelAction(ProfileActionSurface.SEARCH, discovery.actionGeneration, search.searchAttemptId)
     LaunchedEffect(savedSearchRouteVisible, lifecycle) {
         viewModel.savedSearch.setVisible(savedSearchRouteVisible &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -348,13 +349,16 @@ fun LadiesApp(
                             }
                         }
                         if (route.discovery == DiscoverMode.Grid) {
-                            SearchRunStatus(search, viewModel::cancelActiveSearch)
+                            val cancelAction = SearchCancelAction(ProfileActionSurface.GRID, discovery.actionGeneration, search.searchAttemptId)
+                            SearchRunStatus(search) { viewModel.cancelActiveSearch(cancelAction) }
                         }
                         if (route.discovery != DiscoverMode.Swipe) DiscoverModeSwitcher(route.discovery, onSelect = {
                             viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
                             route = route.select(it)
                         })
                         if (route.discovery == DiscoverMode.Swipe) {
+                            val cancelAction = SearchCancelAction(ProfileActionSurface.NONE,
+                                discovery.actionGeneration, search.searchAttemptId, discovery.swipeSessionId)
                             DiscoverScreen(
                                 state = discovery,
                                 notes = notes,
@@ -377,7 +381,7 @@ fun LadiesApp(
                                 },
                                 availabilityEnabled = !search.loading && !home.loading && !discovery.busy && !saved.busy,
                                 onAvailability = viewModel::runSwipeAvailability,
-                                onCancelSearch = viewModel::cancelActiveSearch,
+                                onCancelSearch = { viewModel.cancelActiveSearch(cancelAction) },
                                 onRefresh = viewModel::refreshSwipe,
                                 onReset = viewModel::resetSwipe,
                                 onUndo = viewModel::undoSwipe,
@@ -449,7 +453,7 @@ fun LadiesApp(
                         onReset = viewModel::resetSearchDraft,
                         onPreviewTarget = viewModel::setPreviewTarget,
                         onSearch = viewModel::submitSearch,
-                        onCancelSearch = viewModel::cancelActiveSearch,
+                        onCancelSearch = { viewModel.cancelActiveSearch(searchCancelAction) },
                         onSave = viewModel.savedSearch::saveEditor,
                         onName = { name -> renderedEditorAction?.let { viewModel.savedSearch.editName(it, name) } },
                         onCancelEdit = { renderedEditorAction?.let { viewModel.savedSearch.cancelEditor(it) } },

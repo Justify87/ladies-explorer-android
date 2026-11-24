@@ -109,6 +109,7 @@ data class SearchUiState(
     val gridHiddenLikes: Set<Long> = emptySet(),
     val loading: Boolean = false,
     val searchCancelling: Boolean = false,
+    val searchAttemptId: Long = 0L,
     val response: SearchResponse? = null,
     val profileOpen: Boolean = false,
     val profileSessionId: Long = 0L,
@@ -338,8 +339,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchOwner.cancel { it.cancel() }
     }
 
-    fun cancelActiveSearch() {
-        if (!searchOwner.occupied) return
+    internal fun cancelActiveSearch(action: SearchCancelAction) {
+        if (!searchOwner.occupied ||
+            !searchCancelMatches(_discoverState.value, _searchUiState.value, savedSearch.state.value, swipeVisible, action)) return
         invalidateActiveSearch()
         _searchUiState.update { it.copy(searchCancelling = true) }
     }
@@ -488,7 +490,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val control = RequestControl()
         val ticket = checkNotNull(searchOwner.start(control))
         invalidateProfileRequest()
-        _searchUiState.update { it.beginRun() }
+        _searchUiState.update { it.beginRun(ticket) }
         viewModelScope.launch {
             var acceptedRun = false
             try {
