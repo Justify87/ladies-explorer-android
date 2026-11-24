@@ -138,6 +138,14 @@ internal fun SearchUiState.hideGridLike(listingId: Long): SearchUiState =
 internal fun SearchUiState.restoreGridLike(listingId: Long): SearchUiState =
     copy(gridHiddenLikes = gridHiddenLikes - listingId)
 
+internal fun gridAnchorKey(key: Any): String = if (key is Long) "listing/$key" else key.toString()
+
+internal fun gridRestorePosition(keys: List<String>, anchor: String?, index: Int, offset: Int): Pair<Int, Int> {
+    val match = keys.indexOf(anchor)
+    return if (match >= 0) match to offset.coerceAtLeast(0)
+    else index.coerceIn(0, (keys.size - 1).coerceAtLeast(0)) to 0
+}
+
 internal fun nearDiscoveryEnd(lastVisible: Int, totalItems: Int): Boolean =
     lastVisible >= 0 && totalItems > 0 && lastVisible >= (totalItems - 3).coerceAtLeast(0)
 

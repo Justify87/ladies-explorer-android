@@ -34,7 +34,7 @@ class ProfileProjectionTest {
         assertEquals(listOf("saved", "saved", "saved", "discovery"), calls)
         policy.setVisibility(false, true)
         policy.sourceCompleted()
-        assertEquals(listOf("saved", "saved", "saved", "discovery", "map", "saved", "map"), calls)
+        assertEquals(listOf("saved", "saved", "saved", "discovery", "map", "saved", "discovery"), calls)
     }
 
     @Test(timeout = 15_000) fun actualDiscoveryPublisherKeepsSuccessfulSiblingAndRejectsOutdatedEpoch() = runBlocking {

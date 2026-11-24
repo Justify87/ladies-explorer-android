@@ -7,13 +7,15 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,20 +44,50 @@ internal fun DiscoveryGridScreen(
     val active = search.response != null
     val enabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy
     val refreshAction = GridRefreshAction(search.response?.searchRunId, discovery.actionGeneration)
-    val listState = rememberLazyGridState()
     val pageAction = if (active) null else discovery.nextCursor?.let { GridPageAction(it, discovery.actionGeneration) }
     val canPage = pageAction != null && gridPageMatches(discovery, search, pageAction)
-    LaunchedEffect(listState, pageAction, canPage, discovery.error) {
-        if (pageAction != null && canPage && discovery.error == null) {
-            snapshotFlow {
-                val layout = listState.layoutInfo
-                nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
-            }.first { it }
-            onLoadMore(pageAction)
-        }
-    }
+    var anchorKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var anchorIndex by rememberSaveable { mutableIntStateOf(0) }
+    var anchorOffset by rememberSaveable { mutableIntStateOf(0) }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val inlineChrome = maxHeight < 360.dp || (maxHeight < 460.dp && LocalDensity.current.fontScale > 1.3f)
+        val showStatus = search.response != null || search.loading || search.error != null
+        val keys = buildList {
+            if (inlineChrome) add("discovery-chrome")
+            if (showStatus) add("search-status")
+            add("summary")
+            if (discovery.mutationError != null) add("mutation-error")
+            if (discovery.error != null) add("error")
+            if (cards.isEmpty()) add(if (discovery.loading || search.loading) "loading" else "empty")
+            cards.forEach { add(gridAnchorKey(it.listingId)) }
+            if (pageAction != null) add("more")
+        }
+        val listState = remember {
+            val (index, offset) = gridRestorePosition(keys, anchorKey, anchorIndex, anchorOffset)
+            LazyGridState(index, offset)
+        }
+        fun currentAnchor(): Triple<String, Int, Int>? {
+            val index = listState.firstVisibleItemIndex
+            val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return null
+            return Triple(gridAnchorKey(item.key), index, listState.firstVisibleItemScrollOffset)
+        }
+        fun saveAnchor(anchor: Triple<String, Int, Int>) {
+            anchorKey = anchor.first
+            anchorIndex = anchor.second
+            anchorOffset = anchor.third
+        }
+        LaunchedEffect(listState) {
+            snapshotFlow { currentAnchor() }.filterNotNull().collect { saveAnchor(it) }
+        }
+        LaunchedEffect(listState, pageAction, canPage, discovery.error) {
+            if (pageAction != null && canPage && discovery.error == null) {
+                snapshotFlow {
+                    val layout = listState.layoutInfo
+                    nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
+                }.first { it }
+                onLoadMore(pageAction)
+            }
+        }
         Column(Modifier.fillMaxSize()) {
             if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { chrome() }
             LazyVerticalGrid(
@@ -67,7 +99,7 @@ internal fun DiscoveryGridScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (inlineChrome) item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) { chrome() }
-                if (search.response != null || search.loading || search.error != null) {
+                if (showStatus) {
                     item(key = "search-status", span = { GridItemSpan(maxLineSpan) }) {
                         GridSearchRunStatus(search, onCancelSearch)
                     }
@@ -114,7 +146,10 @@ internal fun DiscoveryGridScreen(
                         localPath = card.localPath,
                         liked = card.preference == Preference.LIKE,
                         enabled = enabled,
-                        onOpen = { onProfile(action) },
+                        onOpen = {
+                            currentAnchor()?.let(::saveAnchor)
+                            onProfile(action)
+                        },
                         onLike = { onLike(action) },
                     )
                 }
