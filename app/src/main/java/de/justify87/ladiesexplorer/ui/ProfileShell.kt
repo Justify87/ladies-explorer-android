@@ -49,6 +49,7 @@ internal fun ProfileShell(
     header: @Composable (ProfileShellPresentation, ProfileNoticeIndicator?, () -> Unit) -> Unit,
     rail: @Composable () -> Unit = {},
     fixedNoticeSlot: Boolean = false,
+    heroLeadingHeight: Dp = 0.dp,
     content: @Composable (ProfileShellPresentation, (Int) -> Unit) -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -57,7 +58,7 @@ internal fun ProfileShell(
         val fontScale = LocalDensity.current.fontScale
         val budget = profileShellBudget(width.value, height.value, rootHeight.value, fontScale,
             if (fixedNoticeSlot) false else notices.isNotEmpty(), hasRail)
-        val heroHeight = profileHeroHeight(width.value, height.value + rootHeight.value, budget.body).dp
+        val heroHeight = profileHeroHeight(width.value, height.value + rootHeight.value, budget.body, heroLeadingHeight.value).dp
         var identityHeight by remember(heroKey) { mutableIntStateOf(0) }
         // Reading lazy layout inside derivedStateOf avoids raw per-pixel recomposition.
         val handoff by remember(listState, heroKey) {
@@ -66,8 +67,9 @@ internal fun ProfileShell(
         val scrolled by remember(listState) {
             derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
         }
-        val headerIdentity = budget.compactGallery || handoff
-        val presentation = ProfileShellPresentation(budget, heroHeight, headerIdentity, headerIdentity && scrolled)
+        val measuredBudget = budget.copy(compactGallery = budget.compactGallery || heroHeight < 320.dp)
+        val headerIdentity = measuredBudget.compactGallery || handoff
+        val presentation = ProfileShellPresentation(measuredBudget, heroHeight, headerIdentity, headerIdentity && scrolled)
         val summary = notices.firstOrNull { it.warning } ?: notices.firstOrNull()
         val indicator = summary?.let { ProfileNoticeIndicator(it.label, it.warning) }
         val signature = notices.map { listOf(it.label, it.message, it.action, it.enabled, it.warning) }
@@ -138,12 +140,13 @@ internal fun ProfileShellTitle(title: String, context: String, status: String, s
     Column(modifier.then(click).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
         if (short && LocalDensity.current.fontScale >= 1.5f) {
             // At large font sizes, expose full identity/status through the context action.
-            Text("$context · $title", style = MaterialTheme.typography.labelMedium,
+            Text(listOf(context, title).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.labelMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         } else {
             Text(title, style = if (short) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(context, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (context.isNotBlank()) Text(context, style = MaterialTheme.typography.labelMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!short && status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

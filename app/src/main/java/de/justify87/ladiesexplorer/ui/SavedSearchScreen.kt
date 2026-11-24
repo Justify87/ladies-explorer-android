@@ -3,7 +3,6 @@ package de.justify87.ladiesexplorer.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -143,7 +142,7 @@ internal fun SavedSearchResultsScreen(
         }
     }
     val info = state.searches.firstOrNull { it.searchId == result.id }
-    LazyVerticalGrid(columns = GridCells.Fixed(2), state = grid, modifier = modifier.fillMaxSize(),
+    LazyVerticalGrid(columns = profileGridCells(), state = grid, modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
@@ -175,8 +174,8 @@ internal fun SavedSearchResultsScreen(
                         if (listing != null && person != null) {
                             onOpen(SavedSearchProfileOpenAction(result, card, generation))
                         }
-                    }, onLike = null)
-                Text(if (listing == null || person == null) "Kein lokales Profil" else card.city,
+                    }, onLike = null, place = card.city)
+                if (listing == null || person == null) Text("Kein lokales Profil",
                     style = MaterialTheme.typography.bodySmall, maxLines = 2)
             }
         }

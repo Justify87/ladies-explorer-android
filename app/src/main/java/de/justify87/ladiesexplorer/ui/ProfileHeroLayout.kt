@@ -19,13 +19,18 @@ internal data class ProfileShellBudget(
     val noticeInHeader get() = notice == 0f
 }
 
-internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float): Float {
+internal fun discoveryLeadingHeight(fontScale: Float): Float =
+    116f * maxOf(1f, fontScale)
+
+// Context scrolls with the hero. On short viewports allow the hero to fill the body after scrolling.
+internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float, leadingHeight: Float = 0f): Float {
     val h = usableHeight.coerceAtLeast(0f)
     val available = viewportHeight.coerceIn(0f, h)
-    val desired = h * if (width >= 390f) .70f else .65f
-    val minimum = h * if (width >= 390f) .65f else .60f
-    val peek = if (available - 24f >= minimum) 24f else 0f
-    return minOf(desired, (available - peek).coerceAtLeast(0f))
+    val desired = minOf(h * .63f, width.coerceAtLeast(0f) * 1.55f)
+    val afterContext = (available - leadingHeight).coerceAtLeast(0f)
+    val visible = if (afterContext >= 250f) afterContext else available
+    val peek = if (visible >= 274f) 24f else 0f
+    return minOf(desired, (visible - peek).coerceAtLeast(0f))
 }
 
 internal fun profileShellBudget(
@@ -39,7 +44,9 @@ internal fun profileShellBudget(
     val header = preferredHeader.coerceAtMost(available)
     val minBody = minOf(96f, (available - header).coerceAtLeast(0f))
     var remainder = (available - header - minBody).coerceAtLeast(0f)
-    val rail = if (hasRail && remainder >= 48f && !short && width >= 192f) 48f else 0f
+    val rail = if (hasRail && remainder >= 48f && !short && width >= 192f) {
+        if (remainder >= 80f && width >= 320f && fontScale < 1.3f) 80f else 48f
+    } else 0f
     remainder -= rail
     val notice = if (hasNotice && remainder >= 48f && !short) 48f else 0f
     val body = (available - header - rail - notice).coerceAtLeast(0f)

@@ -10,10 +10,12 @@ class ProfileHeroLayoutTest {
             val root = 80f
             val budget = profileShellBudget(width, height - root, root, 1f, false, true)
             assertEquals(height - root, budget.header + budget.rail + budget.notice + budget.body, .01f)
-            val expected = height * if (width >= 390f) .70f else .65f
-            assertEquals(expected, profileHeroHeight(width, height, budget.body), .01f)
+            val hero = profileHeroHeight(width, height, budget.body, discoveryLeadingHeight(1f))
+            assertTrue(hero > 250f)
+            assertTrue(hero <= height * .63f + .01f)
+            assertTrue(hero + discoveryLeadingHeight(1f) + 24f <= budget.body + .01f)
+            assertEquals(80f, budget.rail, .01f)
             assertFalse(budget.compactGallery)
-            assertTrue(budget.header <= height * .14f)
         }
     }
 
@@ -24,7 +26,7 @@ class ProfileHeroLayoutTest {
                 assertEquals(height, plan.header + plan.notice + plan.rail + plan.body, .01f)
                 assertTrue(plan.body >= minOf(96f, height - plan.header))
                 assertTrue(plan.notice == 0f || plan.notice == 48f)
-                assertTrue(plan.rail == 0f || plan.rail == 48f)
+                assertTrue(plan.rail in setOf(0f, 48f, 80f))
                 if (height < 240f) {
                     assertTrue(plan.railInMenu)
                     assertTrue(plan.noticeInHeader)
@@ -38,7 +40,7 @@ class ProfileHeroLayoutTest {
         assertEquals(0f, plan.rail, .01f)
         assertEquals(48f, plan.notice, .01f)
         assertEquals(740f, plan.body, .01f)
-        assertEquals(844f * .70f, profileHeroHeight(390f, 844f, plan.body), .01f)
+        assertEquals(844f * .63f, profileHeroHeight(390f, 844f, plan.body), .01f)
     }
 
     @Test fun smallWindowsAndLargeTextUseScrollableGalleryChrome() {

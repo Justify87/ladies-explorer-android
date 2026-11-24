@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -22,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Preference
@@ -53,7 +53,7 @@ internal fun DiscoveryGridScreen(
         }
     }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        columns = profileGridCells(),
         state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -96,6 +96,7 @@ internal fun DiscoveryGridScreen(
             val action = GridLikeAction(card, search.response?.searchRunId, discovery.actionGeneration)
             ProfileGridCard(
                 name = card.name,
+                place = card.city,
                 age = card.age,
                 thumbnailUrl = card.thumbnailUrl,
                 localPath = card.localPath,
@@ -122,6 +123,10 @@ internal fun DiscoveryGridScreen(
 }
 
 @Composable
+internal fun profileGridCells(): GridCells =
+    GridCells.Adaptive(if (LocalDensity.current.fontScale >= 1.5f) 240.dp else 148.dp)
+
+@Composable
 internal fun ProfileGridCard(
     name: String,
     age: String?,
@@ -132,39 +137,43 @@ internal fun ProfileGridCard(
     onOpen: () -> Unit,
     onLike: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    place: String? = null,
 ) {
-    val shape = RoundedCornerShape(23.dp)
+    val shape = MaterialTheme.shapes.large
+    val largeText = LocalDensity.current.fontScale >= 1.5f
     Box(
-        modifier.fillMaxWidth().aspectRatio(.77f).clip(shape)
+        modifier.fillMaxWidth().heightIn(min = if (largeText) 220.dp else 0.dp).aspectRatio(1.03f).clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen),
+            .shellFocus().clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen),
     ) {
         ProfileImage(thumbnailUrl, localPath, Modifier.matchParentSize(), description = "$name – Profilbild")
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(
             0f to Color.Transparent, .44f to Color.Black.copy(alpha = .02f),
             1f to Color.Black.copy(alpha = .82f),
         )))
-        Text(
-            listOfNotNull(name.ifBlank { "Inserat" }, age).joinToString(" · "),
-            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .65f), Color.Black.copy(alpha = .85f))))
+            .padding(12.dp)) {
+            Text(listOfNotNull(name.ifBlank { "Inserat" }, age?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            place?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
         if (onLike != null) {
             IconButton(
                 onClick = onLike,
                 enabled = enabled,
-                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(48.dp)
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(48.dp).shellFocus()
                     .background(if (liked) MaterialTheme.colorScheme.primaryContainer
                     else Color.White.copy(alpha = .94f), CircleShape),
             ) {
                 Icon(
                     if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     contentDescription = if (liked) "Like für $name entfernen" else "$name gefällt mir",
-                    tint = if (liked) MaterialTheme.colorScheme.primary else Color(0xFF6B7280),
+                    tint = if (liked) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF6B7280),
                 )
             }
         }
