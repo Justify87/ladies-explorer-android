@@ -1,7 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -83,5 +82,60 @@ class AppShellDeviceTest {
         backNode.performClick()
         searchNode.performClick()
         rule.runOnIdle { assertEquals(1, back); assertEquals(1, search) }
+    }
+
+    @Test fun shellAndModeTargetsAcrossResponsiveMatrix() {
+        val widths = listOf(360, 390, 430, 600)
+        val heights = listOf(740, 844, 932, 900)
+        var index by mutableIntStateOf(0)
+        var scale by mutableFloatStateOf(1f)
+        var dark by mutableStateOf(true)
+        var pixelsPerDp = 1f
+        rule.setContent {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val outer = LocalDensity.current
+                // Fit the requested logical viewport on the test device without clipping it.
+                val fittedDensity = minOf(outer.density,
+                    maxWidth.value * outer.density / widths[index],
+                    maxHeight.value * outer.density / heights[index])
+                CompositionLocalProvider(LocalDensity provides Density(fittedDensity, scale)) {
+                    LadiesTheme(darkTheme = dark) {
+                        pixelsPerDp = fittedDensity
+                        Column(Modifier.size(widths[index].dp, heights[index].dp)) {
+                            AppHeader("Gespeicherte Suchergebnisse", onBack = {}) {
+                                ShellIconButton(onClick = {}) {
+                                    Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
+                                }
+                            }
+                            DiscoverModeSwitcher(DiscoverMode.Grid, {}, Modifier)
+                            Spacer(Modifier.weight(1f))
+                            RootNavigation(RootDestination.Discover, true, false, {})
+                        }
+                    }
+                }
+            }
+        }
+        for (i in widths.indices) for (font in listOf(1f, 1.3f, 2f)) for (theme in listOf(true, false)) {
+            rule.runOnIdle { index = i; scale = font; dark = theme }
+            val min = rule.runOnIdle { 48f * pixelsPerDp - 1f }
+            val back = rule.onNodeWithContentDescription("Zurück").fetchSemanticsNode().boundsInRoot
+            val search = rule.onNodeWithContentDescription("Suche öffnen").fetchSemanticsNode().boundsInRoot
+            assertTrue(back.width >= min && back.height >= min && search.width >= min && search.height >= min)
+            assertTrue(back.right <= search.left + 1f)
+            rule.onNodeWithText(DiscoverMode.Grid.title).assertIsSelected()
+            rule.onNodeWithText(RootDestination.Discover.title).assertIsSelected()
+            val modes = DiscoverMode.entries.map { rule.onNodeWithText(it.title).fetchSemanticsNode().boundsInRoot }
+            val destinations = RootDestination.entries.map { rule.onNodeWithText(it.title).fetchSemanticsNode().boundsInRoot }
+            for (bounds in listOf(modes, destinations)) {
+                bounds.forEach {
+                    assertTrue("width=${widths[i]}, scale=$font, dark=$theme", it.width >= min && it.height >= min)
+                    assertEquals(bounds.first().top, it.top, 1f)
+                    assertEquals(bounds.first().bottom, it.bottom, 1f)
+                }
+                bounds.zipWithNext().forEach { (left, right) -> assertTrue(left.right <= right.left + 1f) }
+            }
+            assertTrue(back.bottom <= modes.first().top + 1f)
+            assertTrue(modes.first().bottom <= destinations.first().top + 1f)
+        }
     }
 }
