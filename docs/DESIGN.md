@@ -66,14 +66,14 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 
 - **Verbindlich:** Header, Inhalt, gegebenenfalls Decision Rail und Root-Navigation folgen einem gemeinsamen Scroll- und `WindowInsets`-Vertrag. Fixierte Flächen verdecken weder den letzten Listeneintrag noch aktive Meldungen; Edge-to-Edge, IME und Systemgesten nativ berücksichtigen.
 - **Verbindlich:** Vier Root-Ziele `Entdecken`, `Suche`, `Gespeichert`, `Einstellungen` teilen dieselbe App-Bar und Bottom-Navigation. Such- und Einstellungsüberschriften verwenden ein gemeinsames Abschnittsmuster; Branding/Suche/Mehr bleiben konsistent. Standalone-Profile besitzen Back/Mehr, aber keine Root-Navigation.
-- **Verbindlich:** Entdecken hat die Modi `Swipe`, `Grid`, `Karte` mit demselben Umschalter und unverändertem Platz; ein Moduswechsel startet keine neue Suche. Ausgeführter Suchlauf, lokaler Ausgangsbestand und DB-weiter Kartenbestand sind sichtbar und fachlich getrennt.
+- **Verbindlich:** Entdecken hat die Modi `Swipe`, `Grid`, `Karte` mit demselben Umschalter und unverändertem Platz; ein Moduswechsel startet keine neue Suche. Ausgeführter Suchlauf und neutraler lokaler Ausgangsbestand sind sichtbar getrennt; innerhalb jedes Kontexts teilen alle drei Modi die Mitgliedschaft. Grid-/Kartenprofilöffnung führt in reguläres Swipe mit genau dem gewählten Listing. Android-Back kehrt auch nach Entscheidungen und Undo zum Ursprung zurück; gültigen Grid-Schlüssel samt Offset beziehungsweise Kamera, Zoom, Ausrichtung und Listing-/Owner-Auswahl erhalten. Ungültige Anker kontrolliert ersetzen.
 - **Verbindlich:** Alle/Jetzt/Heute im Entdecken-Kontext ist eine Schnellwahl, die unmittelbar einen Suchlauf auslösen darf; eine entsprechende Änderung im Suchentwurf führt ohne ausdrückliches `Suchen` keinen Suchlauf aus. Aktiver Run/Radius/Verfügbarkeit und Teilresultate dürfen nicht als neutraler lokaler Bestand erscheinen.
 - **Richtwert:** Der Header folgt der 56-dp-Rolle, Kontext- und Moduszeile der kompakten v3-Komposition. Keine unnötige doppelte Titelleiste oder Paddingkette.
 
 ### Grid
 
 - **Verbindlich:** Gemeinsame Profilkarte für Entdecken und gespeicherte Suchergebnisse; auf typischen Smartphones zwei Spalten. Bild, unterer Scrim, Name/Alter und belegter Ort; bei fehlendem Medium ein lesbarer Fallback. Direktes Like im Entdecken-Grid und Profilöffnung getrennt bedienen.
-- **Verbindlich:** Grid und Swipe verwenden dieselbe **ausgeführte** Ergebnismenge. Direkt gelikte Karten werden ausschließlich im aktiven Grid nach erfolgreicher Mutation temporär ausgeblendet; bei Fehler wieder sichtbar. Keine zweite fachliche Datenliste, keine automatische Quellabfrage durch Moduswechsel.
+- **Verbindlich:** Grid, Swipe und Karte verwenden dieselbe **ausgeführte** Ergebnismenge. Direkt gelikte Karten werden ausschließlich im aktiven Grid nach erfolgreicher Mutation temporär ausgeblendet; bei Fehler wieder sichtbar. Keine zweite fachliche Datenliste, keine automatische Quellabfrage durch Moduswechsel.
 - **Richtwert:** v3-Gridkarten sind annähernd quadratisch (Web-`aspect-ratio: 1.03`); der alte Richtwert Breite/Höhe 0,77 wird ersetzt. Abgerundete Ecken ca. 24 dp. Bei großen Fenstern adaptive Begrenzung und bei Font Scale lesbare Identität vor starrer Bildquote.
 
 ### Suche
@@ -93,7 +93,7 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 
 ### Karte und Einstellungen
 
-- **Verbindlich (Karte):** Datenbankweiter Bestand unabhängig vom aktuellen Run, optional nur Favoriten. Ungefähre Stadt-/PLZ-Zentren kennzeichnen; Marker/Cluster und gemeinsame Auswahl gleicher Orte mit Profilöffnung. Kein GPS, keine exakten versteckten Orte, keine Ersatzkoordinaten, kein Routing. Standortauflösung ausdrücklich und abbrechbar; gecachte Zentren, Teilresultate, Fehler/Retry und Auswahl/Kamera bei gültigem Tab-/Profilwechsel erhalten.
+- **Verbindlich (Karte):** Nur geografisch zuordenbare Listings der gemeinsamen Entdecken-Mitgliedschaft; kein eigener Favoritenfilter. Ungefähre Stadt-/PLZ-Zentren kennzeichnen; Marker/Cluster und gemeinsame Auswahl gleicher Orte mit Profilöffnung. Kein GPS, keine exakten versteckten Orte, keine Ersatzkoordinaten, kein Routing. Standortauflösung ausdrücklich und abbrechbar; gecachte Zentren, Teilresultate, Fehler/Retry und Auswahl/Kamera bei gültigem Tab-/Profilwechsel erhalten.
 - **Verbindlich (Einstellungen):** Echten lokalen DB-/Core-Status, Replay-Likes, INFO/DEBUG-Diagnose, bewussten HTTP-Capture-Modus und TXT/HAR-Aktionen abbilden. Aus bleibt nach Neustart Standard, keine automatische Weitergabe oder fingierte Statusbestätigung. Details der Aufzeichnung und Maskierung gehören zu [PRODUCT](PRODUCT.md#einstellungen-und-lokale-diagnose) und [ARCHITECTURE](ARCHITECTURE.md#diagnoseinfrastruktur).
 - **Richtwert:** Große, ruhige Kartenfläche mit zurückhaltenden Controls; Einstellungen in wenigen funktionsbezogenen Gruppen, nicht als Sammlung gleichwertiger großer Karten.
 
@@ -176,7 +176,7 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 **Prüfpunkte nach Betroffenheit:**
 1. Gemeinsame Header-/Navigation-Rechtecke, Tokens, Radien, Typografie, Kontrast, 48-dp-Ziele, TalkBack/DPAD/Tastatur-Fokus und reduzierte Bewegung; Dark **und** Light.
 2. 360 × 740, 390 × 844, 430 × 932 sowie 600 dp; Font Scale 1 / 1,3 / 2, System-/Navigationsinsets, Rotation, IME, lange Werte und kleine Höhen. Hero-Beginn, verfügbare Bildfläche sowie Überdeckung von Rail und Navigation tatsächlich messen.
-3. Swipe/Grid identischer gültiger Run, Karte unabhängig; Suchentwurf/Vorschau/Run und letzter Run getrennt; gespeicherte Suche ohne implizite Ack-/Membership-Änderung, Top 5, lokale Filter.
+3. Swipe/Grid/Karte identischer gültiger Run, Profilnavigation mit Rückkehr zum Ursprung; Suchentwurf/Vorschau/Run und letzter Run getrennt; gespeicherte Suche ohne implizite Ack-/Membership-Änderung, Top 5, lokale Filter.
 4. Galerie-Tap/Video/Swipe/Scroll/Kind-Vorrang; Like, Dislike, Skip, Undo, Favorit, Profilzurück, Replay/Reset, Fehler/Busy/Cancel und gültige Owner-/Lifecycle-Wechsel.
 5. Profilinhalt einschließlich Notiz, Identität, Snapshotvergleich, Begegnungen, Preislisten sowie gesicherte Entwürfe, Konflikte, Read-/Writefehler und begrenzte lokale Reads.
 6. SavedPeople, Watchlist, Statusprüfung, MapLibre/Standortauflösung und lokale Diagnose ohne neue Quellzugriffe, fiktive Statusnachweise oder versehentlichen Export.
