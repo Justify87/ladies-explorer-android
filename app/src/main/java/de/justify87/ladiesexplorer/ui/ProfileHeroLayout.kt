@@ -35,7 +35,7 @@ internal fun profileShellBudget(
     val available = availableHeight.coerceAtLeast(0f)
     // A real 48dp control and a scrollable body take priority over decorative chrome.
     val short = available < 240f
-    val preferredHeader = if (short) 48f else maxOf(56f, 56f * fontScale)
+    val preferredHeader = if (short) ShellMetrics.touch.value else ShellMetrics.header.value * maxOf(1f, fontScale)
     val header = preferredHeader.coerceAtMost(available)
     val minBody = minOf(96f, (available - header).coerceAtLeast(0f))
     var remainder = (available - header - minBody).coerceAtLeast(0f)

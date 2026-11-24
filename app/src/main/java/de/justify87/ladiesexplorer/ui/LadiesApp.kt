@@ -15,28 +15,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material3.Button
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.RadioButton
@@ -60,8 +51,6 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -69,7 +58,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LadiesApp(
     viewModel: MainViewModel,
@@ -251,86 +239,47 @@ fun LadiesApp(
             windowInfo.isWindowFocused && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         } else Modifier,
         topBar = {
-            if (!search.profileOpen && !swipeShell) TopAppBar(
-                title = {
-                    if (savedResultsOpen || savedEditorOpen || savedOverviewOpen) {
-                        Text(when {
-                            savedResultsOpen -> saved.searches.firstOrNull { it.searchId == saved.result?.id }?.name ?: "Gespeicherte Ergebnisse"
-                            savedEditorOpen -> "Suche bearbeiten"
-                            else -> "Gespeicherte Suchen"
-                        }, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    } else {
-                        Text(
-                            if (route.root == RootDestination.Discover) "Ladies Explorer" else route.root.title,
-                            color = if (route.root == RootDestination.Discover) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    if (savedResultsOpen || savedEditorOpen || savedOverviewOpen) {
-                        IconButton(onClick = { back() }, enabled = saved.operation != SavedOperation.Write) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Zurück")
-                        }
-                    }
-                },
-                actions = {
+            if (!search.profileOpen && !swipeShell) {
+                val nested = savedResultsOpen || savedEditorOpen || savedOverviewOpen
+                AppHeader(
+                    title = when {
+                        savedResultsOpen -> saved.searches.firstOrNull { it.searchId == saved.result?.id }?.name
+                            ?: "Gespeicherte Ergebnisse"
+                        savedEditorOpen -> "Suche bearbeiten"
+                        savedOverviewOpen -> "Gespeicherte Suchen"
+                        route.root == RootDestination.Discover -> "Ladies Explorer"
+                        else -> route.root.title
+                    },
+                    onBack = if (nested) ({ back() }) else null,
+                    backEnabled = saved.operation != SavedOperation.Write,
+                ) {
                     if (route.root == RootDestination.Discover) {
-                        IconButton(onClick = { selectRoot(RootDestination.Search) }) {
+                        ShellIconButton(onClick = { selectRoot(RootDestination.Search) }) {
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
                         }
                     } else if (route.root == RootDestination.Search && pane == SearchPane.Filters) {
-                        IconButton(onClick = { viewModel.savedSearch.open(renderedPaneAction) }, enabled = !search.loading && !saved.blockingNavigation && !home.loading && !discovery.busy) {
+                        ShellIconButton(onClick = { viewModel.savedSearch.open(renderedPaneAction) },
+                            enabled = !search.loading && !saved.blockingNavigation && !home.loading && !discovery.busy) {
                             BadgedBox(badge = { if (saved.searches.any { it.unreadNewResults }) Badge() }) {
                                 Icon(Icons.Default.Bookmarks, contentDescription = if (saved.searches.any { it.unreadNewResults })
                                     "Gespeicherte Suchen, neue Ergebnisse" else "Gespeicherte Suchen")
                             }
                         }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            )
-        },
-        bottomBar = {
-            if (!search.profileOpen) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    RootDestination.entries.forEach { destination ->
-                        NavigationBarItem(
-                            selected = route.root == destination,
-                            onClick = { selectRoot(destination) },
-                            enabled = !saved.blockingNavigation || route.root == destination,
-                            colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                            icon = {
-                                when (destination) {
-                                    RootDestination.Discover -> Icon(Icons.Default.FavoriteBorder, contentDescription = null)
-                                    RootDestination.Search -> BadgedBox(badge = {
-                                        if (saved.searches.any { it.unreadNewResults }) {
-                                            Badge() // unread indicator, not a count
-                                        }
-                                    }) { Icon(Icons.Default.Search, contentDescription =
-                                        if (saved.searches.any { it.unreadNewResults }) "Neue gespeicherte Suchergebnisse" else null) }
-                                    RootDestination.Saved -> Icon(Icons.Default.Favorite, contentDescription = null)
-                                    RootDestination.Settings -> Icon(Icons.Default.Settings, contentDescription = null)
-                                }
-                            },
-                            label = { Text(destination.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        )
-                    }
                 }
             }
         },
+        bottomBar = {
+            if (!search.profileOpen) RootNavigation(
+                active = route.root,
+                navigationEnabled = !saved.blockingNavigation && !viewModel.hasProfileEditor,
+                unreadSearch = saved.searches.any { it.unreadNewResults },
+                onSelect = ::selectRoot,
+            )
+        },
     ) { padding ->
         val modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
-            .then(if (swipeShell || search.profileOpen) Modifier.imePadding() else Modifier)
+            .imePadding()
         if (search.profileOpen) {
             key(search.profileSessionId) {
                 ProfileDetailScreen(
