@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,7 +34,7 @@ internal fun shellFocusColor(dark: Boolean) = if (dark) Color(0xFFFFC18D) else C
 
 internal fun Modifier.shellFocus(): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
-    val color = shellFocusColor(MaterialTheme.colorScheme == ladiesDarkColors)
+    val color = shellFocusColor(MaterialTheme.colorScheme.surface.luminance() < .5f)
     Modifier.onFocusChanged { focused = it.isFocused }
         .border(2.dp, if (focused) color else Color.Transparent, MaterialTheme.shapes.small)
 }
@@ -49,16 +50,21 @@ internal fun ShellIconButton(
 }
 
 @Composable
+internal fun ShellHeaderSurface(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface, content = content)
+}
+
+@Composable
 internal fun AppHeader(
     title: String,
     onBack: (() -> Unit)? = null,
     backEnabled: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface) {
+    ShellHeaderSurface {
         Row(
             Modifier.fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .heightIn(min = ShellMetrics.header)
                 .padding(start = if (onBack == null) ShellMetrics.inset else ShellMetrics.gap, end = ShellMetrics.gap),
             verticalAlignment = Alignment.CenterVertically,
@@ -83,7 +89,8 @@ internal fun RootNavigation(
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(
             Modifier.fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                .height(IntrinsicSize.Min)
                 .selectableGroup(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -93,7 +100,7 @@ internal fun RootNavigation(
                 val scheme = MaterialTheme.colorScheme
                 val tint = if (selected) scheme.primary else scheme.onSurfaceVariant
                 Column(
-                    Modifier.weight(1f).heightIn(min = ShellMetrics.navigation)
+                    Modifier.weight(1f).heightIn(min = ShellMetrics.navigation).fillMaxHeight()
                         .shellFocus()
                         .selectable(selected = selected, enabled = enabled, role = Role.Tab,
                             onClick = { onSelect(destination) })

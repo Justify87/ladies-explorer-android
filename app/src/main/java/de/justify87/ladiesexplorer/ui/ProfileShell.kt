@@ -99,7 +99,7 @@ internal fun ProfileShell(
                 confirmButton = { TextButton(onClick = { dialog = false }) { Text("Schließen") } })
         }
         Column(Modifier.width(width).fillMaxHeight()) {
-            Surface(Modifier.fillMaxWidth().height(budget.header.dp), color = MaterialTheme.colorScheme.surface) {
+            ShellHeaderSurface(Modifier.fillMaxWidth().height(budget.header.dp)) {
                 header(presentation, indicator.takeIf { budget.noticeInHeader }, { dialog = true })
             }
             if (budget.notice > 0f) {
@@ -141,7 +141,7 @@ internal fun ProfileShellTitle(title: String, context: String, status: String, s
             Text("$context · $title", style = MaterialTheme.typography.labelMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         } else {
-            Text(title, style = if (short) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleLarge,
+            Text(title, style = if (short) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(context, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!short && status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall,

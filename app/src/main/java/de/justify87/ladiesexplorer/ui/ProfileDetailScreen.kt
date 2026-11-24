@@ -65,17 +65,17 @@ internal fun ProfileDetailScreen(
         noticeOwner = Triple(state.profileSessionId, renderedToken, state.retryProfileListingId),
         header = { presentation, compactNotice, onNotice ->
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Zurück") }
+                ShellIconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Zurück") }
                 val shown = identity.takeIf { presentation.identityInHeader }
                 ProfileShellTitle(shown?.title ?: "Profil", shown?.compactSubtitle ?: "Profilansicht",
                     shown?.decisions.orEmpty(), presentation.budget.shortHeader, Modifier.weight(1f),
                     onClick = if (identity == null) null else ({ info = true }))
                 if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
-                if (presentation.photoShortcut && profile != null) IconButton(onClick = { photoRequest++ }) {
+                if (presentation.photoShortcut && profile != null) ShellIconButton(onClick = { photoRequest++ }) {
                     Icon(Icons.Default.KeyboardArrowUp, "Zum Foto")
                 }
                 if (identity != null) Box {
-                    IconButton(onClick = { galleryMenu = true }) { Icon(Icons.Default.MoreVert, "Profilaktionen") }
+                    ShellIconButton(onClick = { galleryMenu = true }) { Icon(Icons.Default.MoreVert, "Profilaktionen") }
                     DropdownMenu(expanded = galleryMenu, onDismissRequest = { galleryMenu = false }) {
                         DropdownMenuItem(text = { Text("Vollständige Profilinformationen") },
                             onClick = { galleryMenu = false; info = true })
