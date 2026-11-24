@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M06 / G06 und M07.1 abgeschlossen. Nächster vorgesehener Entwicklungsschritt: [M07.3](#m073--nutzungsreife-und-abschluss-g07); L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
+M06 / G06 und M07.1 abgeschlossen. [M07.3](#m073--nutzungsreife-und-abschluss-g07) zur Abschlussprüfung; nach Freigabe Abschluss-PR mergen. L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
 
 ## Geplante Meilensteine
 
@@ -16,7 +16,7 @@ M06 / G06 und M07.1 abgeschlossen. Nächster vorgesehener Entwicklungsschritt: [
 
 #### M07.3 — Nutzungsreife und Abschluss (G07)
 
-**Status:** READY · **Abhängigkeit:** M07.1 abgeschlossen.
+**Status:** REVIEW · **Abhängigkeit:** M07.1 abgeschlossen. · Branch: `review/m07-3-local-completion`.
 
 **Umfang und Akzeptanz:**
 - Bestätigten Produktumfang am integrierten Stand prüfen; konkrete Fehler nach Auswirkung bewerten, abnahmeverhindernde Befunde beheben, andere nachvollziehbar dokumentieren. Keine neue Featurearbeit.
@@ -25,6 +25,8 @@ M06 / G06 und M07.1 abgeschlossen. Nächster vorgesehener Entwicklungsschritt: [
 - Bestätigter lokaler Produktumfang vollständig, keine bekannten abnahmeverhindernden Befunde; keine allgemeine Fehlerfreiheit, nicht ausgeführte Geräteprüfungen oder externe Quellenverfügbarkeit aus CI ableiten.
 
 **Prüfung und Abschluss:** Vollständiges bestehendes CI-Gate für den relevanten Code-/Buildstand; Geräteprüfungen gemäß [Merge-Regel](#pflege). Integrierten Stand, PR/Commit/CI und konkrete Restrisiken verlinken. G07 mit Merge des Abschluss-PR abgeschlossen; keine automatische Fortsetzung ohne neuen konkreten Auftrag.
+
+**Abschlussbeleg:** Integrierter Stand [`6fbc7cd`](https://github.com/Justify87/ladies-explorer-android/commit/6fbc7cd27b256fbeed94499ce7a36283002b428a) nach [#91](https://github.com/Justify87/ladies-explorer-android/pull/91); [vollständiges CI-Gate](https://github.com/Justify87/ladies-explorer-android/actions/runs/45459671704) auf [`d0274466`](https://github.com/Justify87/ladies-explorer-android/commit/d0274466a5836893cef338d7c8d3b857fc474c7c). [Vergleich](https://github.com/Justify87/ladies-explorer-android/compare/d0274466a5836893cef338d7c8d3b857fc474c7c...6fbc7cd27b256fbeed94499ce7a36283002b428a) enthält ausschließlich ROADMAP; Abschluss-PR ebenfalls nur Dokumentation. Core-/Android-Prüfungen und Gate erfolgreich, ARM64-Debug- und Instrumentierungs-APK gebaut, APK-Architekturverträge, Rust/JVM/Lint sowie synthetische native v2-Datenbank einschließlich Integritäts-/Fremdschlüsselprüfung erfolgreich. G10/G11/G06/M07.1 als Funktionsbelege, gezielte Sichtung von Start-/DB-Statuspfad, Produkt-, Architektur-, Design- und Buildverträgen; kein weiterer konkreter abnahmeverhindernder Befund festgestellt. Keine Codeänderung nötig. Automatischer Lauf speichert kein APK-Artefakt; keine tatsächliche Installation, Geräteausführung, reale Quellenverfügbarkeit oder Release-Qualifikation nachgewiesen. G07 bleibt bis zur freigegebenen Integration offen.
 
 **Distribution (nur bei ausdrücklichem Auftrag):** Lokale Nutzungsreife ist keine öffentliche Distributionsfreigabe. Ein ausdrücklich gewünschtes Release-APK durch einmalige gezielte Qualifizierung des vorhandenen minifizierten Release-Builds (insbesondere native UniFFI/JNA/JNI-/libmpv-Schnittstellen und Installierbarkeit) belegen; Debug-CI ersetzt diesen Nachweis nicht. Signierung/Versionierung nur nach bestätigtem Bedarf. L01 vor weiterer öffentlicher Distribution klären; ohne Klärung keine öffentliche Distributionsfreigabe. Keine automatische Veröffentlichung, Store-Anbindung oder neue Release-Infrastruktur. Nicht beauftragte öffentliche Distribution blockiert den lokalen G07-Abschluss nicht.
 
