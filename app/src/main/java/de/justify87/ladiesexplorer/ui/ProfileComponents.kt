@@ -215,7 +215,7 @@ internal fun ProfileMediaHero(
                 Text(if (displayedDrag > 0f) "Gefällt" else "Nein", Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     color = MaterialTheme.colorScheme.inverseOnSurface)
             }
-            if (favorite != null) {
+            if (favorite != null) key(actionToken) {
                 IconButton(onClick = { if (actionsEnabled && isCurrent()) onFavorite?.invoke() },
                     enabled = actionsEnabled && onFavorite != null,
                     modifier = Modifier.align(Alignment.TopEnd).size(48.dp).shellFocus()) {
@@ -259,8 +259,10 @@ private fun GalleryTargets(side: Float, hit: PhotoHitModifiers, owner: Any?,
         PhotoTapTarget("Vorheriges Medium", Modifier.weight(side).fillMaxHeight().then(hit.previous), owner,
             if (previous) onPrevious else null)
         if (side < .5f) Spacer(Modifier.weight(1f - side * 2))
-        PhotoTapTarget("Nächstes Medium", Modifier.weight(side).fillMaxHeight().padding(top = if (reserveFavorite) 48.dp else 0.dp).then(hit.next), owner,
-            if (next) onNext else null)
+        Box(Modifier.weight(side).fillMaxHeight().padding(top = if (reserveFavorite) 48.dp else 0.dp)) {
+            PhotoTapTarget("Nächstes Medium", Modifier.fillMaxSize().then(hit.next), owner,
+                if (next) onNext else null)
+        }
     }
 }
 
@@ -278,7 +280,7 @@ internal fun ProfileImageDialog(item: ProfileMediaItem, onDismiss: () -> Unit) {
     }
 }
 
-/** Identity is rendered only in the hero or fixed header. */
+/** Secondary source and archive metadata; identity belongs to the enclosing profile presentation. */
 @Composable
 internal fun ProfileMetadata(
     profile: ProfileResponse,
