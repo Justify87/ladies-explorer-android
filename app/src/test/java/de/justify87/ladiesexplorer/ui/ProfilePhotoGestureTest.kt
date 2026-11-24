@@ -103,7 +103,7 @@ class ProfilePhotoGestureTest {
     }
 
     @Test fun flightEndsOutsideTheMeasuredHeroInBothDirections() {
-        val flight = SwipeFlight(4L to 1L, 5, 1f, 125f, IntSize(800, 1200), 0, null, null)
+        val flight = SwipeFlight(4L to 1L, 5, 1f, 125f, IntSize(800, 1200), 0, null)
         assertTrue(flight.destination > 800f)
         assertTrue(flight.copy(direction = -1f, offset = -125f).destination < -800f)
     }
