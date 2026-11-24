@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.8 – Pagination des lokalen Entdecken-/Grid-Bestands (`loadMoreDiscovery`) auf gerenderten Kontext prüfen und belegte Defekte beheben; danach verbleibende G10.3-Regressionsmatrix prüfen.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: T10.8 – verbleibende G10.3-Regressionsmatrix prüfen und belegte Defekte beheben.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -87,6 +87,8 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 **Integrierter Teilauftrag – SavedSearch-Ergebnisfenster:** [PR #60](https://github.com/Justify87/ladies-explorer-android/pull/60) bindet manuelle/automatische Pagination und Retry/Reload an das gerenderte Fenster und seine Aktionsgeneration. JVM-Regressionen für Suchwechsel, Lifecycle, erneuten Read, Busy/gesperrte Operation und Fehler-Recovery ohne Ack; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45396569605) erfolgreich.
 
 **Abgeschlossener Teilauftrag – SavedPeople-Pagination:** [PR #61](https://github.com/Justify87/ladies-explorer-android/pull/61) bindet manuelle und automatische Regular-Pagination sowie Watchlist-Pagination an die gerenderte Fensterinstanz, Auswahl und Aktionsgeneration. JVM-Regression für Kontextwechsel, ersetzte Fenster, Busy und explizite Fehler-Recovery; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45398027633) erfolgreich. Geräteprüfungen mit Merge gemäß Merge-Regel DONE.
+
+**Abgeschlossener Teilauftrag – lokale Entdecken-/Grid-Pagination (DONE):** [PR #62](https://github.com/Justify87/ladies-explorer-android/pull/62) bindet manuelle und automatische Grid-Pagination an gerenderten Cursor und Aktionsgeneration; der zugelassene Swipe-Skip verwendet dieselbe lokale Lesefunktion. JVM-Regressionen für alte Kontexte, Cursorwechsel, Busy, aktive Suche und explizite Fehler-Recovery; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45399966122) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.

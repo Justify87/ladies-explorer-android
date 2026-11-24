@@ -44,6 +44,18 @@ internal fun gridActionMatches(discovery: DiscoverUiState, search: SearchUiState
         search.response?.searchRunId == action.runId &&
         gridCards(discovery, search).firstOrNull { it.listingId == action.card.listingId } == action.card
 
+internal data class GridPageAction(val cursor: DiscoveryCursor, val generation: Long)
+
+internal fun localDiscoveryPageMatches(discovery: DiscoverUiState, search: SearchUiState, cursor: DiscoveryCursor): Boolean =
+    discovery.activeRunId == null && search.response == null && discovery.nextCursor == cursor &&
+        !discovery.loading && !discovery.loadingMore && !discovery.busy &&
+        !search.loading && !search.actionBusy && !search.profileOpen
+
+internal fun gridPageMatches(discovery: DiscoverUiState, search: SearchUiState, action: GridPageAction): Boolean =
+    discovery.actionSurface == ProfileActionSurface.GRID &&
+        discovery.actionGeneration == action.generation &&
+        localDiscoveryPageMatches(discovery, search, action.cursor)
+
 /** The transient hide affects presentation, not run membership. */
 internal fun gridCards(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
     if (search.response != null) search.activeCards.filterNot { it.listingId in search.gridHiddenLikes }

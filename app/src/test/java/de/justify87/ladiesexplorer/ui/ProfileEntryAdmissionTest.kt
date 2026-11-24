@@ -1,5 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
+import de.justify87.ladiesexplorer.core.DiscoveryCursor
 import de.justify87.ladiesexplorer.core.MapOverview
 import de.justify87.ladiesexplorer.core.MapProfile
 import de.justify87.ladiesexplorer.core.SearchRequest
@@ -16,6 +17,44 @@ class ProfileEntryAdmissionTest {
         partial = false, radiusBoundaryStopped = false, radiusVerified = true,
         profiles = emptyList(),
     )
+
+    @Test fun gridPaginationRequiresRenderedCursorGenerationAndVisibleLocalContext() {
+        val cursor = DiscoveryCursor(false, "2026-11-24", 7L)
+        val discovery = DiscoverUiState(loading = false, nextCursor = cursor,
+            actionSurface = ProfileActionSurface.GRID, actionGeneration = 4L)
+        val search = SearchUiState()
+        val action = GridPageAction(cursor, 4L)
+        assertTrue(gridPageMatches(discovery, search, action))
+        for (state in listOf(
+            discovery.copy(actionSurface = ProfileActionSurface.NONE),
+            discovery.copy(actionSurface = ProfileActionSurface.MAP),
+            discovery.copy(actionGeneration = 5L),
+            discovery.copy(nextCursor = cursor.copy(listingId = 8L)),
+            discovery.copy(nextCursor = null),
+            discovery.copy(activeRunId = 7L),
+            discovery.copy(loading = true),
+            discovery.copy(loadingMore = true),
+            discovery.copy(busy = true),
+        )) assertFalse(gridPageMatches(state, search, action))
+        assertFalse(gridPageMatches(discovery, search.acceptRun(response(7), emptyList()), action))
+        assertFalse(gridPageMatches(discovery, search.copy(profileOpen = true), action))
+        assertFalse(gridPageMatches(discovery, search.copy(loading = true), action))
+        assertFalse(gridPageMatches(discovery, search.copy(actionBusy = true), action))
+    }
+
+    @Test fun gridPaginationRejectsOldCallbackAfterFailureButAllowsExplicitRetry() {
+        val cursor = DiscoveryCursor(false, "2026-11-24", 7L)
+        val failed = DiscoverUiState(loading = false, nextCursor = cursor,
+            actionSurface = ProfileActionSurface.GRID, actionGeneration = 5L, error = "read failed")
+        val search = SearchUiState()
+        assertFalse(gridPageMatches(failed, search, GridPageAction(cursor, 4L)))
+        assertTrue(gridPageMatches(failed, search, GridPageAction(cursor, 5L)))
+        val swipe = failed.copy(actionSurface = ProfileActionSurface.NONE, error = null)
+        assertTrue(localDiscoveryPageMatches(swipe, search, cursor))
+        assertFalse(gridPageMatches(swipe, search, GridPageAction(cursor, 5L)))
+        assertFalse(localDiscoveryPageMatches(swipe.copy(loadingMore = true), search, cursor))
+        assertFalse(localDiscoveryPageMatches(swipe, search.acceptRun(response(7), emptyList()), cursor))
+    }
 
     @Test fun searchOpenRequiresRenderedRunRowAndRouteGeneration() {
         val card = fixtureCard(1)
