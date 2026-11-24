@@ -480,7 +480,7 @@ fun LadiesApp(
 
 @Composable
 private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         val active = state.response
         if (active != null) {
             Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
@@ -493,11 +493,11 @@ private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
         if (state.loading) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Suche läuft …", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onCancel, enabled = !state.searchCancelling) { Text(if (state.searchCancelling) "Wird beendet …" else "Abbrechen") }
+                TextButton(onClick = onCancel, enabled = !state.searchCancelling, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (state.searchCancelling) "Wird beendet …" else "Abbrechen") }
             }
         }
         state.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 3)
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
