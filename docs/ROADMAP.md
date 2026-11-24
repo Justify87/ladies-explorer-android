@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: Abschluss M05.10 – vollständiges Android-/APK-Gate des integrierten Stands verifizieren und Abschluss-PR mergen.** M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: M06/M07 erst auf Nutzerauftrag.** M05.10 abgeschlossen. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -16,7 +16,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M03 Suche/Parser | DONE | [#4](https://github.com/Justify87/ladies-explorer-android/pull/4), [#8](https://github.com/Justify87/ladies-explorer-android/pull/8); abgeschlossen. |
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
-| M05.10 Unified Profile Experience | REVIEW | T10.0–T10.7 abgeschlossen; T10.8 [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75) integriert; T10.8/T10.9 Abschlussbilanz unten. |
+| M05.10 Unified Profile Experience | DONE | T10.0–T10.7 abgeschlossen; T10.8 [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75) integriert; T10.8/T10.9 Abschlussbilanz unten. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -68,7 +68,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 **Akzeptanz:**
 - [x] Abschluss mit erfolgreicher [CI #45013729939](https://github.com/Justify87/ladies-explorer-android/actions/runs/45013729939) in [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53): Ein cache-only Prefetch übersprang beim Current-Aufrücken die aktive Freshness-Policy; einmalige Quellenaktualisierung mit unverändertem Slot/Mutex und Regression für No-Redo/Local-only. Weitere entsprechende Defekte im geprüften T10.7-Umfang nicht belegt. Keine Beschleunigung ohne Messung behauptet.
 
-### T10.8 — REVIEW · Vertikale Integration (G10.3)
+### T10.8 — DONE · Vertikale Integration (G10.3)
 
 **Integrierter Umfang:** [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75). Geräteprüfungen dieses Umfangs gemäß Merge-Regel DONE. Abschlussbasis `3ec501d540866d096275675d2f32d9c211a50cf1` (Dateibaum `6deeb940f9c0fb3e1d2ebd3c1c8f040e572c67d8`, identisch mit PR #75 Head `925baa93654f1d42ad597ce981d23b69cd87482e`). Vorhandene Testpfade und produktive Aufrufer gegen PRODUCT/DESIGN/ARCHITECTURE geprüft; keine neue Implementierungsroute.
 
@@ -83,15 +83,15 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 | Fehler/Offline/Status/Radius/Pagination | [#57](https://github.com/Justify87/ladies-explorer-android/pull/57), [#61](https://github.com/Justify87/ladies-explorer-android/pull/61)–[#71](https://github.com/Justify87/ladies-explorer-android/pull/71), [#73](https://github.com/Justify87/ladies-explorer-android/pull/73); `SwipeProfileReadTest`, `SearchRunStateTest`, `SavedPeopleStateTest`, `ProfileEntryAdmissionTest`; Rust `discovery.rs`, `map.rs`, `source/storage.rs::saved_status_records_observations_and_rejects_stale_updates`, `saved_search.rs::only_complete_radius_verified_search_replaces_saved_baseline`. |
 
 - [x] Oberflächen- und vertikale Regressionsmatrix abgeglichen; kein weiterer abnahmerelevanter Defekt im geprüften Umfang belegt. Keine allgemeine Fehlerfreiheit behauptet.
-- [ ] Technische Abnahme: keine zweite Implementierungsroute, kein belegter Funktionsverlust oder Scope-Drift. [CI #45412134217](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412134217) (PR #74) erfolgreich; [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) (PR #75, identischer integrierter Dateibaum) Core-/Vertragsprüfungen erfolgreich; abschließendes Android-/APK-Gate ausstehend.
+- [x] Technische Abnahme: keine zweite Implementierungsroute, kein belegter Funktionsverlust oder Scope-Drift. [CI #45412134217](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412134217) (PR #74) erfolgreich; [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) (PR #75, identischer integrierter Dateibaum) vollständig erfolgreich.
 
-### T10.9 — REVIEW · Abschluss M05.10 (G10)
+### T10.9 — DONE · Abschluss M05.10 (G10)
 
-**Abhängigkeit:** T10.8, vor Abschluss vollständig zu bestätigen.
+**Abhängigkeit:** T10.8 abgeschlossen.
 
 - [x] Abschlussreview der betroffenen Aufrufer, gemeinsamen Profilprojektion, Testmatrix, Architekturgrenzen und Dokumentationskonsistenz durchgeführt; README, PRODUCT, DESIGN und ARCHITECTURE weiterhin maßgeblich. Keine weiteren In-Scope-Befunde hoher Schwere im geprüften Umfang.
-- [ ] Technischer Abschlussbeleg: [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) noch nicht vollständig abgeschlossen; vollständigen Build, JVM-Tests, Lint, APK-Architekturprüfung und build-Gate vor Merge bestätigen. Reguläre automatische CI speichert gemäß README kein Debug-APK-Artefakt; keine separate manuelle Veröffentlichung.
-- Abschluss mit Merge des reinen Dokumentations-PR; keine Code-, CI- oder Fachvertragsänderung. M06/M07 bleiben gesperrt bis Nutzerauftrag.
+- [x] Technischer Abschlussbeleg: [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) mit erfolgreichem ARM64-Debug-APK-/Instrumentierungs-APK-Build, JVM-Tests, Lint, Rust-Tests, synthetischer nativer DB-Regression, Clippy, Quell-/APK-Architekturprüfungen und abschließendem build-Gate. Reguläre automatische CI speichert gemäß README kein Debug-APK-Artefakt; keine separate manuelle Veröffentlichung.
+- Abschluss mit Merge von [PR #76](https://github.com/Justify87/ladies-explorer-android/pull/76); keine Code-, CI- oder Fachvertragsänderung. M06/M07 bleiben gesperrt bis Nutzerauftrag.
 
 ## Danach – M06
 
