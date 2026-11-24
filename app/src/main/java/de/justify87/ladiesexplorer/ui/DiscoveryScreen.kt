@@ -360,7 +360,7 @@ internal fun DiscoverScreen(
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices) {
                     item(key = "discover-context") {
-                        DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode)
+                        DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode, Modifier)
                     }
                     if (presentation.budget.railInContent) item(key = "compact-decisions") {
                         SwipeDecisionControls(controls, identity?.title, undo, skip, choose,
@@ -431,7 +431,6 @@ internal fun DiscoverScreen(
                     }.clip(MaterialTheme.shapes.large).clearAndSetSemantics {}) {
                     ProfileImage(oldMedia.url, oldMedia.localPath, Modifier.fillMaxSize(),
                         scale = androidx.compose.ui.layout.ContentScale.Fit, allowRetry = false)
-
                 }
             }
             }
