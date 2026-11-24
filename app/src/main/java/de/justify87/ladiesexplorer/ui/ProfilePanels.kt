@@ -312,25 +312,21 @@ private fun FieldGrid(rows: List<Pair<String, String>>) {
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val fontScale = LocalDensity.current.fontScale
-        val columns = when {
-            maxWidth < 360.dp || fontScale >= 1.5f -> 1
-            else -> 2
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            rows.chunked(columns).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.forEach { (label, value) ->
-                        Surface(Modifier.weight(1f), shape = MaterialTheme.shapes.small,
-                            color = MaterialTheme.colorScheme.surfaceContainer) {
-                            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        val columns = if (maxWidth < 340.dp || fontScale >= 1.5f) 1 else 2
+        Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                rows.chunked(columns).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { (label, value) ->
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(label, style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(value, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
+                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                     }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -409,7 +405,7 @@ private fun NotesPanel(
         if (draft != null && owner != null) {
             OutlinedTextField(draft.text, { actions.edit(owner, it) },
                 modifier = Modifier.fillMaxWidth(), label = { Text("Notiz") },
-                minLines = 4, enabled = editable)
+                minLines = 4, enabled = editable, shape = MaterialTheme.shapes.small)
             Text("Entwurf bleibt beim Profilwechsel erhalten. Erst Speichern schreibt in die Datenbank.",
                 style = MaterialTheme.typography.bodySmall)
             if (draft.conflict) {
