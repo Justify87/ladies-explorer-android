@@ -32,7 +32,7 @@ cargo install cargo-ndk --version 4.1.2 --locked
 ### APK und Installation
 
 - Ausgabe: `app/build/outputs/apk/debug/`. Für x86_64-Emulatoren die passende ABI bauen.
-- Ohne lokale Android-/Rust-Toolchain: [GitHub Actions](https://github.com/Justify87/ladies-explorer-android/actions) stellt nach erfolgreichem Build `ladies-explorer-android-arm64-debug` bereit.
+- Ohne lokale Android-/Rust-Toolchain: [GitHub Actions](https://github.com/Justify87/ladies-explorer-android/actions) → Android and Rust → Run workflow (Branch auswählen). Nach erfolgreichem manuellem Lauf steht `ladies-explorer-android-arm64-debug` 7 Tage zum Download bereit.
 - Debug besitzt eine eigene Application-ID; Debug und Release lassen sich getrennt installieren.
 
 ## Prüfung / CI
@@ -45,20 +45,15 @@ Der [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft bei PRs, P
 | --- | --- | --- |
 | `full` | Build-/Test-relevante Änderung, manueller Start oder nicht sicher verifizierbarer Änderungsumfang | Core- und Android-Prüfungen ausführen |
 | `docs` | Vollständig verifizierter reiner Diff regulärer `.md`-Dateien im Repository-Root, unter `docs/` oder direkt unter `tools/`; PR gegen `main` oder verifizierter `main`-Push | Core und Android überspringen; kein vorausgehendes APK/CI nötig |
-| `reuse` | Verifizierter Zwei-Parent-Merge desselben Repositories mit identischem geprüftem Git-Tree, exakter Basis und erfolgreichem jüngstem PR-CI-Lauf | Geprüftes APK auf `main` wiederverwenden |
 
 - `docs` erfasst auch geänderte, neue, gelöschte und umbenannte erlaubte Markdown-Dateien. Markdown in Build-Input-Verzeichnissen, gemischte Diffs und Typ-/Moduswechsel erfordern `full`.
-- Bei Docs-Merges kann das APK des verifizierten Basislaufs optional neu veröffentlicht werden.
-- [ci_reuse.py](tools/ci_reuse.py) verifiziert Run/Versuch, Repository, Ereignis, Tree/Parents, Gates/Jobs/Steps und APK-SHA-256. Fehlende/ungültige Evidenz oder Transferfehler erhalten den ursprünglichen Scope: `full` für Code, `docs` ohne Build für reine Dokumentation.
-
 ### Gate und Artefakte
 
-- Scope-Job und abschließendes `build`-Gate laufen immer. Das Gate prüft alle erwarteten Job-/Step-Ergebnisse, ausdrücklich übersprungene Prüfungen und gegebenenfalls erfolgreiche APK-Wiederveröffentlichung.
+- Scope-Job und abschließendes `build`-Gate laufen immer. Das Gate prüft alle erwarteten Job-/Step-Ergebnisse und ausdrücklich übersprungene Prüfungen.
 - Überholte PR-Läufe werden abgebrochen; `main`- und manuelle Läufe nicht pauschal.
 - **Nur APKs mit grünem `build`-Gate sind vollständig CI-validiert.** Ein bereits hochgeladenes Artefakt allein beweist das nicht.
-- `ladies-explorer-android-arm64-debug` entsteht nach regulärem Gradle-Build und APK-Architekturprüfung; Aufbewahrung: PR 7 Tage, `main` 30 Tage. Ein Upload kann dem finalen Gate vorausgehen oder bei späteren Fehlern dennoch existieren.
-- Bei `reuse` wird das APK erneut hochgeladen; Berichte bleiben im ursprünglichen Lauf. `android-ci-reports` enthält verfügbare Gradle-Profile, JVM-/Lint-Berichte und ausgewählte Diagnose (7 Tage).
-- `docs` ohne wiederverwendbares Artefakt erzeugt kein APK; das letzte erfolgreiche APK bleibt nur solange im Quelllauf verfügbar, wie dessen Aufbewahrung läuft.
+- `ladies-explorer-android-arm64-debug` wird ausschließlich bei `workflow_dispatch` nach regulärem Gradle-Build und APK-Architekturprüfung hochgeladen (7 Tage). Automatische PR-/Main-Läufe prüfen die APK bei `full`, speichern sie aber nicht als Artefakt. `docs` erzeugt kein APK. Ein Re-run eines automatischen Laufs ändert das ursprüngliche Ereignis nicht.
+- `android-ci-reports` enthält verfügbare Gradle-Profile, JVM-/Lint-Berichte und ausgewählte Diagnose (7 Tage).
 
 ### Build-Caches
 

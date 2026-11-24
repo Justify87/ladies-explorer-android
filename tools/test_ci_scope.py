@@ -1,9 +1,6 @@
 import itertools
-import json
-import hashlib
 import os
 import textwrap
-from ci_reuse import verify_proof, merged_pr, verify_jobs, latest_run, restore
 import subprocess
 import tempfile
 from pathlib import Path
@@ -128,7 +125,7 @@ class CiScopeTest(unittest.TestCase):
     def test_automatic_events_ignore_manual_diagnostic_inputs(self, command):
         for path in (b".github/workflows/android.yml", b"gradle.properties",
                      b"rust/Cargo.lock", b"tools/verify-native-cache.sh",
-                     b"tools/ci_reuse.py", b"unknown.bin", b"tools/measure-android-build.sh",
+                     b"tools/ci_scope.py", b"unknown.bin", b"tools/measure-android-build.sh",
                      b"tools/install-cargo-ndk.sh"):
             with self.subTest(path=path):
                 command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(path)]
@@ -195,7 +192,7 @@ class CiScopeTest(unittest.TestCase):
                 with patch.dict(os.environ, env, clear=True):
                     main()
                 self.assertEqual(["mode=full", f"native_qualification={native}",
-                                  f"performance_measurement={measure}", "reuse_candidate=none"],
+                                  f"performance_measurement={measure}"],
                                  output.read_text().splitlines())
                 self.assertIn(f"native_qualification: {native}", summary.read_text())
                 self.assertIn(f"performance_measurement: {measure}", summary.read_text())
@@ -306,7 +303,6 @@ class RealGitPolicyTest(unittest.TestCase):
         result = self.classify_push()
         self.assertEqual(("docs", False, False),
                          (result.mode, result.native_qualification, result.performance_measurement))
-        self.assertEqual("docs", result.reuse_candidate)
         self.write("app/src/main/java/New.kt", "new source")
         self.commit("code")
         result = self.classify_push()
@@ -417,21 +413,6 @@ class WorkflowGateTest(unittest.TestCase):
                 capture_output=True, text=True, timeout=10)
             return result, summary.read_text() if summary.exists() else ""
 
-    def test_actual_scope_validation_shell(self):
-        body = self.shell_body("Finalize execution policy")
-        valid = {("docs", "false", "false"), ("full", "false", "false"),
-                 ("full", "true", "false"), ("full", "false", "true"),
-                 ("full", "true", "true")}
-        for values in itertools.product(("docs", "reuse", "full", "", "unknown"),
-                                        ("true", "false", "", "unknown"),
-                                        ("true", "false", "", "unknown")):
-            with tempfile.TemporaryDirectory() as tmp, self.subTest(values=values):
-                env = dict(zip(("MODE", "NATIVE", "PERFORMANCE"), values),
-                           SOURCE="", RESTORE="skipped", UPLOAD="skipped",
-                           GITHUB_OUTPUT=str(Path(tmp) / "out"))
-                result, _ = self.run_shell(body, env)
-                self.assertEqual(values in valid, result.returncode == 0, result.stderr)
-
     def test_actual_gate_valid_profiles_and_negative_mutations(self):
         body = self.shell_body("Evaluate required CI gate")
         valid = [dict(SCOPE_RESULT="success", MODE="docs", CORE_RESULT="skipped",
@@ -444,7 +425,7 @@ class WorkflowGateTest(unittest.TestCase):
                               NATIVE_OUTCOME="success" if native == "true" else "skipped",
                               PERFORMANCE_OUTCOME="success" if measure == "true" else "skipped"))
         replacements = {
-            "MODE": ("docs", "full", "", "unknown"),
+            "MODE": ("docs", "full", "reuse", "", "unknown"),
             "NATIVE_REQUIRED": ("true", "false", "", "unknown"),
             "PERFORMANCE_REQUIRED": ("true", "false", "", "unknown"),
         }
@@ -478,153 +459,6 @@ class WorkflowGateTest(unittest.TestCase):
                         NATIVE_OUTCOME=outcomes[0], PERFORMANCE_OUTCOME=outcomes[1]))
                     self.assertEqual(outcomes == expected, result.returncode == 0, result.stderr)
 
-
-    def test_reuse_gate_requires_successful_upload_and_source(self):
-        body = self.shell_body("Evaluate required CI gate")
-        env = dict(SCOPE_RESULT="success", MODE="reuse", CORE_RESULT="skipped",
-                   ANDROID_RESULT="skipped", NATIVE_REQUIRED="false", PERFORMANCE_REQUIRED="false",
-                   NATIVE_OUTCOME="", PERFORMANCE_OUTCOME="", REUSE_SOURCE="42", REUSE_UPLOAD="success")
-        result, _ = self.run_shell(body, env)
-        self.assertEqual(0, result.returncode, result.stderr)
-        for field, value in (("REUSE_SOURCE", ""), ("REUSE_SOURCE", "0"),
-                             ("REUSE_SOURCE", "unknown"), ("REUSE_UPLOAD", "failure"),
-                             ("REUSE_UPLOAD", "skipped"), ("REUSE_UPLOAD", ""),
-                             ("CORE_RESULT", "success"), ("ANDROID_RESULT", "failure"),
-                             ("NATIVE_REQUIRED", "true"), ("PERFORMANCE_OUTCOME", "success")):
-            with self.subTest(field=field, value=value):
-                result, _ = self.run_shell(body, dict(env, **{field: value}))
-                self.assertNotEqual(0, result.returncode)
-
-    def test_reuse_proof_rejects_wrong_tree_attempt_and_qualification(self):
-        source = {"id": 42, "run_attempt": 2, "event": "pull_request",
-                  "repository": {"full_name": "owner/repo"}}
-        apk = {"name": "app-debug.apk", "sha256": "a" * 64}
-        proof = {"version": 1, "tree": HEAD, "parents": [BASE, MERGE], "commit": MERGE,
-                 "event": "pull_request", "repository": "owner/repo", "run": 42, "attempt": 2,
-                 "apk": apk, "native": "true", "measurement": "false"}
-        verify_proof(proof, source, HEAD, [BASE, MERGE], None, apk, ("true", "false"))
-        for field, value in (("tree", BASE), ("parents", [BASE]), ("attempt", 1),
-                             ("repository", "fork/repo"), ("event", "push"), ("run", 41),
-                             ("native", "false"), ("measurement", "true"), ("apk", {})):
-            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
-                verify_proof(dict(proof, **{field: value}), source, HEAD, [BASE, MERGE],
-                             None, apk, ("true", "false"))
-
-    @patch("ci_reuse.api")
-    def test_reuse_only_real_same_repository_merge(self, api):
-        current = {"commit": MERGE, "tree": HEAD, "parents": [BASE, HEAD]}
-        pr = {"merge_commit_sha": MERGE, "merged_at": "2026-11-20T12:00:00Z",
-              "base": {"ref": "main", "repo": {"full_name": "owner/repo"}},
-              "head": {"sha": HEAD, "repo": {"full_name": "owner/repo"}}}
-        api.return_value = [pr]
-        self.assertEqual(pr, merged_pr("owner/repo", current, BASE))
-        self.assertIsNone(merged_pr("owner/repo", current, HEAD))
-        self.assertIsNone(merged_pr("owner/repo", dict(current, parents=[BASE]), BASE))
-        api.return_value = [dict(pr, head={"sha": HEAD, "repo": {"full_name": "fork/repo"}})]
-        self.assertIsNone(merged_pr("owner/repo", current, BASE))
-        api.return_value = [dict(pr, merge_commit_sha=BASE)]
-        self.assertIsNone(merged_pr("owner/repo", current, BASE))
-
-
-    def test_docs_restore_uses_only_verified_base_apk(self):
-        repository = "owner/repo"
-        repo = {"full_name": repository}
-        current = {"commit": MERGE, "tree": "d" * 40, "parents": [BASE, HEAD]}
-        base = {"commit": BASE, "tree": "e" * 40, "parents": []}
-        pr = {"merge_commit_sha": MERGE, "merged_at": "2026-11-20T12:00:00Z",
-              "base": {"ref": "main", "repo": repo},
-              "head": {"sha": HEAD, "repo": repo}}
-        source = {"id": 42, "run_attempt": 2, "head_sha": BASE, "head_branch": "main",
-                  "event": "push", "status": "completed", "conclusion": "success",
-                  "path": ".github/workflows/android.yml", "repository": repo,
-                  "head_repository": repo}
-        jobs = [{"name": name, "conclusion": "success"} for name in
-                ("CI scope", "Core and contracts", "Android integration", "build")]
-        env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
-                   BEFORE_SHA=BASE, REUSE_CANDIDATE="docs",
-                   GITHUB_RUN_ID="43", GITHUB_RUN_ATTEMPT="1")
-        data = b"synthetic APK"
-        proof = {"version": 1, **base, "event": "push", "repository": repository,
-                 "run": 42, "attempt": 2,
-                 "apk": {"name": "app-debug.apk", "sha256": hashlib.sha256(data).hexdigest()}}
-
-        for valid in (True, False):
-            with tempfile.TemporaryDirectory() as tmp, self.subTest(valid=valid):
-                directory = Path(tmp)
-
-                def download(args, **kwargs):
-                    self.assertEqual(["gh", "run", "download", "42", "--repo", repository,
-                                      "--name", "ladies-explorer-android-arm64-debug",
-                                      "--dir", tmp], args)
-                    (directory / "app-debug.apk").write_bytes(data if valid else b"wrong APK")
-                    (directory / "ci-proof.json").write_text(json.dumps(proof))
-
-                with patch("ci_reuse.snapshot", side_effect=lambda commit="HEAD":
-                           current if commit == "HEAD" else base), \
-                     patch("ci_reuse.api", side_effect=[[pr], {"workflow_runs": [source]},
-                                                       {"jobs": jobs}]) as api, \
-                     patch("ci_reuse.subprocess.run", side_effect=download) as transfer:
-                    if valid:
-                        self.assertEqual(42, restore(directory, env))
-                        result = json.loads((directory / "ci-proof.json").read_text())
-                        self.assertEqual({**current, "source_run": 42, "run": 43,
-                                          "attempt": 1, "event": "push", "repository": repository,
-                                          "version": 1, "apk": proof["apk"]}, result)
-                    else:
-                        with self.assertRaisesRegex(ValueError, "source proof"):
-                            restore(directory, env)
-                        self.assertEqual(proof, json.loads((directory / "ci-proof.json").read_text()))
-                    self.assertEqual(3, api.call_count)
-                    self.assertEqual({"head_sha": BASE, "event": "push", "per_page": 1,
-                                      "branch": "main"}, api.call_args_list[1].kwargs)
-                    transfer.assert_called_once()
-
-    def test_finalizer_reuses_only_verified_upload_and_preserves_original_scope(self):
-        body = self.shell_body("Finalize execution policy")
-        for mode, native in (("full", "true"), ("docs", "false")):
-            for restored, uploaded, source in itertools.product(
-                    ("success", "failure", "skipped"), ("success", "failure", "skipped"),
-                    ("42", "", "unknown")):
-                with tempfile.TemporaryDirectory() as tmp, self.subTest(
-                        mode=mode, restore=restored, upload=uploaded, source=source):
-                    output = Path(tmp) / "output"
-                    result, _ = self.run_shell(body, dict(MODE=mode, NATIVE=native,
-                        PERFORMANCE="false", SOURCE=source, RESTORE=restored, UPLOAD=uploaded,
-                        GITHUB_OUTPUT=str(output)))
-                    self.assertEqual(0, result.returncode, result.stderr)
-                    fields = dict(line.split("=", 1) for line in output.read_text().splitlines())
-                    reused = restored == uploaded == "success" and source == "42"
-                    self.assertEqual("reuse" if reused else mode, fields["mode"])
-                    self.assertEqual("false" if reused else native, fields["native_qualification"])
-                    self.assertEqual("false", fields["performance_measurement"])
-                    self.assertEqual("42" if reused else "", fields["reuse_source"])
-
-    @patch("ci_reuse.api")
-    def test_source_latest_run_and_actual_qualification(self, api):
-        repo = {"full_name": "owner/repo"}
-        run_info = {"id": 42, "run_attempt": 2, "head_sha": HEAD, "event": "pull_request",
-                    "status": "completed", "conclusion": "success",
-                    "path": ".github/workflows/android.yml", "repository": repo,
-                    "head_repository": repo}
-        api.return_value = {"workflow_runs": [run_info]}
-        self.assertEqual(run_info, latest_run("owner/repo", HEAD, "pull_request"))
-        for changed in (dict(status="in_progress"), dict(conclusion="failure"),
-                        dict(head_repository={"full_name": "fork/repo"}), dict(head_sha=BASE)):
-            api.return_value = {"workflow_runs": [dict(run_info, **changed), run_info]}
-            with self.subTest(changed=changed), self.assertRaises(ValueError):
-                latest_run("owner/repo", HEAD, "pull_request")
-        jobs = [{"name": name, "conclusion": "success"} for name in
-                ("CI scope", "Core and contracts", "Android integration", "build")]
-        jobs[2]["steps"] = [{"name": "Verify native task cache contract", "conclusion": "success"},
-                            {"name": "Measure Android build performance (CI05)", "conclusion": "skipped"}]
-        api.return_value = {"jobs": jobs}
-        verify_jobs("owner/repo", run_info, ("true", "false"))
-        for flags in (("false", "false"), ("true", "true")):
-            with self.subTest(flags=flags), self.assertRaises(ValueError):
-                verify_jobs("owner/repo", run_info, flags)
-        jobs[3]["conclusion"] = "failure"
-        with self.assertRaises(ValueError):
-            verify_jobs("owner/repo", run_info, ("true", "false"))
 
     def test_sdk_install_only_missing_packages_and_verify_afterwards(self):
         body = self.shell_body("Install required Android SDK and NDK")
@@ -688,9 +522,17 @@ done
                  "Upload Gradle timing and test reports")
         positions = [self.workflow.index(f"      - name: {name}\n") for name in names]
         self.assertEqual(sorted(positions), positions)
-        for name in names[:3]:
+        for name in names[:2]:
             self.assertNotIn("\n        if:", "\n" + self.step(name))
             self.assertNotIn("continue-on-error:", self.step(name))
+        upload = self.step(names[2])
+        self.assertIn("if: ${{ github.event_name == 'workflow_dispatch' }}", upload)
+        self.assertIn("path: app/build/outputs/apk/debug/*.apk", upload)
+        self.assertIn("retention-days: 7", upload)
+        self.assertIn("if-no-files-found: error", upload)
+        self.assertNotIn("continue-on-error:", upload)
+        self.assertEqual(1, self.workflow.count("name: ladies-explorer-android-arm64-debug"))
+        self.assertEqual(2, self.workflow.count("uses: actions/upload-artifact@"))
         for step_name, flag in zip(names[3:5], ("native_qualification", "performance_measurement")):
             step = self.step(step_name)
             self.assertIn(f"id: {flag}", step)

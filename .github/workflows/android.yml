@@ -29,16 +29,10 @@ jobs:
     name: CI scope
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
       native_qualification: ${{ steps.classify.outputs.native_qualification }}
       performance_measurement: ${{ steps.classify.outputs.performance_measurement }}
-      reuse_source: ${{ steps.classify.outputs.reuse_source }}
-      reuse_upload: ${{ steps.reuse_upload.outcome }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,63 +42,14 @@ jobs:
       - name: Verify scope policy
         run: python3 -m unittest discover -s tools -p test_ci_scope.py
       - name: Classify complete event diff
-        id: initial
+        id: classify
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           BEFORE_SHA: ${{ github.event.before }}
           VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}
           MEASURE_ANDROID_BUILD: ${{ inputs.measure_android_build }}
-          GH_TOKEN: ${{ github.token }}
         run: python3 tools/ci_scope.py
-
-      - name: Try verified merge reuse
-        id: restore
-        if: ${{ github.event_name == 'push' && ((steps.initial.outputs.mode == 'docs' && steps.initial.outputs.reuse_candidate == 'docs') || (steps.initial.outputs.mode == 'full' && steps.initial.outputs.reuse_candidate == 'merge')) }}
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BEFORE_SHA: ${{ github.event.before }}
-          REUSE_CANDIDATE: ${{ steps.initial.outputs.reuse_candidate }}
-          NATIVE_REQUIRED: ${{ steps.initial.outputs.native_qualification }}
-          PERFORMANCE_REQUIRED: ${{ steps.initial.outputs.performance_measurement }}
-        run: python3 tools/ci_reuse.py restore "$RUNNER_TEMP/ci-reused-apk"
-
-      - name: Publish reused main APK
-        id: reuse_upload
-        if: ${{ steps.restore.outcome == 'success' && steps.restore.outputs.source_run != '' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: ladies-explorer-android-arm64-debug
-          path: ${{ runner.temp }}/ci-reused-apk/
-          if-no-files-found: error
-          retention-days: 30
-          overwrite: true
-
-      - name: Finalize execution policy
-        id: classify
-        env:
-          MODE: ${{ steps.initial.outputs.mode }}
-          NATIVE: ${{ steps.initial.outputs.native_qualification }}
-          PERFORMANCE: ${{ steps.initial.outputs.performance_measurement }}
-          SOURCE: ${{ steps.restore.outputs.source_run }}
-          RESTORE: ${{ steps.restore.outcome }}
-          UPLOAD: ${{ steps.reuse_upload.outcome }}
-        run: |
-          case "$MODE:$NATIVE:$PERFORMANCE" in
-            docs:false:false|full:false:false|full:true:false|full:false:true|full:true:true) ;;
-            *) echo "Invalid or incomplete CI policy" >&2; exit 1 ;;
-          esac
-          if [ "$RESTORE" = success ] && [ "$UPLOAD" = success ] && [[ "$SOURCE" =~ ^[1-9][0-9]*$ ]]; then
-            MODE=reuse
-            NATIVE=false
-            PERFORMANCE=false
-          else
-            SOURCE=
-          fi
-          printf 'mode=%s\nnative_qualification=%s\nperformance_measurement=%s\nreuse_source=%s\n' "$MODE" "$NATIVE" "$PERFORMANCE" "$SOURCE" >> "$GITHUB_OUTPUT"
-
 
   core:
     name: Core and contracts
@@ -291,21 +236,14 @@ jobs:
           test -x "$aapt2"
           python3 tools/check_architecture.py --apk "$1" --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 "$aapt2"
 
-      - name: Record checked APK tree proof
-        env:
-          NATIVE_REQUIRED: ${{ needs.scope.outputs.native_qualification }}
-          PERFORMANCE_REQUIRED: ${{ needs.scope.outputs.performance_measurement }}
-        run: python3 tools/ci_reuse.py record app/build/outputs/apk/debug
-
       - name: Upload debug APK
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/upload-artifact@v7
         with:
           name: ladies-explorer-android-arm64-debug
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/debug/ci-proof.json
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
+          retention-days: 7
           overwrite: true
 
       - name: Prepare compiled Rust dependency cache
@@ -383,8 +321,6 @@ jobs:
           PERFORMANCE_REQUIRED: ${{ needs.scope.outputs.performance_measurement }}
           NATIVE_OUTCOME: ${{ needs.android.outputs.native_qualification }}
           PERFORMANCE_OUTCOME: ${{ needs.android.outputs.performance_measurement }}
-          REUSE_SOURCE: ${{ needs.scope.outputs.reuse_source }}
-          REUSE_UPLOAD: ${{ needs.scope.outputs.reuse_upload }}
         run: |
           {
             echo "### Required CI gate"
@@ -392,14 +328,11 @@ jobs:
             echo "| Check | Expected | Actual |"
             echo "| --- | --- | --- |"
             printf '| Scope (%s) | success | %s |\n' "$MODE" "$SCOPE_RESULT"
-            if [ "$MODE" = docs ] || [ "$MODE" = reuse ]; then
+            if [ "$MODE" = docs ]; then
               echo "| Core and contracts | skipped | $CORE_RESULT |"
               echo "| Android integration | skipped | $ANDROID_RESULT |"
               echo "| Native cache qualification | not run again | ${NATIVE_OUTCOME:-no step (job skipped)} |"
               echo "| Performance measurement | not run again | ${PERFORMANCE_OUTCOME:-no step (job skipped)} |"
-              if [ "$MODE" = reuse ]; then
-                echo "| Verified source run | ${REUSE_SOURCE:-missing} | APK upload: ${REUSE_UPLOAD:-missing} |"
-              fi
             else
               echo "| Core and contracts | success | $CORE_RESULT |"
               echo "| Android integration | success | $ANDROID_RESULT |"
@@ -416,14 +349,6 @@ jobs:
               # No Android job ran: its step outputs must be absent.
               test -z "$NATIVE_OUTCOME"
               test -z "$PERFORMANCE_OUTCOME"
-              ;;
-            reuse:false:false)
-              test "$CORE_RESULT" = skipped
-              test "$ANDROID_RESULT" = skipped
-              test -z "$NATIVE_OUTCOME"
-              test -z "$PERFORMANCE_OUTCOME"
-              test "$REUSE_UPLOAD" = success
-              [[ "$REUSE_SOURCE" =~ ^[1-9][0-9]*$ ]]
               ;;
             full:false:false|full:true:false|full:false:true|full:true:true)
               test "$CORE_RESULT" = success

@@ -22,7 +22,6 @@ class Decision(NamedTuple):
     reason: str
     native_qualification: bool
     performance_measurement: bool
-    reuse_candidate: str = "none"
 
 
 def parse_diff(raw):
@@ -125,9 +124,8 @@ def classify(env):
         return Decision("full", "Could not verify complete event diff; full CI required.", False, False)
     if is_docs_only(changes) and (event == "push" or env.get("BASE_REF") == "main"):
         return Decision("docs", "Verified documentation-only diff; no build inputs changed.",
-                        False, False, "docs" if event == "push" else "none")
-    return Decision("full", "Verified event diff; routine full CI.", False, False,
-                    "merge" if event == "push" else "none")
+                        False, False)
+    return Decision("full", "Verified event diff; routine full CI.", False, False)
 
 
 def main():
@@ -135,8 +133,7 @@ def main():
     print(decision.reason)
     fields = (('mode', decision.mode),
               ('native_qualification', str(decision.native_qualification).lower()),
-              ('performance_measurement', str(decision.performance_measurement).lower()),
-              ('reuse_candidate', decision.reuse_candidate))
+              ('performance_measurement', str(decision.performance_measurement).lower()))
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for name, value in fields:
             output.write(f"{name}={value}\n")
