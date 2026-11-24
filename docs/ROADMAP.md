@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.8 – verbleibende G10.3-Regressionsmatrix prüfen und belegte Defekte beheben.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: T10.8 – nach Integration der Profil-Panel-Aktionen die bestehende G10.3-Regressionsmatrix anhand integrierter PRs, vorhandener Tests und CI-Belege abschließend bilanzieren; nur konkrete abnahmerelevante Lücken beheben, dann T10.8 auf DONE setzen.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -110,9 +110,11 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – Standalone-Archivabbruch (DONE mit Merge):** [PR #72](https://github.com/Justify87/ladies-explorer-android/pull/72) bindet den gerenderten Stopp an die sichtbare Profil-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410911578) erfolgreich.
 
-**Integrierter Teilauftrag – Standalone-Retry und Back:** [PR #73](https://github.com/Justify87/ladies-explorer-android/pull/73) bindet Back an Profil-Session, Retry zusätzlich an Listing, dargestellte Online-Berechtigung und Versuch. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45411570068) beim Merge noch nicht abschließend verifiziert.
+**Abgeschlossener Teilauftrag – Standalone-Retry und Back (DONE mit Merge):** [PR #73](https://github.com/Justify87/ladies-explorer-android/pull/73) bindet Back an Profil-Session, Retry zusätzlich an Listing, dargestellte Online-Berechtigung und Versuch. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45411570068) erfolgreich.
 
-**Teilauftrag – Notizentwurfsaktionen (REVIEW):** [Branch `fix/t10-8-note-draft-admission`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-note-draft-admission) bindet Speichern, Verwerfen und Konfliktauflösung zusätzlich zum Profil-Token an den gerenderten Entwurf; Texteingaben bleiben fortlaufend. JVM-Regressionen für geänderten Text, Konflikt, Loading und Readfehler; bestehende Owner-Tests und Device-Fixture angepasst. CI und Merge ausstehend.
+**Integrierter Teilauftrag – Notizentwurfsaktionen:** [PR #74](https://github.com/Justify87/ladies-explorer-android/pull/74) bindet Notizaktionen an den gerenderten Entwurf. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412134217) beim Merge noch nicht abschließend verifiziert.
+
+**Teilauftrag – Profil-Panel-Aktionen (REVIEW):** [Branch `fix/t10-8-profile-panel-actions`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-profile-panel-actions) bindet Facts-/Detail-Retry an Profilkontext und Read-Generation, Vergleichs-Dismiss an die gerenderte Vergleichsgeneration. JVM-Regressionen für identische Folgefehler und verspäteten Dialogabbruch. CI und Merge ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.

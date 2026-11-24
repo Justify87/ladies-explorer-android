@@ -20,9 +20,11 @@ internal class ProfilePanels(
 ) {
     private data class FactsKey(val snapshot: Long?, val filters: String)
     private var factsKey: FactsKey? = null
-    private var factsGeneration = 0L
+    var factsGeneration by mutableLongStateOf(0L)
+        private set
     private var detailRequested = false
-    private var detailGeneration = 0L
+    var detailGeneration by mutableLongStateOf(0L)
+        private set
     private var closed = false
     private var factsRetry: Job? = null
     private var detailRetry: Job? = null
@@ -41,17 +43,18 @@ internal class ProfilePanels(
         private set
     var comparing by mutableStateOf(false)
         private set
-    private var comparisonGeneration = 0
+    var comparisonGeneration by mutableIntStateOf(0)
+        private set
 
-    fun retryFacts() {
+    fun retryFacts(renderedGeneration: Long) {
         val key = factsKey ?: return
-        if (closed || factsError == null) return
+        if (closed || factsError == null || renderedGeneration != factsGeneration) return
         factsKey = null
         factsRetry = scope.launch(start = CoroutineStart.UNDISPATCHED) { loadFacts(key.snapshot, key.filters) }
     }
 
-    fun retryDetail() {
-        if (closed || detailError == null) return
+    fun retryDetail(renderedGeneration: Long) {
+        if (closed || detailError == null || renderedGeneration != detailGeneration) return
         detailRequested = false
         detailRetry = scope.launch(start = CoroutineStart.UNDISPATCHED) { loadDetail() }
     }
@@ -113,6 +116,10 @@ internal class ProfilePanels(
                 if (generation == comparisonGeneration) comparing = false
             }
         }
+    }
+
+    fun dismissComparison(renderedGeneration: Int) {
+        if (!closed && renderedGeneration == comparisonGeneration) closeComparison()
     }
 
     fun closeComparison() {
