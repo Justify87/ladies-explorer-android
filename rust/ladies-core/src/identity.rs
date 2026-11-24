@@ -210,8 +210,8 @@ pub(crate) fn candidates(
     let Some(snapshot_id) = snapshot_id else {
         return Ok(Vec::new());
     };
-    let (source_id, stored_phone, raw_phone): (Option<String>, Option<String>, Option<String>) =
-        db.query_row(
+    let (source_id, stored_phone, raw_phone): (Option<String>, Option<String>, Option<String>) = db
+        .query_row(
             "SELECT external_profile_id, normalized_phone, phone_display
              FROM listing_snapshots WHERE snapshot_id=?1",
             [snapshot_id],
