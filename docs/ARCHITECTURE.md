@@ -191,6 +191,44 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Ein Entwurf behält den ursprünglichen CAS-Stand bei Kontextwiederaufnahme. Veraltete Aktionen, Mehrfachschreibvorgänge, Navigation und Merge bei offenem Editor werden nicht zugelassen. Back/Abbrechen erfordert explizites Verwerfen eines Bearbeitungsentwurfs.
 - Schreibvorgänge nutzen den gemeinsamen Mutationsguard in `MainViewModel`, drainieren bestätigte native Operationen und aktualisieren bedarfsgebunden lokale Datensatzprojektionen, nicht Discovery-/SavedSearch-/Quellprojektionen. Ein anschließender Readfehler erlaubt Read-Retry, keinen Write-Retry. Personennotiz und andere Profilwerte bleiben getrennt.
 
+### Gesten, Präsentation und Undo
+
+**Gesten-Admission:**
+- `PhotoGestureResolver` klassifiziert denselben Hero-Pointer-Stream anhand Android-Touch-Slop, gemessener Grenzen und dominanter Achse; [Schwellen/Interaktion](DESIGN.md#gesten-und-präsentation).
+- Native Clickables besitzen Galerie-Taps, Fokus und Semantik; interaktive Kindziele haben Vorrang. Horizontaler Lock übernimmt den Stream; vertikales Scrollen bleibt bei der LazyColumn.
+- Mehrfinger, Fokus-/Geometrie-/Kontextwechsel, Pause, Back, Cancel oder widerrufene Touch-Intention verhindern den Commit.
+- `ProfileTouchGate` widerruft gesamten Touch-Stream bis zum letzten Up; Semantik-/Tastaturaktionen bleiben nativ. Standalone: Galerie-Taps ohne Swipe-Entscheidung.
+
+**Flight ist nur Präsentation:**
+- `SwipeFlight` rendert einen **inerten** visuellen Übergang, keine optimistische Queue oder fachliche Mutation.
+- Drag bis Admission und autoritativer Antwort sichtbar. Ausgehendes Bild im stabilen Viewport animieren, neuen Profilfluss mit stabiler Geometrie.
+- Begrenztes Warten auf Dekodierung mit ehrlichem Cache-Fallback. Keine künstlichen Snapshots für ungeeignete Medien oder Detailscrollzustände.
+- Während Flight betreffende Eingaben kurz sperren; fachliche Admission bleibt maßgeblich.
+
+**Präsentationszustand und Undo:**
+- `ProfilePresentation` hält Medien-ID/Index, stabile Row-Keys/Offset und Sektionen **getrennt** vom fachlichen Read-Model.
+- `SwipeSession` speichert höchstens 16 jüngere Präsentationsreferenzen zu Undo-fähigen Visits, gebunden an Run/Listing/Owner/Snapshot/Filter. Ältere/unpassende Referenzen kontrolliert zurückfallen lassen.
+- Undo-Receipt einmalig nach gültiger Anwendung oder eindeutig unpassendem Kontext konsumieren; bei Readfehler erhalten. Leeres/abweichendes autoritatives Deck verwirft unpassendes Receipt; Rail bei leerem Deck bleibt für gültiges Undo erreichbar.
+
+**Restore und Invalidierung:**
+- `ProfileRestoreCoordinator` koordiniert Auftrag, besitzt **nicht** Medien-/Scroll-/Sektionszustand.
+- Row-Manifest ist stabile Schlüsselgrundlage und Datenbedarfsquelle. Bei Snapshot-/Filterwechsel Schlüssel prüfen und Pixeloffset auf sicheren Zeilenanfang beziehungsweise gültige Größe begrenzen; Medien-ID vor begrenztem Index.
+- Kein zusätzlicher Quellenabruf oder dauerhafter UI-Profilcache fürs Restore. Reset erhält eigene Präsentationsgeneration.
+
+### Swipe-Read-Window und Prefetch
+
+**Fenster und Owner:** `DiscoveryScreen`, `SwipeProfileWindow` und `SwipeProfileReads` halten **maximal Current+2 Slots**.
+- Jeder Slot bindet Listing, erwarteten Owner und Ticket/Revision; stabiler Effect und `RequestControl` pro Slot.
+- Mutex serialisiert Profilreads; Promotion eines **gültigen laufenden** Prefetch übernimmt denselben Auftrag statt Cancel und Quellen-Neustart.
+- Busy erzeugt keinen neuen Slot. Pruning, Lifecycle-/Route-/Owner-/Revisionswiderruf entziehen alte Tickets.
+- Verspätete native Commits aktualisieren abhängige lokale Projektionen **unabhängig** von UI-Admission; Publikation nur im gültigen Kontext gemäß [Operationsmodell](#operations--und-konsistenzmodell).
+
+**Read-/Cache-Policy:**
+- Lokal archivierten Bestand zuerst lokal lesen. Erstmalige Current-Freshness und spekulative Cache-first-Reads sind unterschiedliche Policies. Wird ein gültiger cache-only Prefetch im aktiven Run zum Current und verlangt dessen Policy Freshness, im selben Slot unter dem bestehenden Mutex genau einen Quellenversuch nachholen, sofern kein Current-Quellenversuch und keine Offline-Warnung vorliegen. Kein automatischer Wiederholungsversuch nach fehlgeschlagenem Refresh; Local-only, bevorzugt lokale Recovery und lokale Startbestände erzwingen keinen Refresh.
+- Fehler spekulativer Reads bis Promotion halten; lokaler Reprojektionsfehler löst **keinen** zweiten Source-Read aus.
+- Coil-Warming pro Slot, Revision und tatsächlicher Hero-Pixelgröße mit Crop-Skalierung begrenzen.
+- Kein zweiter Mediencache und keine automatische Archivierung.
+
 ## Gespeicherte Personen und Suchen
 
 ### Personen und Status
