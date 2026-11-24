@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1 ist abgeschlossen. Nächste abhängige Aufgabe: M09.2 nach gesonderter Nutzerfreigabe; keine Umsetzung bereits begonnen. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1 ist abgeschlossen. M09.2 ist zur technischen Prüfung auf `feature/m09-2-discovery-hero`; M09.3 folgt nach integriertem M09.2 und gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,9 +18,9 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.2 — Entdecken: Header und bildbetonter Swipe-Hero
 
-**Status:** PLANNED.
+**Status:** REVIEW — Branch `feature/m09-2-discovery-hero`; vollständiges CI-Gate ausstehend.
 
-**Abhängigkeit:** M09.1; gesonderter Nutzerauftrag.
+**Abhängigkeit:** M09.1; Nutzerauftrag zur Umsetzung erteilt. Merge separat.
 
 - Veraltetes Drei-Punkte-Menü oben rechts vollständig entfernen; exklusive Menüpfade, Einträge und Tests bereinigen, weiterhin benötigte Funktionen zugänglich halten.
 - Favorit aus dem Header entfernen und als kleines halbtransparentes, kontrastgesichertes Overlay oben rechts im Swipe-Profilbild anzeigen; aktiven/inaktiven Zustand unterscheidbar halten, Favorit unabhängig von Präferenz, Galerie-Taps/Video/Swipe nicht beeinträchtigen.
