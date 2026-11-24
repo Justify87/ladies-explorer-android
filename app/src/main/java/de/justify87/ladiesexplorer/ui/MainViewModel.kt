@@ -8,6 +8,7 @@ import de.justify87.ladiesexplorer.LadiesApplication
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -148,6 +149,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val profileNotes: StateFlow<Map<Long, NoteEditorState>> = _profileNotes
     private val noteReadTickets = NoteReadTickets()
     internal val noteActions = NoteEditorActions(::loadProfileNote, ::editProfileNote, ::saveProfileNote, ::useStoredNote, ::keepNoteDraft)
+    internal val encounters = EncounterEditor(::isEncounterContextCurrent, core::encounters, ::submitEncounter)
+
+    private fun isEncounterContextCurrent(token: ProfileIdentityToken): Boolean =
+        !_discoverState.value.loading && isProfileContextCurrent(token)
+
+    private fun submitEncounter(edit: EncounterEdit, values: EncounterValues?) {
+        if (!isEncounterContextCurrent(edit.token)) {
+            encounters.failed(edit, "Profilkontext hat sich geändert.")
+            return
+        }
+        val token = edit.token
+        mutateDiscovery("Begegnung konnte nicht gespeichert werden", encounterOnly = true, write = {
+            withContext(NonCancellable) {
+                when {
+                    edit.deleting -> core.deleteEncounter(token.listingId, token.ownerId, checkNotNull(edit.expected))
+                    edit.expected == null -> core.createEncounter(token.listingId, token.ownerId, checkNotNull(values))
+                    else -> core.updateEncounter(token.listingId, token.ownerId, edit.expected, checkNotNull(values))
+                }
+                encounters.committed(edit)
+            }
+        }, onFailure = { message -> encounters.failed(edit, message) })
+    }
 
     private val _mapState = MutableStateFlow(MapUiState())
     val mapState: StateFlow<MapUiState> = _mapState
@@ -208,7 +231,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshDiscovery()
     }
 
-    internal fun isProfileActionCurrent(token: ProfileIdentityToken): Boolean = when (token) {
+    internal fun isProfileActionCurrent(token: ProfileIdentityToken): Boolean =
+        encounters.edit == null && isProfileContextCurrent(token)
+
+    private fun isProfileContextCurrent(token: ProfileIdentityToken): Boolean = when (token) {
         is SwipeActionToken -> admittedSwipe(token) != null
         is DetailIdentityToken -> !_discoverState.value.busy && !_searchUiState.value.actionBusy &&
             _searchUiState.value.detailIdentityToken() == token
@@ -262,7 +288,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun admittedDeck(token: SwipeDeckToken): Boolean =
-        swipeVisible && !_searchUiState.value.profileOpen &&
+        encounters.edit == null && swipeVisible && !_searchUiState.value.profileOpen &&
             currentSwipeDeck(_discoverState.value, _searchUiState.value.loading, token)
 
     private fun admittedTraversal(token: SwipeCardToken): DiscoveryCard? =
@@ -295,7 +321,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val savedSearch = SavedSearchController(
         scope = viewModelScope,
         store = SavedSearchStore(core),
-        canOperate = { !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
+        canOperate = { encounters.edit == null && !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
         ordinaryDraft = { SearchDraft.from(_searchUiState.value) },
         onSourceFinished = { refreshAfterSourceSearch() },
     )
@@ -364,7 +390,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     internal fun cancelMediaArchive(session: Long) = profileOperations.cancelMediaArchive(session)
 
-    internal fun closeProfile(session: Long) = profileOperations.closeProfile(session)
+    internal fun closeProfile(session: Long) {
+        if (encounters.edit == null) profileOperations.closeProfile(session)
+    }
 
     internal fun setProfilePresentationVisible(visible: Boolean) {
         if (!visible) setSwipeVisible(false)
@@ -453,7 +481,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Check swipe admission against live state, not the last Compose frame. */
     internal fun runSwipeAvailability(token: SwipeDeckToken, mode: AvailabilityMode) {
         val search = _searchUiState.value
-        if (!swipeVisible || search.profileOpen ||
+        if (encounters.edit != null || !swipeVisible || search.profileOpen ||
             !currentSwipeAvailability(_discoverState.value, search.loading, search.response?.searchRunId, token)) return
         runAvailability(mode)
     }
@@ -500,7 +528,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun startSearch(request: SearchRequest, local: LocalVisibility) {
-        if (searchOwner.occupied || _searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
+        if (encounters.edit != null || searchOwner.occupied || _searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
         invalidateSwipeActions(invalidateProfiles = true)
         // Revoke rendered actions even if this source run fails or is cancelled.
         _discoverState.update { it.copy(actionGeneration = it.actionGeneration + 1) }
@@ -812,6 +840,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onFailure: (String) -> Unit = {},
         refreshProfileWindow: Boolean = true,
         recoverWriteFailure: suspend () -> Unit = {},
+        encounterOnly: Boolean = false,
     ) {
         invalidateSwipeActions()
         val epoch = ++discoveryEpoch
@@ -824,18 +853,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val outcome = writeAndProject(
                     write = write,
                     project = {
-                        check(projectDiscovery(epoch)) { "Ansicht konnte nicht vollständig aktualisiert werden." }
+                        if (!encounterOnly) check(projectDiscovery(epoch)) { "Ansicht konnte nicht vollständig aktualisiert werden." }
                     },
                     afterWrite = {
                         // Revision can change without a membership change.
-                        savedSearch.refreshProjection()
-                        if (refreshProfileWindow) invalidateSwipeProfilesLocally()
+                        if (!encounterOnly) {
+                            savedSearch.refreshProjection()
+                            if (refreshProfileWindow) invalidateSwipeProfilesLocally()
+                        }
                         afterWrite()
                     },
                     onWriteFailure = onWriteFailure,
                     recoverWriteFailure = {
-                        invalidateSwipeProfilesLocally()
-                        savedSearch.refreshProjection()
+                        if (!encounterOnly) {
+                            invalidateSwipeProfilesLocally()
+                            savedSearch.refreshProjection()
+                        }
                         recoverWriteFailure()
                     },
                 )
@@ -1085,15 +1118,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun loadProfile(listingId: Long, personId: Long) {
-        if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
+        if (encounters.edit != null || _discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
         invalidateSwipeActions()
         clearPreview()
         invalidateActiveSearch()
         profileOperations.loadProfile(listingId, personId) { savedSearch.setVisible(false) }
     }
 
-    internal fun confirmIdentity(token: ProfileIdentityToken, targetPersonId: Long) =
+    internal fun confirmIdentity(token: ProfileIdentityToken, targetPersonId: Long) {
+        if (encounters.edit != null) return
         profileOperations.confirmIdentity(token, targetPersonId)
+    }
 
     private fun onIdentityMergeCommitted(token: ProfileIdentityToken, target: Long) {
         val current = _discoverState.value
