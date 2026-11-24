@@ -98,6 +98,11 @@ class SavedSearchPaneTest {
         return SavedEditorAction(requireNotNull(state.editor), state.actionGeneration)
     }
 
+    private fun resultAction(c: SavedSearchController): SavedSearchResultAction {
+        val s = c.state.value
+        return SavedSearchResultAction(requireNotNull(s.result), s.actionGeneration)
+    }
+
     private fun ack(c: SavedSearchController): SavedSearchAckAction {
         val s = c.state.value
         val info = s.searches.single { it.searchId == "one" }
@@ -171,7 +176,7 @@ class SavedSearchPaneTest {
         assertEquals(0, fake.acknowledgements)
         fake.onRead = {}
         c.openResults(row(c)); idle(c)
-        c.more(); idle(c); c.more(); idle(c)
+        c.more(resultAction(c)); idle(c); c.more(resultAction(c)); idle(c)
         c.back()
         c.openResults(row(c)); idle(c)
         assertEquals(listOf(100u, 100u, 200u, 300u, 300u), fake.windows)
@@ -218,7 +223,7 @@ class SavedSearchPaneTest {
         c.setVisible(true)
         assertEquals(0, fake.acknowledgements)
         fake.onRead = {}
-        c.retryResults(); idle(c)
+        c.retryResults(resultAction(c)); idle(c)
         assertEquals(0, fake.acknowledgements)
         c.acknowledge(ack(c)); idle(c)
         assertEquals(1, fake.acknowledgements)
@@ -238,7 +243,7 @@ class SavedSearchPaneTest {
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
         fake.onRead = { started.complete(Unit); gate.awaitSignal() }
-        c.more(); started.awaitSignal()
+        c.more(resultAction(c)); started.awaitSignal()
         assertEquals(listOf(initial), c.state.value.result!!.cards)
         fake.cards = listOf(updated)
         fake.list = listOf(info(unread = true, revision = 2L))
@@ -258,7 +263,7 @@ class SavedSearchPaneTest {
         val c = controller(this, fake)
         c.open(paneAction(c)); idle(c)
         c.openResults(row(c)); idle(c)
-        c.more(); idle(c)
+        c.more(resultAction(c)); idle(c)
         assertEquals(listOf(card), c.state.value.result!!.cards)
         fake.windowError = true
         c.refreshResultProjection(); idle(c)
@@ -268,7 +273,7 @@ class SavedSearchPaneTest {
         assertTrue(failed.cards.isEmpty())
         assertNotNull(c.state.value.error)
         fake.windowError = false
-        c.retryResults(); idle(c)
+        c.retryResults(resultAction(c)); idle(c)
         assertTrue(c.state.value.result!!.ready)
         assertEquals(listOf(card), c.state.value.result!!.cards)
         assertNull(c.state.value.error)
@@ -354,7 +359,7 @@ class SavedSearchPaneTest {
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
         fake.onRead = { started.complete(Unit); gate.awaitSignal() }
-        c.more(); started.awaitSignal()
+        c.more(resultAction(c)); started.awaitSignal()
         assertFalse(c.admitsProfileOpen(click))
         gate.complete(Unit); idle(c)
         assertFalse(c.admitsProfileOpen(click))
@@ -417,7 +422,7 @@ class SavedSearchPaneTest {
         c.open(paneAction(c)); idle(c)
         c.openResults(row(c)); idle(c)
         val oldWindow = ack(c)
-        c.retryResults(); idle(c)
+        c.retryResults(resultAction(c)); idle(c)
         c.acknowledge(oldWindow)
         assertEquals(0, fake.acknowledgements)
 
@@ -702,4 +707,81 @@ class SavedSearchPaneTest {
         assertEquals(1, fake.writes)
         assertNull(c.state.value.dialog)
     }
+
+    @Test(timeout = 15_000) fun delayedResultReadsCannotTargetReplacementSearch() = runBlocking {
+        val fake = Fake(info()).apply { list = listOf(info(), info("two")) }
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
+        val stale = resultAction(c)
+        c.back()
+        c.openResults(row(c, "two")); idle(c)
+        c.more(stale)
+        c.retryResults(stale)
+        assertEquals("two", c.state.value.result?.id)
+        assertEquals(listOf(100u, 100u), fake.windows)
+        c.more(resultAction(c)); idle(c)
+        assertEquals(listOf(100u, 100u, 200u), fake.windows)
+        assertEquals(0, fake.acknowledgements)
+    }
+
+    @Test(timeout = 15_000) fun resultReadAdmissionRevokesVisibilityAndPreviousRead() = runBlocking {
+        val fake = Fake(info())
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
+        val beforeStop = resultAction(c)
+        c.setVisible(false)
+        c.more(beforeStop)
+        c.retryResults(resultAction(c))
+        c.setVisible(true)
+        c.more(beforeStop)
+        c.retryResults(beforeStop)
+        assertEquals(listOf(100u), fake.windows)
+
+        val beforeReload = resultAction(c)
+        c.retryResults(beforeReload); idle(c)
+        c.more(beforeReload)
+        c.retryResults(beforeReload)
+        assertEquals(listOf(100u, 100u), fake.windows)
+        c.more(resultAction(c)); idle(c)
+        assertEquals(listOf(100u, 100u, 200u), fake.windows)
+    }
+
+    @Test(timeout = 15_000) fun resultReadAdmissionPreventsDuplicateReadsAndAllowsCurrentFailedWindowRetry() = runBlocking {
+        val fake = Fake(info(unread = true))
+        var allowed = true
+        val c = SavedSearchController(this, fake, { allowed }, { SearchDraft() }, {}).apply { setVisible(true) }
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
+        val ready = resultAction(c)
+        allowed = false
+        c.more(ready)
+        c.retryResults(ready)
+        assertEquals(listOf(100u), fake.windows)
+        allowed = true
+
+        val started = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        fake.onRead = { started.complete(Unit); gate.awaitSignal() }
+        fake.windowError = true
+        c.more(ready); started.awaitSignal()
+        c.more(resultAction(c))
+        c.retryResults(resultAction(c))
+        assertEquals(listOf(100u, 200u), fake.windows)
+        gate.complete(Unit); idle(c)
+        val failed = resultAction(c)
+        assertFalse(failed.window.ready)
+        c.more(failed)
+        c.retryResults(ready)
+        assertEquals(listOf(100u, 200u), fake.windows)
+        fake.onRead = {}
+        fake.windowError = false
+        c.retryResults(failed); idle(c)
+        assertTrue(c.state.value.result!!.ready)
+        assertEquals(listOf(100u, 200u, 100u), fake.windows)
+        assertTrue(c.state.value.searches.single().unreadNewResults)
+        assertEquals(0, fake.acknowledgements)
+    }
+
 }

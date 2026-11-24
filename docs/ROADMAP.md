@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.8 – [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) nach Nutzerfreigabe integrieren, danach verbleibende G10.3-Regressionsmatrix prüfen.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: T10.8 – Ergebnisfenster-Pagination/Retry im Branch `fix/t10-8-saved-result-read-admission` technisch validieren und nach Nutzerfreigabe integrieren; danach verbleibende G10.3-Regressionsmatrix prüfen.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -16,7 +16,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M03 Suche/Parser | DONE | [#4](https://github.com/Justify87/ladies-explorer-android/pull/4), [#8](https://github.com/Justify87/ladies-explorer-android/pull/8); abgeschlossen. |
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
-| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 mit [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) integriert; T10.8 mit [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57) teilintegriert; SavedSearch-Zeilenaktionen in [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) zur Freigabe (CI grün); T10.9 offen. |
+| M05.10 Unified Profile Experience | ACTIVE | T10.0–T10.6 abgeschlossen, T10.7 mit [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53) integriert; T10.8 mit [PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57) teilintegriert; SavedSearch-Zeilenaktionen in [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) integriert; Ergebnisfenster-Pagination/Retry in Arbeit; T10.9 offen. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -68,7 +68,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 **Akzeptanz:**
 - [x] Abschluss mit erfolgreicher [CI #45013729939](https://github.com/Justify87/ladies-explorer-android/actions/runs/45013729939) in [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53): Ein cache-only Prefetch übersprang beim Current-Aufrücken die aktive Freshness-Policy; einmalige Quellenaktualisierung mit unverändertem Slot/Mutex und Regression für No-Redo/Local-only. Weitere entsprechende Defekte im geprüften T10.7-Umfang nicht belegt. Keine Beschleunigung ohne Messung behauptet.
 
-### T10.8 — DOING · Vertikale Integration (G10.3) ([PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57), [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) offen)
+### T10.8 — DOING · Vertikale Integration (G10.3) ([PR #54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#57](https://github.com/Justify87/ladies-explorer-android/pull/57), [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) integriert)
 
 **Abhängigkeit:** T10.7 abgeschlossen. **Referenzen:** P01–P51/X01–X11, [UI-Vertrag](DESIGN.md).
 
@@ -82,7 +82,9 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Integrierter Teilauftrag – SavedPeople-Statusaktionen:** [PR #57](https://github.com/Justify87/ladies-explorer-android/pull/57) bindet einzelne Statuschecks an die vorhandene gerenderte SavedPerson-Aktion und Batchchecks an Auswahl, Listenfenster und Aktionsgeneration. Verzögerte Prüfungen nach Tab-, Sortier-, Reprojektions- oder Lifecycle-Wechsel werden vor Netzwerk-I/O abgewiesen; [PR-CI #45032730497](https://github.com/Justify87/ladies-explorer-android/actions/runs/45032730497) erfolgreich.
 
-**Laufender Teilauftrag – SavedSearch-Zeilenaktionen:** Im Branch `fix/t10-8-saved-search-row-admission-20261122` werden Öffnen, Prüfen, Ändern, Umbenennen und Löschen an die gerenderte Zeile, Listenansicht und Aktionsgeneration gebunden. Das zweite Review erweitert die Admission ursächlich auf den Übersichtseinstieg, Anlegen, Dialog-Eingabe/Abbruch sowie Editor-Eingabe/Abbruch und exakt gerendertes Editor-Speichern (einschließlich Validierung). Verzögerte Aktionen nach Reload, Pane-/Dialog-/Lifecycle-Wechsel werden vor fremden Views und I/O abgewiesen; verspätete Editor-Read- und Fehlerrückgaben bleiben geschützt. JVM-Regressionen ergänzt; erneuter CI-/Reviewstatus im PR. Der frühere vollständige [PR-CI #45035874378](https://github.com/Justify87/ladies-explorer-android/actions/runs/45035874378) war grün, aber liegt vor diesen Review-Korrekturen. Weitere G10.3-Integration bleibt offen.
+**Integrierter Teilauftrag – SavedSearch-Zeilenaktionen:** [PR #58](https://github.com/Justify87/ladies-explorer-android/pull/58) bindet Zeilen-, Pane-, Dialog- und Editoraktionen an gerenderte Kontexte und schützt späte Editor-Reads. [PR-CI #45038090081](https://github.com/Justify87/ladies-explorer-android/actions/runs/45038090081) und [Main-CI #45039471481](https://github.com/Justify87/ladies-explorer-android/actions/runs/45039471481) erfolgreich.
+
+**Laufender Teilauftrag – SavedSearch-Ergebnisfenster:** Branch `fix/t10-8-saved-result-read-admission` bindet manuelle/automatische Pagination und Retry/Reload an das gerenderte Fenster und seine Aktionsgeneration. JVM-Regressionen für Suchwechsel, Lifecycle, erneuten Read, Busy/gesperrte Operation und Fehler-Recovery ohne Ack ergänzt. Technische Validierung und Merge ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.

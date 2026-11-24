@@ -111,14 +111,15 @@ internal fun SavedSearchOverview(
 internal fun SavedSearchResultsScreen(
     state: SavedSearchUiState,
     enabled: Boolean,
-    onMore: () -> Unit,
-    onRetry: () -> Unit,
+    onMore: (SavedSearchResultAction) -> Unit,
+    onRetry: (SavedSearchResultAction) -> Unit,
     onAcknowledge: (SavedSearchAckAction) -> Unit,
     generation: Long,
     onOpen: (SavedSearchProfileOpenAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val result = state.result ?: return
+    val resultAction = SavedSearchResultAction(result, state.actionGeneration)
     // Restore the saved scroll position against loaded results, not an empty grid.
     val grid = rememberLazyGridState()
     if (!result.ready || state.resultDirty) {
@@ -126,19 +127,19 @@ internal fun SavedSearchResultsScreen(
             if (state.busy || state.resultDirty) CircularProgressIndicator()
             else {
                 Text(state.error ?: "Ergebnisse konnten nicht geladen werden", color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = onRetry, enabled = enabled) { Text("Erneut versuchen") }
+                TextButton(onClick = { onRetry(resultAction) }, enabled = enabled) { Text("Erneut versuchen") }
             }
         }
         return
     }
     val canPage = enabled && !state.busy && result.hasMore
-    LaunchedEffect(grid, result.cards.size, canPage, state.windowError) {
+    LaunchedEffect(grid, resultAction, canPage, state.windowError) {
         if (canPage && state.windowError == null) {
             snapshotFlow {
                 val layout = grid.layoutInfo
                 nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
             }.first { it }
-            onMore()
+            onMore(resultAction)
         }
     }
     val info = state.searches.firstOrNull { it.searchId == result.id }
@@ -150,7 +151,7 @@ internal fun SavedSearchResultsScreen(
                 Text(info?.let(::savedDeltaText) ?: "${result.cards.size} geladene Treffer")
                 Text("${result.cards.size} geladen · aktuelle lokale Profildaten", style = MaterialTheme.typography.bodySmall)
                 info?.lastError?.let { Text("Letzte Prüfung fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error) }
-                TextButton(onClick = onRetry, enabled = enabled && !state.busy) { Text("Aktualisieren") }
+                TextButton(onClick = { onRetry(resultAction) }, enabled = enabled && !state.busy) { Text("Aktualisieren") }
                 if (info?.unreadNewResults == true && result.revision != null) TextButton(onClick = { onAcknowledge(SavedSearchAckAction(result.id, result.revision, result, state.actionGeneration)) },
                     enabled = enabled && !state.busy) { Text("Als gelesen markieren") }
             }
@@ -158,7 +159,7 @@ internal fun SavedSearchResultsScreen(
         state.error?.let { error ->
             item(key = "error", span = { GridItemSpan(maxLineSpan) }) {
                 Column { Text(error, color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = onRetry, enabled = enabled && !state.busy) { Text("Erneut versuchen") } }
+                    TextButton(onClick = { onRetry(resultAction) }, enabled = enabled && !state.busy) { Text("Erneut versuchen") } }
             }
         }
         if (result.cards.isEmpty()) item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
@@ -181,7 +182,7 @@ internal fun SavedSearchResultsScreen(
         }
         if (state.busy || result.hasMore) item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
             if (state.busy) Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            else TextButton(onClick = onMore, enabled = canPage) { Text("Weitere Treffer") }
+            else TextButton(onClick = { onMore(resultAction) }, enabled = canPage) { Text("Weitere Treffer") }
         }
     }
 }
