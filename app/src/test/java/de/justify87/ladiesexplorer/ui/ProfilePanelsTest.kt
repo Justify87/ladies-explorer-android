@@ -61,6 +61,7 @@ class ProfilePanelsTest {
             },
         )
         panel.compare(1L, 2L)
+        val firstGeneration = panel.comparisonGeneration
         started.awaitSignal()
         val oldJob = coroutineContext[Job]!!.children.single()
         assertTrue(panel.comparing)
@@ -68,6 +69,8 @@ class ProfilePanelsTest {
         assertFalse(panel.comparing)
         assertNull(panel.comparison)
         panel.compare(2L, 3L)
+        panel.dismissComparison(firstGeneration)
+        assertTrue(panel.comparing)
         coroutineContext[Job]!!.children.single { it != oldJob }.join()
         assertFalse(panel.comparing)
         assertEquals(newer, panel.comparison)
@@ -130,12 +133,42 @@ class ProfilePanelsTest {
         panel.loadDetail()
         assertEquals(1, attempts)
         assertEquals("analysis failed", panel.detailError)
-        panel.retryDetail()
+        panel.retryDetail(panel.detailGeneration)
         coroutineContext[Job]!!.children.toList().forEach { it.join() }
         assertEquals(2, attempts)
         assertNotNull(panel.detail)
         assertNull(panel.detailError)
         assertEquals(original, panel.facts)
+    }
+
+    @Test(timeout = 15_000) fun delayedRetryCannotReplayNewerFailureForSamePanel() = runBlocking {
+        var factAttempts = 0
+        var detailAttempts = 0
+        val panel = ProfilePanels(this, 7L,
+            { _, _ -> if (++factAttempts < 3) error("same facts error") else facts() },
+            { if (++detailAttempts < 3) error("same detail error") else detail() },
+            { _, _, _ -> emptyList() })
+        panel.loadFacts(11L, "{}")
+        panel.loadDetail()
+        val oldFacts = panel.factsGeneration
+        val oldDetail = panel.detailGeneration
+        panel.retryFacts(oldFacts)
+        panel.retryDetail(oldDetail)
+        assertEquals(2, factAttempts)
+        assertEquals(2, detailAttempts)
+        assertNotNull(panel.factsError)
+        assertNotNull(panel.detailError)
+        panel.retryFacts(oldFacts)
+        panel.retryDetail(oldDetail)
+        assertEquals(2, factAttempts)
+        assertEquals(2, detailAttempts)
+        panel.retryFacts(panel.factsGeneration)
+        panel.retryDetail(panel.detailGeneration)
+        assertEquals(3, factAttempts)
+        assertEquals(3, detailAttempts)
+        assertNotNull(panel.facts)
+        assertNotNull(panel.detail)
+        panel.close()
     }
 
     @Test fun promotedTraitDoesNotDiscardDistinctAliases() {
@@ -171,8 +204,8 @@ class ProfilePanelsTest {
         val previousDetail = panel.detail
         panel.loadFacts(11L, "{}")
         assertEquals(1, attempts)
-        panel.retryFacts()
-        panel.retryFacts()
+        panel.retryFacts(panel.factsGeneration)
+        panel.retryFacts(panel.factsGeneration)
         coroutineContext[Job]!!.children.toList().forEach { it.join() }
         assertEquals(2, attempts)
         assertNotNull(panel.facts)
