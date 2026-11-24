@@ -35,6 +35,22 @@ class ShellRouteTest {
         assertEquals(ShellRoute(), grid.back())
     }
 
+    @Test fun explicitSwipeEntryReturnsToActualOriginAndSurvivesRestoration() {
+        for (mode in listOf(DiscoverMode.Grid, DiscoverMode.Map)) {
+            val origin = ShellRoute().select(mode)
+            val swipe = origin.openSwipe()
+            assertEquals(DiscoverMode.Swipe, swipe.discovery)
+            assertEquals(mode, swipe.swipeOrigin)
+            assertEquals("discover/Swipe", swipe.stateKey)
+            assertEquals(BackAction.Navigate, swipe.backAction(false, false))
+            assertEquals(origin, ShellRoute.decode(swipe.encode()).back())
+            assertNull(swipe.select(DiscoverMode.Grid).swipeOrigin)
+            assertNull(swipe.select(RootDestination.Search).swipeOrigin)
+        }
+        assertEquals(ShellRoute(), ShellRoute().openSwipe())
+        assertNull(ShellRoute.decode(listOf("Discover", "Swipe", "Swipe")).swipeOrigin)
+    }
+
     @Test fun backClosesOverlaysBeforeChangingRoot() {
         val search = ShellRoute().select(RootDestination.Search)
         assertEquals(BackAction.CloseProfile, search.backAction(true, true))

@@ -11,12 +11,14 @@ internal data class SwipeStep(
     val after: Preference? = null,
     val undoable: Boolean = true,
     val presentation: SwipePresentation? = null,
+    val explicitEntry: Boolean = false,
 )
 
 internal class SwipeSession {
     var replayLikes: Boolean = true
     private val history = mutableListOf<SwipeStep>()
     private var restoredListingId: Long? = null
+    private var explicitStart: Pair<Long, Long>? = null
     private var restoredPosition: SwipePresentation? = null
     private val mergedOwners = mutableMapOf<Long, Long>()
     val last: SwipeStep? get() = history.lastOrNull()?.takeIf { it.undoable }
@@ -33,13 +35,26 @@ internal class SwipeSession {
         affected.forEach { history[it] = history[it].copy(undoable = false, presentation = null) }
         if (restoredPosition?.ownerId in setOf(source, target)) restoredPosition = null
         mergedOwners[source] = target
+        explicitStart = explicitStart?.let { (listing, owner) ->
+            if (owner == source) (listing to target).takeIf { preferredListing == listing }
+            else listing to owner
+        }
         if (preferredListing != null) restoredListingId = preferredListing
+    }
+
+    fun focus(cards: List<DiscoveryCard>, listingId: Long, ownerId: Long): Boolean {
+        if (cards.none { it.listingId == listingId && it.personId == ownerId }) return false
+        explicitStart = listingId to ownerId
+        restoredListingId = null
+        restoredPosition = null
+        return true
     }
 
     fun visit(step: SwipeStep) {
         // Clearing a preference is a local user-state mutation, never deck traversal.
         if (step.after == Preference.NONE) return
-        history.add(step)
+        history.add(step.copy(explicitEntry = explicitStart == (step.listingId to step.personId)))
+        explicitStart = null
         // Bound presentation history without changing traversal/undo.
         val old = history.lastIndex - 16
         if (old >= 0) history[old] = history[old].copy(presentation = null)
@@ -51,6 +66,7 @@ internal class SwipeSession {
         if (last != step) return
         history.removeAt(history.lastIndex)
         restoredListingId = step.listingId
+        explicitStart = if (step.explicitEntry) step.listingId to step.personId else null
         restoredPosition = step.presentation?.takeIf { it.listingId == step.listingId && it.ownerId == step.personId }
     }
 
@@ -70,6 +86,7 @@ internal class SwipeSession {
 
     fun reset() {
         history.clear()
+        explicitStart = null
         mergedOwners.clear()
         restoredListingId = null
         restoredPosition = null
@@ -85,7 +102,11 @@ internal class SwipeSession {
         }
         // Undo restores the just-visited listing even if a later refresh changed ordering.
         val restored = eligible.firstOrNull { it.listingId == restoredListingId }
-        return (listOfNotNull(restored) + eligible).distinctBy { it.personId }
+        // An explicit open is not a visit, and may target a previously traversed card.
+        // It is still restricted to the current membership and exact owner.
+        val focused = cards.firstOrNull { explicitStart == (it.listingId to it.personId) }
+        if (focused == null) explicitStart = null
+        return (listOfNotNull(focused, restored) + eligible).distinctBy { it.personId }
     }
 }
 
