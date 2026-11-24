@@ -920,7 +920,10 @@ mod tests {
             .active_search_cards(1, crate::LocalVisibility::default())
             .unwrap();
         assert_eq!(
-            active.iter().map(|card| card.listing_id).collect::<Vec<_>>(),
+            active
+                .iter()
+                .map(|card| card.listing_id)
+                .collect::<Vec<_>>(),
             vec![listing, target_listing]
         );
         assert!(
@@ -932,7 +935,12 @@ mod tests {
         assert_eq!(after.cards.len(), 2);
         assert_eq!(after.cards[0].listing_id, Some(listing));
         assert_eq!(after.cards[1].listing_id, Some(target_listing));
-        assert!(after.cards.iter().all(|card| card.person_id == Some(target)));
+        assert!(
+            after
+                .cards
+                .iter()
+                .all(|card| card.person_id == Some(target))
+        );
         assert!(after.searches[0].unread_new_results);
         assert_ne!(before.searches[0].revision, after.searches[0].revision);
         assert_eq!(core.map_overview(false).unwrap().total_profiles, 1);
