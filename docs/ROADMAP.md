@@ -26,7 +26,7 @@ Nächster Schritt: [M06.1a](#m061a--begegnungsbasis). M06 und M07 jeweils erst n
 
 **Status:** DOING · **Abhängigkeit:** G11 abgeschlossen. · Branch `feature/m06-1a-encounters`.
 
-**Zwischenstand:** Native CRUD-/Owner-/Editor-CAS-Implementierung, UniFFI/CoreStore und native Regressionen im Feature-Branch; noch nicht technisch validiert. Nächster Schritt: gemeinsamer bedarfsgesteuerter Profilabschnitt und Editor, Admission/Drain/Entwurfsschutz einschließlich Merge und Back, JVM-/Android-Integration und vollständige CI. Kein Abschluss oder Merge vor Erfüllung der Akzeptanz.
+**Zwischenstand:** Native CRUD-/Owner-/Editor-CAS-Implementierung, UniFFI/CoreStore, gemeinsamer bedarfsgesteuerter Profilabschnitt und Editor einschließlich Admission/Drain/Entwurfsschutz sowie Rust-, JVM- und Android-Regressionen im Feature-Branch. CI der UI-Integration erfolgreich; finaler Stand mit zusätzlichen Regressionen und Review-Korrekturen noch zu validieren. Nächster Schritt: finalen CI-Lauf prüfen, gegebenenfalls Fehler korrigieren und erst danach zur Review-Freigabe übergehen. Kein Merge ohne Freigabe.
 
 **Umfang:** Typisierte native Read-/Create-/Update-/Delete-API über UniFFI/CoreStore, kompakte aufklappbare Begegnungssektion und ein gemeinsamer Editor für Swipe und Standalone. Zeitpunkt, optionale Dauer, tatsächlich bezahlter Gesamtbetrag, Gesamt-/Sympathiebewertung und private Begegnungsnotiz; keine separaten Editorpfade.
 
