@@ -279,6 +279,8 @@ internal fun ProfileMetadata(
         "Anzeige neu".takeIf { identity?.listingNew == true },
         "Video".takeIf { media.any { it.kind == "VIDEO" } || identity?.hasVideo == true },
     )
+    Text("Zum Profil scrollen", style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (badges.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)) {
         badges.forEach { label ->
@@ -301,12 +303,15 @@ internal fun ProfileActionRail(
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (person != null) {
             FilterChip(selected = person.preference == Preference.LIKE, enabled = !busy,
+                modifier = Modifier.heightIn(min = 48.dp),
                 onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.LIKE)) },
                 label = { Text("Like") }, leadingIcon = { Icon(Icons.Default.Favorite, null) })
             FilterChip(selected = person.favorite, enabled = !busy,
+                modifier = Modifier.heightIn(min = 48.dp),
                 onClick = { onFavorite(person.personId) }, label = { Text("Favorit") },
                 leadingIcon = { Icon(Icons.Default.Star, null) })
             FilterChip(selected = person.preference == Preference.DISLIKE, enabled = !busy,
+                modifier = Modifier.heightIn(min = 48.dp),
                 onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.DISLIKE)) },
                 label = { Text("Nein") })
         }
@@ -318,11 +323,19 @@ internal fun ProfileContactActions(phone: String?, busy: Boolean, isCurrent: () 
     val context = LocalContext.current
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val normalized = phone?.let(::phoneForWhatsApp)
-        OutlinedButton(enabled = !busy && normalized != null, onClick = {
-            if (isCurrent()) normalized?.let { openExternal(context, "https://wa.me/$it") }
-        }) { Text("WhatsApp") }
-        OutlinedButton(enabled = !busy && !phone.isNullOrBlank(), onClick = {
+        OutlinedButton(enabled = !busy && !phone.isNullOrBlank(), modifier = Modifier.heightIn(min = 48.dp), onClick = {
             if (isCurrent()) phone?.let { openExternal(context, "tel:${Uri.encode(it)}", dial = true) }
-        }) { Text("Kontakt") }
+        }) {
+            Icon(Icons.Default.Phone, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Telefon")
+        }
+        if (normalized != null) OutlinedButton(enabled = !busy, modifier = Modifier.heightIn(min = 48.dp), onClick = {
+            if (isCurrent()) openExternal(context, "https://wa.me/$normalized")
+        }) {
+            Icon(Icons.Default.Email, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("WhatsApp")
+        }
     }
 }
