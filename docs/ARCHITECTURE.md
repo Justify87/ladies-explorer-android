@@ -217,7 +217,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Verspätete native Commits aktualisieren abhängige lokale Projektionen **unabhängig** von UI-Admission; Publikation nur im gültigen Kontext gemäß [Operationsmodell](#operations--und-konsistenzmodell).
 
 **Read-/Cache-Policy:**
-- Lokal archivierten Bestand zuerst lokal lesen. Erstmalige Current-Freshness und spekulative Cache-first-Reads sind unterschiedliche Policies.
+- Lokal archivierten Bestand zuerst lokal lesen. Erstmalige Current-Freshness und spekulative Cache-first-Reads sind unterschiedliche Policies. Wird ein gültiger cache-only Prefetch im aktiven Run zum Current und verlangt dessen Policy Freshness, im selben Slot unter dem bestehenden Mutex genau einen Quellenversuch nachholen, sofern kein Current-Quellenversuch und keine Offline-Warnung vorliegen. Kein automatischer Wiederholungsversuch nach fehlgeschlagenem Refresh; Local-only, bevorzugt lokale Recovery und lokale Startbestände erzwingen keinen Refresh.
 - Fehler spekulativer Reads bis Promotion halten; lokaler Reprojektionsfehler löst **keinen** zweiten Source-Read aus.
 - Coil-Warming pro Slot, Revision und tatsächlicher Hero-Pixelgröße mit Crop-Skalierung begrenzen.
 - Kein zweiter Mediencache und keine automatische Archivierung.
@@ -280,7 +280,7 @@ Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Op
 - Bestätigten Write genau einmal als solchen behandeln. Writefehler und anschließenden Readfehler unterscheiden; nach Commit ausschließlich **lokal** reprojizieren.
 - Keine fachliche Mutation oder Quellenanfrage stillschweigend erneut auslösen, nur um einen UI-Read zu reparieren.
 - Abhängige lokale Fenster sind Profil/Notiz, Entdecken/Grid, SavedPeople, SavedSearch, Karte und Home. Alte Resultate dürfen nie Aktionen für einen anderen Owner freigeben.
-- Ein reiner erfolgreicher Swipe invalidiert nicht pauschal andere Personenprofile. Tatsächliche Quell-/Identitätsänderungen oder Fehler widerrufen betroffene Slots.
+- Ein reiner erfolgreicher Swipe invalidiert nicht pauschal andere Personenprofile. Tatsächliche Quell-/Identitätsänderungen oder Fehler widerrufen betroffene Slots. Statusprüfungen können Profilstatus und Beobachtungszeit ändern, auch ohne Änderung der Mitgliedschaft; deshalb betroffene Swipe-Projektionen lokal invalidieren. SavedSearch-Reprojektion erfolgt im gemeinsamen Mutationspfad, bei Coroutine-Cancel separat, da dieser die normale Reconciliation umgehen kann. Karten-Recovery bei fehlgeschlagenem Status-/Target-Write und Detail-/Feed-Recovery unabhängig halten; ein Fehler darf nicht die übrigen nötigen lokalen Reads unterdrücken.
 
 **Kontext- und Lifecycle-Invarianten:**
 - Standalone-Back bindet die sichtbare Profil-Session, auch während Loading oder Mutation. UI-Retry bindet zusätzlich Listing, dargestellte lokale/Online-Berechtigung und Retry-Versuch; der Beginn widerruft alte Retry-Callbacks. Automatische Wiederherstellung nach Lifecycle-Wechsel bleibt lokal, unabhängig von UI-Retry. Native Drain-Grenze bleibt erhalten.
@@ -322,7 +322,7 @@ Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Op
 - Kamera und Auswahl bleiben im `SaveableStateHolder` über Tab-/Profilwechsel erhalten.
 - Rust liefert die DB-weite Kartenprojektion und hält Koordinatencache in `app_settings` (`map:postal:DE:…` / `map:city:DE:…`, ohne separate Schema-Migration), zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg.
 - Gerenderte Kartensteuerung (Aktualisieren, Standortauflösung, Abbruch, Favoritenfilter) bindet Kartenstatus, Kartengeneration und sichtbare Surface-/Lifecycle-Generation. Überholte Callbacks erreichen weder eine neue Standortauflösung noch einen fremden Abbruch oder Filterwechsel. Interne Projektionsaktualisierung und interner Abbruch bleiben unabhängig von der UI-Admission.
-- Offline-Überblick und Auftragsstatus getrennt. Nach Abschluss/Abbruch liest UI **einmal** aktuellen Bestand statt doppelter Listenübertragung.
+- Offline-Überblick und Auftragsstatus getrennt. Nach Abschluss/Abbruch liest UI **einmal** aktuellen Bestand statt doppelter Listenübertragung. Kartenprojektion nach nativer Quellen-/Mutationsoperation und lokaler Read beim Eintritt in die Karte sind nicht pauschal austauschbar: zwischenzeitliche native Commits können den DB-weiten Bestand ändern. Der Ist-Stand nutzt getrennte Aktualisierungsanlässe mit Epoch-Schutz; eine Zusammenlegung erfordert belegte äquivalente Aktualität und Fehler-Recovery.
 - Kein eigener Prozess, WebView, Server oder Gerätestandort.
 
 ### Standortauflösung und Provider

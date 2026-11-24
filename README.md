@@ -126,4 +126,4 @@ Bei fachlichen Änderungen die zuständige Dokumentation im selben PR aktualisie
 
 ## Lizenz
 
-Apache-2.0; [LICENSE](LICENSE), [NOTICE](NOTICE). Attribution und noch zu klärende native Weiterverteilungspflichten stehen in NOTICE und [ROADMAP](docs/ROADMAP.md#unabhängiger-klärungspunkt).
+Apache-2.0; [LICENSE](LICENSE), [NOTICE](NOTICE). Attribution und noch zu klärende native Weiterverteilungspflichten stehen in NOTICE und [ROADMAP](docs/ROADMAP.md#l01--lizenzklärung).
