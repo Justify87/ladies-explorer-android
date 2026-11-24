@@ -376,7 +376,7 @@ fun LadiesApp(
                                 state = discovery,
                                 notes = notes,
                                 noteActions = viewModel.noteActions,
-                    encounters = viewModel.encounters,
+                                encounters = viewModel.encounters,
                                 search = search,
                                 rootBarHeight = (padding.calculateBottomPadding() -
                                     WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()).coerceAtLeast(0.dp),
