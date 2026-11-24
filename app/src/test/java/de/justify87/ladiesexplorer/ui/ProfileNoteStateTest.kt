@@ -26,6 +26,41 @@ class ProfileNoteStateTest {
         assertEquals(false, changed.reconcile("mine").dirty)
     }
 
+    @Test fun saveAndDiscardRejectUnseenDraftChangesAndKeepRequiresCurrentConflict() {
+        val rendered = NoteDraft.from("old").edit("mine")
+        val ready = NoteEditorState(draft = rendered)
+        assertTrue(ready.canEdit())
+        assertTrue(ready.canSave(rendered))
+        assertTrue(ready.canDiscard(rendered))
+        assertFalse(ready.canKeep(rendered))
+        val typed = ready.copy(draft = rendered.edit("newer"))
+        assertFalse(typed.canSave(rendered))
+        assertFalse(typed.canDiscard(rendered))
+        assertTrue(typed.canSave(typed.draft!!))
+        val conflict = ready.loaded("external")
+        assertFalse(conflict.canDiscard(rendered))
+        assertFalse(conflict.canSave(rendered))
+        val seenConflict = conflict.draft!!
+        assertTrue(conflict.canKeep(seenConflict))
+        assertTrue(conflict.canDiscard(seenConflict))
+        assertFalse(conflict.canSave(seenConflict))
+        val changedConflict = conflict.loaded("new external")
+        assertFalse(changedConflict.canKeep(seenConflict))
+        assertFalse(changedConflict.canDiscard(seenConflict))
+        assertTrue(changedConflict.canKeep(changedConflict.draft!!))
+        val loading = conflict.copy(loading = true)
+        assertFalse(loading.canEdit())
+        assertFalse(loading.canDiscard(seenConflict))
+        assertFalse(loading.canKeep(seenConflict))
+        val failed = conflict.copy(readError = true)
+        assertFalse(failed.canEdit())
+        assertFalse(failed.canKeep(seenConflict))
+        assertFalse(ready.copy(readError = true).canSave(rendered))
+        assertTrue(failed.canDiscard(seenConflict))
+        assertFalse(NoteEditorState().canEdit())
+        assertFalse(NoteEditorState().canDiscard(rendered))
+    }
+
     @Test fun cleanDraftFollowsPersistedValueAndEmptyTextIsARealEdit() {
         val original = NoteEditorState().loaded("original")
         assertEquals("external", original.loaded("external").draft?.text)
@@ -99,20 +134,25 @@ class ProfileNoteStateTest {
         val raw = NoteEditorActions(
             load = { listing, owner -> calls += "load:$listing:$owner" },
             edit = { owner, _ -> calls += "edit:$owner" },
-            save = { listing, owner -> calls += "save:$listing:$owner" },
-            useStored = { owner -> calls += "discard:$owner" },
-            keepDraft = { owner -> calls += "keep:$owner" },
+            save = { listing, owner, draft -> calls += "save:$listing:$owner:${draft.text}" },
+            useStored = { owner, draft -> calls += "discard:$owner:${draft.text}" },
+            keepDraft = { owner, draft -> calls += "keep:$owner:${draft.text}" },
         )
         val bound = raw.boundTo(token) { it == active }
         bound.load(4L, 1L)
         bound.edit(1L, "draft")
-        bound.save(99L, 1L)
+        val draft = NoteDraft.from("old").edit("rendered")
+        bound.save(99L, 1L, draft)
         bound.edit(2L, "wrong owner")
+        bound.save(4L, 1L, draft)
+        bound.useStored(1L, draft)
+        bound.keepDraft(1L, draft)
         active = token.copy(projectionRevision = token.projectionRevision + 1)
-        bound.save(4L, 1L)
-        bound.useStored(1L)
-        bound.keepDraft(1L)
-        assertEquals(listOf("load:4:1", "edit:1"), calls)
+        bound.save(4L, 1L, draft)
+        bound.useStored(1L, draft)
+        bound.keepDraft(1L, draft)
+        assertEquals(listOf("load:4:1", "edit:1", "save:4:1:rendered",
+            "discard:1:rendered", "keep:1:rendered"), calls)
     }
 
     @Test(timeout = 15_000) fun openedNoteCoalescesDemandAndRetryDoesNotDependOnLazyItem() = runBlocking {

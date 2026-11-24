@@ -1029,24 +1029,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun editProfileNote(personId: Long, text: String) {
-        if (_discoverState.value.busy) return
-        updateNote(personId) { it.copy(draft = it.draft?.edit(text), error = if (it.readError) it.error else null) }
+        if (_discoverState.value.busy || _profileNotes.value[personId]?.canEdit() != true) return
+        updateNote(personId) { it.copy(draft = it.draft?.edit(text), error = null) }
     }
 
-    private fun useStoredNote(personId: Long) {
-        if (_discoverState.value.busy) return
-        updateNote(personId) { it.copy(draft = it.draft?.useStored(), error = if (it.readError) it.error else null) }
+    private fun useStoredNote(personId: Long, draft: NoteDraft) {
+        if (_discoverState.value.busy || _profileNotes.value[personId]?.canDiscard(draft) != true) return
+        updateNote(personId) { it.copy(draft = draft.useStored(), error = if (it.readError) it.error else null) }
     }
 
-    private fun keepNoteDraft(personId: Long) {
-        if (_discoverState.value.busy) return
-        updateNote(personId) { it.copy(draft = it.draft?.keepDraft(), error = null) }
+    private fun keepNoteDraft(personId: Long, draft: NoteDraft) {
+        if (_discoverState.value.busy || _profileNotes.value[personId]?.canKeep(draft) != true) return
+        updateNote(personId) { it.copy(draft = draft.keepDraft(), error = null) }
     }
 
-    private fun saveProfileNote(listingId: Long, personId: Long) {
-        val entry = _profileNotes.value[personId] ?: return
-        val draft = entry.draft ?: return
-        if (_discoverState.value.busy || entry.loading || entry.readError || !draft.dirty || draft.conflict) return
+    private fun saveProfileNote(listingId: Long, personId: Long, draft: NoteDraft) {
+        if (_discoverState.value.busy || _profileNotes.value[personId]?.canSave(draft) != true) return
         val note = draft.text.takeUnless { it.isBlank() }
         noteReadTickets.invalidate(personId)
         updateNote(personId) { it.copy(error = null) }
