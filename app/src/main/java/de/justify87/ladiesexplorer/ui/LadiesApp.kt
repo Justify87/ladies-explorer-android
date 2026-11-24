@@ -396,7 +396,8 @@ fun LadiesApp(
                                 onRefresh = viewModel::refreshRenderedMap,
                                 onResolve = viewModel::resolveMapLocations,
                                 onCancel = viewModel::cancelRenderedMapResolution,
-                                onFavoritesOnly = viewModel::setMapFavoritesOnly,
+                                summary = search.response?.let { "${it.city} · ${it.requestedRadiusKm} km · Aktive Suche" }
+                                    ?: "Lokaler Bestand · neutral",
                                 generation = discovery.actionGeneration,
                                 onProfile = { action ->
                                     if (route == renderedRoute && viewModel.openMapProfile(action)) {
@@ -408,7 +409,7 @@ fun LadiesApp(
                                     viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
                                     route = route.select(mode)
                                 },
-                                profileEnabled = !discovery.busy && !search.loading,
+                                profileEnabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy,
                                 modifier = Modifier.weight(1f),
                             )
                         }

@@ -29,7 +29,26 @@ internal fun settingsReplayMatches(
 
 internal data class MapControlAction(val rendered: MapUiState, val generation: Long)
 
-internal enum class MapControl { REFRESH, RESOLVE, CANCEL, FILTER }
+data class MapMembership(val runId: Long?, val cards: List<DiscoveryCard>) {
+    val listingIds get() = cards.map { it.listingId }
+
+    internal fun matches(overview: MapOverview): Boolean {
+        val members = cards.associateBy { it.listingId }
+        return overview.totalProfiles == cards.size.toUInt() &&
+            overview.profiles.size + overview.unlocatedProfiles.toInt() == cards.size &&
+            overview.profiles.distinctBy { it.listingId }.size == overview.profiles.size &&
+            overview.profiles.all { profile ->
+                members[profile.listingId]?.let { it.personId == profile.personId && it.favorite == profile.favorite } == true
+            }
+    }
+}
+
+internal fun currentMapMembership(discovery: DiscoverUiState, search: SearchUiState): MapMembership? =
+    if (discovery.activeRunId == search.response?.searchRunId)
+        MapMembership(discovery.activeRunId, discoveryMembership(discovery, search))
+    else null
+
+internal enum class MapControl { REFRESH, RESOLVE, CANCEL }
 
 internal fun mapControlMatches(
     map: MapUiState, discovery: DiscoverUiState, search: SearchUiState,
@@ -37,30 +56,37 @@ internal fun mapControlMatches(
 ): Boolean {
     if (discovery.actionSurface != ProfileActionSurface.MAP ||
         discovery.actionGeneration != action.generation || search.profileOpen || map != action.rendered) return false
+    if (control == MapControl.CANCEL) return map.resolving && !map.cancelling
+    if (discovery.busy || discovery.loading || search.loading || search.actionBusy) return false
+    val membership = currentMapMembership(discovery, search) ?: return false
     return when (control) {
         MapControl.REFRESH -> !map.loading && !map.resolving
-        MapControl.RESOLVE -> !map.loading && !map.resolving && (map.overview?.pendingLocations ?: 0u) > 0u
-        MapControl.CANCEL -> map.resolving && !map.cancelling
-        MapControl.FILTER -> true
+        MapControl.RESOLVE -> !map.loading && !map.resolving && map.membership == membership &&
+            (map.overview?.pendingLocations ?: 0u) > 0u
+        MapControl.CANCEL -> false
     }
 }
 
 internal data class MapProfileOpenAction(
     val overview: MapOverview,
     val profile: MapProfile,
-    val favoritesOnly: Boolean,
     val generation: Long,
 )
 
 internal fun mapProfileOpenMatches(
-    map: MapUiState, discovery: DiscoverUiState, action: MapProfileOpenAction,
+    map: MapUiState, discovery: DiscoverUiState, search: SearchUiState, action: MapProfileOpenAction,
 ): Boolean =
     discovery.actionSurface == ProfileActionSurface.MAP &&
         discovery.actionGeneration == action.generation &&
-        !discovery.busy && !map.loading &&
-        map.favoritesOnly == action.favoritesOnly &&
+        !discovery.busy && !discovery.loading && !map.loading &&
+        !search.loading && !search.actionBusy && !search.profileOpen &&
+        map.membership != null && map.membership == currentMapMembership(discovery, search) &&
         map.overview === action.overview &&
-        action.overview.profiles.any { it == action.profile }
+        action.overview.profiles.any { it == action.profile } &&
+        map.membership.cards.any {
+            it.listingId == action.profile.listingId && it.personId == action.profile.personId &&
+                it.favorite == action.profile.favorite
+        }
 
 /** Never reinterpret a stale click using a freshly projected card. */
 internal data class GridLikeAction(

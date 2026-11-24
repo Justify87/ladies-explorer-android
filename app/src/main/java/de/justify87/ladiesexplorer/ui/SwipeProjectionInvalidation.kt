@@ -14,16 +14,15 @@ internal class SwipeProjectionInvalidation(
     fun sourceCompleted() {
         dirty = true
         savedSearch()
-        if (listVisible) discovery()
-        if (mapVisible) map()
+        if (listVisible || mapVisible) discovery()
     }
 
     fun setVisibility(listVisible: Boolean, mapVisible: Boolean) {
         val mapEntered = mapVisible && !this.mapVisible
         this.listVisible = listVisible
         this.mapVisible = mapVisible
-        if (listVisible && dirty) discovery()
-        if (mapEntered) map()
+        if ((listVisible || mapVisible) && dirty) discovery()
+        else if (mapEntered) map()
     }
 
     /** Queue while busy; a real read consumes pending/dirty flags. */

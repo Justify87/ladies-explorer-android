@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -75,7 +74,7 @@ internal fun MapScreen(
     onRefresh: (MapControlAction) -> Unit,
     onResolve: (MapControlAction) -> Unit,
     onCancel: (MapControlAction) -> Unit,
-    onFavoritesOnly: (MapControlAction, Boolean) -> Unit,
+    summary: String,
     generation: Long,
     onProfile: (MapProfileOpenAction) -> Unit,
     onMode: (DiscoverMode) -> Unit,
@@ -123,17 +122,7 @@ internal fun MapScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             DiscoveryContextStrip {
-                Text("Lokaler Bestand", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-                Row(
-                    Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()
-                        .toggleable(value = state.favoritesOnly, role = Role.Switch,
-                            onValueChange = { onFavoritesOnly(controls, it) }).padding(end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text("Nur Favoriten", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-                    Switch(checked = state.favoritesOnly, onCheckedChange = null)
-                }
+                Text(summary, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
             }
             DiscoverModeSwitcher(DiscoverMode.Map, onMode, Modifier)
             Surface(
@@ -178,7 +167,7 @@ internal fun MapScreen(
                 onPickLocation = { picker = MapPickerScope.Location },
                 onClear = { selectedListingId = null; focusRequest = null },
                 onOpen = { person ->
-                    if (overview != null) onProfile(MapProfileOpenAction(overview, person, state.favoritesOnly, generation))
+                    if (overview != null) onProfile(MapProfileOpenAction(overview, person, generation))
                 },
                 modifier = Modifier.fillMaxWidth().then(
                     if (compact) Modifier else Modifier.heightIn(max = availableHeight * .48f)
@@ -226,7 +215,7 @@ internal fun MapDetails(
     val overview = state.overview
     val scheme = MaterialTheme.colorScheme
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Ungefähre Ortslagen · unabhängig von der Suche",
+        Text("Ungefähre Ortslagen · gemeinsame Ergebnismenge",
             style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
         if (overview != null) {
             Text("${overview.profiles.size} von ${overview.totalProfiles} Profilen kartiert · ${overview.unlocatedProfiles} ohne Position",
@@ -263,7 +252,7 @@ internal fun MapDetails(
         if (overview != null && overview.profiles.isEmpty() && !state.loading) {
             Text(
                 if (overview.pendingLocations > 0u) "Noch keine Koordinaten gespeichert. Standorte ausdrücklich auflösen."
-                else "Keine kartierbaren Profile. Suche zuerst nach Profilen oder deaktiviere den Favoritenfilter.",
+                else "Keine kartierbaren Profile in der aktuellen Ergebnismenge.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
