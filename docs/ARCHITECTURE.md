@@ -114,7 +114,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 
 **Filter und Vorschau:**
 - Filterkatalog kanonisiert Gruppen, Aliase und Slugs; Orts-API-Schlüssel case-insensitiv mit lokalem Slug-Fallback.
-- Preview nutzt denselben geprüften Seite-1-Abruf mit Fallback, 350 ms Debounce, Cancel und Generation; keinerlei Persistenz.
+- Preview nutzt denselben geprüften Seite-1-Abruf mit Fallback, 350 ms Debounce und keinerlei Persistenz. Eine eigene Lease bindet die sichtbare Filteransicht bzw. Editor-Session an den STARTED-Lifecycle; Stop/Dispose widerrufen nur ihre eigene Lease. Vor I/O und Publikation müssen Lease, Request-Generation und aktueller Quellentwurf übereinstimmen. Lokale Filter und Seitenlimit beeinflussen die Seite-1-Vorschau nicht.
 - Häufige Filter kommen aus `search_runs`, ohne weiteren Store.
 
 **Zulässiger Profilabruf:**
