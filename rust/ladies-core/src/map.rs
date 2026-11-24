@@ -149,36 +149,39 @@ fn cache_keys(candidate: &Candidate) -> (Option<String>, Option<String>) {
     (postal, city)
 }
 
-fn candidates(core: &LadiesCore, favorites_only: bool) -> Result<Vec<Candidate>, CoreError> {
+fn candidates(
+    core: &LadiesCore,
+    listing_ids: &[i64],
+    run_id: Option<i64>,
+) -> Result<Vec<Candidate>, CoreError> {
+    let ids =
+        serde_json::to_string(listing_ids).map_err(|e| CoreError::Storage(e.to_string()))?;
     let db = core.connection()?;
     let mut statement = db.prepare(
-        "WITH ranked AS (
-            SELECT listing_id,person_id,
-                   ROW_NUMBER() OVER (PARTITION BY person_id
-                     ORDER BY last_seen_at DESC, listing_id DESC) AS rn
-            FROM listings
-         )
-         SELECT l.listing_id,l.person_id,
-                COALESCE(NULLIF(s.name,''),NULLIF(r.name,''),NULLIF(p.display_name,''),'Inserat'),
-                COALESCE(NULLIF(s.city,''),NULLIF(r.city,''),''),
+        "SELECT l.listing_id,l.person_id,
+                CASE WHEN ?2 IS NOT NULL THEN COALESCE(r.name,'')
+                     ELSE COALESCE(NULLIF(s.name,''),NULLIF(r.name,''),NULLIF(p.display_name,''),'Inserat') END,
+                CASE WHEN ?2 IS NOT NULL THEN COALESCE(r.city,'')
+                     ELSE COALESCE(NULLIF(s.city,''),NULLIF(r.city,''),'') END,
                 s.postal_code,s.hidden_location,u.favorite,
-                COALESCE(
+                CASE WHEN ?2 IS NOT NULL THEN r.thumbnail_url ELSE COALESCE(
                     (SELECT m.remote_url FROM snapshot_media m
                      WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
                      ORDER BY CASE WHEN m.role='PRIMARY' THEN 0 ELSE 1 END,m.position LIMIT 1),
-                    r.thumbnail_url)
-         FROM ranked k
-         JOIN listings l ON l.listing_id=k.listing_id AND k.rn=1
+                    r.thumbnail_url) END
+         FROM json_each(?1) requested
+         JOIN listings l ON l.listing_id=requested.value
          JOIN persons p ON p.person_id=l.person_id
          JOIN person_user_state u ON u.person_id=l.person_id
-         LEFT JOIN listing_snapshots s ON s.snapshot_id=l.current_snapshot_id
+         LEFT JOIN listing_snapshots s ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
          LEFT JOIN search_results r ON r.search_result_id=(
              SELECT sr.search_result_id FROM search_results sr
-             WHERE sr.listing_id=l.listing_id ORDER BY sr.search_run_id DESC LIMIT 1)
-         WHERE (?1=0 OR u.favorite=1)
-         ORDER BY l.last_seen_at DESC,l.listing_id DESC",
+             WHERE sr.listing_id=l.listing_id AND (?2 IS NULL OR sr.search_run_id=?2)
+             ORDER BY sr.search_run_id DESC,sr.search_result_id DESC LIMIT 1)
+         WHERE (?2 IS NULL OR r.search_result_id IS NOT NULL)
+         ORDER BY CAST(requested.key AS INTEGER)",
     )?;
-    let rows = statement.query_map([favorites_only], |row| {
+    let rows = statement.query_map(params![ids, run_id], |row| {
         let explicit_postal: Option<String> = row.get(4)?;
         let hidden: Option<String> = row.get(5)?;
         let postal = explicit_postal
@@ -195,8 +198,13 @@ fn candidates(core: &LadiesCore, favorites_only: bool) -> Result<Vec<Candidate>,
             thumbnail_url: row.get(7)?,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(Into::into)
+    let people = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    if people.len() != listing_ids.len() {
+        return Err(CoreError::InvalidInput(
+            "Kartenmitgliedschaft hat sich geändert".into(),
+        ));
+    }
+    Ok(people)
 }
 
 fn read_cache(core: &LadiesCore) -> Result<HashMap<String, CachedLocation>, CoreError> {
@@ -304,9 +312,13 @@ fn build_overview(people: Vec<Candidate>, cache: &HashMap<String, CachedLocation
     }
 }
 
-pub(crate) fn overview(core: &LadiesCore, favorites_only: bool) -> Result<MapOverview, CoreError> {
+pub(crate) fn overview(
+    core: &LadiesCore,
+    listing_ids: &[i64],
+    run_id: Option<i64>,
+) -> Result<MapOverview, CoreError> {
     Ok(build_overview(
-        candidates(core, favorites_only)?,
+        candidates(core, listing_ids, run_id)?,
         &read_cache(core)?,
     ))
 }
@@ -493,7 +505,8 @@ fn execute_geocoding(
 /// Serialize and pace explicit geocoding; rotate failures behind untried locations.
 pub(crate) fn resolve(
     core: &LadiesCore,
-    favorites_only: bool,
+    listing_ids: &[i64],
+    run_id: Option<i64>,
     max_requests: u32,
     control: &Arc<RequestControl>,
 ) -> Result<u32, CoreError> {
@@ -507,7 +520,7 @@ pub(crate) fn resolve(
         .try_lock()
         .map_err(|_| CoreError::Source("Standortauflösung läuft bereits".into()))?;
     control.check()?;
-    let people = candidates(core, favorites_only)?;
+    let people = candidates(core, listing_ids, run_id)?;
     let cache = read_cache(core)?;
     let mut pending = BTreeMap::new();
     for person in &people {
@@ -605,10 +618,53 @@ mod tests {
         core
     }
 
+    fn member_ids(core: &LadiesCore, favorites_only: bool) -> Vec<i64> {
+        crate::discovery::page(core, favorites_only, 100, None, &[])
+            .unwrap()
+            .cards
+            .into_iter()
+            .map(|card| card.listing_id)
+            .collect()
+    }
+
+    #[test]
+    fn exact_run_listing_is_mapped_without_substituting_a_person_representative() {
+        let core = seed();
+        {
+            let db = core.connection().unwrap();
+            db.execute("INSERT INTO search_runs (search_run_id) VALUES (1),(2)", [])
+                .unwrap();
+            db.execute(
+                "INSERT INTO search_results (search_run_id,listing_id,position,name,city)
+                 VALUES (1,1,1,'Run A','Leipzig'),(2,3,1,'Outside','Leipzig')",
+                [],
+            )
+            .unwrap();
+        }
+        save_cache(
+            &core,
+            "map:city:DE:leipzig",
+            &CachedLocation {
+                status: "RESOLVED".into(),
+                latitude: Some(51.34),
+                longitude: Some(12.37),
+                precision: Some("CITY".into()),
+                updated_at: now(),
+            },
+        )
+        .unwrap();
+        let view = overview(&core, &[1], Some(1)).unwrap();
+        assert_eq!(view.total_profiles, 1);
+        assert_eq!(view.profiles[0].listing_id, 1);
+        assert_eq!(view.profiles[0].name, "Run A");
+        assert!(overview(&core, &[3], Some(1)).is_err());
+        assert_eq!(overview(&core, &[], Some(1)).unwrap().total_profiles, 0);
+    }
+
     #[test]
     fn no_fake_coordinates_and_deduplicated_people() {
         let core = seed();
-        let view = overview(&core, false).unwrap();
+        let view = overview(&core, &member_ids(&core, false), None).unwrap();
         assert_eq!(view.total_profiles, 2);
         assert!(view.profiles.is_empty());
         assert_eq!(view.pending_locations, 1);
@@ -629,13 +685,13 @@ mod tests {
             },
         )
         .unwrap();
-        let view = overview(&core, false).unwrap();
+        let view = overview(&core, &member_ids(&core, false), None).unwrap();
         assert_eq!(view.profiles.len(), 2);
         assert!(view.profiles.iter().all(|p| p.precision == "POSTAL"));
         assert_eq!(view.pending_locations, 0);
         assert_eq!(view.unlocated_profiles, 0);
         core.set_favorite(1, true).unwrap();
-        let view = overview(&core, true).unwrap();
+        let view = overview(&core, &member_ids(&core, true), None).unwrap();
         assert_eq!(view.total_profiles, 1);
         assert!(view.profiles[0].favorite);
     }
@@ -655,7 +711,7 @@ mod tests {
             },
         )
         .unwrap();
-        let view = overview(&core, false).unwrap();
+        let view = overview(&core, &member_ids(&core, false), None).unwrap();
         assert_eq!(view.pending_locations, 1);
         save_cache(
             &core,
@@ -669,7 +725,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(overview(&core, false).unwrap().profiles.len(), 0);
+        assert_eq!(overview(&core, &member_ids(&core, false), None).unwrap().profiles.len(), 0);
         save_cache(
             &core,
             "map:city:DE:leipzig",
@@ -682,7 +738,7 @@ mod tests {
             },
         )
         .unwrap();
-        let view = overview(&core, false).unwrap();
+        let view = overview(&core, &member_ids(&core, false), None).unwrap();
         assert_eq!(view.profiles.len(), 2);
         assert!(view.profiles.iter().all(|p| p.precision == "CITY"));
     }
@@ -740,7 +796,7 @@ mod tests {
             },
         )
         .unwrap();
-        let view = overview(&core, false).unwrap();
+        let view = overview(&core, &member_ids(&core, false), None).unwrap();
         assert_eq!(view.profiles.len(), 2);
         assert_eq!(view.pending_locations, 1);
         assert!(view.profiles.iter().all(|p| p.precision == "CITY"));
@@ -751,7 +807,7 @@ mod tests {
         let core = seed();
         let _lease = core.geocoding.lock().unwrap();
         assert!(matches!(
-            resolve(&core, false, 15, &RequestControl::new()),
+            resolve(&core, &member_ids(&core, false), None, 15, &RequestControl::new()),
             Err(CoreError::Source(reason)) if reason == "Standortauflösung läuft bereits"
         ));
     }
