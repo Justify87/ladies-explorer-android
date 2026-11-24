@@ -396,8 +396,9 @@ private fun ComparisonDialog(panels: ProfilePanels, active: Boolean) {
     LaunchedEffect(panels, active) { if (!active) panels.closeComparison() }
     if (!active) return
     if (!panels.comparing && panels.comparison == null && panels.comparisonError == null) return
+    val generation = panels.comparisonGeneration
     AlertDialog(
-        onDismissRequest = panels::closeComparison,
+        onDismissRequest = { panels.dismissComparison(generation) },
         title = { Text("Snapshot-Vergleich") },
         text = {
             androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -414,7 +415,7 @@ private fun ComparisonDialog(panels: ProfilePanels, active: Boolean) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = panels::closeComparison) { Text("Schließen") } },
+        confirmButton = { TextButton(onClick = { panels.dismissComparison(generation) }) { Text("Schließen") } },
     )
 }
 
@@ -449,7 +450,7 @@ private fun ProfileFlowRows.profileContent(
     item(key = "profile-facts", read = ProfileRowRead.Facts) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ProfileGroup("Übersicht") {
-                FactsContent(panels) { facts ->
+                FactsContent(panels, actionsBusy, isCurrent) { facts ->
                     val (overview, traits) = facts.overviewAndTraits()
                     if (facts.openingTimes.isNotEmpty()) ProfileGroup("Öffnungszeiten") { FieldValues(facts.openingTimes) }
                     FieldGrid(overview + listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() }))
@@ -461,7 +462,7 @@ private fun ProfileFlowRows.profileContent(
     if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile, sections) }
     item(key = "profile-services", read = ProfileRowRead.Facts) {
         ProfileGroup("Dienste und Filterbelege") {
-            FactsContent(panels) { facts ->
+            FactsContent(panels, actionsBusy, isCurrent) { facts ->
                 val all = facts.serviceRows()
                 val expanded = sections.expanded(ProfileSection.Services)
                 val shown = all.preview(expanded)
@@ -496,7 +497,7 @@ private fun ProfileFlowRows.profileContent(
                         "Anzeigen" to data.listings.size.toString(), "Bekannte Namen" to data.knownNames.toString(),
                         "Bekannte Orte" to data.knownCities.toString(), "Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString(),
                         "Mit anderen Personen geteilte Assets" to data.sharedImages.toString()))
-                if (data == null) DetailStatus(panels)
+                if (data == null) DetailStatus(panels, actionsBusy, isCurrent)
                 Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
                     style = MaterialTheme.typography.bodySmall)
             }
@@ -534,7 +535,7 @@ private fun ProfileFlowRows.profileContent(
                 Checkbox(sections.showDescriptionChanges, sections::setShowDescriptionChanges)
                 Text("Beschreibungstexte im Verlauf anzeigen")
             }
-            if (panels.detail == null) DetailStatus(panels)
+            if (panels.detail == null) DetailStatus(panels, actionsBusy, isCurrent)
             if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
         }
         items(visibleEvents, key = { "event/${it.changeEventId}" }, read = ProfileRowRead.Detail) { event ->
@@ -552,7 +553,7 @@ private fun ProfileFlowRows.profileContent(
         }
         item(key = "profile-listings-head", read = ProfileRowRead.Detail) {
             Text("Verknüpfte Anzeigen", style = MaterialTheme.typography.titleMedium)
-            if (panels.detail == null) DetailStatus(panels)
+            if (panels.detail == null) DetailStatus(panels, actionsBusy, isCurrent)
         }
         items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }, read = ProfileRowRead.Detail) { listing ->
             val context = LocalContext.current
@@ -566,7 +567,8 @@ private fun ProfileFlowRows.profileContent(
 }
 
 @Composable
-private fun FactsContent(panels: ProfilePanels, content: @Composable (ProfileFacts) -> Unit) {
+private fun FactsContent(panels: ProfilePanels, busy: Boolean, isCurrent: () -> Boolean,
+    content: @Composable (ProfileFacts) -> Unit) {
     val facts = panels.facts
     if (facts != null) content(facts)
     else {
@@ -574,17 +576,19 @@ private fun FactsContent(panels: ProfilePanels, content: @Composable (ProfileFac
         if (error == null) CircularProgressIndicator(Modifier.size(24.dp))
         else {
             Text(error, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = panels::retryFacts) { Text("Neu laden") }
+            val generation = panels.factsGeneration
+            TextButton(enabled = !busy, onClick = { if (isCurrent()) panels.retryFacts(generation) }) { Text("Neu laden") }
         }
     }
 }
 
 @Composable
-private fun DetailStatus(panels: ProfilePanels) {
+private fun DetailStatus(panels: ProfilePanels, busy: Boolean, isCurrent: () -> Boolean) {
     val error = panels.detailError
     if (error == null) CircularProgressIndicator(Modifier.size(24.dp))
     else {
         Text(error, color = MaterialTheme.colorScheme.error)
-        TextButton(onClick = panels::retryDetail) { Text("Neu laden") }
+        val generation = panels.detailGeneration
+        TextButton(enabled = !busy, onClick = { if (isCurrent()) panels.retryDetail(generation) }) { Text("Neu laden") }
     }
 }
