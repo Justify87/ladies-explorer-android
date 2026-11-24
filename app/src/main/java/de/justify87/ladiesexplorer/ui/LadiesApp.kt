@@ -171,7 +171,7 @@ fun LadiesApp(
 
     // Root navigation preserves pagination and scroll state.
     fun selectRoot(destination: RootDestination) {
-        if (viewModel.encounters.edit != null || route.root == destination || saved.blockingNavigation) return
+        if (viewModel.hasProfileEditor || route.root == destination || saved.blockingNavigation) return
         profileTouchGate.invalidate()
         if (swipeShell) viewModel.setSwipeVisible(false)
         viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
@@ -216,6 +216,7 @@ fun LadiesApp(
     val renderedRetryAction = search.detailRetryAction()
     fun back() {
         viewModel.encounters.edit?.let { viewModel.encounters.requestDismiss(it); return }
+        viewModel.prices.edit?.let { viewModel.prices.requestDismiss(it); return }
         profileTouchGate.invalidate()
         // A delayed detail Back must never fall through to the root route after closing.
         if (renderedProfileOpen) {
@@ -238,11 +239,12 @@ fun LadiesApp(
         }
     }
     // On the default swipe route, Back cancels an active touch or delegates to Android.
-    BackHandler(enabled = viewModel.encounters.edit != null || savedEditorOpen || savedOverviewOpen ||
+    BackHandler(enabled = viewModel.hasProfileEditor || savedEditorOpen || savedOverviewOpen ||
         route.backAction(search.profileOpen, savedResultsOpen) != BackAction.System ||
         (profileTouchEnabled && profileTouchGate.active)) { back() }
 
     EncounterEditorDialog(viewModel.encounters)
+    PriceEditorDialog(viewModel.prices)
 
     Scaffold(
         modifier = if (profileTouchEnabled) Modifier.admitProfileTouches(profileTouchGate) {
@@ -335,7 +337,7 @@ fun LadiesApp(
                     state = search,
                     notes = notes,
                     noteActions = viewModel.noteActions,
-                    encounters = viewModel.encounters,
+                    encounters = viewModel.encounters, prices = viewModel.prices,
                     onFavorite = viewModel::toggleProfileFavorite,
                     onPreference = viewModel::chooseProfilePreference,
                     isProfileCurrent = viewModel::isProfileActionCurrent,
@@ -376,7 +378,7 @@ fun LadiesApp(
                                 state = discovery,
                                 notes = notes,
                                 noteActions = viewModel.noteActions,
-                                encounters = viewModel.encounters,
+                                encounters = viewModel.encounters, prices = viewModel.prices,
                                 search = search,
                                 rootBarHeight = (padding.calculateBottomPadding() -
                                     WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()).coerceAtLeast(0.dp),
@@ -385,7 +387,7 @@ fun LadiesApp(
                                         selectRoot(RootDestination.Search)
                                 },
                                 onSelectMode = { mode ->
-                                    if (viewModel.encounters.edit == null && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe &&
+                                    if (!viewModel.hasProfileEditor && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe &&
                                         mode != DiscoverMode.Swipe) {
                                         profileTouchGate.invalidate()
                                         viewModel.setSwipeVisible(false)
