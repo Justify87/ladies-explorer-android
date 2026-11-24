@@ -11,7 +11,7 @@ import java.time.ZoneId
 class EncounterEditorTest {
     private val zone = ZoneId.of("Europe/Berlin")
     private val token = SwipeActionToken(null, 1, 4, 1, 11, 1, Preference.NONE, false, emptyList())
-    private val values = EncounterValues(null, "2026-11-24T12:00:00.123Z", null, null, null, null, null)
+    private val values = EncounterValues(null, "2026-11-24T12:00:00.123Z", null, null, null, null, null, null, emptyList())
     private val row = Encounter(5, 1, values, values.occurredAt, values.occurredAt)
 
     @Test fun draftPreservesUnknownZeroAndOriginalTimestamp() {
@@ -30,11 +30,30 @@ class EncounterEditorTest {
         assertEquals("2026-11-24T12:01:00.000Z", original.copy(whenText = "24.11.2026 13:01").values(row, zone).occurredAt)
     }
 
+    @Test fun serviceDraftPreservesUnknownZeroAndIndependentTotal() {
+        val draft = EncounterDraft.from(row, zone).copy(baseAmount = "0").addService().addService()
+            .changeService(0) { it.copy(name = "  Fixture A  ") }
+            .changeService(1) { it.copy(name = "Fixture B", amount = "12,34") }
+        val v = draft.values(row, zone)
+        assertEquals(0L, v.basePriceCents)
+        assertNull(v.totalPriceCents)
+        assertEquals(listOf(EncounterService("Fixture A", null), EncounterService("Fixture B", 1234)), v.services)
+        assertEquals(v, EncounterDraft.from(row.copy(values = v), zone).values(row.copy(values = v), zone))
+        val changed = draft.removeService(0).addService()
+            .changeService(0) { it.copy(name = "stale callback") }
+            .changeService(2) { it.copy(name = "Fixture C", amount = "0") }
+        assertEquals(listOf(EncounterService("Fixture B", 1234), EncounterService("Fixture C", 0)), changed.values(row, zone).services)
+        assertTrue(changed.removeService(1).removeService(2).values(row, zone).services.isEmpty())
+    }
+
     @Test fun invalidAndAmbiguousInputsNeverBecomeWriteValues() {
         val draft = EncounterDraft("24.11.2026 13:00")
         for (invalid in listOf(
             draft.copy(duration = "0"), draft.copy(amount = "-1"), draft.copy(amount = "1,234"),
             draft.copy(amount = "99999999999999999999999"), draft.copy(overall = "6"),
+            draft.copy(baseAmount = "-1"), draft.addService(),
+            draft.addService().changeService(0) { it.copy(name = "Fixture", amount = "-1") },
+            draft.addService().changeService(0) { it.copy(name = "Fixture", amount = "1,234") },
             draft.copy(sympathy = "0"), draft.copy(whenText = "30.02.2026 13:00"),
             draft.copy(whenText = "29.03.2026 02:30"), draft.copy(whenText = "25.10.2026 02:30"),
         )) {
@@ -74,7 +93,9 @@ class EncounterEditorTest {
         val editor = EncounterEditor({ it == current }, { _, _ -> listOf(row) }, { _, _ -> error("No write") })
         editor.load(token)
         editor.begin(checkNotNull(editor.panel), row)
-        editor.change(checkNotNull(editor.edit)) { it.copy(note = "retained") }
+        editor.change(checkNotNull(editor.edit)) {
+            it.copy(note = "retained").addService().changeService(0) { line -> line.copy(name = "Fixture") }
+        }
         val draft = checkNotNull(editor.edit)
         val foreign = token.copy(session = 2, ownerId = 2)
         current = foreign
@@ -91,6 +112,7 @@ class EncounterEditorTest {
         assertEquals(current, resumed.token)
         assertEquals(row, resumed.expected)
         assertEquals("retained", resumed.draft.note)
+        assertEquals("Fixture", resumed.draft.services.single().name)
         editor.requestDismiss(resumed)
         val confirmation = checkNotNull(editor.edit)
         editor.keep(confirmation)
