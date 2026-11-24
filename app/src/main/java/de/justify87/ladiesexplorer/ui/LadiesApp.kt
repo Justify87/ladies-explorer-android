@@ -84,7 +84,8 @@ fun LadiesApp(
         if (run != null && run != lastPresentedRun) {
             lastPresentedRun = run
             if (!search.profileOpen && (route.root == RootDestination.Search || route.root == RootDestination.Discover)) {
-                route = route.select(if (route.discovery == DiscoverMode.Grid) DiscoverMode.Grid else DiscoverMode.Swipe)
+                route = route.select(if (route.root == RootDestination.Discover) route.discovery
+                    else if (route.discovery == DiscoverMode.Grid) DiscoverMode.Grid else DiscoverMode.Swipe)
             }
         }
     }
@@ -268,11 +269,11 @@ fun LadiesApp(
                         }
                     }
                     if (route.root == RootDestination.Discover && route.discovery != DiscoverMode.Swipe) {
-                        val availabilityAction = search.gridAvailabilityAction(discovery.actionGeneration, actionSurface)
+                        val availabilityAction = search.discoveryAvailabilityAction(discovery.actionGeneration, actionSurface)
                         AvailabilityQuickChoice(search.headerAvailability(),
-                            gridAvailabilityMatches(discovery, search, availabilityAction) &&
+                            discoveryAvailabilityMatches(discovery, search, availabilityAction) &&
                                 !home.loading && !saved.busy && !map.resolving,
-                            availabilityAction, { viewModel.runGridAvailability(availabilityAction, it) })
+                            availabilityAction, { viewModel.runDiscoveryAvailability(availabilityAction, it) })
                     }
                     if (route.root == RootDestination.Search && pane == SearchPane.Filters) {
                         ShellIconButton(onClick = { viewModel.savedSearch.open(renderedPaneAction) },
@@ -391,8 +392,15 @@ fun LadiesApp(
                                 )
                             }
                         } else {
+                            val cancelAction = SearchCancelAction(ProfileActionSurface.MAP,
+                                discovery.actionGeneration, search.searchAttemptId)
                             MapScreen(
                                 state = map,
+                                searchStatus = {
+                                    if (hasDiscoverySearchStatus(search)) DiscoverySearchRunStatus(search) {
+                                        viewModel.cancelActiveSearch(cancelAction)
+                                    }
+                                },
                                 onRefresh = viewModel::refreshRenderedMap,
                                 onResolve = viewModel::resolveMapLocations,
                                 onCancel = viewModel::cancelRenderedMapResolution,
