@@ -512,7 +512,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     internal fun runGridAvailability(action: GridAvailabilityAction, mode: AvailabilityMode) {
-        if (!gridAvailabilityMatches(_discoverState.value, _searchUiState.value, action)) return
+        if (hasProfileEditor || !gridAvailabilityMatches(_discoverState.value, _searchUiState.value, action)) return
         runAvailability(mode)
     }
 
