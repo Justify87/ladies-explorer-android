@@ -152,10 +152,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val encounters = EncounterEditor(::isEncounterContextCurrent, core::encounters, ::submitEncounter)
 
     private fun isEncounterContextCurrent(token: ProfileIdentityToken): Boolean =
-        !_discoverState.value.loading && isProfileContextCurrent(token)
+        isProfileContextCurrent(token)
 
     private fun submitEncounter(edit: EncounterEdit, values: EncounterValues?) {
-        if (!isEncounterContextCurrent(edit.token)) {
+        if (_discoverState.value.loading || !isEncounterContextCurrent(edit.token)) {
             encounters.failed(edit, "Profilkontext hat sich geändert.")
             return
         }
@@ -1126,7 +1126,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     internal fun confirmIdentity(token: ProfileIdentityToken, targetPersonId: Long) {
-        if (encounters.edit != null) return
+        if (encounters.edit != null) {
+            if (isProfileContextCurrent(token)) _discoverState.update { it.copy(mutationError = "Begegnungsentwurf zuerst speichern oder verwerfen.") }
+            return
+        }
         profileOperations.confirmIdentity(token, targetPersonId)
     }
 
