@@ -61,7 +61,7 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 | Suche | `search_runs`, `search_results` |
 | Gespeicherte Suchen | `saved_searches`, `saved_search_results` |
 | Identitätsevidenz | `identity_evidence`, `identity_events` |
-| Weitere Fachdatensätze | `encounters`, `encounter_services`, `price_lists`, `price_items` – Schema, keine daraus ableitbare vollständige Bearbeitungsoberfläche |
+| Persönliche Begegnungen | `encounters` – typisierte CRUD-API; `encounter_services`, `price_lists`, `price_items` – Schema |
 | Einstellungen | `app_settings` |
 
 ### SQLite-Vertrag
@@ -183,6 +183,11 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Speichern, Verwerfen und Konfliktauflösung binden neben dem Profil-Token den exakt gerenderten Notizentwurf einschließlich erwarteten und beobachteten Texts. Veraltete Aktionen werden vor Mutation verworfen; laufende Reads sperren Entwurfsaktionen, Readfehler erlauben weiterhin explizites Verwerfen. Fortlaufende Texteingaben binden keinen unveränderlichen Entwurf.
 - Speichern vergleicht transaktional aktuellen Besitzer und erwarteten Text, schreibt ausschließlich `private_note` und `updated_at`.
 - Notizkonflikte explizit auflösen; Identitäts-Merge blockiert bei betroffenen ungespeicherten Entwürfen.
+
+**Begegnungen:**
+- `encounters.rs` besitzt transaktionale CRUD- und Owner-/Editor-CAS-Prüfungen einschließlich optionaler Inseratszuordnung. `CoreStore` vermittelt ausschließlich typisierte native Zugriffe. Keine Begegnungsdaten in der Swipe-Vorausladung.
+- `EncounterEditor` hält einen einzelnen UI-Entwurf im ViewModel (nicht über Prozessende) und eine tokengebundene lokale Begegnungsprojektion. Der gemeinsame `ProfileFlow` fordert Reads nur für die geöffnete Sektion oder zur Wiederaufnahme des aktiven Entwurfs an. Der Editor behält den ursprünglichen CAS-Stand bei Kontextwiederaufnahme; veraltete Aktionen, Mehrfachschreibvorgänge, Navigation und Merge bei offenem Editor werden nicht zugelassen. Back/Abbrechen erfordert explizites Verwerfen eines Bearbeitungsentwurfs.
+- Begegnungsschreibvorgänge nutzen den gemeinsamen Mutationsguard in `MainViewModel`, drainieren bestätigte native Operationen und invalidieren nach Commit nur die Begegnungsprojektion. Ein anschließender Readfehler erlaubt Read-Retry, keinen Write-Retry. Personennotiz und andere Profilwerte bleiben getrennt.
 
 ### Gesten, Präsentation und Undo
 

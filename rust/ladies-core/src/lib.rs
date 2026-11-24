@@ -2,6 +2,7 @@
 
 mod diagnostics;
 mod discovery;
+mod encounters;
 mod history;
 mod http_capture;
 mod identity;
@@ -132,6 +133,7 @@ pub use discovery::{
     SavedPersonCursor, SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection,
     SavedPersonSort,
 };
+pub use encounters::{Encounter, EncounterValues};
 pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
 pub use identity::IdentityCandidate;
@@ -399,6 +401,38 @@ impl LadiesCore {
         note: Option<String>,
     ) -> Result<(), CoreError> {
         profile_detail::save_note(self, listing_id, person_id, expected, note)
+    }
+
+    pub fn encounters(&self, listing_id: i64, person_id: i64) -> Result<Vec<Encounter>, CoreError> {
+        encounters::list(self, listing_id, person_id)
+    }
+
+    pub fn create_encounter(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+        values: EncounterValues,
+    ) -> Result<Encounter, CoreError> {
+        encounters::create(self, listing_id, person_id, values)
+    }
+
+    pub fn update_encounter(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+        expected: Encounter,
+        values: EncounterValues,
+    ) -> Result<Encounter, CoreError> {
+        encounters::update(self, listing_id, person_id, expected, values)
+    }
+
+    pub fn delete_encounter(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+        expected: Encounter,
+    ) -> Result<(), CoreError> {
+        encounters::delete(self, listing_id, person_id, expected)
     }
 
     pub fn compare_snapshots(

@@ -60,6 +60,7 @@ internal fun DiscoverScreen(
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
     touchGate: ProfileTouchGate? = null,
     modifier: Modifier = Modifier,
+    encounters: EncounterEditor? = null,
 ) {
     val searchLoading = search.loading
     val active = search.response?.takeIf { it.searchRunId == state.activeRunId }
@@ -358,7 +359,7 @@ internal fun DiscoverScreen(
                     paddedDetails = true, photoRequest = photoRequest, onGallerySelection = { selectedMedia = it },
                     userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
-                    onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }) {
+                    onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters) {
                     item(key = "hero") {
                         ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,

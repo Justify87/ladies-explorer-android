@@ -253,6 +253,21 @@ class CoreStore(context: Context) {
     suspend fun savePersonNote(listingId: Long, personId: Long, expected: String?, note: String?) =
         withContext(Dispatchers.IO) { engine.savePersonNote(listingId, personId, expected, note) }
 
+    suspend fun encounters(listingId: Long, personId: Long): List<Encounter> =
+        withContext(Dispatchers.IO) { engine.encounters(listingId, personId) }
+
+    suspend fun createEncounter(listingId: Long, personId: Long, values: EncounterValues): Encounter =
+        withContext(Dispatchers.IO) { engine.createEncounter(listingId, personId, values) }
+
+    suspend fun updateEncounter(
+        listingId: Long, personId: Long, expected: Encounter, values: EncounterValues,
+    ): Encounter = withContext(Dispatchers.IO) {
+        engine.updateEncounter(listingId, personId, expected, values)
+    }
+
+    suspend fun deleteEncounter(listingId: Long, personId: Long, expected: Encounter) =
+        withContext(Dispatchers.IO) { engine.deleteEncounter(listingId, personId, expected) }
+
     suspend fun compareSnapshots(personId: Long, fromId: Long, toId: Long): List<SnapshotDifference> =
         withContext(Dispatchers.IO) { engine.compareSnapshots(personId, fromId, toId) }
 
