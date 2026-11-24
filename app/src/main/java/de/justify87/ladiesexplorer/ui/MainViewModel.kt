@@ -659,6 +659,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
 
+    internal fun refreshRenderedGrid(action: GridRefreshAction) {
+        if (!gridRefreshMatches(_discoverState.value, _searchUiState.value, action)) return
+        _discoverState.update { it.copy(actionGeneration = it.actionGeneration + 1) }
+        refreshDiscovery()
+    }
+
     internal fun refreshSwipe(token: SwipeDeckToken) {
         if (!admittedDeck(token)) return
         invalidateSwipeActions(invalidateProfiles = true)
