@@ -180,6 +180,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 
 **Notiz / Konflikt und Lifecycle:**
 - Notiz-Reads/Retry besitzen einen gemeinsamen projektionsgebundenen Job. Entwürfe und Tickets sind im ViewModel ownergebunden, über Navigation/Rotation, **nicht** Prozessende erhalten.
+- Speichern, Verwerfen und Konfliktauflösung binden neben dem Profil-Token den exakt gerenderten Notizentwurf einschließlich erwarteten und beobachteten Texts. Veraltete Aktionen werden vor Mutation verworfen; laufende Reads sperren Entwurfsaktionen, Readfehler erlauben weiterhin explizites Verwerfen. Fortlaufende Texteingaben binden keinen unveränderlichen Entwurf.
 - Speichern vergleicht transaktional aktuellen Besitzer und erwarteten Text, schreibt ausschließlich `private_note` und `updated_at`.
 - Notizkonflikte explizit auflösen; Identitäts-Merge blockiert bei betroffenen ungespeicherten Entwürfen.
 
