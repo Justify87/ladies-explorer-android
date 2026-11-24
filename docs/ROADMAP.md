@@ -1,27 +1,154 @@
 # Arbeits- und Fortschrittsregister
 
-Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
+Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgebliche Verträge: [PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md), [DESIGN](DESIGN.md). Arbeitsweise: [AGENTS](../AGENTS.md); Prüfungen: [README](../README.md#prüfung--ci).
 
-**M05.11 (G11) abgeschlossen. Nächster Schritt: M06.1a nach gesondertem Nutzerauftrag.** M07 ist als technischer Projektabschluss (G07) geplant. L01 unabhängig klären.
+## Entwicklungsstand
 
-## Ziel und Grenzen
+Nächster Schritt: [M06.1a](#m061a--begegnungsbasis). M06 und M07 jeweils erst nach gesondertem Implementierungsauftrag beginnen; L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
 
-[PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md) und [DESIGN](DESIGN.md) sind die maßgeblichen Verträge, keine parallelen Backlogs.
+## Geplante Meilensteine
 
-## Fortschritt
+### M06 — Persönliche Begegnungen und Preise
 
-| Meilenstein | Stand | Ergebnis / Rest |
+**Ziel und Umfang:** Den bestätigten lokalen Mindestumfang gemäß [PRODUCT](PRODUCT.md#persönliche-begegnungen-und-preise) im bestehenden gemeinsamen Profil nutzbar machen. M06.1 umfasst Begegnungsbasis und Leistungsdetails; danach Angebotspreise und G06. Kein neuer Root-Bereich und keine Wiederaufnahme der Web-App-Parität.
+
+**Integrationsrahmen:** Die Tabellen `encounters`, `encounter_services`, `price_lists`, `price_items` in `schema.rs` und ihre bereits vorhandene Übertragung im Identitäts-Merge (`identity.rs`) nutzen. Betroffene Verträge und Aufrufer in `lib.rs`, `CoreStore.kt`, `ProfilePanels.kt::ProfileFlow`, `MainViewModel` und `StandaloneProfileOperations` vor der jeweiligen vertikalen Aufgabe prüfen. Bestehende Tabellen und Operationspfade bevorzugen; Schemaänderung nur bei belegter Integritätsnotwendigkeit mit datenerhaltender interner Schemaentwicklung. Keine zusätzlichen Netzwerkzugriffe, Frameworks, Stores oder spekulativen Abstraktionen.
+
+**Gemeinsame Akzeptanz für neue Schreibpfade** ([Operationsmodell](ARCHITECTURE.md#operations--und-konsistenzmodell), [Identität](ARCHITECTURE.md#historisierung-und-identitätsoperation), [UI-Hierarchie](DESIGN.md#informationshierarchie--progressive-offenlegung)):
+- Rust validiert Personen-/optionalen Inseratsowner, betroffenen Datensatz und erwarteten Bearbeitungsstand in derselben Transaktion.
+- UI-Aktionen bleiben an den sichtbaren Profil-/Editor-Kontext gebunden. Veraltete Callbacks, Mehrfachklicks und Merge-Konflikte dürfen keine falsche oder doppelte Mutation auslösen; ungespeicherte betroffene Entwürfe vor Merge schützen.
+- Bestätigten Commit und nachfolgenden Readfehler trennen, keine automatische Write-Wiederholung. Nur betroffene lokale Projektionen invalidieren; keine neuen Quellabrufe oder Begegnungs-/Preislisten-Prefetches.
+- Offline, Back, Cancel, Lifecycle und Fehlerzustände gezielt prüfen.
+
+**Abgrenzung (Nutzerentscheidung 24.11.2026):** M06.3 entfällt ersatzlos (globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, pauschale Karten-/Geocoding-Erweiterungen). Nicht nach M07 verschieben; nur bei neuem konkretem Bedarf und ausdrücklichem Auftrag neu bewerten. Bestehende Karte, SavedSearch, WhatsApp, Medienarchivierung und Quellhistorie erhalten.
+
+#### M06.1a — Begegnungsbasis
+
+**Status:** PLANNED · **Abhängigkeit:** G11 abgeschlossen.
+
+**Umfang:** Typisierte native Read-/Create-/Update-/Delete-API über UniFFI/CoreStore, kompakte aufklappbare Begegnungssektion und ein gemeinsamer Editor für Swipe und Standalone. Zeitpunkt, optionale Dauer, tatsächlich bezahlter Gesamtbetrag, Gesamt-/Sympathiebewertung und private Begegnungsnotiz; keine separaten Editorpfade.
+
+**Akzeptanz:**
+- Begegnungen einer Person über verschiedene Inserate hinweg chronologisch lesen, anlegen, ändern und ausdrücklich löschen; optionalen Inseratsbezug sicher prüfen.
+- Unbekannte Werte von null unterscheiden; Bewertungen 1–5, Beträge nichtnegativ, angegebene Dauer positiv.
+- Back/Abbrechen verliert Entwürfe nicht stillschweigend; Fehler sichtbar, gespeicherte Daten bei fehlgeschlagenem Write unverändert.
+- Personennotiz, Präferenz, Favorit, Quellenhistorie und Swipe-Undo unverändert.
+
+**Prüfung:** Rust-CRUD-/Owner-/Merge-Regression einschließlich veraltetem Owner/Editorstand und Rollback, JVM-Editor-/Admission-/Commit-Readfehler-Regression und gezielte Android-Integration beider Profilkontexte. Vorhandene Testframeworks verwenden.
+
+#### M06.1b — Leistungsdetails
+
+**Status:** PLANNED · **Abhängigkeit:** M06.1a abgeschlossen.
+
+**Umfang:** Optionalen Grundpreis und einfache manuell erfasste Leistungszeilen (Bezeichnung, optionaler Betrag) im selben Begegnungseditor ergänzen. Keine separate Serviceverwaltung und kein zusätzlicher Kriterienkatalog.
+
+**Akzeptanz:**
+- Begegnung und Leistungszeilen gemeinsam transaktional speichern, ändern und löschen; keine leeren Leistungsbezeichnungen oder negativen Beträge.
+- Unbekannt bleibt unbekannt; Gesamtpreis nicht aus unvollständigen Einzelangaben erfinden.
+- Leistungszeilen bei Merge vollständig erhalten und niemals mit Quellprofil-Diensten gleichsetzen.
+
+**Prüfung:** Gezielte Rust-/JVM-Regression betroffener Pfade; vorhandene Begegnungs- und Profiltests bleiben gültig.
+
+#### M06.2 — Minimale manuelle Angebotspreise
+
+**Status:** PLANNED · **Abhängigkeit:** M06.1a/b abgeschlossen.
+
+**Umfang:** Personenbezogene manuelle Preislisten mit Datum, Preispositionen und optionaler Dauer/Bezeichnung. Native Read-/Create-/Update-/Delete-API, ein gemeinsamer kleiner Editor sowie bedarfsorientierte aktuelle/historische Anzeige im vorhandenen Profil. Bestehende Tabellen nutzen; kein Preis-Dashboard, kein automatisches Extrahieren oder Kopieren aus Begegnungen.
+
+**Akzeptanz:**
+- Neue Liste als eigener historischer Eintrag; Bearbeiten ist ausdrückliche Korrektur, Löschen erfordert Bestätigung.
+- Neueste erfasste Liste und frühere Listen nach Datum/ID eindeutig unterscheiden; keine Aussage über tatsächlich aktuell gültige Angebote.
+- Beträge in EUR-Cent und nichtnegativ, angegebene Dauer positiv. Person/Inserat und Kindzeilen transaktional validieren; Merge erhält Listen und Positionen.
+- Letzten bekannten bezahlten Gesamtbetrag aus Begegnungen ableiten und als solchen kennzeichnen, nicht als Angebotspreis übernehmen. Kein zweiter fachlicher Store oder doppelte Preisprojektion.
+
+**Prüfung:** Rust-CRUD-/Historien-/Owner-/Merge-Regression, JVM-Editor-/Kontext-/Fehlerregression; beide Profilkontexte gezielt prüfen.
+
+#### M06.4 — Gezielte Integration und Abschluss (G06)
+
+**Status:** PLANNED · **Abhängigkeit:** M06.1a/b und M06.2 abgeschlossen.
+
+**Umfang:** Betroffene Rust-/UniFFI-/Kotlin-/Compose-Aufrufer, Datenprojektionen, Tests und Verträge auf Korrektheit, Redundanz und abgelöste Pfade prüfen. Keine Wiedereröffnung von M05 oder Vorwegnahme der M07-Gesamtintegration.
+
+**Akzeptanz:** Neue Funktionen in beiden Profilkontexten offline konsistent. Gezielte Regressionen belegen Identitäts-Merge einschließlich Kinddatensätzen, Entwurfs-/Stale-Owner-Schutz, atomare Writes, Cancel/Back/Lifecycle, unbekannte Werte, Readfehler nach Commit und unveränderte Swipe-/Galerie-/Notizverträge.
+
+**Prüfung und Abschluss:** Vollständiges bestehendes CI-Gate einschließlich Rust-/JVM-Regressionen, nativer DB-Regression, Clippy, Android-Build/Lint, Architekturprüfungen und Instrumentierungs-APK. Geräteprüfungen gemäß [Merge-Regel](#pflege). PR/Commit/CI, verbleibende konkrete Befunde und geänderte Fach-/Design-/Architekturverträge im Abschlussbeleg verlinken; G06 mit Merge abgeschlossen.
+
+### M07 — Technischer Projektabschluss
+
+**Ziel und Umfang:** Nach G06 den bestätigten initialen Produktumfang nachvollziehbar geprüft und lokal nutzbar abschließen. M05.10/M05.11 und G06 als vorhandene Integrationsbelege nutzen. Nur konkrete abnahmerelevante Fehler ursächlich beheben; vorhandene Implementierungen und Tests bevorzugen. Keine abgeschlossenen Aufgaben wiedereröffnen.
+
+**Abgrenzung (Nutzerentscheidung 24.11.2026):** Keine pauschale Code-/Architektur-/UI-Überarbeitung, neue Features, zusätzliche Diagnoseexporte, Nutzer-Backup/Restore/Migration, Wiederaufnahme gestrichener M06-Funktionen oder Web-App-Parität. M07.2 entfällt ersatzlos: TXT-/HAR-Speichern und -Teilen bereits vorhanden, zusätzlicher Bedarf nicht belegt. Nicht in andere Meilensteine verschieben. Keine neuen Frameworks, permanenten CI-Jobs, allgemeinen Aufrufgraphen oder Benchmarkprogramme ohne belegten Bedarf und gesonderten Auftrag.
+
+#### M07.1 — Gezielte Gesamtintegration
+
+**Status:** PLANNED · **Abhängigkeit:** G06 abgeschlossen.
+
+**Umfang:** Auf dem dann integrierten Code- und Teststand vier funktionsübergreifende Ketten anhand produktiver Aufrufer, vorhandener Regressionen und konkreter Befunde prüfen; G06 nicht duplizieren:
+- Suche → Swipe/Grid → gemeinsames Profil → bestätigte Entscheidung: aktive/lokale Ergebnismengen, Undo und Rückkehr konsistent.
+- Swipe-/Standalone-Profil → Begegnung/Preis → Rust/SQLite → erneutes lokales Lesen: persönliche Daten, Quellenhistorie, Notiz, Favorit und Präferenz getrennt.
+- Expliziter Identitäts-Merge → Erhalt aller zugehörigen Daten einschließlich Begegnungs-/Preispositionen → konsistente betroffene Profil-, Such-, SavedPeople-, SavedSearch- und Kartenprojektionen.
+- Mutation → Navigation/Back/Lifecycle → Offline/Wiederöffnung: Stale-Owner-/Entwurfs-/Cancel-/Drain-Verträge und Commit/Readfehler-Trennung erhalten. Medien-, Karten- und Diagnoseverträge nur an betroffenen Übergängen prüfen.
+
+**Akzeptanz:** Geprüfte Ketten erfüllen PRODUCT, ARCHITECTURE und DESIGN. Nachgewiesene abnahmerelevante Fehler im bestätigten Scope sind behoben und gezielt regressionsgesichert; keine parallele Implementierungsroute oder unnötige Testdopplung. Begründete Nichtänderung zulässig.
+
+**Prüfung und Abschluss:** Tatsächliche Aufrufer und Tests nach G06 sind maßgeblich; bestehende Rust-, JVM-, Android-Integrations- und Architekturregressionen nutzen. Vollständiges CI-Gate (Rust-/JVM-Tests, native DB-Regression, Clippy, Android-Build/Lint, Quell-/APK-Architekturprüfungen und Instrumentierungs-APK) für identischen relevanten Code-/Buildstand belegen oder regulär ausführen; reiner Docs-Gate reicht nicht. Geräteprüfungen gemäß [Merge-Regel](#pflege); PR/Commit/CI und Befunde verlinken. Abschluss mit Merge.
+
+#### M07.3 — Nutzungsreife und Abschluss (G07)
+
+**Status:** PLANNED · **Abhängigkeit:** M07.1 abgeschlossen.
+
+**Umfang und Akzeptanz:**
+- Bestätigten Produktumfang am integrierten Stand prüfen; konkrete Fehler nach Auswirkung bewerten, abnahmeverhindernde Befunde beheben, andere nachvollziehbar dokumentieren. Keine neue Featurearbeit.
+- Installierbares ARM64-Debug-APK und native Datenintegrität am Abschlussstand anhand vollständiger CI-/Buildbelege bestätigen; bei Bedarf bestehenden manuellen APK-Workflow nutzen. App-Start, DB-Status und Geräteintegration nach bestehendem Prüfvertrag beurteilen.
+- PRODUCT, ARCHITECTURE, DESIGN, README und Arbeitsregister auf belegte Abweichungen prüfen und nur nötige Korrekturen vornehmen.
+- Bestätigter lokaler Produktumfang vollständig, keine bekannten abnahmeverhindernden Befunde; keine allgemeine Fehlerfreiheit, nicht ausgeführte Geräteprüfungen oder externe Quellenverfügbarkeit aus CI ableiten.
+
+**Prüfung und Abschluss:** Vollständiges bestehendes CI-Gate für den relevanten Code-/Buildstand; Geräteprüfungen gemäß [Merge-Regel](#pflege). Integrierten Stand, PR/Commit/CI und konkrete Restrisiken verlinken. G07 mit Merge des Abschluss-PR abgeschlossen; keine automatische Fortsetzung ohne neuen konkreten Auftrag.
+
+**Distribution (nur bei ausdrücklichem Auftrag):** Lokale Nutzungsreife ist keine öffentliche Distributionsfreigabe. Ein ausdrücklich gewünschtes Release-APK durch einmalige gezielte Qualifizierung des vorhandenen minifizierten Release-Builds (insbesondere native UniFFI/JNA/JNI-/libmpv-Schnittstellen und Installierbarkeit) belegen; Debug-CI ersetzt diesen Nachweis nicht. Signierung/Versionierung nur nach bestätigtem Bedarf. L01 vor weiterer öffentlicher Distribution klären; ohne Klärung keine öffentliche Distributionsfreigabe. Keine automatische Veröffentlichung, Store-Anbindung oder neue Release-Infrastruktur. Nicht beauftragte öffentliche Distribution blockiert den lokalen G07-Abschluss nicht.
+
+## Unabhängige Aufgaben
+
+### L01 — Lizenzklärung
+
+**Status:** READY.
+
+libmpv/FFmpeg-AAR-Lizenz, enthaltene Bibliotheken und ABIs, Corresponding Source und Weiterverteilungspflichten einschließlich bereits öffentlich verfügbarer Debug-Artefakte klären ([NOTICE](../NOTICE)). Keine Lizenzfreigabe oder Behauptung eines Rechtsverstoßes allein aus der Wrapper-Lizenz. Vor weiterer öffentlicher Distribution klären, unabhängig vom lokalen Projektabschluss.
+
+## Abgeschlossene Arbeiten
+
+Alle Einträge dieses Abschnitts sind DONE; Geräteprüfungen gemäß Merge-Regel abgeschlossen. Keine separate Geräteausführung, lokale Build-Ausführung, gemessene Beschleunigung oder allgemeine Fehlerfreiheit aus den Abschlussbelegen ableiten. Vollständige frühere Aufgabenbeschreibungen, Testmatrizen, Befunde und Commit-Bezüge stehen im [Register vor der Neufassung](https://github.com/Justify87/ladies-explorer-android/blob/be37ca997891322acc7ace6ad63ce2828a0bcb18/docs/ROADMAP.md) und in den verlinkten PRs. Frühere operative Register: [Git-Stand vor der Konsolidierung](https://github.com/Justify87/ladies-explorer-android/tree/c6114a6f51b2c2ce99e986efd939ab9115708b70/docs).
+
+| ID | Ergebnis | Abschlussbeleg |
 | --- | --- | --- |
-| M00–M02 Basis, Domänenmodell, damaliger Import | DONE | [PR #1](https://github.com/Justify87/ladies-explorer-android/pull/1)–[#3](https://github.com/Justify87/ladies-explorer-android/pull/3); abgeschlossen. |
-| M03 Suche/Parser | DONE | [#4](https://github.com/Justify87/ladies-explorer-android/pull/4), [#8](https://github.com/Justify87/ladies-explorer-android/pull/8); abgeschlossen. |
-| M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
-| M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
-| M05.10 Unified Profile Experience | DONE | T10.0–T10.7 abgeschlossen; T10.8 [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75) integriert; T10.8/T10.9 Abschlussbilanz unten. |
-| M05.11 Gezielte Qualitätskonsolidierung | DONE | T11.1–T11.4 abgeschlossen; [PR #83](https://github.com/Justify87/ladies-explorer-android/pull/83), vollständige [CI #45425545751](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751). |
-| M06 Persönliche Begegnungen und Preise | PLANNED | M06.1a/b, M06.2, G06; bewusst begrenzter lokaler Funktionsumfang. |
-| M07 Technischer Projektabschluss | PLANNED | M07.1 gezielte Gesamtintegration, M07.3 Nutzungsreife und Abschluss (G07); nach G06. |
+| M00–M02 | Basis, Domänenmodell, damaliger Import; Zuordnung maßgeblich trotz abweichender früherer PR-Bezeichnungen | [#1](https://github.com/Justify87/ladies-explorer-android/pull/1)–[#3](https://github.com/Justify87/ladies-explorer-android/pull/3) |
+| M03 | Suche/Parser | [#4](https://github.com/Justify87/ladies-explorer-android/pull/4), [#8](https://github.com/Justify87/ladies-explorer-android/pull/8) |
+| M04 | Identität, Historie, Medien | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5) |
+| Diagnose | Logging, Messungen, HTTP/HAR, TXT-Export | [#7](https://github.com/Justify87/ladies-explorer-android/pull/7) |
+| M05.0–M05.9 | Frontend-Parität; Nutzerabschluss 19.11.2026, keine Wiedereröffnung | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393 |
+| M05.10 / G10 | Unified Profile Experience; T10.0–T10.9 | [#76](https://github.com/Justify87/ladies-explorer-android/pull/76), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) |
+| M05.11 / G11 | Qualitätskonsolidierung nach G10; T11.1–T11.4 | [#83](https://github.com/Justify87/ladies-explorer-android/pull/83), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751) |
+| DC01 | Obsolete Produktionspfade/UniFFI-Exporte entfernt, Testgrenzen korrigiert | [#49](https://github.com/Justify87/ladies-explorer-android/pull/49) |
+| DC02 | Altimport vor weiterer Featurearbeit entfernt, native synthetische v2-Fixtures; Nutzerentscheidung 20.11.2026: Web-App obsolet, keine Nutzerdatenmigration, native Schemaentwicklung und Android-Nutzerdaten erhalten | [#52](https://github.com/Justify87/ladies-explorer-android/pull/52), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/44828090537), [Produktsoll](PRODUCT.md#produktziel-und-grenzen) |
 
-Diagnose (Logging, Messungen, HTTP/HAR, TXT-Export) ist integriert [#7](https://github.com/Justify87/ladies-explorer-android/pull/7); abgeschlossen. Ursprüngliche M00–M02-Nummerierung wich von PR-Bezeichnungen ab; maßgeblich sind obige Zuordnung und Git. Kein Prozentwert aus ungleich großen Aufgaben.
+### Aufgabenbelege zu M05.10 und M05.11
+
+| ID | Ergebnis | Abschlussbeleg |
+| --- | --- | --- |
+| T10.0 | Baseline, Mess-/Fixture-Grundlage | [#24](https://github.com/Justify87/ladies-explorer-android/pull/24), [#25](https://github.com/Justify87/ladies-explorer-android/pull/25) |
+| T10.1 / G10.0 | Charakterisierung, Owner-/Operationsverträge | [#26](https://github.com/Justify87/ladies-explorer-android/pull/26), CI #413 |
+| T10.2 | Gemeinsame Projektion und Identitätsoperation | [#27](https://github.com/Justify87/ladies-explorer-android/pull/27) |
+| T10.3 / G10.1 | Gemeinsamer Lazy-Profilfluss | [#28](https://github.com/Justify87/ladies-explorer-android/pull/28), CI #451 |
+| T10.4 | Swipe-first Shell, adaptiver Hero | [#29](https://github.com/Justify87/ladies-explorer-android/pull/29), CI #457/#458 |
+| T10.5 | Native Gesten-Arbitration | [#30](https://github.com/Justify87/ladies-explorer-android/pull/30), CI #462/#463 |
+| T10.6 / G10.2 | Rail/Undo, Swipe-Übergang, Galerie; Gerätefeedback 20.11. bearbeitet | [#31](https://github.com/Justify87/ladies-explorer-android/pull/31), [CI #478](https://github.com/Justify87/ladies-explorer-android/actions/runs/44710394072), [Merge #479](https://github.com/Justify87/ladies-explorer-android/actions/runs/44712016704) |
+| T10.7 | Lifecycle, Performance und Altcode; Cache-Promotion korrigiert | [#53](https://github.com/Justify87/ladies-explorer-android/pull/53), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45013729939) |
+| T10.8 / G10.3 | Vertikale Integration und Regressionsmatrix | [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75), [CI #74](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412134217), [CI #75](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) |
+| T10.9 / G10 | Abschlussreview nach T10.8; keine weiteren hohen In-Scope-Befunde belegt | [#76](https://github.com/Justify87/ladies-explorer-android/pull/76), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) |
+| T11.1 | Fachliche Inkonsistenzen bei Telefonnummern, Filtersemantik und Status behoben | [#78](https://github.com/Justify87/ladies-explorer-android/pull/78), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45417037316) |
+| T11.2 | Zustands-/Aufrufredundanzen reduziert; Nutzerabschluss 24.11.2026, verbleibender Callerreview in T11.4 | [#80](https://github.com/Justify87/ladies-explorer-android/pull/80), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45420041849) |
+| T11.3 | Nutzerseitige Doppelungen bereinigt; eigenständiger Suchlisten-Zugriff erhalten | [#82](https://github.com/Justify87/ladies-explorer-android/pull/82), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45422297688) |
+| T11.4 / G11 | Enges Altcode-/Aufrufer- und Abschlussreview; keine weiteren hohen In-Scope-Befunde belegt | [#83](https://github.com/Justify87/ladies-explorer-android/pull/83), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751) |
 
 ## Pflege
 
@@ -35,195 +162,7 @@ Diagnose (Logging, Messungen, HTTP/HAR, TXT-Export) ist integriert [#7](https://
 | `DONE` | Abgeschlossen |
 | `BLOCKED` | Blocker und nächsten Schritt benennen |
 | `PLANNED` | Abhängig/vorläufig, nicht freigegeben |
-- Je Arbeitskontext eine Aufgabe. Main, offene PRs, Abhängigkeiten, relevante Spezifikation/Code/Tests prüfen; konkrete beobachtbare Kriterien vor Umsetzung festlegen. Kein konkurrierender Umbau am selben State.
-- Bei Unterbrechung Stand/nächsten Schritt/Blocker hier aktualisieren. Bei Abschluss Kriterien abgleichen, Beleg (PR/Commit/Test/Lauf) verlinken, Status und geänderte Fachverträge im selben PR pflegen. Erledigte Detailchecklisten zu einem Beleg verdichten; Review-Historie in PR/Git, nicht anhängen. Keine eigenmächtige Merge-/Veröffentlichungsfreigabe.
 
-## Abgeschlossen – M05.10 (G10)
-
-### T10.0–T10.6 — DONE
-
-| ID | Ergebnis | Integrierter Beleg |
-| --- | --- | --- |
-| T10.0 | Baseline, Mess-/Fixture-Grundlage | [#24](https://github.com/Justify87/ladies-explorer-android/pull/24), [#25](https://github.com/Justify87/ladies-explorer-android/pull/25) |
-| T10.1 / G10.0 | Charakterisierung, Owner-/Operationsverträge | [#26](https://github.com/Justify87/ladies-explorer-android/pull/26), CI #413 |
-| T10.2 | Gemeinsame Projektion und Identitätsoperation | [#27](https://github.com/Justify87/ladies-explorer-android/pull/27) |
-| T10.3 / G10.1 | Gemeinsamer Lazy-Profilfluss | [#28](https://github.com/Justify87/ladies-explorer-android/pull/28), CI #451 |
-| T10.4 | Swipe-first Shell, adaptiver Hero | [#29](https://github.com/Justify87/ladies-explorer-android/pull/29), CI #457/#458 |
-| T10.5 | Native Gesten-Arbitration | [#30](https://github.com/Justify87/ladies-explorer-android/pull/30), CI #462/#463 |
-| T10.6 / G10.2 | Rail/Undo, Swipe-Übergang und neue Galerie | [#31](https://github.com/Justify87/ladies-explorer-android/pull/31), [CI #478](https://github.com/Justify87/ladies-explorer-android/actions/runs/44710394072), [Merge #479](https://github.com/Justify87/ladies-explorer-android/actions/runs/44712016704) |
-
-Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) in PR #31 bearbeitet. Alle zugehörigen Geräteprüfaufgaben T10.0–T10.6: **DONE**.
-
-### T10.7 — DONE · Lifecycle, Performance und Altcode ([PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53))
-
-**Abhängigkeit:** T10.6. **Referenzen:** P03/P20–P23/P39–P44/P49–P51; [Architektur](ARCHITECTURE.md#swipe-read-window-und-prefetch), [Medienvertrag](ARCHITECTURE.md#persistentes-archiv-und-anzeige).
-
-**Ist-Stand:** PR #31 enthält bereits relevante Implementierungen; prüfen statt neu implementieren. Code: `DiscoveryScreen.kt`, `SwipeProfile.kt`, `SwipeFlight.kt`, `ProfilePanels.kt`, `ProfilePresentation.kt`, `GalleryVideo.kt`, `MainViewModel.kt`. Tests: `SwipeProfileWindowTest`, `SwipeProfileReadTest`, `ProfilePresentationTest`, `ProfilePanelsTest`, `ProfileProjectionTest`, Rust-Medientests.
-
-**Ziel:** Verbleibende Lifecycle-, Performance- und Altcode-Risiken in M05.10 prüfen, ohne abgeschlossene Funktionen neu aufzubauen.
-
-**Umfang:**
-- [x] Owner-/Run-/Snapshot-/Revision- und Lifecycle-Wechsel im vorhandenen Kotlin-/Rust-Pfad und den vorhandenen Regressionen überprüft: Prefetch-Promotion/Pruning, Request/Retry/Cancel, Native Drain, Cache-/Note-/Facts-Invalidierung, SaveableState, unabhängige Reprojektion sowie Video-Surface-/Tempfile-Cleanup. Ein nachgewiesener Cache-Promotion-Befund wird in PR #53 behoben.
-- [x] Technische Performance anhand des vorhandenen Fenster-/Mutex-/Read- und Testvertrags überprüft. Kein neues Benchmark-Ergebnis oder gemessener Geschwindigkeitsgewinn; keine allgemeine M07-Optimierung.
-
-**Akzeptanz:**
-- [x] Abschluss mit erfolgreicher [CI #45013729939](https://github.com/Justify87/ladies-explorer-android/actions/runs/45013729939) in [PR #53](https://github.com/Justify87/ladies-explorer-android/pull/53): Ein cache-only Prefetch übersprang beim Current-Aufrücken die aktive Freshness-Policy; einmalige Quellenaktualisierung mit unverändertem Slot/Mutex und Regression für No-Redo/Local-only. Weitere entsprechende Defekte im geprüften T10.7-Umfang nicht belegt. Keine Beschleunigung ohne Messung behauptet.
-
-### T10.8 — DONE · Vertikale Integration (G10.3)
-
-**Integrierter Umfang:** [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75). Geräteprüfungen dieses Umfangs gemäß Merge-Regel DONE. Abschlussbasis `3ec501d540866d096275675d2f32d9c211a50cf1` (Dateibaum `6deeb940f9c0fb3e1d2ebd3c1c8f040e572c67d8`, identisch mit PR #75 Head `925baa93654f1d42ad597ce981d23b69cd87482e`). Vorhandene Testpfade und produktive Aufrufer gegen PRODUCT/DESIGN/ARCHITECTURE geprüft; keine neue Implementierungsroute.
-
-| Abnahmebereich | Integrierte Belege / vorhandene Regressionen |
-| --- | --- |
-| Swipe/Grid/Karte/Suche/Gespeichert, Rückkehr und Profilöffnung | [#55](https://github.com/Justify87/ladies-explorer-android/pull/55), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#74](https://github.com/Justify87/ladies-explorer-android/pull/74); `ShellRouteTest`, `ProfileEntryAdmissionTest`, `SearchRunStateTest`, `SavedPeopleStateTest`, `SavedSearchPaneTest`. |
-| A/B, Informationsdichte, Accessibility, Medien und Altcode | Gemeinsame `ProfileShell`/`ProfileFlow` aus `DiscoverScreen` und `ProfileDetailScreen`; T10.3–T10.7, `ProfileHeroLayoutTest`, `ProfilePresentationTest`, `ProfilePhotoGestureTest`, `ProfilePanelsTest`, `ProfileShellDeviceTest`, `ProfileGestureDeviceTest`, `ProfileRestoreDeviceTest`, `GalleryVideoDeviceTest`. Instrumentierung gebaut, Geräteabnahme gemäß Merge-Regel; keine separate Geräteausführung behauptet. |
-| Präferenz/Favorit/Undo/Skip/Reset/Replay | [#54](https://github.com/Justify87/ladies-explorer-android/pull/54); `SwipeDeckStateTest`, `ProfileProjectionTest.productionPreferenceCommitUsesCasThenTraversesOnlyForExplicitDeckDecision`, `committedNeutralResetReprojectsWithoutVisitEvenIfFeedReadFails`; Rust `lib.rs`: `listing_favorite_checks_owner_and_expected_value_atomically`, `swipe_writes_and_undo_check_owner_and_previous_preference_atomically`. |
-| Merge/Dirty Notes/Late Write/Archivabbruch | [#54](https://github.com/Justify87/ladies-explorer-android/pull/54), [#72](https://github.com/Justify87/ladies-explorer-android/pull/72)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75); `StandaloneProfileOperationsTest`, `ProfileNoteStateTest`, `SwipeProfileWindowTest`; Rust `identity.rs`, `profile_detail.rs::note_cas_preserves_other_fields_and_rejects_wrong_owner`, `media.rs::archive_cancel_after_first_commit_defers_late_download_and_retry_reuses_asset`. |
-| Unabhängige Projektionen | `ProfileProjectionTest.actualDiscoveryPublisherKeepsSuccessfulSiblingAndRejectsOutdatedEpoch`, `ProfilePanelsTest`; Rust `source/storage.rs::merge_reprojects_existing_run_saved_people_saved_window_and_map_without_source`. |
-| SavedSearch-Ack/Revision | [#56](https://github.com/Justify87/ladies-explorer-android/pull/56), [#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60); `SavedSearchPaneTest`; Rust `saved_search.rs::changed_baseline_rejects_cursor_and_stale_acknowledgement`, `person_writes_advance_ack_revision_without_changing_saved_membership`. |
-| Fehler/Offline/Status/Radius/Pagination | [#57](https://github.com/Justify87/ladies-explorer-android/pull/57), [#61](https://github.com/Justify87/ladies-explorer-android/pull/61)–[#71](https://github.com/Justify87/ladies-explorer-android/pull/71), [#73](https://github.com/Justify87/ladies-explorer-android/pull/73); `SwipeProfileReadTest`, `SearchRunStateTest`, `SavedPeopleStateTest`, `ProfileEntryAdmissionTest`; Rust `discovery.rs`, `map.rs`, `source/storage.rs::saved_status_records_observations_and_rejects_stale_updates`, `saved_search.rs::only_complete_radius_verified_search_replaces_saved_baseline`. |
-
-- [x] Oberflächen- und vertikale Regressionsmatrix abgeglichen; kein weiterer abnahmerelevanter Defekt im geprüften Umfang belegt. Keine allgemeine Fehlerfreiheit behauptet.
-- [x] Technische Abnahme: keine zweite Implementierungsroute, kein belegter Funktionsverlust oder Scope-Drift. [CI #45412134217](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412134217) (PR #74) erfolgreich; [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) (PR #75, identischer integrierter Dateibaum) vollständig erfolgreich.
-
-### T10.9 — DONE · Abschluss M05.10 (G10)
-
-**Abhängigkeit:** T10.8 abgeschlossen.
-
-- [x] Abschlussreview der betroffenen Aufrufer, gemeinsamen Profilprojektion, Testmatrix, Architekturgrenzen und Dokumentationskonsistenz durchgeführt; README, PRODUCT, DESIGN und ARCHITECTURE weiterhin maßgeblich. Keine weiteren In-Scope-Befunde hoher Schwere im geprüften Umfang.
-- [x] Technischer Abschlussbeleg: [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) mit erfolgreichem ARM64-Debug-APK-/Instrumentierungs-APK-Build, JVM-Tests, Lint, Rust-Tests, synthetischer nativer DB-Regression, Clippy, Quell-/APK-Architekturprüfungen und abschließendem build-Gate. Reguläre automatische CI speichert gemäß README kein Debug-APK-Artefakt; keine separate manuelle Veröffentlichung.
-- Abschluss mit Merge von [PR #76](https://github.com/Justify87/ladies-explorer-android/pull/76); keine Code-, CI- oder Fachvertragsänderung. M06/M07 bleiben gesperrt bis Nutzerauftrag.
-
-## Abgeschlossen – M05.11 (G11) · Gezielte Qualitätskonsolidierung
-
-**Abhängigkeit:** M05.10 DONE. **Reihenfolge:** vor M06; M06/M07 bleiben ohne gesonderten Nutzerauftrag ungestartet. **Ziel:** Nachgewiesene fachliche Widersprüche, unnötige Zustands-/Aufrufdoppelungen und sichtbare Redundanzen ursächlich beheben, ohne die bewährte Kotlin-/Rust-Architektur oder den Hobbyprojektumfang aufzublähen.
-
-**Arbeitsweise:** Vor jeder Änderung betroffene Aufrufer, aktuellen Ist-Stand und [PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md) bzw. [DESIGN](DESIGN.md) bedarfsorientiert abgleichen. Vermutete Probleme erst belegen; zulässiges Ergebnis ist eine begründete Nichtänderung. Kleine, thematisch abgeschlossene PRs auf integriertem `main`, gezielte positive/negative Regressionen und vorhandene CI. Kein repoweiter neuer Aufrufgraph, neues Framework, Event-Bus, allgemeiner Operationsmanager, zusätzliche Testinfrastruktur oder pauschale Legacy-/Datenbankmigration. Bestehende Owner-/CAS-, UI-Admission-, Drain-/Cancel-, Undo- und Reprojektionsverträge erhalten; keine stillen Fachänderungen.
-
-### T11.1 — DONE · Fachliche Inkonsistenzen
-
-**Integrierter Beleg:** [PR #78](https://github.com/Justify87/ladies-explorer-android/pull/78), Merge `430b53ccd8c0910f7e081ff68983db4037469772`, [CI #45417037316](https://github.com/Justify87/ladies-explorer-android/actions/runs/45417037316) erfolgreich.
-
-- Internationale 00-Vorwahlen korrigiert; historische Telefonschlüssel und Identitätsevidenz geschützt, keine Schemaänderung oder automatische Zuordnung.
-- ALL/AI/NATURAL behalten gemeinsame Sichtbarkeitsregeln und Definitionsbytes; Beschriftungen beziehen sich ausschließlich auf Quellenmarker.
-- Gemeinsame Statusdarstellung in Profil und gespeicherten Personen; nicht belegte Statuswerte bleiben unbekannt.
-- Technische Abnahme: vollständiges CI-Gate erfolgreich; Rust-/JVM-Regressionen, native DB-Regression, Clippy, Android-Build, Lint und Architekturprüfungen. Geräteprüfungen gemäß Merge-Regel DONE.
-
-### T11.2 — DONE · Zustands- und Aufrufredundanzen
-
-**Integrierter Beleg:** [PR #80](https://github.com/Justify87/ladies-explorer-android/pull/80), Merge `ac9a652288deb68987f6c7964d5a9cbf74388fb2`, [CI #45420041849](https://github.com/Justify87/ladies-explorer-android/actions/runs/45420041849) erfolgreich. Abschluss auf ausdrücklichen Nutzerauftrag vom 24.11.2026.
-
-- Sichtbarkeitspublikation auf relevante Lifecycle-Übergänge begrenzt; identische SavedSearch-Sichtbarkeit ohne erneute Dirty-Prüfung. Sofortige Revocation bei Navigation erhalten.
-- Statischen Filterkatalog nach erfolgreicher Publikation wiederverwenden, dynamische Nutzungshäufigkeiten weiterhin lesen. Zweiter aktiver Karten-Read und Swipe-Profilinvalidierung bleiben mangels belegter sicherer Entbehrlichkeit erhalten (mögliche zwischenzeitliche native Commits bzw. Statusdaten im Profil).
-- Statusprüfung invalidiert SavedSearch im gemeinsamen Mutationspfad, bei Coroutine-Cancel separat; Karten-Recovery auch bei Writefehler. Bestehende native Commit-/Cancel-Verträge unverändert.
-- Regressionen in `SearchRunStateTest`, `SavedSearchPaneTest` und `SavedPeopleStateTest` ergänzt; vollständiger PR-CI-Lauf erfolgreich, Geräteprüfungen gemäß Merge-Regel DONE. Keine separate lokale Testausführung oder gemessene Beschleunigung behauptet.
-- Weitergehender Caller-/Projektionsreview war vor Nutzerabschluss nicht vollständig belegt; verbleibende konkrete Befunde ausschließlich im regulären Scope von T11.4 behandeln, keine pauschale Wiedereröffnung.
-
-### T11.3 — DONE · Nutzerseitige Doppelungen
-
-**Abschlussbeleg:** [PR #82](https://github.com/Justify87/ladies-explorer-android/pull/82), Implementierungscommit `9022ffdf2577f4494b6763f8d5a1ad6ce11c16b4`, [CI #45422297688](https://github.com/Justify87/ladies-explorer-android/actions/runs/45422297688) vollständig erfolgreich. Merge ausdrücklich freigegeben am 24.11.2026.
-
-- Sichtungsdatum nur einmal, Änderungsdatum bei gleicher Tagesangabe zusammengefasst; Quellenstatusprüfung vom lokalen Neuladen abgegrenzt. Anzeigenanzahl in der Profilübersicht konsolidiert, Analyse-Fallback bei fehlender Personenzusammenfassung.
-- Suchliste wegen eigenständigem Zugriff auf nur im Grid ausgeblendete Likes erhalten; doppelter Filterwechsel und Trefferzahl im Warntext entfernt. Suchentwurf, Navigation und bestehende Aktionskontexte unverändert.
-- Gezielte JVM-Regressionen in `SavedPeopleStateTest`, `ProfilePanelsTest` und `SearchRunStateTest`; ARM64- und Instrumentierungs-APK, JVM-Tests, Lint, Rust-Tests, native DB-Regression, Clippy, Quell-/APK-Architekturprüfungen und Build-Gate erfolgreich. Geräteprüfungen mit Merge gemäß Merge-Regel DONE; keine separate Geräteausführung oder lokale Build-Ausführung behauptet.
-
-### T11.4 — DONE · Enges Altcode- und Abschlussreview (G11)
-
-**Abschlussbeleg:** [PR #83](https://github.com/Justify87/ladies-explorer-android/pull/83), geprüfter Implementierungsstand `afdbc3e1698f8f0fc732b1482202ed9ff2b465a4`, vollständige [CI #45425545751](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751) erfolgreich. Merge ausdrücklich freigegeben am 24.11.2026.
-
-- Betroffene Aufrufer, Kotlin-/Rust-/UniFFI-/SQLite-Pfade, Rückprojektionen, Tests und Fachverträge aus T11.1–T11.3 statisch überprüft. Filtersuche an gerenderte Labels gekoppelt; SavedSearch-Übersicht und Ergebnisfenster gemeinsam invalidiert; Sichtbarkeit bei Root-Back synchron widerrufen; Statusbeschriftungen präzisiert. Abgelöste Aufrufer bereinigt.
-- Historische Telefonschlüssel, native Definitionen und Exporte, Grid-Like-Sonderpfad sowie unabhängige Karten-/Profil-Recovery begründet erhalten. Keine neue fachliche Implementierungsroute, Schemaänderung, Abhängigkeit oder CI-Job. Keine weiteren hohen In-Scope-Befunde belegt.
-- Vollständiger CI-Gate einschließlich ARM64-Debug- und Instrumentierungs-APK, JVM-Tests, Lint, Rust-Formatierung/-Tests, Clippy, nativer DB-Regression und Quell-/APK-Architekturprüfungen erfolgreich. Geräteprüfungen mit Merge gemäß Merge-Regel DONE; keine separate Geräte- oder lokale Build-Ausführung behauptet.
-- G11 abgeschlossen mit Merge von PR #83; M06/M07 nicht begonnen.
-
-## Danach – M06 · Persönliche Begegnungen und Preise
-
-**Abhängigkeit:** M05.11 (G11) DONE. **Reihenfolge:** M06.1a → M06.1b → M06.2 → M06.4 (G06), jeweils auf integriertem Stand. **Start:** erst mit gesondertem Implementierungsauftrag. **Ziel:** wenige, tatsächlich nutzbare persönliche Funktionen im bestehenden Profil, vollständig lokal. Der fachliche Mindestumfang steht in [PRODUCT](PRODUCT.md#persönliche-begegnungen-und-preise). Kein neuer Root-Bereich, keine Wiederaufnahme der Web-App-Parität.
-
-**Codeanker und Vorgehen:** `schema.rs` enthält `encounters`, `encounter_services`, `price_lists`, `price_items`; `identity.rs` überträgt Begegnungen und Preislisten bereits im Merge. `lib.rs`, `CoreStore.kt`, `ProfilePanels.kt::ProfileFlow`, `MainViewModel` und `StandaloneProfileOperations` sind die vorhandenen Integrationspunkte. Vor jeder vertikalen Aufgabe nur den betroffenen Schema-/API-/Aufrufervertrag prüfen. Bestehende Tabellen und Operationspfade bevorzugen; Schemaänderung nur bei belegter Integritätsnotwendigkeit mit interner, datenerhaltender Schemaentwicklung. Keine neuen Frameworks, Stores, Netzwerkzugriffe oder spekulativen Abstraktionen.
-
-**Gemeinsame Akzeptanz für alle neuen Schreibpfade:** [ARCHITECTURE](ARCHITECTURE.md#operations--und-konsistenzmodell), [Identität](ARCHITECTURE.md#historisierung-und-identitätsoperation) und [DESIGN](DESIGN.md#informationshierarchie--progressive-offenlegung) erhalten. Rust validiert Personen-/optionalen Inseratsowner, betroffenen Datensatz und erwarteten Bearbeitungsstand in derselben Transaktion. UI bindet die Aktion an den sichtbaren Profil-/Editor-Kontext; veraltete Callbacks, Mehrfachklicks und Merge-Konflikte dürfen keine falsche oder doppelte Mutation auslösen. Ungespeicherte betroffene Entwürfe vor Merge schützen; bestätigten Commit und anschließenden Readfehler trennen, keine automatische Write-Wiederholung. Nur betroffene lokale Projektionen invalidieren; keine neuen Quellabrufe oder Begegnungs-/Preislisten-Prefetches. Offline, Back, Cancel, Lifecycle und Fehlerzustände gezielt prüfen.
-
-### M06.1 — PLANNED · Begegnungen im bestehenden Profil
-
-- [ ] **M06.1a — PLANNED:** Begegnungsbasis vertikal umsetzen: native typisierte Read-/Create-/Update-/Delete-API über UniFFI/CoreStore, kompakte aufklappbare Begegnungssektion und gemeinsamer Editor in Swipe und Standalone. Zeitpunkt, optionale Dauer, tatsächlich bezahlter Gesamtbetrag, Gesamt-/Sympathiebewertung und private Begegnungsnotiz. Kein separater Editorpfad je Profilkontext.
-- **Akzeptanz M06.1a:** Begegnungen einer Person aus verschiedenen Inseraten chronologisch lesen, anlegen, ändern und ausdrücklich löschen; optionalen Inseratsbezug sicher prüfen. Unbekannte Werte von null unterscheiden, Bewertungen 1–5, keine negativen Beträge oder nichtpositive angegebene Dauer. Abbrechen/Back verliert Entwürfe nicht stillschweigend; Fehler sichtbar, gespeicherte Daten unverändert bei fehlgeschlagenem Write. Keine Änderung von Personennotiz, Präferenz, Favorit, Quellenhistorie oder Swipe-Undo.
-- **Prüfung M06.1a:** Rust-CRUD-/Owner-/Merge-Regression (einschließlich veraltetem Owner/Editorstand und Rollback), JVM-Editor-/Admission-/Commit-Readfehler-Regression, gezielte Android-Integration beider Profilkontexte. Keine neuen Testframeworks.
-- [ ] **M06.1b — PLANNED:** Nur die nötigen Details ergänzen: optionaler Grundpreis und einfache manuell erfasste Leistungszeilen (Bezeichnung, optionaler Betrag); im selben Begegnungseditor bearbeiten. Keine separate Serviceverwaltung und kein zusätzlicher Kriterienkatalog.
-- **Akzeptanz M06.1b:** Begegnung und Leistungszeilen gemeinsam transaktional speichern, ändern und löschen; keine leeren Leistungsbezeichnungen, keine negativen Beträge, unbekannt bleibt unbekannt. Gesamtpreis nicht aus unvollständigen Einzelangaben erfinden. Leistungszeilen bei Merge vollständig erhalten, niemals mit Quellprofil-Diensten gleichsetzen. Gezielte Rust-/JVM-Regression der betroffenen Pfade; vorhandene Begegnungs- und Profiltests bleiben gültig.
-
-### M06.2 — PLANNED · Minimale manuelle Angebotspreise
-
-**Abhängigkeit:** M06.1a/b DONE. Nur personenbezogene manuell erfasste Preislisten mit Datum, Preispositionen und optionaler Dauer/Bezeichnung; bestehende Tabellen nutzen. Ein gemeinsamer kleiner Editor und bedarfsorientierte aktuelle/historische Anzeige im vorhandenen Profil. Kein eigenes Preis-Dashboard, kein automatisches Extrahieren oder Kopieren aus Begegnungen.
-
-- [ ] Native Read-/Create-/Update-/Delete-API und Profilintegration in einem vertikalen Schritt umsetzen. Neu erfasste Preisliste als eigener historischer Eintrag; Bearbeiten dient der ausdrücklichen Korrektur, Löschen erfordert Bestätigung.
-- **Akzeptanz:** Neueste erfasste Liste und frühere Listen eindeutig nach Datum/ID unterscheiden; keine Aussage über aktuell tatsächlich gültige Angebote. Beträge in EUR-Cent, nichtnegativ, Dauer falls angegeben positiv. Person/Inserat und Kindzeilen transaktional validieren; Merge erhält Listen und Positionen. Letzten bekannten bezahlten Gesamtbetrag aus Begegnungen ableiten und als solchen kennzeichnen, nicht als Angebotspreis übernehmen. Kein zweiter fachlicher Store und keine doppelte Preisprojektion.
-- **Prüfung:** Rust-CRUD-/Historien-/Owner-/Merge-Regression und JVM-Editor-/Kontext-/Fehlerregression; beide Profilkontexte gezielt prüfen.
-
-### M06.4 — PLANNED · Gezielte Integration und Abschluss (G06)
-
-**Abhängigkeit:** M06.1a/b und M06.2 DONE.
-
-- [ ] Betroffene Rust-/UniFFI-/Kotlin-/Compose-Aufrufer, Datenprojektionen, Tests und Verträge auf Korrektheit, Redundanz und abgelöste Pfade prüfen; neue Funktionen in beiden Profilkontexten offline konsistent.
-- **Akzeptanz:** Identitäts-Merge einschließlich Kinddatensätzen und Entwurfs-/Stale-Owner-Schutz, atomare Writes, Cancel/Back/Lifecycle, unbekannte Werte, Readfehler nach Commit und unveränderte Swipe-/Galerie-/Notizverträge anhand gezielter Regressionen belegt. Keine pauschale Wiedereröffnung von M05 und keine Vorwegnahme der M07-Gesamtintegration.
-- **Abnahme:** Bestehendes vollständiges CI-Gate erfolgreich; Rust-/JVM-Regressionen, native DB-Regression, Clippy, Android-Build/Lint und Architekturprüfungen. Instrumentierungs-APK bauen; Geräteprüfungen gemäß Merge-Regel. Abschlussbeleg mit PR/Commit/CI, verbleibenden konkreten Befunden und geänderten Fach-/Design-/Architekturverträgen; Abschluss mit Merge.
-
-**Scope-Entscheidung 24.11.2026:** Die bisherige M06.3 (globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, pauschale Karten-/Geocoding-Erweiterungen) entfällt ersatzlos aus dem aktiven Arbeitsregister. Keine automatische Verschiebung nach M07; nur bei neuem konkretem Bedarf und ausdrücklichem Auftrag neu bewerten. Bestehende Karte, SavedSearch, WhatsApp, Medienarchivierung und Quellhistorie bleiben erhalten. M06.4 behält seine bisherige Abschlussfunktion und ID.
-
-## Später – M07 · Technischer Projektabschluss
-
-**Abhängigkeit:** M06 (G06) DONE. **Reihenfolge:** M07.1 → M07.3 (G07), jeweils auf integriertem Stand. **Start:** erst mit gesondertem Implementierungsauftrag. **Ziel:** bestätigten initialen Produktumfang auf einem nachvollziehbar geprüften, lokal nutzbaren Stand abschließen. Nach G07 bedarfsorientierte Wartung und Weiterentwicklung statt vorsorglicher weiterer Meilensteine.
-
-**Arbeitsgrenzen:** M05.10/M05.11 und G06 als vorhandene Qualitäts- und Integrationsbelege nutzen; keine abgeschlossenen Aufgaben erneut öffnen. Nur konkrete abnahmerelevante Befunde ursächlich beheben, vorhandene Implementierungen und Tests bevorzugen. Keine pauschale Code-/Architektur-/UI-Überarbeitung, neue Features, zusätzlichen Diagnoseexporte, Nutzer-Backup/Restore/Migration, Wiederaufnahme verworfener M06-Funktionen oder Web-App-Parität. Keine neuen Frameworks, permanenten CI-Jobs, allgemeinen Aufrufgraphen oder Benchmarkprogramme ohne belegten Bedarf und gesonderten Auftrag.
-
-### M07.1 — PLANNED · Gezielte Gesamtintegration
-
-**Abhängigkeit:** G06 DONE. Auf dem dann aktuellen Code- und Teststand prüfen; G06 nicht duplizieren. Vier funktionsübergreifende Ketten anhand vorhandener Regressionen, produktiver Aufrufer und konkreter Befunde abgleichen:
-
-- [ ] Suche → Swipe/Grid → gemeinsames Profil → bestätigte Entscheidung; aktive/lokale Ergebnismengen, Undo und Rückkehr konsistent.
-- [ ] Profil in Swipe und Standalone → Begegnung/Preis → Rust/SQLite → erneutes lokales Lesen; persönliche Daten, Quellenhistorie, Notiz, Favorit und Präferenz getrennt.
-- [ ] Expliziter Identitäts-Merge → Erhalt aller zugehörigen Daten einschließlich Begegnungs-/Preispositionen → konsistente betroffene Profil-, Such-, SavedPeople-, SavedSearch- und Kartenprojektionen.
-- [ ] Mutation → Navigation/Back/Lifecycle → Offline/Wiederöffnung; Stale-Owner-/Entwurfs-/Cancel-/Drain-Verträge und Commit/Readfehler-Trennung erhalten. Bestehende Medien-, Karten- und Diagnoseverträge nur an betroffenen Übergängen prüfen.
-
-**Code-/Testanker:** `MainViewModel`, `StandaloneProfileOperations`, `ProfileFlow`, `CoreStore`, native API/Identität/Persistenz und die mit M06 integrierten Schreibpfade; vorhandene Rust-, JVM-, Android-Integrations- und Architekturregressionen, insbesondere SearchRun-, SwipeDeck-/SwipeProfileWindow-, ProfileProjection-, StandaloneProfileOperations-, SavedPeople-/SavedSearch-Tests und native Merge-Regressionen. Maßgeblich sind die nach G06 tatsächlichen Aufrufer und Testnamen.
-
-**Akzeptanz:** Geprüfte Ketten erfüllen [PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md) und [DESIGN](DESIGN.md); nachgewiesene abnahmerelevante Fehler im bestätigten Scope behoben und gezielt regressionsgesichert. Keine neue parallele Implementierungsroute oder unnötige Testdopplung. Begründete Nichtänderung ausdrücklich zulässig.
-
-**Abnahme:** Bestehendes vollständiges CI-Gate erfolgreich (Rust-/JVM-Tests, native DB-Regression, Clippy, Android-Build/Lint, Quell-/APK-Architekturprüfungen und Instrumentierungs-APK). Vorhandenen vollständigen Lauf für identischen relevanten Code-/Buildstand nutzen oder bei fehlendem Beleg regulären vollständigen Lauf ausführen; reiner Docs-Gate allein reicht nicht. Geräteprüfungen gemäß [Merge-Regel](#pflege), keine separate Nachabnahme. PR/Commit/CI und Befunde verlinken; Abschluss mit Merge.
-
-### M07.3 — PLANNED · Nutzungsreife und Abschluss (G07)
-
-**Abhängigkeit:** M07.1 DONE.
-
-- [ ] Bestätigten Produktumfang gegen integrierten Stand prüfen; verbleibende konkrete Fehler nach Auswirkung bewerten, abnahmeverhindernde Befunde beheben und andere nachvollziehbar dokumentieren. Keine neue Featurearbeit.
-- [ ] Installierbares ARM64-Debug-APK und native Datenintegrität am Abschlussstand anhand vorhandener vollständiger CI-/Buildbelege bestätigen; bei Bedarf bestehenden manuellen Workflow zur APK-Erzeugung nutzen. App-Start, DB-Status und Geräteintegration nach vorhandenem Prüfvertrag beurteilen, nicht ungeprüfte Geräteausführung behaupten.
-- [ ] PRODUCT, ARCHITECTURE, DESIGN, README und Arbeitsregister auf belegte Abweichungen prüfen; nur nötige Korrekturen. Abschlussbeleg mit integriertem Stand, PR/Commit, vollständigem CI-Gate und konkreten Restrisiken; keine Fehlerfreiheit behaupten.
-
-**Distribution (nur bei ausdrücklichem Auftrag):** Persönliche Nutzungsreife ist keine Freigabe öffentlicher Distribution. Falls ein Release-APK gewünscht wird, den vorhandenen minifizierten Release-Build einmalig gezielt qualifizieren, insbesondere native UniFFI/JNA/JNI-/libmpv-Schnittstellen und Installierbarkeit; Debug-CI ersetzt diesen Beleg nicht. Signierung/Versionierung nur entsprechend dem bestätigten Distributionsbedarf. L01 bleibt unabhängig und ist vor weiterer öffentlicher Distribution zu klären; ohne Klärung keine öffentliche Distributionsfreigabe. Keine automatische Veröffentlichung, Store-Anbindung oder neue Release-Infrastruktur.
-
-**Akzeptanz/Abnahme:** Bestätigter lokaler Produktumfang vollständig, keine bekannten abnahmeverhindernden Befunde, relevanter Code-/Buildstand durch vollständiges bestehendes CI-Gate belegt. Geräteprüfungen gemäß [Merge-Regel](#pflege); externe Quellenverfügbarkeit und nicht ausgeführte Geräteprüfungen nicht aus CI ableiten. Nicht beauftragte öffentliche Distribution blockiert den lokalen G07-Abschluss nicht. G07 mit Merge des Abschluss-PR DONE; anschließend keine automatische Fortsetzung ohne neuen konkreten Auftrag.
-
-**Scope-Entscheidung 24.11.2026:** Die bisherige M07-Planung wird vollständig ersetzt. M07.2 entfällt ersatzlos: TXT-/HAR-Speichern und -Teilen sind bereits vorhanden, zusätzlicher Bedarf nicht belegt. M07.1 und M07.3 behalten ihre IDs; keine Verschiebung gestrichener Aufgaben in andere Meilensteine.
-
-## Unabhängige technische Bereinigung
-
-### DC02 — DONE · Altimport entfernt und gemergt ([PR #52](https://github.com/Justify87/ladies-explorer-android/pull/52))
-
-**Nutzerentscheidung:** 20.11.2026; Web-App obsolet, keine Nutzerdatenmigration. **Reihenfolge:** Vor weiterer Featurearbeit.
-
-**Umfang:**
-- [x] Bestehenden Web-App-Import einschließlich UI, ViewModel/CoreStore-/UniFFI-/Rust-Pfaden, Exportskript und ausschließlich importgebundenen Tests/CI-Schritten entfernen.
-- [x] Synthetische Testdaten als isolierte native v2-Datenbank bereitstellen; Integritätsregressionen erhalten.
-
-**Akzeptanz:**
-- [x] Keine nutzerseitige Migrationsroute oder Ersatz-Importoberfläche.
-- [x] Native Android-Schemaentwicklung unverändert; keine Eingriffe in bestehende Android-Nutzerdaten.
-- [x] Technische Integrationsprüfungen und grüner CI-Gate im separaten [PR #52](https://github.com/Justify87/ladies-explorer-android/pull/52), [CI #44828090537](https://github.com/Justify87/ladies-explorer-android/actions/runs/44828090537). [Produktsoll](PRODUCT.md#produktziel-und-grenzen).
-
-- [x] **DC01 — DONE:** [PR #49](https://github.com/Justify87/ladies-explorer-android/pull/49) – obsolete Produktionspfade und UniFFI-Exporte entfernt, Testgrenzen korrigiert, gültige Fachverträge erhalten.
-
-## Unabhängiger Klärungspunkt
-
-- [ ] **L01 — READY:** libmpv/FFmpeg-AAR-Lizenz, konkret enthaltene Bibliotheken/ABIs, Corresponding Source und Weiterverteilungspflichten auch für bereits öffentlich verfügbare Debug-Artefakte klären. [NOTICE](../NOTICE). Keine Lizenzfreigabe oder Behauptung eines Rechtsverstoßes alleine aus Wrapper-Lizenz; vor weiterer öffentlicher Distribution klären.
-
-Frühere operative Register/Belege bleiben im [Git-Stand vor der Konsolidierung](https://github.com/Justify87/ladies-explorer-android/tree/c6114a6f51b2c2ce99e986efd939ab9115708b70/docs) nachvollziehbar. Neue Aufgaben ausschließlich hier.
+- Neue Aufgaben ausschließlich hier; eigenständig ausführbare Aufgaben mit stabiler ID, Status, erforderlicher Abhängigkeit, Umfang, Akzeptanz und Prüfung entsprechend ihrem Risiko beschreiben. Status nur am maßgeblichen Eintrag führen; Meilensteinabschluss aus zugehörigem Abschluss-/Gate-Eintrag ableiten. Kein Prozentwert aus ungleich großen Aufgaben.
+- Aufgabenwahl und Ausführung nach [AGENTS](../AGENTS.md#arbeitszyklus), jeweils auf integriertem Stand; erforderliche Nutzerfreigaben bleiben verbindlich.
+- Bei Unterbrechung Stand, nächsten Schritt oder Blocker am Eintrag festhalten. Beim Abschluss Kriterien abgleichen und Status samt Beleg im selben PR pflegen; erledigte Detailbeschreibungen zu Ergebnis und PR-/CI-/Commit-Beleg verdichten. Review-Historie in PR/Git, nicht anhängen. Verbindliche Scope- und Nutzerentscheidungen erhalten.
