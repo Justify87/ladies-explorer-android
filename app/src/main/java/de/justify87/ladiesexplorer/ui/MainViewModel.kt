@@ -121,6 +121,7 @@ data class SearchUiState(
     val actionBusy: Boolean = false,
     val actionError: String? = null,
     val retryProfileListingId: Long? = null,
+    val profileRetryAttempt: Long = 0L,
     val mediaArchive: MediaArchiveReport? = null,
     val archiving: Boolean = false,
     val mediaWarning: String? = null,
@@ -363,7 +364,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     internal fun cancelMediaArchive(session: Long) = profileOperations.cancelMediaArchive(session)
 
-    fun closeProfile() = profileOperations.closeProfile()
+    internal fun closeProfile(session: Long) = profileOperations.closeProfile(session)
 
     internal fun setProfilePresentationVisible(visible: Boolean) {
         if (!visible) setSwipeVisible(false)
@@ -1119,7 +1120,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    internal fun retryProfileProjection() = profileOperations.retryProfileProjection()
+    internal fun retryProfileProjection(action: DetailRetryAction) = profileOperations.retryProfileProjection(action)
 
     fun refresh() {
         if (homeOwner.occupied) {
