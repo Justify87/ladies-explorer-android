@@ -375,8 +375,10 @@ fun LadiesApp(
                                             onAvailability = { viewModel.runGridAvailability(availabilityAction, it) },
                                             modifier = Modifier,
                                         )
-                                        val cancelAction = SearchCancelAction(ProfileActionSurface.GRID, discovery.actionGeneration, search.searchAttemptId)
-                                        SearchRunStatus(search) { viewModel.cancelActiveSearch(cancelAction) }
+                                    },
+                                    onCancelSearch = {
+                                        viewModel.cancelActiveSearch(SearchCancelAction(ProfileActionSurface.GRID,
+                                            discovery.actionGeneration, search.searchAttemptId))
                                     },
                                     modifier = Modifier.weight(1f),
                                 )
@@ -474,30 +476,6 @@ fun LadiesApp(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        val active = state.response
-        if (active != null) {
-            Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
-                style = MaterialTheme.typography.labelMedium)
-            if (active.partial || !active.radiusVerified) {
-                Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.labelMedium)
-            }
-        }
-        if (state.loading) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Suche läuft …", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onCancel, enabled = !state.searchCancelling, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (state.searchCancelling) "Wird beendet …" else "Abbrechen") }
-            }
-        }
-        state.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
