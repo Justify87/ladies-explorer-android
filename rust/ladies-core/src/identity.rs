@@ -833,6 +833,18 @@ mod tests {
         let encounter = core
             .create_encounter(listing, source, encounter_values.clone())
             .unwrap();
+        let price_values = crate::PriceListValues {
+            listing_id: Some(listing),
+            observed_at: "2026-11-24T00:00:00.000Z".into(),
+            items: vec![crate::PriceItem {
+                label: Some("Fixture".into()),
+                duration_minutes: Some(30),
+                amount_cents: 1234,
+            }],
+        };
+        let price = core
+            .create_price_list(listing, source, price_values.clone())
+            .unwrap();
         let mut target_values = encounter_values.clone();
         target_values.listing_id = None;
         let target_encounter = core
@@ -911,6 +923,15 @@ mod tests {
                 .is_err()
         );
         assert!(core.delete_encounter(listing, target, encounter).is_err());
+        let prices = core.price_overview(target_listing, target).unwrap();
+        assert_eq!(prices.lists.len(), 1);
+        assert_eq!(prices.lists[0].person_id, target);
+        assert_eq!(prices.lists[0].price_list_id, price.price_list_id);
+        assert_eq!(prices.lists[0].item_ids, price.item_ids);
+        assert_eq!(prices.lists[0].values, price_values);
+        assert_eq!(prices.last_paid.unwrap().amount_cents, 0);
+        assert!(core.price_overview(listing, source).is_err());
+        assert!(core.delete_price_list(listing, target, price).is_err());
         // The listing survives; stale owner tokens must fail CAS and note writes.
         assert!(
             core.set_swipe_preference(listing, source, None, crate::Preference::Like)
