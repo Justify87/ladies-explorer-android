@@ -105,9 +105,9 @@ internal class EncounterEditor(
     private val read: suspend (Long, Long) -> List<Encounter>,
     private val submit: (EncounterEdit, EncounterValues?) -> Unit,
 ) {
-    var panel by mutableStateOf<EncounterPanel?>(null)
+    var panel by mutableStateOf<EncounterPanel?>(null, referentialEqualityPolicy())
         private set
-    var edit by mutableStateOf<EncounterEdit?>(null)
+    var edit by mutableStateOf<EncounterEdit?>(null, referentialEqualityPolicy())
         private set
     private var nextId = 0L
     private var committedOwner: Long? = null
@@ -159,11 +159,16 @@ internal class EncounterEditor(
     }
 
     // A resumed profile must explicitly reauthorize a retained draft; never replace its CAS snapshot.
+    fun matchesContext(token: ProfileIdentityToken?): Boolean {
+        val original = edit?.token ?: return false
+        return token != null && token::class == original::class &&
+            token.listingId == original.listingId && token.ownerId == original.ownerId
+    }
+
     fun canResume(rendered: EncounterEdit): Boolean {
         val token = panel?.token ?: return false
         return edit === rendered && !rendered.writing && !current(rendered.token) &&
-            token != rendered.token && token::class == rendered.token::class &&
-            token.listingId == rendered.token.listingId && token.ownerId == rendered.token.ownerId &&
+            token != rendered.token && matchesContext(token) &&
             current(token)
     }
 
@@ -216,7 +221,7 @@ internal class EncounterEditor(
 @Composable
 internal fun EncounterEditorDialog(editor: EncounterEditor) {
     val edit = editor.edit ?: return
-    val enabled = editor.canEdit(edit)
+    val enabled = editor.panel?.token == edit.token && editor.canEdit(edit)
     if (edit.discardRequested) {
         AlertDialog(onDismissRequest = { editor.keep(edit) }, title = { Text("Entwurf verwerfen?") },
             text = { Text("Ungespeicherte Änderungen gehen verloren.") },
