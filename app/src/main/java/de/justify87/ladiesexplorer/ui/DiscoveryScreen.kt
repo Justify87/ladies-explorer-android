@@ -399,8 +399,8 @@ internal fun DiscoverScreen(
                         }
                     }
                     item(key = "header") {
-                        Text("Profilinfos", style = MaterialTheme.typography.titleMedium)
                         if (profile != null) ProfileMetadata(profile.profile, profile.identity, person, profile.media, profile.fromArchive)
+                        else Text("Profilinfos", style = MaterialTheme.typography.titleMedium)
                     }
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                 }
