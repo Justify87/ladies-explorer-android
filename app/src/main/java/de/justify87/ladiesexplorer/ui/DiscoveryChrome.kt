@@ -20,9 +20,7 @@ internal fun DiscoveryChrome(summary: String, availability: AvailabilityMode, av
     val latestOwner by rememberUpdatedState(owner)
     val latestEnabled by rememberUpdatedState(availabilityEnabled)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.medium) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 12.dp),
-                verticalAlignment = Alignment.CenterVertically) {
+        DiscoveryContextStrip {
                 Text(summary, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Box {
@@ -38,9 +36,16 @@ internal fun DiscoveryChrome(summary: String, availability: AvailabilityMode, av
                         }
                     }
                 }
-            }
         }
         DiscoverModeSwitcher(active, onMode, Modifier)
+    }
+}
+
+@Composable
+internal fun DiscoveryContextStrip(content: @Composable RowScope.() -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.medium) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, content = content)
     }
 }
 
