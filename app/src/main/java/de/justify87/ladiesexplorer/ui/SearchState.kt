@@ -24,6 +24,7 @@ internal fun searchSubmitMatches(
 internal data class SearchCancelAction(
     val surface: ProfileActionSurface,
     val generation: Long,
+    val attemptId: Long,
     val swipeSession: Long? = null,
 )
 
@@ -31,7 +32,7 @@ internal fun searchCancelMatches(
     discovery: DiscoverUiState, search: SearchUiState, saved: SavedSearchUiState,
     swipeVisible: Boolean, action: SearchCancelAction,
 ): Boolean {
-    if (!search.loading || search.searchCancelling || search.profileOpen ||
+    if (!search.loading || search.searchCancelling || search.profileOpen || search.searchAttemptId != action.attemptId ||
         discovery.actionGeneration != action.generation || discovery.actionSurface != action.surface) return false
     return when (action.surface) {
         ProfileActionSurface.NONE -> swipeVisible && action.swipeSession == discovery.swipeSessionId
@@ -130,8 +131,8 @@ internal class RequestGeneration {
     fun isCurrent(ticket: Long): Boolean = ticket == value
 }
 
-internal fun SearchUiState.beginRun(): SearchUiState = copy(
-    loading = true, searchCancelling = false, error = null, profileRead = null, profileOpen = false,
+internal fun SearchUiState.beginRun(attemptId: Long = searchAttemptId + 1): SearchUiState = copy(
+    searchAttemptId = attemptId, loading = true, searchCancelling = false, error = null, profileRead = null, profileOpen = false,
     profileRetryFromArchive = false, profileSourceRetryAllowed = false, retryProfileListingId = null,
 )
 

@@ -197,7 +197,7 @@ fun LadiesApp(
     val pane = saved.pane
     val renderedPaneAction = SavedSearchPaneAction(saved.actionGeneration)
     val renderedEditorAction = saved.editor?.let { SavedEditorAction(it, saved.actionGeneration) }
-    val searchCancelAction = SearchCancelAction(ProfileActionSurface.SEARCH, discovery.actionGeneration)
+    val searchCancelAction = SearchCancelAction(ProfileActionSurface.SEARCH, discovery.actionGeneration, search.searchAttemptId)
     LaunchedEffect(savedSearchRouteVisible, lifecycle) {
         viewModel.savedSearch.setVisible(savedSearchRouteVisible &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -349,7 +349,7 @@ fun LadiesApp(
                             }
                         }
                         if (route.discovery == DiscoverMode.Grid) {
-                            val cancelAction = SearchCancelAction(ProfileActionSurface.GRID, discovery.actionGeneration)
+                            val cancelAction = SearchCancelAction(ProfileActionSurface.GRID, discovery.actionGeneration, search.searchAttemptId)
                             SearchRunStatus(search) { viewModel.cancelActiveSearch(cancelAction) }
                         }
                         if (route.discovery != DiscoverMode.Swipe) DiscoverModeSwitcher(route.discovery, onSelect = {
@@ -358,7 +358,7 @@ fun LadiesApp(
                         })
                         if (route.discovery == DiscoverMode.Swipe) {
                             val cancelAction = SearchCancelAction(ProfileActionSurface.NONE,
-                                discovery.actionGeneration, discovery.swipeSessionId)
+                                discovery.actionGeneration, search.searchAttemptId, discovery.swipeSessionId)
                             DiscoverScreen(
                                 state = discovery,
                                 notes = notes,
