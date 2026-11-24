@@ -448,7 +448,7 @@ fun LadiesApp(
                         } else viewModel::editSearchDraft,
                         onReset = viewModel::resetSearchDraft,
                         onPreviewTarget = viewModel::setPreviewTarget,
-                        onSearch = { viewModel.startSearch() },
+                        onSearch = viewModel::submitSearch,
                         onCancelSearch = viewModel::cancelActiveSearch,
                         onSave = viewModel.savedSearch::saveEditor,
                         onName = { name -> renderedEditorAction?.let { viewModel.savedSearch.editName(it, name) } },

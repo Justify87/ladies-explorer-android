@@ -7,6 +7,20 @@ import de.justify87.ladiesexplorer.core.SearchRequest
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal data class SearchSubmitAction(
+    val draft: SearchDraft,
+    val generation: Long,
+)
+
+internal fun searchSubmitMatches(
+    discovery: DiscoverUiState, search: SearchUiState, saved: SavedSearchUiState, action: SearchSubmitAction,
+): Boolean =
+    discovery.actionSurface == ProfileActionSurface.SEARCH &&
+        discovery.actionGeneration == action.generation &&
+        saved.pane == SearchPane.Filters && !saved.busy &&
+        !discovery.busy && !search.loading && !search.actionBusy && !search.profileOpen &&
+        action.draft.city.isNotBlank() && SearchDraft.from(search) == action.draft
+
 internal data class GridAvailabilityAction(
     val runId: Long?,
     val draft: SearchDraft?,

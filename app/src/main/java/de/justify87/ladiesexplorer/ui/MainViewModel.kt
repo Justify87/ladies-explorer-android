@@ -437,10 +437,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val active = state.response
         val draft = SearchDraft.from(state)
         val query = (active?.query ?: draft.request()).withAvailabilityMode(mode)
-        startSearch(requestOverride = query, localOverride = active?.local ?: draft.local)
+        startSearch(query, active?.local ?: draft.local)
     }
 
-    private fun request(input: SearchUiState) = SearchDraft.from(input).request()
+    internal fun submitSearch(action: SearchSubmitAction) {
+        if (!searchSubmitMatches(_discoverState.value, _searchUiState.value, savedSearch.state.value, action)) return
+        startSearch(action.draft.request(), action.draft.local)
+    }
 
     fun refreshSearchDefinitions() {
         savedSearch.refresh()
@@ -476,11 +479,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun startSearch(requestOverride: SearchRequest? = null, localOverride: LocalVisibility? = null) {
+    private fun startSearch(request: SearchRequest, local: LocalVisibility) {
         if (searchOwner.occupied || _searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
-        val input = _searchUiState.value
         invalidateSwipeActions(invalidateProfiles = true)
-        // Revoke rendered grid actions even if this source run fails or is cancelled.
+        // Revoke rendered actions even if this source run fails or is cancelled.
         _discoverState.update { it.copy(actionGeneration = it.actionGeneration + 1) }
         cancelPreview()
         val control = RequestControl()
@@ -490,7 +492,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             var acceptedRun = false
             try {
-                val result = core.search(requestOverride ?: request(input), localOverride ?: input.local, control)
+                val result = core.search(request, local, control)
                 if (!searchOwner.accepts(ticket)) return@launch
                 val cards = core.activeSearchCards(result.searchRunId, result.local)
                 if (!searchOwner.accepts(ticket)) return@launch

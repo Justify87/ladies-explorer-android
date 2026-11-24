@@ -43,7 +43,7 @@ internal fun SearchScreen(
     onDraftChange: ((SearchDraft) -> SearchDraft) -> Unit,
     onReset: () -> Unit,
     onPreviewTarget: (SearchRequest?) -> Unit,
-    onSearch: () -> Unit,
+    onSearch: (SearchSubmitAction) -> Unit,
     onCancelSearch: () -> Unit,
     onSave: (SavedEditorAction) -> Unit,
     onName: (String) -> Unit,
@@ -188,7 +188,7 @@ internal fun SearchScreen(
                         }
                     } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { filterQuery = ""; onReset() }, enabled = enabled) { Text("Reset") }
-                        Button(onClick = if (state.loading) onCancelSearch else onSearch,
+                        Button(onClick = if (state.loading) onCancelSearch else ({ onSearch(SearchSubmitAction(draft, generation)) }),
                             enabled = !state.searchCancelling && (state.loading || (canStartSearch && enabled && state.city.isNotBlank())), modifier = Modifier.weight(1f)) {
                             Text(if (state.searchCancelling) "Wird beendet …" else if (state.loading) "Abbrechen" else "Suchen")
                         }

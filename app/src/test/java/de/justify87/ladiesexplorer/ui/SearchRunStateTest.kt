@@ -45,6 +45,39 @@ class SearchRunStateTest {
         assertEquals(old.response, pending.endRun("source failure").response)
     }
 
+    @Test fun submitSearchRejectsOldDraftSurfacePaneAndBusyState() {
+        val search = SearchUiState(city = "Dresden")
+        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 7)
+        val saved = SavedSearchUiState()
+        val action = SearchSubmitAction(SearchDraft.from(search), 7)
+        assertTrue(searchSubmitMatches(discovery, search, saved, action))
+        assertFalse(searchSubmitMatches(discovery, search.copy(city = "Berlin"), saved, action))
+        assertFalse(searchSubmitMatches(discovery, search.copy(local = search.local.copy(hideLikes = true)), saved, action))
+        assertFalse(searchSubmitMatches(discovery.copy(actionSurface = ProfileActionSurface.GRID), search, saved, action))
+        assertFalse(searchSubmitMatches(discovery.copy(actionGeneration = 8), search, saved, action))
+        assertFalse(searchSubmitMatches(discovery.copy(busy = true), search, saved, action))
+        assertFalse(searchSubmitMatches(discovery, search, saved.copy(overview = true), action))
+        assertFalse(searchSubmitMatches(discovery, search, saved.copy(operation = SavedOperation.Write), action))
+        assertFalse(searchSubmitMatches(discovery, search.copy(profileOpen = true), saved, action))
+        assertFalse(searchSubmitMatches(discovery, search.copy(actionBusy = true), saved, action))
+        assertFalse(searchSubmitMatches(discovery, search.beginRun(), saved, action))
+        val blank = search.copy(city = " ")
+        assertFalse(searchSubmitMatches(discovery, blank, saved, SearchSubmitAction(SearchDraft.from(blank), 7)))
+    }
+
+    @Test fun submitSearchAfterFailureOrCancelRequiresNewRenderedGeneration() {
+        val search = SearchUiState(city = "Dresden").acceptRun(response(1), listOf(card(1)))
+        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 7)
+        val saved = SavedSearchUiState()
+        val action = SearchSubmitAction(SearchDraft.from(search), 7)
+        val next = discovery.copy(actionGeneration = 8)
+        for (state in listOf(search.beginRun().endRun(), search.beginRun().endRun("offline"))) {
+            assertEquals(search.response, state.response)
+            assertFalse(searchSubmitMatches(next, state, saved, action))
+            assertTrue(searchSubmitMatches(next, state, saved, action.copy(generation = 8)))
+        }
+    }
+
     @Test fun partialRunReplacesPreviousResultsWithoutInventingRadiusVerification() {
         val old = SearchUiState().acceptRun(response(1), listOf(card(1))).beginRun()
         val partial = response(2, partial = true)
