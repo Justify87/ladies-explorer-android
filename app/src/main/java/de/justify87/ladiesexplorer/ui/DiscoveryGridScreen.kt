@@ -183,16 +183,18 @@ internal fun ProfileGridCard(
     val shape = MaterialTheme.shapes.large
     val largeText = LocalDensity.current.fontScale >= 1.5f
     Box(
-        modifier.fillMaxWidth().heightIn(min = if (largeText) 220.dp else 0.dp).aspectRatio(1.03f).clip(shape)
+        modifier.fillMaxWidth().heightIn(min = if (largeText) 220.dp else 0.dp).clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .shellFocus().clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen),
     ) {
+        Spacer(Modifier.fillMaxWidth().aspectRatio(1.03f))
         ProfileImage(thumbnailUrl, localPath, Modifier.matchParentSize(), description = "$name – Profilbild")
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(
             0f to Color.Transparent, .44f to Color.Black.copy(alpha = .02f),
             1f to Color.Black.copy(alpha = .82f),
         )))
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
+            .padding(top = if (onLike != null) 64.dp else 0.dp)
             .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .65f), Color.Black.copy(alpha = .85f))))
             .padding(12.dp)) {
             Text(listOfNotNull(name.ifBlank { "Inserat" }, age?.takeIf { it.isNotBlank() }).joinToString(" · "),
