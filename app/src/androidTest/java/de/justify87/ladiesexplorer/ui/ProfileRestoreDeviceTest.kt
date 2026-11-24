@@ -50,7 +50,7 @@ class ProfileRestoreDeviceTest {
     private fun reads(factsRead: suspend () -> ProfileFacts) = ProfilePanelReads(
         { _, _ -> factsRead() }, { PersonDetail(emptyList(), 0u, 0u, 0u, 0u) }, { _, _, _ -> emptyList() })
 
-    private val notes = NoteEditorActions({ _, _ -> }, { _, _ -> }, { _, _ -> }, {}, {})
+    private val notes = NoteEditorActions({ _, _ -> }, { _, _ -> }, { _, _, _ -> }, { _, _ -> }, { _, _ -> })
 
     @Test fun lateUndoReceiptWaitsForRealRowsAndSurvivesSavedStateRecreation() {
         val tester = StateRestorationTester(rule)
