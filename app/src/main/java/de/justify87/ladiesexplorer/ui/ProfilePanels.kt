@@ -430,6 +430,18 @@ private fun HistoryValues(before: String?, after: String?) {
     }
 }
 
+internal fun profileAnalysisFields(imageCount: Int, personCount: UInt?, data: PersonDetail?): List<Pair<String, String>> =
+    buildList {
+        add("Bilder im aktuellen Profil" to imageCount.toString())
+        if (data != null) {
+            if (personCount == null) add("Anzeigen" to data.listings.size.toString())
+            add("Bekannte Namen" to data.knownNames.toString())
+            add("Bekannte Orte" to data.knownCities.toString())
+            add("Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString())
+            add("Mit anderen Personen geteilte Assets" to data.sharedImages.toString())
+        }
+    }
+
 private fun ProfileFlowRows.profileContent(
     profile: ProfileResponse,
     identity: ProfileIdentity?,
@@ -450,10 +462,12 @@ private fun ProfileFlowRows.profileContent(
     item(key = "profile-facts", read = ProfileRowRead.Facts) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ProfileGroup("Übersicht") {
+                val listingFields = listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() })
+                if (panels.facts == null && listingFields.isNotEmpty()) FieldGrid(listingFields)
                 FactsContent(panels, actionsBusy, isCurrent) { facts ->
                     val (overview, traits) = facts.overviewAndTraits()
                     if (facts.openingTimes.isNotEmpty()) ProfileGroup("Öffnungszeiten") { FieldValues(facts.openingTimes) }
-                    FieldGrid(overview + listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() }))
+                    FieldGrid(overview + listingFields)
                     if (traits.isNotEmpty()) ProfileGroup("Merkmale") { FieldValues(traits) }
                 }
             }
@@ -492,11 +506,7 @@ private fun ProfileFlowRows.profileContent(
         item(key = "profile-analysis", read = ProfileRowRead.Detail) {
             ProfileGroup("Gespeicherte Evidenz") {
                 val data = panels.detail
-                FieldGrid(listOf("Bilder im aktuellen Profil" to media.count { it.kind == "IMAGE" }.toString()) +
-                    if (data == null) emptyList() else listOf(
-                        "Anzeigen" to data.listings.size.toString(), "Bekannte Namen" to data.knownNames.toString(),
-                        "Bekannte Orte" to data.knownCities.toString(), "Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString(),
-                        "Mit anderen Personen geteilte Assets" to data.sharedImages.toString()))
+                FieldGrid(profileAnalysisFields(media.count { it.kind == "IMAGE" }, person?.listingCount, data))
                 if (data == null) DetailStatus(panels, actionsBusy, isCurrent)
                 Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
                     style = MaterialTheme.typography.bodySmall)

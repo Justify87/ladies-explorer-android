@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: M05.11 (G11), T11.3 READY.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: M05.11 (G11), T11.3 REVIEW.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -119,7 +119,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - Regressionen in `SearchRunStateTest`, `SavedSearchPaneTest` und `SavedPeopleStateTest` ergänzt; vollständiger PR-CI-Lauf erfolgreich, Geräteprüfungen gemäß Merge-Regel DONE. Keine separate lokale Testausführung oder gemessene Beschleunigung behauptet.
 - Weitergehender Caller-/Projektionsreview war vor Nutzerabschluss nicht vollständig belegt; verbleibende konkrete Befunde ausschließlich im regulären Scope von T11.4 behandeln, keine pauschale Wiedereröffnung.
 
-### T11.3 — READY · Nutzerseitige Doppelungen
+### T11.3 — REVIEW · Nutzerseitige Doppelungen
 
 **Abhängigkeit:** T11.2 abgeschlossen. **Anker:** `ui/SavedPeopleScreen.kt`, `ui/ProfileComponents.kt`, `ui/ProfilePanels.kt`, `ui/SearchScreen.kt`, `ui/LadiesApp.kt`; [DESIGN](DESIGN.md#informationshierarchie--progressive-offenlegung).
 
@@ -129,6 +129,8 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - [ ] Geänderte Screens im bestehenden UI-/Accessibility-Vertrag prüfen; keine allgemeine Neugestaltung und kein Verlust verfügbarer Profilinformationen.
 
 **Abnahme:** Die betroffenen Screens zeigen Informationen konsistent und ohne vermeidbare Wiederholung. Suchlauf, Filterentwurf, Ergebnis- und Profilzugriff, Back/Rotation sowie gültige Aktionskontexte bleiben erhalten; UI-Änderungen durch gezielte Tests/Prüfung belegt.
+
+**Review-Stand:** Branch `refactor/t11-3-user-facing-redundancy`, Ausgangscommit `474334999c6ed437086136d7bf487f098cb33181`. Sichtungsdatum nur einmal; Änderungsdatum bei gleicher Tagesangabe zusammengefasst, Quellenstatusprüfung getrennt vom lokalen Reload. Personenzähler in der Übersicht (Analyse-Fallback bei fehlender Zusammenfassung). Suchliste bleibt wegen belegtem eigenständigem Zugriff auf nur im Grid ausgeblendete Likes erhalten; doppelter Filterwechsel und Trefferzahl im Warntext entfernt. Gezielte JVM-Regressionen ergänzt; vollständiger CI-Beleg und Merge noch ausstehend. Keine Geräteausführung behauptet.
 
 ### T11.4 — PLANNED · Enges Altcode- und Abschlussreview
 

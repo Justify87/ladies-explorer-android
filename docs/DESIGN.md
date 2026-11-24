@@ -41,11 +41,12 @@ Meilensteinübergreifende UI-/UX-Autorität. Modern, ruhig, nativ, bildorientier
 
 - Globaler Filtertext, Ort/Radius, Top 5, Verfügbarkeit, Alter (dual range), Treffpunkt, einklappbare Kategorien/Eigenschaften (einschließlich Größe), Services und weitere Optionen.
 - Footer mit Reset und Suche samt Count/Status; Gruppenstatus und Scrollposition erhalten.
+- Letzter Suchlauf bleibt unabhängig vom Filterentwurf zugänglich: Liste der lokal sichtbaren Run-Treffer einschließlich der nur im Grid temporär ausgeblendeten Likes, mit Profilöffnung und eindeutiger Rückkehr zum Filter.
 
 ### Gespeichert
 
 - Tabs, Counts, Sortierung, Statusprüfung und aufklappbare Watchlist gemäß [PRODUCT](PRODUCT.md#gespeicherte-personen).
-- Kompakte Zeilen: Thumbnail, Name/Alter, Ort, Status/Aktivitätszeit, Änderungsbadge/zusätzliche Anzeigen sowie Herz/Mehr.
+- Kompakte Zeilen: Thumbnail, Name/Alter, Ort, Anzeigenstatus, eindeutige Sichtungs-/Änderungs-/Statusprüfzeitpunkte, Anzeigenanzahl sowie Herz/Mehr. Lokales Neuladen von der Quellenstatusprüfung unterscheiden.
 - Gespeicherte Suchen: eigene Übersicht mit Neu-Indikator, Delta, Editor und Ergebnisgrid.
 
 ### Karte und Einstellungen
@@ -134,7 +135,7 @@ Visuelle Hierarchie nach Relevanz für schnelle Profilentscheidung; keine Sammlu
 | Rang | Darstellung | Umfang/Regel |
 |---|---|---|
 | 0 | Identität/entscheidungsrelevanter Status im Hero bzw. kompakten Header | Name, Alter, Ort, angezeigter Quellenstatus/Verfügbarkeit mit Unsicherheit; Archiv-/Fehler-/Ownerwarnung sichtbar und nicht mit Aktivität verwechseln |
-| 1 | Kompakte Übersicht | Tatsächlich vorhandene Öffnungszeiten/Verfügbarkeit und wichtige belegte Merkmale, responsive 1–2 Spalten; keine erfundene „jetzt verfügbar“-Ableitung |
+| 1 | Kompakte Übersicht | Tatsächlich vorhandene Öffnungszeiten/Verfügbarkeit, Anzeigenanzahl der Person und wichtige belegte Merkmale, responsive 1–2 Spalten; keine erfundene „jetzt verfügbar“-Ableitung. Anzeigenanzahl nur bei fehlender Personenzusammenfassung aus der Analyse ergänzen. |
 | 2 | Beschreibung | Kurzer mehrzeiliger Auszug, „Mehr anzeigen“ wenn abgeschnitten; voller Originaltext zugänglich, kein KI-Resümee |
 | 3 | Dienste/Filterbelege | Gruppierte Textzeilen oder wenige Chips, explizit Ja/Nein/Unbekannt; kompakte Zusammenfassung mit Zugang zu allen Werten, keine irreführende Verdichtung |
 | 4 | Kontakt und externe Aktionen | Direkt zugängliche vorhandene Kontaktregeln/Telefon/WhatsApp/Original; Favorit separat, keine automatischen Aktionen |

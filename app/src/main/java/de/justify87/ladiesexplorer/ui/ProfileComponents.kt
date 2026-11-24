@@ -271,7 +271,7 @@ internal fun ProfileMetadata(
     val badges = listOfNotNull(
         "Archivierte Daten".takeIf { fromArchive },
         when {
-            (person?.listingCount ?: 0u) > 1u -> "Person bekannt · ${person?.listingCount} Anzeigen"
+            (person?.listingCount ?: 0u) > 1u -> "Person bekannt"
             identity?.personNew == true -> "Person neu erkannt"
             else -> null
         },

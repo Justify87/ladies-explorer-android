@@ -33,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import de.justify87.ladiesexplorer.core.DiscoveryCard
 import androidx.lifecycle.compose.LifecycleStartEffect
 
 @Composable
@@ -100,7 +99,7 @@ internal fun SearchScreen(
     ) {
         if (!editing) item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (resultsVisible && state.response != null) "Ergebnisse" else "Filter",
+                Text(if (resultsVisible && state.response != null) "Letzter Suchlauf" else "Filter",
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 if (state.response != null) {
                     TextButton(onClick = { resultsVisible = !resultsVisible }) {
@@ -123,7 +122,7 @@ internal fun SearchScreen(
             val response = state.response
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("${state.activeCards.size} sichtbare Treffer", style = MaterialTheme.typography.titleLarge)
+                    Text("${state.activeCards.size} lokal sichtbare Treffer", style = MaterialTheme.typography.titleLarge)
                     Text("Quellzahl: ${response.serverCount?.takeIf { response.radiusVerified } ?: "unbekannt"}", style = MaterialTheme.typography.bodyMedium)
                     Text(
                         "${response.fetchedPages} von ${response.totalPages} Seiten · ${response.city} · ${response.requestedRadiusKm} km",
@@ -131,14 +130,17 @@ internal fun SearchScreen(
                     )
                     if (response.partial || !response.radiusVerified) {
                         Text(
-                            "Suchlauf unvollständig oder Radius nicht bestätigt. Sichtbar: ${state.activeCards.size}.",
+                            "Suchlauf unvollständig oder Radius nicht bestätigt.",
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
                     if (response.radiusBoundaryStopped) {
                         Text("Weitere Ergebnisse außerhalb des gewählten Radius wurden nicht übernommen.")
                     }
-                    OutlinedButton(onClick = { resultsVisible = false }) { Text("Filter anzeigen") }
+                    if (state.activeCards.any { it.listingId in state.gridHiddenLikes }) {
+                        Text("Hier bleiben im Grid vorübergehend ausgeblendete Likes sichtbar.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
             items(state.activeCards, key = { it.listingId }) { card ->

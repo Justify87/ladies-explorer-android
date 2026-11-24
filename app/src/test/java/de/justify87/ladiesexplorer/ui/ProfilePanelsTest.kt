@@ -14,6 +14,16 @@ class ProfilePanelsTest {
     private fun facts() = ProfileFacts(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
     private fun detail() = PersonDetail(emptyList(), 0u, 0u, 0u, 0u)
 
+    @Test fun analysisListingCountIsOnlyAFallbackWhenSummaryIsMissing() {
+        val stored = detail()
+        val withSummary = profileAnalysisFields(2, 1u, stored)
+        assertEquals(listOf("Bilder im aktuellen Profil", "Bekannte Namen", "Bekannte Orte",
+            "Archivierte Bildreferenzen (Assets)", "Mit anderen Personen geteilte Assets"), withSummary.map { it.first })
+        assertEquals("2", withSummary.first().second)
+        assertEquals("0", profileAnalysisFields(2, null, stored).toMap()["Anzeigen"])
+        assertFalse(profileAnalysisFields(2, null, null).toMap().containsKey("Anzeigen"))
+    }
+
     @Test(timeout = 15_000) fun factsAndAnalysisUseIndependentLocalReadKeysAndErrors() = runBlocking {
         val calls = mutableListOf<String>()
         val storedDetail = detail()
