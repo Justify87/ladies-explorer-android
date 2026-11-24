@@ -810,6 +810,23 @@ mod tests {
             .unwrap();
         core.save_person_note(target_listing, target, None, Some("Target note".into()))
             .unwrap();
+        let encounter_values = crate::EncounterValues {
+            listing_id: Some(listing),
+            occurred_at: "2026-11-24T12:00:00.000Z".into(),
+            duration_minutes: Some(30),
+            total_price_cents: Some(0),
+            overall_rating: Some(5),
+            sympathy_rating: None,
+            note: Some("Synthetic encounter".into()),
+        };
+        let encounter = core
+            .create_encounter(listing, source, encounter_values.clone())
+            .unwrap();
+        let mut target_values = encounter_values.clone();
+        target_values.listing_id = None;
+        let target_encounter = core
+            .create_encounter(target_listing, target, target_values)
+            .unwrap();
         {
             let db = core.connection().unwrap();
             record_phone(&db, source, listing, Some("0170 1234567")).unwrap();
@@ -868,6 +885,18 @@ mod tests {
             Some("Target note\n\nSource note")
         );
         assert!(core.person_note(listing, source).is_err());
+        let encounters = core.encounters(target_listing, target).unwrap();
+        assert_eq!(encounters.len(), 2);
+        assert!(encounters.contains(&target_encounter));
+        let merged = encounters
+            .iter()
+            .find(|row| row.encounter_id == encounter.encounter_id)
+            .unwrap();
+        assert_eq!(merged.person_id, target);
+        assert_eq!(merged.values, encounter_values);
+        assert!(core.encounters(listing, source).is_err());
+        assert!(core.delete_encounter(listing, source, encounter.clone()).is_err());
+        assert!(core.delete_encounter(listing, target, encounter).is_err());
         // The listing survives; stale owner tokens must fail CAS and note writes.
         assert!(
             core.set_swipe_preference(listing, source, None, crate::Preference::Like)
