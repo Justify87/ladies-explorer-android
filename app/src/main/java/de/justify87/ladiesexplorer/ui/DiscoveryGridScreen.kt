@@ -30,7 +30,7 @@ import de.justify87.ladiesexplorer.core.Preference
 internal fun DiscoveryGridScreen(
     discovery: DiscoverUiState,
     search: SearchUiState,
-    onRefresh: () -> Unit,
+    onRefresh: (GridRefreshAction) -> Unit,
     onLoadMore: (GridPageAction) -> Unit,
     onLike: (GridLikeAction) -> Unit,
     onProfile: (GridLikeAction) -> Unit,
@@ -39,6 +39,7 @@ internal fun DiscoveryGridScreen(
     val cards = gridCards(discovery, search)
     val active = search.response != null
     val enabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy
+    val refreshAction = GridRefreshAction(search.response?.searchRunId, discovery.actionGeneration)
     val listState = rememberLazyGridState()
     val pageAction = if (active) null else discovery.nextCursor?.let { GridPageAction(it, discovery.actionGeneration) }
     val canPage = pageAction != null && gridPageMatches(discovery, search, pageAction)
@@ -66,7 +67,8 @@ internal fun DiscoveryGridScreen(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onRefresh, enabled = enabled) { Text("Aktualisieren") }
+                TextButton(onClick = { onRefresh(refreshAction) },
+                    enabled = gridRefreshMatches(discovery, search, refreshAction)) { Text("Aktualisieren") }
             }
         }
         discovery.mutationError?.let { message ->
