@@ -152,7 +152,10 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 
 ## Native Übertragung
 
-**Verbindlich:** Die Referenz definiert Form, Hierarchie und erkennbare Interaktionen, aber keinen zweiten Daten- oder Zustandsvertrag. Bereits vorhandene Compose-Komponenten und ViewModels passend gestalten, statt Web-State, DOM-Ereignisse oder eine neue Navigation nachzubauen.
+**Verbindlich:**
+- Die Referenz definiert Form, Hierarchie und erkennbare Interaktionen, aber keinen zweiten Daten- oder Zustandsvertrag. Bereits vorhandene Compose-Komponenten und ViewModels passend gestalten, statt Web-State, DOM-Ereignisse oder eine neue Navigation nachzubauen.
+- Der Referenzprototyp bildet den Funktionsumfang nicht abschließend ab. Bestehende und neu freigegebene Funktionen, Bildschirmbereiche und Interaktionszustände ohne visuelle Entsprechung konsistent aus der geltenden Designsprache, den gemeinsamen Komponenten und Interaktionsmustern ableiten. Eine fehlende Referenzdarstellung begründet weder den Ausschluss einer Funktion noch die Einführung einer abweichenden Designsprache.
+- Den Referenzprototyp ausschließlich auf ausdrückliche Nutzeranweisung ändern oder erweitern. Bei erkennbarem langfristigem Referenznutzen darf der Agent eine begründete Anpassung vorschlagen. Eine vollständige Synchronisierung mit der nativen App ist nicht erforderlich.
 
 | Visuelle Referenzrolle | Vorhandener nativer Anker | Fachlicher UI-State / Event |
 | --- | --- | --- |
