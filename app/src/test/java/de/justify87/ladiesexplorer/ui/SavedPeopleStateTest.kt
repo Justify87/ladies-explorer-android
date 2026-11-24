@@ -59,6 +59,28 @@ class SavedPeopleStateTest {
         assertFalse(savedStatusBatchMatches(state.copy(busy = true), action))
     }
 
+    @Test fun statusCancelRequiresVisibleContextAndCurrentRunningAttempt() {
+        val state = displayed(row()).copy(busy = true,
+            savedStatusProgress = SavedStatusProgress(attemptId = 7L))
+        val search = SearchUiState()
+        val action = SavedStatusCancelAction(7L, 42L)
+        val progress = state.savedStatusProgress!!
+        assertTrue(savedStatusCancelMatches(state, search, action))
+        assertFalse(savedStatusCancelMatches(state.copy(savedStatusProgress = null), search, action))
+        assertFalse(savedStatusCancelMatches(state.copy(savedStatusProgress = progress.copy(running = false)), search, action))
+        assertFalse(savedStatusCancelMatches(state.copy(savedStatusProgress = progress.copy(cancelled = true)), search, action))
+        assertFalse(savedStatusCancelMatches(state.copy(actionSurface = ProfileActionSurface.NONE), search, action))
+        assertFalse(savedStatusCancelMatches(state.copy(actionSurface = ProfileActionSurface.GRID), search, action))
+        assertFalse(savedStatusCancelMatches(state.copy(actionGeneration = 43L), search, action))
+        assertFalse(savedStatusCancelMatches(state, search.copy(profileOpen = true), action))
+        // Progress publication within the same attempt must not invalidate its cancel button.
+        assertTrue(savedStatusCancelMatches(state.copy(savedStatusProgress = progress.copy(done = 1)), search, action))
+        // A new attempt in the same visible context must reject the earlier callback.
+        val next = state.copy(savedStatusProgress = SavedStatusProgress(attemptId = 8L))
+        assertFalse(savedStatusCancelMatches(next, search, action))
+        assertTrue(savedStatusCancelMatches(next, search, action.copy(attemptId = 8L)))
+    }
+
     @Test fun paginationRequiresExactRenderedWindowAndAvailableOperation() {
         val cursor = SavedPersonCursor(SavedPersonKind.FAVORITE, SavedPersonSort.DATE,
             SavedPersonSection.REGULAR, 123L, 1L, "key", 1L)

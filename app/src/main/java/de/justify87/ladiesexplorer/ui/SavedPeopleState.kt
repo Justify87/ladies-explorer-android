@@ -54,6 +54,20 @@ internal fun savedStatusBatchMatches(state: DiscoverUiState, action: SavedStatus
         state.savedKind == action.kind && state.savedSort == action.sort &&
         state.savedPage === action.page && !state.loading && !state.busy
 
+internal data class SavedStatusCancelAction(
+    val attemptId: Long,
+    val generation: Long,
+)
+
+internal fun savedStatusCancelMatches(
+    state: DiscoverUiState, search: SearchUiState, action: SavedStatusCancelAction,
+): Boolean {
+    val progress = state.savedStatusProgress ?: return false
+    return state.actionSurface == ProfileActionSurface.SAVED &&
+        state.actionGeneration == action.generation && !search.profileOpen &&
+        progress.attemptId == action.attemptId && progress.running && !progress.cancelled
+}
+
 internal data class SavedPeoplePageAction(
     val page: SavedPersonPage,
     val kind: SavedPersonKind,
