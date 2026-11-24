@@ -98,6 +98,8 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – Suchabbruch (DONE mit Merge):** [PR #66](https://github.com/Justify87/ladies-explorer-android/pull/66) bindet die Abbruchaktionen aus Filtern, Grid und Swipe an gerenderte Ansichtsgeneration, native Vorgangs-ID und bei Swipe an die sichtbare Session. JVM-Regressionen für veraltete Aktionen, Kontextwechsel, neue Versuche nach Fehler/Drain und wiederholten Abbruch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45405245577) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
+**Teilauftrag – Statusprüfungsabbruch (REVIEW):** [Branch `fix/t10-8-saved-status-cancel-admission`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-saved-status-cancel-admission) bindet den gerenderten Abbruch an Statusversuch und Ansichtsgeneration; interne Lifecycle-Abbrüche bleiben unabhängig. JVM-Regressionen für alte Versuche, Kontextwechsel, wiederholten Abbruch und Fortschrittsupdates. CI und Merge ausstehend.
+
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
 - [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision sowie Fehler/Offline/Status/Radius/Pagination.
