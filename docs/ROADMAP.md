@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: M05.11 (G11), T11.1 REVIEW – technische CI und Merge ausstehend.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: M05.11 (G11), T11.2 READY.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -100,20 +100,16 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Arbeitsweise:** Vor jeder Änderung betroffene Aufrufer, aktuellen Ist-Stand und [PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md) bzw. [DESIGN](DESIGN.md) bedarfsorientiert abgleichen. Vermutete Probleme erst belegen; zulässiges Ergebnis ist eine begründete Nichtänderung. Kleine, thematisch abgeschlossene PRs auf integriertem `main`, gezielte positive/negative Regressionen und vorhandene CI. Kein repoweiter neuer Aufrufgraph, neues Framework, Event-Bus, allgemeiner Operationsmanager, zusätzliche Testinfrastruktur oder pauschale Legacy-/Datenbankmigration. Bestehende Owner-/CAS-, UI-Admission-, Drain-/Cancel-, Undo- und Reprojektionsverträge erhalten; keine stillen Fachänderungen.
 
-### T11.1 — REVIEW · Fachliche Inkonsistenzen
+### T11.1 — DONE · Fachliche Inkonsistenzen
 
-**Anker:** `rust/ladies-core/src/identity.rs` (`normalize_phone`), `ui/ProfileComponents.kt` (`phoneForWhatsApp`, Statusdarstellung), `rust/ladies-core/src/saved_search.rs` (`LocalVisibility`), `rust/ladies-core/src/source/parse.rs`, `ui/SavedPeopleScreen.kt`.
+**Integrierter Beleg:** [PR #78](https://github.com/Justify87/ladies-explorer-android/pull/78), Merge `430b53ccd8c0910f7e081ff68983db4037469772`, [CI #45417037316](https://github.com/Justify87/ladies-explorer-android/actions/runs/45417037316) erfolgreich.
 
-**Review-Branch:** [`fix/t11-1-fachliche-inkonsistenzen`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t11-1-fachliche-inkonsistenzen), Basis `1f79c53919b0a17d1e93077da8b5a7f7660d535e`.
+- Internationale 00-Vorwahlen korrigiert; historische Telefonschlüssel und Identitätsevidenz geschützt, keine Schemaänderung oder automatische Zuordnung.
+- ALL/AI/NATURAL behalten gemeinsame Sichtbarkeitsregeln und Definitionsbytes; Beschriftungen beziehen sich ausschließlich auf Quellenmarker.
+- Gemeinsame Statusdarstellung in Profil und gespeicherten Personen; nicht belegte Statuswerte bleiben unbekannt.
+- Technische Abnahme: vollständiges CI-Gate erfolgreich; Rust-/JVM-Regressionen, native DB-Regression, Clippy, Android-Build, Lint und Architekturprüfungen. Geräteprüfungen gemäß Merge-Regel DONE.
 
-**Umfang:**
-- [x] Nichtdeutsche 00-Vorwahlen korrigiert; bestehende WhatsApp-Normalisierung abgeglichen. Historische Schlüssel bleiben erhalten; Kandidatenevidenz wird bei vorhandenem Rohwert erneut verifiziert. Keine Schemaänderung oder automatische Zuordnung.
-- [x] `ALL/AI/NATURAL` behalten gemeinsame Sichtbarkeitsregeln und Definitionsbytes; Beschriftungen beziehen sich ausdrücklich auf Quellenmarker statt tatsächliche Bildherkunft.
-- [x] Profil und gespeicherte Personen verwenden dieselbe Statusdarstellung; historische nicht belegte Statuswerte werden nicht als bestätigte Nichtverfügbarkeit dargestellt.
-
-**Abnahme:** Relevante Rust-/JVM-Regressionen ergänzt, lokale Gesamtprüfung und CI noch nicht bestätigt. Keine neue Identitätszuordnung, Datenverlust oder falsche Status-/KI-Aussage nach statischem Review; Abschluss nach erfolgreicher technischer Prüfung und Merge. Danach T11.2.
-
-### T11.2 — PLANNED · Zustands- und Aufrufredundanzen
+### T11.2 — READY · Zustands- und Aufrufredundanzen
 
 **Abhängigkeit:** T11.1 abgeschlossen; Arbeiten am selben State/API nicht parallel. **Anker:** `ui/LadiesApp.kt`, `ui/MainViewModel.kt`, `ui/DiscoveryState.kt`, `ui/SavedPeopleState.kt`, `ui/SavedSearchState.kt`; `ShellRouteTest`, `SearchRunStateTest`, `ProfileProjectionTest`, `SavedPeopleStateTest`, `SavedSearchPaneTest`.
 
