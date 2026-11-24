@@ -168,6 +168,7 @@ class SavedPeopleStateTest {
         val committed = mutableListOf<Long>()
         var cancelled = false
         var projection = 0
+        var savedSearchProjection = 0
         var progress = Triple(0, 0, 0)
         val outcome = writeAndProject(
             write = {
@@ -184,12 +185,27 @@ class SavedPeopleStateTest {
                     pause = {},
                 )
             },
+            afterWrite = { savedSearchProjection++ },
+            recoverWriteFailure = { savedSearchProjection++ },
             project = { projection++; error("read failed") },
         )
         assertEquals(listOf(1L, 2L, 3L), visited)
         assertEquals(listOf(1L, 3L), committed)
         assertEquals(Triple(4, 3, 1), progress)
         assertEquals(1, projection)
+        assertEquals(1, savedSearchProjection)
         assertEquals(DiscoveryMutationOutcome.ProjectionFailed(true), outcome)
+    }
+
+    @Test fun failedStatusTargetReadReconcilesOnceWithoutRepeatingTheRead() = runBlocking {
+        val calls = mutableListOf<String>()
+        val outcome = writeAndProject(
+            write = { calls += "targets"; error("target read failed") },
+            afterWrite = { calls += "unexpected success" },
+            recoverWriteFailure = { calls += "saved search"; calls += "map" },
+            project = { calls += "feed" },
+        )
+        assertTrue(outcome is DiscoveryMutationOutcome.WriteFailed)
+        assertEquals(listOf("targets", "saved search", "map", "feed"), calls)
     }
 }

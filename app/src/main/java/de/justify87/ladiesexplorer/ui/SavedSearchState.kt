@@ -181,10 +181,9 @@ internal class SavedSearchController(
     }
 
     fun setVisible(value: Boolean) {
-        if (visible != value) {
-            visible = value
-            mutable.update { it.copy(actionGeneration = it.actionGeneration + 1) }
-        }
+        if (visible == value) return
+        visible = value
+        mutable.update { it.copy(actionGeneration = it.actionGeneration + 1) }
         if (value) refreshDirtyWindow()
     }
 

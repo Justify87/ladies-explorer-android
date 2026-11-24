@@ -494,19 +494,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         filterGeneration.invalidate()
         val ticket = filterGeneration.value
         viewModelScope.launch {
-            try {
-                val catalog = core.sourceFilterCatalog()
-                val frequent = core.frequentFilters()
-                if (filterGeneration.isCurrent(ticket)) _searchUiState.update {
-                    it.copy(filterCatalog = catalog, frequentFilters = frequent, filterError = null)
-                }
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (failure: Exception) {
-                if (filterGeneration.isCurrent(ticket)) _searchUiState.update {
-                    it.copy(filterError = failure.message ?: "Filter konnten nicht geladen werden")
-                }
-            }
+            refreshSearchFilters(_searchUiState, { filterGeneration.isCurrent(ticket) },
+                core::sourceFilterCatalog, core::frequentFilters)
         }
     }
 
@@ -959,16 +948,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     },
                 )
+            } catch (cancel: CancellationException) {
+                // Coroutine cancellation bypasses writeAndProject's normal reconciliation.
+                savedSearch.refreshResultProjection()
+                throw cancel
             } finally {
                 savedStatusControl = null
-                savedSearch.refreshResultProjection()
                 _discoverState.update { current ->
                     current.copy(savedStatusProgress = current.savedStatusProgress?.copy(running = false))
                 }
             }
-        }, afterWrite = {
-            refreshMap()
-        })
+        }, afterWrite = { refreshMap() }, recoverWriteFailure = { refreshMap() })
     }
 
     private fun admittedSavedPersonRow(action: SavedPersonAction): Boolean =
