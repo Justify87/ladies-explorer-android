@@ -318,8 +318,10 @@ class SearchRunStateTest {
         assertFalse(gridActionMatches(deck, local.copy(profileOpen = true), action))
         val running = local.acceptRun(response(1), listOf(row))
         val runAction = GridLikeAction(row, 1, 15)
-        assertTrue(gridActionMatches(deck, running, runAction))
-        assertFalse(gridActionMatches(deck, running.acceptRun(response(2), listOf(row)), runAction))
+        val activeDeck = deck.copy(activeRunId = 1)
+        assertFalse(gridActionMatches(deck, running, runAction))
+        assertTrue(gridActionMatches(activeDeck, running, runAction))
+        assertFalse(gridActionMatches(activeDeck, running.acceptRun(response(2), listOf(row)), runAction))
         assertFalse(gridActionMatches(deck, running, action))
     }
 

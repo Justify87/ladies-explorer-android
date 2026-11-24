@@ -97,11 +97,13 @@ class DiscoveryDesignDeviceTest {
 
     @Test fun gridHorizontalDecisionsTapAndVerticalScrollAreExclusive() {
         val actions = mutableListOf<String>()
+        lateinit var scroll: androidx.compose.foundation.lazy.LazyListState
         var preference by mutableStateOf(Preference.NONE)
         var owner by mutableIntStateOf(1)
         rule.setContent {
             MaterialTheme {
-                LazyColumn(Modifier.width(320.dp).height(320.dp)) {
+                scroll = rememberLazyListState()
+                LazyColumn(Modifier.width(320.dp).height(320.dp), state = scroll) {
                     item {
                         ProfileGridCard("Fixture", "30", null, null, true,
                             onOpen = { actions.add("open") },
@@ -128,7 +130,33 @@ class DiscoveryDesignDeviceTest {
         rule.runOnIdle { assertEquals(listOf("open", "LIKE", "DISLIKE"), actions) }
         rule.onNodeWithContentDescription("Fixture", substring = true).assertExists()
         card.performTouchInput { swipe(Offset(center.x, height * .8f), Offset(center.x, height * .1f)) }
-        rule.runOnIdle { assertEquals(listOf("open", "LIKE", "DISLIKE"), actions) }
+        rule.runOnIdle {
+            assertEquals(listOf("open", "LIKE", "DISLIKE"), actions)
+            assertTrue(scroll.firstVisibleItemIndex > 0 || scroll.firstVisibleItemScrollOffset > 0)
+        }
+    }
+
+    @Test fun gridUndoUsesCurrentReceiptAndRemainsAvailableWhenLocalCardDisappears() {
+        val receipt = GridUndoReceipt(null, 11L, 12L, Preference.NONE, Preference.LIKE)
+        var state by mutableStateOf(DiscoverUiState(loading = false, actionSurface = ProfileActionSurface.GRID,
+            actionGeneration = 5, gridUndo = receipt))
+        val undos = mutableListOf<GridUndoAction>()
+        rule.setContent {
+            LadiesTheme {
+                DiscoveryGridScreen(state, SearchUiState(), onLoadMore = {},
+                    onDecision = { _, _ -> }, onUndo = { undos.add(it); state = state.copy(gridUndo = null) },
+                    onProfile = {}, chrome = {}, onCancelSearch = {},
+                    modifier = Modifier.width(360.dp).height(480.dp))
+            }
+        }
+        val undo = rule.onNodeWithText("Letzte Entscheidung rückgängig")
+        rule.onNodeWithText("Keine Treffer.").assertExists()
+        rule.runOnIdle { state = state.copy(busy = true) }
+        undo.assertIsNotEnabled()
+        rule.runOnIdle { state = state.copy(busy = false, actionGeneration = 6) }
+        undo.performClick()
+        rule.runOnIdle { assertEquals(listOf(GridUndoAction(receipt, 6)), undos) }
+        undo.assertDoesNotExist()
     }
 
     @Test fun quickChoiceKeepsRunOwnerAndAllOptionsAcrossModesAndThemes() {
@@ -259,10 +287,8 @@ class DiscoveryDesignDeviceTest {
             rule.onNodeWithText("30").assertExists()
             for ((label, value) in listOf("Gefällt" to Preference.LIKE, "Gefällt nicht" to Preference.DISLIKE,
                 "Bewertung entfernen" to Preference.NONE)) {
-                rule.runOnIdle {
-                    val actions = card.fetchSemanticsNode().config[SemanticsActions.CustomActions]
-                    assertTrue(actions.single { it.label == label }.action())
-                }
+                val action = card.fetchSemanticsNode().config[SemanticsActions.CustomActions].single { it.label == label }
+                rule.runOnIdle { assertTrue(action.action()) }
                 card.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, gridPreferenceLabel(value)))
             }
         }

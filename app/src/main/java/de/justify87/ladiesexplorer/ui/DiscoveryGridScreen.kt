@@ -54,6 +54,7 @@ internal fun DiscoveryGridScreen(
     val active = search.response != null
     val enabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy
     val undoAction = discovery.gridUndo?.let { GridUndoAction(it, discovery.actionGeneration) }
+    val canUndo = undoAction != null && gridUndoMatches(discovery, search, undoAction)
     val pageAction = if (active) null else discovery.nextCursor?.let { GridPageAction(it, discovery.actionGeneration) }
     val canPage = pageAction != null && gridPageMatches(discovery, search, pageAction)
     var anchorKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -100,7 +101,7 @@ internal fun DiscoveryGridScreen(
         }
         Column(Modifier.fillMaxSize()) {
             if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { chrome() }
-            if (!inlineChrome && undoAction != null) GridUndoButton(undoAction, enabled, onUndo)
+            if (!inlineChrome && undoAction != null) GridUndoButton(undoAction, canUndo, onUndo)
             LazyVerticalGrid(
                 columns = profileGridCells(),
                 state = listState,
@@ -111,7 +112,7 @@ internal fun DiscoveryGridScreen(
             ) {
                 if (inlineChrome) item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) { chrome() }
                 if (inlineChrome && undoAction != null) item(key = "grid-undo", span = { GridItemSpan(maxLineSpan) }) {
-                    GridUndoButton(undoAction, enabled, onUndo)
+                    GridUndoButton(undoAction, canUndo, onUndo)
                 }
                 if (showStatus) {
                     item(key = "search-status", span = { GridItemSpan(maxLineSpan) }) {
@@ -143,7 +144,6 @@ internal fun DiscoveryGridScreen(
                     val action = GridLikeAction(card, search.response?.searchRunId, discovery.actionGeneration)
                     ProfileGridCard(
                         name = card.name,
-                        place = card.city,
                         age = card.age,
                         thumbnailUrl = card.thumbnailUrl,
                         localPath = card.localPath,
