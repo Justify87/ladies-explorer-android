@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material3.OutlinedButton
@@ -262,7 +263,13 @@ fun LadiesApp(
                     onBack = if (nested) ({ back() }) else null,
                     backEnabled = saved.operation != SavedOperation.Write,
                 ) {
-                    if (route.root != RootDestination.Search) {
+                    if (route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid) {
+                        val refreshAction = GridRefreshAction(search.response?.searchRunId, discovery.actionGeneration)
+                        ShellIconButton(onClick = { viewModel.refreshRenderedGrid(refreshAction) },
+                            enabled = gridRefreshMatches(discovery, search, refreshAction)) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Aktualisieren")
+                        }
+                    } else if (route.root != RootDestination.Search) {
                         ShellIconButton(onClick = { selectRoot(RootDestination.Search) },
                             enabled = !saved.blockingNavigation && !viewModel.hasProfileEditor) {
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
@@ -372,7 +379,6 @@ fun LadiesApp(
                                 DiscoveryGridScreen(
                                     discovery = discovery,
                                     search = search,
-                                    onRefresh = viewModel::refreshRenderedGrid,
                                     onLoadMore = viewModel::loadMoreDiscovery,
                                     onLike = viewModel::toggleGridLike,
                                     onProfile = { action ->
