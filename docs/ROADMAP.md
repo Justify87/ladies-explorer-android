@@ -53,7 +53,7 @@ Nächster Schritt: [M06.1a](#m061a--begegnungsbasis). M06 und M07 jeweils erst n
 
 **Status:** PLANNED · **Abhängigkeit:** M06.1a/b abgeschlossen.
 
-**Umfang:** Personenbezogene manuelle Preislisten mit Datum, Preispositionen und optionaler Dauer/Bezeichnung. Native Read-/Create-/Update-/Delete-API, ein gemeinsamer kleiner Editor sowie bedarfsorientierte aktuelle/historische Anzeige im vorhandenen Profil. Bestehende Tabellen nutzen; kein Preis-Dashboard, kein automatisches Extrahieren oder Kopieren aus Begegnungen.
+**Umfang:** Personenbezogene manuelle Preislisten mit Datum, Preispositionen und optionaler Dauer/Bezeichnung. Native Read-/Create-/Update-/Delete-API und Profilintegration in einem vertikalen Schritt: ein gemeinsamer kleiner Editor sowie bedarfsorientierte aktuelle/historische Anzeige. Bestehende Tabellen nutzen; kein Preis-Dashboard, kein automatisches Extrahieren oder Kopieren aus Begegnungen.
 
 **Akzeptanz:**
 - Neue Liste als eigener historischer Eintrag; Bearbeiten ist ausdrückliche Korrektur, Löschen erfordert Bestätigung.
@@ -91,7 +91,7 @@ Nächster Schritt: [M06.1a](#m061a--begegnungsbasis). M06 und M07 jeweils erst n
 
 **Akzeptanz:** Geprüfte Ketten erfüllen PRODUCT, ARCHITECTURE und DESIGN. Nachgewiesene abnahmerelevante Fehler im bestätigten Scope sind behoben und gezielt regressionsgesichert; keine parallele Implementierungsroute oder unnötige Testdopplung. Begründete Nichtänderung zulässig.
 
-**Prüfung und Abschluss:** Tatsächliche Aufrufer und Tests nach G06 sind maßgeblich; bestehende Rust-, JVM-, Android-Integrations- und Architekturregressionen nutzen. Vollständiges CI-Gate (Rust-/JVM-Tests, native DB-Regression, Clippy, Android-Build/Lint, Quell-/APK-Architekturprüfungen und Instrumentierungs-APK) für identischen relevanten Code-/Buildstand belegen oder regulär ausführen; reiner Docs-Gate reicht nicht. Geräteprüfungen gemäß [Merge-Regel](#pflege); PR/Commit/CI und Befunde verlinken. Abschluss mit Merge.
+**Prüfung und Abschluss:** Tatsächliche Aufrufer und Tests nach G06 sind maßgeblich; bestehende Rust-, JVM-, Android-Integrations- und Architekturregressionen nutzen. Orientierung: SearchRun, SwipeDeck/SwipeProfileWindow, ProfileProjection, StandaloneProfileOperations, SavedPeople/SavedSearch und native Merge-Regressionen. Vollständiges CI-Gate (Rust-/JVM-Tests, native DB-Regression, Clippy, Android-Build/Lint, Quell-/APK-Architekturprüfungen und Instrumentierungs-APK) für identischen relevanten Code-/Buildstand belegen oder regulär ausführen; reiner Docs-Gate reicht nicht. Geräteprüfungen gemäß [Merge-Regel](#pflege); PR/Commit/CI und Befunde verlinken. Abschluss mit Merge.
 
 #### M07.3 — Nutzungsreife und Abschluss (G07)
 
