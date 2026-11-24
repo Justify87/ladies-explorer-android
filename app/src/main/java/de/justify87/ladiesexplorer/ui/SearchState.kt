@@ -7,6 +7,39 @@ import de.justify87.ladiesexplorer.core.SearchRequest
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal data class SearchPreviewTarget(val draft: SearchDraft, val editorSession: Long?)
+
+internal fun searchPreviewTarget(search: SearchUiState, saved: SavedSearchUiState): SearchPreviewTarget? {
+    if (search.loading || search.profileOpen || saved.blockingNavigation) return null
+    val editor = saved.editor
+    val draft = when (saved.pane) {
+        SearchPane.Filters -> SearchDraft.from(search)
+        SearchPane.SavedEditor -> editor?.draft ?: return null
+        else -> return null
+    }
+    return SearchPreviewTarget(
+        draft.copy(city = draft.city.trim(), maxPages = 1u, local = defaultLocalVisibility()),
+        editor?.session,
+    )
+}
+
+// Every started filter view has a distinct lease, even for an identical request.
+internal class SearchPreviewLease(val target: SearchPreviewTarget)
+
+internal class SearchPreviewOwner {
+    var current: SearchPreviewLease? = null
+        private set
+
+    fun replace(lease: SearchPreviewLease) { current = lease }
+    fun accepts(lease: SearchPreviewLease) = current === lease
+    fun release(lease: SearchPreviewLease): Boolean {
+        if (!accepts(lease)) return false
+        clear()
+        return true
+    }
+    fun clear() { current = null }
+}
+
 internal data class SearchDraftEditAction(val generation: Long, val paneGeneration: Long)
 
 internal fun searchDraftEditMatches(
