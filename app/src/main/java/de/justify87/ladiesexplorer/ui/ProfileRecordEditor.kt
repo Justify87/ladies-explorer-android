@@ -1,6 +1,15 @@
 package de.justify87.ladiesexplorer.ui
 
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import java.time.ZoneId
 
@@ -148,6 +157,80 @@ internal open class ProfileRecordEditor<R, V, D, S>(
 
     fun failed(writing: ProfileRecordEdit<R, D>, message: String) {
         if (edit === writing) edit = writing.copy(writing = false, error = message)
+    }
+}
+
+internal fun optionalCents(amount: String): Long? {
+    if (amount.isBlank()) return null
+    val normalized = amount.trim().replace(',', '.')
+    require(Regex("[0-9]+(\\.[0-9]{1,2})?").matches(normalized)) {
+        "Betrag muss in EUR mit höchstens zwei Nachkommastellen angegeben werden."
+    }
+    return normalized.toBigDecimal().movePointRight(2).longValueExact()
+}
+
+internal fun euro(cents: Long): String =
+    java.math.BigDecimal.valueOf(cents, 2).toPlainString().replace('.', ',')
+
+@Composable
+internal fun <R, V, D, S> ProfileRecordDialog(
+    editor: ProfileRecordEditor<R, V, D, S>,
+    newTitle: String,
+    editTitle: String,
+    deleteTitle: String,
+    deleteMessage: String,
+    fields: @Composable (ProfileRecordEdit<R, D>, Boolean) -> Unit,
+) {
+    val edit = editor.edit ?: return
+    val enabled = editor.canEdit(edit)
+    if (edit.discardRequested) {
+        AlertDialog(onDismissRequest = { editor.keep(edit) }, title = { Text("Entwurf verwerfen?") },
+            text = { Text("Ungespeicherte Änderungen gehen verloren.") },
+            confirmButton = { TextButton(onClick = { editor.discard(edit) }) { Text("Verwerfen") } },
+            dismissButton = { TextButton(onClick = { editor.keep(edit) }) { Text("Weiter bearbeiten") } })
+        return
+    }
+    AlertDialog(
+        onDismissRequest = { editor.requestDismiss(edit) },
+        title = { Text(if (edit.deleting) deleteTitle else if (edit.expected == null) newTitle else editTitle) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (edit.deleting) Text(deleteMessage)
+                else {
+                    fields(edit, enabled)
+                }
+                edit.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (edit.writing) CircularProgressIndicator(Modifier.size(24.dp))
+                else if (!enabled) {
+                    Text("Der ursprüngliche Profilkontext ist nicht mehr aktiv. Der Entwurf bleibt erhalten.")
+                    if (editor.canResume(edit)) TextButton(onClick = { editor.resume(edit) }) { Text("Im aktuellen Profil fortsetzen") }
+                }
+            }
+        },
+        confirmButton = { TextButton(enabled = enabled, onClick = { editor.save(edit) }) { Text(if (edit.deleting) "Löschen" else "Speichern") } },
+        dismissButton = { TextButton(enabled = !edit.writing, onClick = { editor.requestDismiss(edit) }) { Text("Abbrechen") } },
+    )
+}
+
+@Composable
+internal fun ProfileEditorField(
+    value: String, label: String, enabled: Boolean,
+    keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit,
+) {
+    OutlinedTextField(value, onChange, enabled = enabled, label = { Text(label) },
+        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+        modifier = Modifier.fillMaxWidth())
+}
+
+@Composable
+internal fun ProfileListingAssociation(
+    listingId: Long?,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(listingId != null, onChange, enabled = enabled)
+        Text(if (listingId == null) "Anzeige zuordnen" else "Anzeige #$listingId zugeordnet")
     }
 }
 
