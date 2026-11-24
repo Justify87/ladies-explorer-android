@@ -25,7 +25,7 @@ Vor Änderungen die jeweils betroffenen Produkt-, Architektur- und Designverträ
 
 ## Arbeitszyklus
 
-1. Betroffene Aufgabe (IDs soweit relevant), beobachtbare Kriterien, Code/Testanker und Aufrufer bestimmen. Konkurrierende Änderungen am selben State/API seriell bearbeiten.
+1. Je Arbeitskontext eine Aufgabe. Betroffene Aufgabe (IDs soweit relevant), beobachtbare Kriterien, Code/Testanker und Aufrufer bestimmen. Konkurrierende Änderungen am selben State/API seriell bearbeiten.
 2. Ursache und relevante Folgeeffekte beheben; keine spekulativen Abstraktionen, Abhängigkeiten oder dauerhaften Parallelpfade. Betroffene Schichtengrenzen und Fachverträge erhalten.
 3. Gezielte Tests und vertikale Prüfung der betroffenen Schichten; Fehler, Cancel, Back, Lifecycle und Integrität nach Risiko. Vertragsänderungen explizit reviewen, positive/negative Regressionen. Vor Abschluss Korrektheit, Notwendigkeit und Vereinfachungspotenzial prüfen.
 4. PR mit Aufgabenbezug, Ausgangscommit, Änderungen, konkreten Test-/Reviewbelegen, Resten und Scope-Abweichungen. Status ausschließlich im Arbeitsregister und geänderte Verträge im selben PR pflegen. Geräteprüfaufgaben nach der [Merge-Regel](docs/ROADMAP.md#pflege) abschließen; keine separate Geräteabnahme.
