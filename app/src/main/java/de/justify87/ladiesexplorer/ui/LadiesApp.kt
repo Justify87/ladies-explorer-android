@@ -252,9 +252,12 @@ fun LadiesApp(
                             ?: "Gespeicherte Ergebnisse"
                         savedEditorOpen -> "Suche bearbeiten"
                         savedOverviewOpen -> "Gespeicherte Suchen"
+                        route.root == RootDestination.Discover -> "Entdecken"
                         else -> "Ladies"
                     },
-                    subtitle = route.root.title.takeIf { !nested && route.root != RootDestination.Discover },
+                    subtitle = if (route.root == RootDestination.Discover) {
+                        if (search.response == null) "Lokaler Bestand" else "Aktive Suche"
+                    } else route.root.title.takeIf { !nested },
                     onBack = if (nested) ({ back() }) else null,
                     backEnabled = saved.operation != SavedOperation.Write,
                 ) {
@@ -263,7 +266,15 @@ fun LadiesApp(
                             enabled = !saved.blockingNavigation && !viewModel.hasProfileEditor) {
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
                         }
-                    } else if (route.root == RootDestination.Search && pane == SearchPane.Filters) {
+                    }
+                    if (route.root == RootDestination.Discover && route.discovery != DiscoverMode.Swipe) {
+                        val availabilityAction = search.gridAvailabilityAction(discovery.actionGeneration, actionSurface)
+                        AvailabilityQuickChoice(search.headerAvailability(),
+                            gridAvailabilityMatches(discovery, search, availabilityAction) &&
+                                !home.loading && !saved.busy && !map.resolving,
+                            availabilityAction, { viewModel.runGridAvailability(availabilityAction, it) })
+                    }
+                    if (route.root == RootDestination.Search && pane == SearchPane.Filters) {
                         ShellIconButton(onClick = { viewModel.savedSearch.open(renderedPaneAction) },
                             enabled = !search.loading && !saved.blockingNavigation && !home.loading && !discovery.busy) {
                             BadgedBox(badge = { if (saved.searches.any { it.unreadNewResults }) Badge() }) {
@@ -370,21 +381,10 @@ fun LadiesApp(
                                         }
                                     },
                                     chrome = {
-                                        val availabilityAction = search.gridAvailabilityAction(discovery.actionGeneration)
-                                        val run = search.response
-                                        DiscoveryChrome(
-                                            summary = run?.let { "${it.city} · ${it.requestedRadiusKm} km" } ?: "Lokaler Bestand · neutral",
-                                            availability = search.headerAvailability(),
-                                            availabilityEnabled = gridAvailabilityMatches(discovery, search, availabilityAction) && !home.loading && !saved.busy,
-                                            owner = availabilityAction,
-                                            active = DiscoverMode.Grid,
-                                            onMode = { mode ->
-                                                viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
-                                                route = route.select(mode)
-                                            },
-                                            onAvailability = { viewModel.runGridAvailability(availabilityAction, it) },
-                                            modifier = Modifier,
-                                        )
+                                        DiscoverModeSwitcher(DiscoverMode.Grid, { mode ->
+                                            viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                                            route = route.select(mode)
+                                        }, Modifier)
                                     },
                                     onCancelSearch = { viewModel.cancelActiveSearch(cancelAction) },
                                     modifier = Modifier.weight(1f),
@@ -396,8 +396,6 @@ fun LadiesApp(
                                 onRefresh = viewModel::refreshRenderedMap,
                                 onResolve = viewModel::resolveMapLocations,
                                 onCancel = viewModel::cancelRenderedMapResolution,
-                                summary = search.response?.let { "${it.city} · ${it.requestedRadiusKm} km · Aktive Suche" }
-                                    ?: "Lokaler Bestand · neutral",
                                 membershipCurrent = map.membership != null &&
                                     map.membership == currentMapMembership(discovery, search),
                                 generation = discovery.actionGeneration,
