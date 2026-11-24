@@ -327,6 +327,25 @@ class SavedSearchPaneTest {
         assertFalse(c.state.value.searches.single().unreadNewResults)
     }
 
+    @Test(timeout = 15_000) fun discardedWindowReadReconcilesOverviewAfterBack() = runBlocking {
+        val fake = Fake(info(unread = true))
+        val c = controller(this, fake)
+        c.open(paneAction(c)); idle(c)
+        c.openResults(row(c)); idle(c)
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        fake.onRead = { started.complete(Unit); finish.awaitSignal() }
+        fake.list = listOf(info(unread = true, revision = 2L))
+        c.refreshProjection(); started.awaitSignal()
+        c.back()
+        assertNull(c.state.value.result)
+        finish.complete(Unit); idle(c)
+        assertEquals(2, fake.listReads)
+        assertEquals(2L, ack(c).revision)
+        assertEquals(listOf(100u, 100u), fake.windows)
+        assertEquals(0, fake.acknowledgements)
+    }
+
     @Test(timeout = 15_000) fun dirtyOverviewIsRefreshedWhenLeavingEditorWithoutChangingDraft() = runBlocking {
         val fake = Fake(info())
         val c = controller(this, fake)

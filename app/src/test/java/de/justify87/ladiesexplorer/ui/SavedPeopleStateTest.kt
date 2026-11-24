@@ -21,7 +21,7 @@ class SavedPeopleStateTest {
         val recent = seen.copy(recent = true, latestChangeAt = "2026-11-22T09:00:00Z")
         assertEquals(listOf("Gesehen und geändert: 2026-11-22"), savedPersonActivityLabels(recent))
         assertEquals(listOf("Zuletzt gesehen: 2026-11-22", "Geändert: 2026-11-21",
-            "Anzeigenstatus bestätigt: 2026-11-24 10:15 UTC"),
+            "Letzte Statusbeobachtung: 2026-11-24 10:15 UTC"),
             savedPersonActivityLabels(recent.copy(latestChangeAt = "2026-11-21T09:00:00Z",
                 statusCheckedAt = "2026-11-24T10:15:00Z")))
         assertEquals(savedPersonActivityLabels(seen), savedPersonActivityLabels(recent.copy(latestChangeAt = null)))

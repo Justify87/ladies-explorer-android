@@ -199,7 +199,7 @@ internal fun savedPersonActivityLabels(row: SavedPersonRow): List<String> {
             changed?.let { add("Geändert: $it") }
         }
         row.statusCheckedAt?.let {
-            add("Anzeigenstatus bestätigt: ${it.take(16).replace('T', ' ')} UTC")
+            add("Letzte Statusbeobachtung: ${it.take(16).replace('T', ' ')} UTC")
         }
     }
 }
