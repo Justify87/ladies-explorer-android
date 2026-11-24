@@ -282,6 +282,7 @@ Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Op
 - Ein reiner erfolgreicher Swipe invalidiert nicht pauschal andere Personenprofile. Tatsächliche Quell-/Identitätsänderungen oder Fehler widerrufen betroffene Slots.
 
 **Kontext- und Lifecycle-Invarianten:**
+- Standalone-Back bindet die sichtbare Profil-Session, auch während Loading oder Mutation. UI-Retry bindet zusätzlich Listing, dargestellte lokale/Online-Berechtigung und Retry-Versuch; der Beginn widerruft alte Retry-Callbacks. Automatische Wiederherstellung nach Lifecycle-Wechsel bleibt lokal, unabhängig von UI-Retry. Native Drain-Grenze bleibt erhalten.
 - Archivierung und bestätigter Merge koordinieren Cancel/Drain und aktuellen Besitzer; Integrität durch native Transaktionen.
 - Skip/Undo/Reset/Replay nur im gültigen Deck-/Owner-Kontext. Skip-Undo ohne SQLite-Write; alte Schritte nach Merge nicht auf neue Owner übertragen. Reset/Replay widerrufen alte Callback-/Step-Generationen.
 - Kontakt-, Medien-, Menü- und Vergleichsaktionen bleiben an die gerenderte Owner-/Session gebunden. Notizentwürfe nicht still umdeuten oder rebasen; Snapshotvergleich prüft das gültige Paar, alte Dialoge invalidieren.
