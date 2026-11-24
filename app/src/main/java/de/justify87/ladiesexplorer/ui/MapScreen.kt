@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -69,13 +68,17 @@ internal fun mapSelection(points: List<MapProfile>, selectedListingId: Long?): L
     return points.filter { it.latitude == active.latitude && it.longitude == active.longitude }
 }
 
+internal fun mapSelectedProfile(points: List<MapProfile>, listingId: Long?, ownerId: Long?): MapProfile? =
+    points.firstOrNull { it.listingId == listingId && it.personId == ownerId }
+
 @Composable
 internal fun MapScreen(
     state: MapUiState,
     onRefresh: (MapControlAction) -> Unit,
     onResolve: (MapControlAction) -> Unit,
     onCancel: (MapControlAction) -> Unit,
-    onFavoritesOnly: (MapControlAction, Boolean) -> Unit,
+    summary: String,
+    membershipCurrent: Boolean,
     generation: Long,
     onProfile: (MapProfileOpenAction) -> Unit,
     onMode: (DiscoverMode) -> Unit,
@@ -83,16 +86,18 @@ internal fun MapScreen(
     modifier: Modifier = Modifier,
 ) {
     var selectedListingId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedOwnerId by rememberSaveable { mutableStateOf<Long?>(null) }
     var camera by rememberSaveable { mutableStateOf<CameraPosition?>(null) }
+    var cameraReader by remember { mutableStateOf<(() -> CameraPosition?)?>(null) }
     var mapAttempt by remember { mutableIntStateOf(0) }
     var tileState by remember { mutableStateOf(MapTileState.Loading) }
     var picker by remember { mutableStateOf<MapPickerScope?>(null) }
     var focusRequest by remember { mutableStateOf<Long?>(null) }
     val controls = MapControlAction(state, generation)
-    val overview = state.overview
+    val overview = state.overview.takeIf { membershipCurrent }
     val points = overview?.profiles.orEmpty()
-    val active = points.firstOrNull { it.listingId == selectedListingId }
-    val selection = remember(points, selectedListingId) { mapSelection(points, selectedListingId) }
+    val active = mapSelectedProfile(points, selectedListingId, selectedOwnerId)
+    val selection = remember(points, active?.listingId) { mapSelection(points, active?.listingId) }
     val latestPoints by rememberUpdatedState(points)
     val detailsScroll = rememberScrollState()
     LaunchedEffect(selectedListingId, state.resolving, tileState == MapTileState.Failed) {
@@ -108,6 +113,7 @@ internal fun MapScreen(
         // A temporary null overview during reload is not proof that the selection disappeared.
         if (overview != null && active == null) {
             selectedListingId = null
+            selectedOwnerId = null
             focusRequest = null
             if (picker == MapPickerScope.Location) picker = null
         }
@@ -123,17 +129,7 @@ internal fun MapScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             DiscoveryContextStrip {
-                Text("Lokaler Bestand", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-                Row(
-                    Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()
-                        .toggleable(value = state.favoritesOnly, role = Role.Switch,
-                            onValueChange = { onFavoritesOnly(controls, it) }).padding(end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text("Nur Favoriten", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-                    Switch(checked = state.favoritesOnly, onCheckedChange = null)
-                }
+                Text(summary, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
             }
             DiscoverModeSwitcher(DiscoverMode.Map, onMode, Modifier)
             Surface(
@@ -145,12 +141,14 @@ internal fun MapScreen(
                 key(mapAttempt, marker, markerInk, selectionRing) {
                     NativeProfileMap(
                         points = points,
-                        selectedListingId = selectedListingId,
+                        selectedListingId = active?.listingId,
                         savedCamera = camera,
                         onCameraChanged = { camera = it },
+                        onCameraReader = { cameraReader = it },
                         onSelect = { id ->
-                            if (latestPoints.any { it.listingId == id }) {
-                                selectedListingId = id
+                            latestPoints.firstOrNull { it.listingId == id }?.let { profile ->
+                                selectedListingId = profile.listingId
+                                selectedOwnerId = profile.personId
                                 focusRequest = null
                             }
                         },
@@ -165,20 +163,23 @@ internal fun MapScreen(
                 }
             }
             MapDetails(
-                state = state,
+                state = if (membershipCurrent) state else state.copy(overview = null, loading = true),
                 tileState = tileState,
                 active = active,
                 selectionCount = selection.size,
-                profileEnabled = profileEnabled && !state.loading,
+                profileEnabled = membershipCurrent && profileEnabled && !state.loading,
                 onRefresh = { onRefresh(controls) },
                 onResolve = { onResolve(controls) },
                 onCancel = { onCancel(controls) },
                 onRetryTiles = { tileState = MapTileState.Loading; mapAttempt++ },
                 onPickAll = { picker = MapPickerScope.All },
                 onPickLocation = { picker = MapPickerScope.Location },
-                onClear = { selectedListingId = null; focusRequest = null },
+                onClear = { selectedListingId = null; selectedOwnerId = null; focusRequest = null },
                 onOpen = { person ->
-                    if (overview != null) onProfile(MapProfileOpenAction(overview, person, state.favoritesOnly, generation))
+                    if (overview != null) {
+                        cameraReader?.invoke()?.let { camera = it }
+                        onProfile(MapProfileOpenAction(overview, person, generation))
+                    }
                 },
                 modifier = Modifier.fillMaxWidth().then(
                     if (compact) Modifier else Modifier.heightIn(max = availableHeight * .48f)
@@ -198,6 +199,7 @@ internal fun MapScreen(
             onSelect = { person ->
                 if (latestPoints.any { it == person }) {
                     selectedListingId = person.listingId
+                    selectedOwnerId = person.personId
                     focusRequest = person.listingId
                 }
                 picker = null
@@ -226,7 +228,7 @@ internal fun MapDetails(
     val overview = state.overview
     val scheme = MaterialTheme.colorScheme
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Ungefähre Ortslagen · unabhängig von der Suche",
+        Text("Ungefähre Ortslagen · gemeinsame Ergebnismenge",
             style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
         if (overview != null) {
             Text("${overview.profiles.size} von ${overview.totalProfiles} Profilen kartiert · ${overview.unlocatedProfiles} ohne Position",
@@ -263,7 +265,7 @@ internal fun MapDetails(
         if (overview != null && overview.profiles.isEmpty() && !state.loading) {
             Text(
                 if (overview.pendingLocations > 0u) "Noch keine Koordinaten gespeichert. Standorte ausdrücklich auflösen."
-                else "Keine kartierbaren Profile. Suche zuerst nach Profilen oder deaktiviere den Favoritenfilter.",
+                else "Keine kartierbaren Profile in der aktuellen Ergebnismenge.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -380,6 +382,7 @@ private fun NativeProfileMap(
     selectedListingId: Long?,
     savedCamera: CameraPosition?,
     onCameraChanged: (CameraPosition) -> Unit,
+    onCameraReader: (() -> CameraPosition?) -> Unit,
     onSelect: (Long) -> Unit,
     focusRequest: Long?,
     onFocusConsumed: () -> Unit,
@@ -394,6 +397,7 @@ private fun NativeProfileMap(
     val currentSelection by rememberUpdatedState(selectedListingId)
     val currentCamera by rememberUpdatedState(savedCamera)
     val saveCamera by rememberUpdatedState(onCameraChanged)
+    val publishCameraReader by rememberUpdatedState(onCameraReader)
     val currentSelect by rememberUpdatedState(onSelect)
     val publishTileState by rememberUpdatedState(onTileState)
     val consumeFocus by rememberUpdatedState(onFocusConsumed)
@@ -460,6 +464,7 @@ private fun NativeProfileMap(
                                     ))
                                 }
                                 saveCamera(ready.cameraPosition)
+                                publishCameraReader { if (mapView.released) null else ready.cameraPosition }
                                 ready.addOnCameraIdleListener {
                                     if (!mapView.released) saveCamera(ready.cameraPosition)
                                 }

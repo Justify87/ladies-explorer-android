@@ -47,6 +47,7 @@ data class SavedStatusProgress(
 
 data class DiscoverUiState(
     val cards: List<DiscoveryCard> = emptyList(),
+    val localCards: List<DiscoveryCard> = emptyList(),
     val savedKind: SavedPersonKind = SavedPersonKind.FAVORITE,
     val savedSort: SavedPersonSort = SavedPersonSort.DATE,
     val savedPage: SavedPersonPage? = null,
@@ -84,7 +85,7 @@ data class MapUiState(
     val resolving: Boolean = false,
     val cancelling: Boolean = false,
     val failedLookups: UInt = 0u,
-    val favoritesOnly: Boolean = false,
+    val membership: MapMembership? = null,
     val error: String? = null,
     val actionGeneration: Long = 0L,
 )
@@ -199,6 +200,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _mapState = MutableStateFlow(MapUiState())
     val mapState: StateFlow<MapUiState> = _mapState
     private var mapEpoch = 0L
+    private var mapVisible = false
     private var mapControl: RequestControl? = null
     private var savedStatusControl: RequestControl? = null
     private var savedStatusAttemptId = 0L
@@ -299,10 +301,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         mutateDiscovery("Favorit konnte nicht geändert werden", write = {
             core.setListingFavorite(token.listingId, token.ownerId, token.favorite, !token.favorite)
         }, afterWrite = {
-            refreshMap()
             if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
         }, recoverWriteFailure = {
-            refreshMap()
             if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
         }, onFailure = { message ->
             if (token is DetailIdentityToken) _searchUiState.update {
@@ -360,7 +360,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private val swipeInvalidation by lazy {
-        SwipeProjectionInvalidation(savedSearch::refreshProjection, ::refreshDiscovery, ::refreshMap)
+        SwipeProjectionInvalidation(savedSearch::refreshProjection, ::refreshDiscovery, ::ensureMap)
     }
 
     private val profileOperations by lazy {
@@ -375,7 +375,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 epoch = { discoveryEpoch }, nextEpoch = { ++discoveryEpoch },
                 pending = { swipeInvalidation.pending }, projectDiscovery = ::projectDiscovery,
                 discovery = ::refreshDiscovery, savedSearch = savedSearch::refreshProjection,
-                map = ::refreshMap, home = ::refresh,
+                map = ::ensureMap, home = ::refresh,
                 admitSwipe = { admittedSwipe(it) != null },
                 beginMerge = { invalidateSwipeActions() },
                 mergeCommitted = ::onIdentityMergeCommitted,
@@ -538,7 +538,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun refreshAfterSourceSearch(invalidateProfileWindow: Boolean = true) {
         if (invalidateProfileWindow && swipeVisible) invalidateSwipeProfilesLocally()
         refreshDiscovery()
-        refreshMap()
         refresh()
         refreshFilterCatalog()
     }
@@ -572,12 +571,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 swipeSession.reset()
                 discoveryEpoch++
                 _discoverState.update {
-                    it.copy(cards = swipeSession.queue(cards, active = true), canUndoSwipe = false, swipeRestore = null,
+                    it.copy(cards = swipeSession.queue(cards, active = true), localCards = emptyList(), canUndoSwipe = false, swipeRestore = null,
                         swipePresentationGeneration = it.swipePresentationGeneration + 1, nextCursor = null, activeRunId = result.searchRunId,
                         activeVisibleCount = cards.size, loading = false, loadingMore = false,
                         savedLoadingMore = false, savedRecentLoadingMore = false, error = null, actionGeneration = it.actionGeneration + 1)
                 }
                 _searchUiState.update { it.acceptRun(result, cards) }
+                refreshMap()
                 acceptedRun = true
             } catch (cancellation: CancellationException) {
                 if (searchOwner.accepts(ticket)) _searchUiState.update { it.endRun() }
@@ -605,26 +605,54 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         mapControlMatches(_mapState.value, _discoverState.value, _searchUiState.value, action, control)
 
     internal fun refreshRenderedMap(action: MapControlAction) {
-        if (admitsMapControl(action, MapControl.REFRESH)) refreshMap()
+        if (!admitsMapControl(action, MapControl.REFRESH)) return
+        if (_discoverState.value.error != null) refreshDiscovery() else refreshMap()
     }
 
-    private fun refreshMap() {
-        if (mapControl != null) return // completion refreshes from the actual database
+    private fun mapMembership(): MapMembership? =
+        currentMapMembership(_discoverState.value, _searchUiState.value)
+
+    private fun ensureMap() {
+        val membership = mapMembership() ?: return
+        val state = _mapState.value
+        if (state.membership == membership && (state.overview != null || state.loading || state.error != null)) return
+        refreshMap()
+    }
+
+    private fun refreshMap() = readMap()
+
+    private fun readMap(failureMessage: String? = null, failedLookups: UInt = 0u) {
+        if (!mapVisible && _mapState.value.membership == null) return
+        val membership = mapMembership() ?: return
+        if (mapControl != null) {
+            if (_mapState.value.membership != membership) {
+                ++mapEpoch
+                cancelMapResolution()
+                _mapState.update { it.copy(membership = membership, overview = null, loading = false,
+                    error = null, failedLookups = 0u, actionGeneration = it.actionGeneration + 1) }
+            }
+            return
+        }
         val epoch = ++mapEpoch
-        val favoritesOnly = _mapState.value.favoritesOnly
-        _mapState.update { it.copy(loading = true, error = null, failedLookups = 0u, actionGeneration = it.actionGeneration + 1) }
+        val discoveryError = _discoverState.value.error
+        if (discoveryError != null) {
+            _mapState.update { it.copy(membership = membership, overview = null, loading = false,
+                error = discoveryError, failedLookups = 0u, actionGeneration = it.actionGeneration + 1) }
+            return
+        }
+        _mapState.update {
+            it.copy(membership = membership, overview = it.overview.takeIf { _ -> it.membership == membership },
+                loading = true, error = null, failedLookups = 0u, actionGeneration = it.actionGeneration + 1)
+        }
         viewModelScope.launch {
-            projectMapOverview(_mapState, { epoch == mapEpoch }, { core.mapOverview(favoritesOnly) }) { state, overview ->
-                state.copy(overview = overview, loading = false)
+            projectMapOverview(_mapState, { epoch == mapEpoch && mapMembership() == membership }, {
+                core.mapOverview(membership.listingIds, membership.runId).also {
+                    check(membership.matches(it)) { "Kartenmitgliedschaft hat sich geändert" }
+                }
+            }) { state, overview ->
+                state.copy(overview = overview, loading = false, failedLookups = failedLookups, error = failureMessage)
             }
         }
-    }
-
-    internal fun setMapFavoritesOnly(action: MapControlAction, value: Boolean) {
-        if (!admitsMapControl(action, MapControl.FILTER) || _mapState.value.favoritesOnly == value) return
-        cancelMapResolution()
-        _mapState.update { it.copy(favoritesOnly = value, overview = null, failedLookups = 0u, actionGeneration = it.actionGeneration + 1) }
-        refreshMap()
     }
 
     internal fun cancelRenderedMapResolution(action: MapControlAction) {
@@ -640,7 +668,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal fun resolveMapLocations(action: MapControlAction) {
         if (!admitsMapControl(action, MapControl.RESOLVE) || mapControl != null) return
         val control = RequestControl()
-        val favoritesOnly = _mapState.value.favoritesOnly
+        val membership = _mapState.value.membership ?: return
         mapControl = control
         _mapState.update { it.copy(resolving = true, cancelling = false, error = null, failedLookups = 0u,
             actionGeneration = it.actionGeneration + 1) }
@@ -648,7 +676,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var failureMessage: String? = null
             var failedLookups = 0u
             try {
-                failedLookups = core.resolveMapLocations(favoritesOnly, control)
+                failedLookups = core.resolveMapLocations(membership.listingIds, membership.runId, control)
             } catch (cancelled: CancellationException) {
                 control.cancel()
                 throw cancelled
@@ -662,12 +690,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _mapState.update { it.copy(resolving = false, cancelling = false) }
                 }
             }
-            // Cancellation may leave committed results; re-read local state.
-            val epoch = ++mapEpoch
-            _mapState.update { it.copy(loading = true, actionGeneration = it.actionGeneration + 1) }
-            projectMapOverview(_mapState, { epoch == mapEpoch }, { core.mapOverview(_mapState.value.favoritesOnly) }) { state, latest ->
-                state.copy(overview = latest, failedLookups = failedLookups, loading = false, error = failureMessage)
-            }
+            // A cancelled resolution may have committed cache entries, but never publish an old membership.
+            if (mapMembership() == membership) readMap(failureMessage, failedLookups) else refreshMap()
         }
     }
 
@@ -675,7 +699,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val active = _searchUiState.value.response
         if (active == null) {
             return DiscoveryProjection(null, emptyList(), readDiscoveryWindow(localWindow) { cursor ->
-                core.discoveryCards(cursor = cursor, excludedPeople = swipeSession.excludedPeople)
+                core.discoveryCards(cursor = cursor)
             })
         }
         val visible = core.activeSearchCards(active.searchRunId, active.local)
@@ -711,7 +735,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshDiscovery()
     }
 
-    private suspend fun projectDiscovery(epoch: Long): Boolean = discoveryPublisher.project(epoch)
+    private suspend fun projectDiscovery(epoch: Long): Boolean {
+        val result = discoveryPublisher.project(epoch)
+        if (epoch == discoveryEpoch) refreshMap()
+        return result
+    }
 
     fun markSwipeSnapshotChanged(oldWindow: Boolean) {
         // A late completion revokes replacement data without recursively cancelling its native work.
@@ -723,8 +751,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         swipeInvalidation.sourceCompleted()
     }
 
-    fun setDiscoveryProjectionVisibility(listVisible: Boolean, mapVisible: Boolean) =
+    fun setDiscoveryProjectionVisibility(listVisible: Boolean, mapVisible: Boolean) {
+        this.mapVisible = mapVisible
         swipeInvalidation.setVisibility(listVisible, mapVisible)
+    }
 
     fun refreshDiscovery() = refreshDiscoveryAfter(null)
 
@@ -769,14 +799,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             try {
-                val page = core.discoveryCards(cursor = cursor, excludedPeople = swipeSession.excludedPeople)
+                val page = core.discoveryCards(cursor = cursor)
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
-                        val cards = swipeSession.queue(it.cards + page.cards, active = false)
-                        localWindow = maxOf(localWindow, cards.size)
-                        it.copy(cards = cards, nextCursor = page.nextCursor, loadingMore = false,
+                        val membership = (it.localCards + page.cards).distinctBy { card -> card.personId }
+                        val cards = swipeSession.queue(membership, active = false)
+                        localWindow = maxOf(localWindow, membership.size)
+                        it.copy(cards = cards, localCards = membership, nextCursor = page.nextCursor, loadingMore = false,
                             actionGeneration = it.actionGeneration + 1)
                     }
+                    refreshMap()
                 }
             } catch (cancellation: CancellationException) {
                 if (epoch == discoveryEpoch) _discoverState.update { it.copy(loadingMore = false) }
@@ -861,7 +893,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         invalidateSwipeActions()
         swipeSession.visit(SwipeStep(card.listingId, card.personId, presentation = position))
         _discoverState.update {
-            it.copy(cards = swipeSession.queue(it.cards, active = it.activeRunId != null), canUndoSwipe = true, swipeRestore = null)
+            it.copy(cards = swipeSession.queue(discoveryMembership(it, _searchUiState.value), active = it.activeRunId != null),
+                canUndoSwipe = true, swipeRestore = null)
         }
         val state = _discoverState.value
         if (state.cards.size < 10) state.nextCursor?.let(::loadMoreLocalDiscovery)
@@ -1123,9 +1156,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
-    internal fun openGridProfile(action: GridLikeAction) {
-        if (!gridActionMatches(_discoverState.value, _searchUiState.value, action)) return
-        loadProfile(action.card.listingId, action.card.personId)
+    internal fun openGridProfile(action: GridLikeAction): Boolean {
+        if (!gridActionMatches(_discoverState.value, _searchUiState.value, action)) return false
+        return openDiscoverySwipe(action.card.listingId, action.card.personId)
+    }
+
+    private fun openDiscoverySwipe(listingId: Long, ownerId: Long): Boolean {
+        val state = _discoverState.value
+        val search = _searchUiState.value
+        if (hasProfileEditor || state.busy || state.loading || search.loading || search.actionBusy ||
+            search.profileOpen || savedSearch.state.value.blockingNavigation ||
+            state.activeRunId != search.response?.searchRunId) return false
+        val membership = discoveryMembership(state, search)
+        if (!swipeSession.focus(membership, listingId, ownerId)) return false
+        setProfileActionSurface(ProfileActionSurface.NONE)
+        invalidateSwipeActions()
+        _discoverState.update {
+            val queue = swipeSession.queue(membership, active = state.activeRunId != null)
+            it.copy(cards = queue, swipeRestore = null,
+                swipePresentationGeneration = it.swipePresentationGeneration + 1,
+                localProfileReloadIds = it.localProfileReloadIds + queue.take(3).map { card -> card.listingId })
+        }
+        return true
     }
 
     internal fun openSavedPersonProfile(action: SavedPersonAction) {
@@ -1133,9 +1185,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         action.row.card?.let { loadProfile(it.listingId, action.row.personId) }
     }
 
-    internal fun openMapProfile(action: MapProfileOpenAction) {
-        if (!mapProfileOpenMatches(_mapState.value, _discoverState.value, action)) return
-        loadProfile(action.profile.listingId, action.profile.personId)
+    internal fun openMapProfile(action: MapProfileOpenAction): Boolean {
+        if (!mapProfileOpenMatches(_mapState.value, _discoverState.value, _searchUiState.value, action)) return false
+        return openDiscoverySwipe(action.profile.listingId, action.profile.personId)
     }
 
     internal fun openSearchResultProfile(action: SearchResultOpenAction) {

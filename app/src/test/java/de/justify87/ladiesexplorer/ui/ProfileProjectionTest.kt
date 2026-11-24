@@ -34,7 +34,7 @@ class ProfileProjectionTest {
         assertEquals(listOf("saved", "saved", "saved", "discovery"), calls)
         policy.setVisibility(false, true)
         policy.sourceCompleted()
-        assertEquals(listOf("saved", "saved", "saved", "discovery", "map", "saved", "map"), calls)
+        assertEquals(listOf("saved", "saved", "saved", "discovery", "map", "saved", "discovery"), calls)
     }
 
     @Test(timeout = 15_000) fun actualDiscoveryPublisherKeepsSuccessfulSiblingAndRejectsOutdatedEpoch() = runBlocking {
@@ -63,6 +63,7 @@ class ProfileProjectionTest {
         failSaved = true
         assertFalse(publisher.project(1L))
         assertEquals(listOf(7L), state.value.cards.map { it.listingId })
+        assertEquals(listOf(7L), state.value.localCards.map { it.listingId })
         assertEquals(1, window)
         assertNull(state.value.error)
         assertNull(state.value.savedPage)

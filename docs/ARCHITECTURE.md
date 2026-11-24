@@ -138,7 +138,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 
 ## Oberfläche und Navigation
 
-`ShellRoute` und `LadiesApp` besitzen Root-Navigation gemäß DESIGN; Entdecken-Modi sind lokale Zustände. Standalone-Profile überlagern die Root-Navigation und behalten den tatsächlichen Ursprung. Status und Back werden vom zuständigen Owner koordiniert; reine Status-Reads sperren Navigation nicht.
+`ShellRoute` und `LadiesApp` besitzen Root-Navigation gemäß DESIGN; Entdecken-Modi sind lokale Zustände. `ShellRoute` hält den Grid-/Kartenursprung für die reguläre Swipe-Profilöffnung; `SaveableStateHolder` erhält den Rückkehrzustand. Listing-/Owner- und Surface-Admission binden den Einstieg an die gültige Mitgliedschaft. Standalone-Profile überlagern die Root-Navigation und behalten den tatsächlichen Ursprung. Status und Back werden vom zuständigen Owner koordiniert; reine Status-Reads sperren Navigation nicht.
 
 ### Suche, Entdecken und Grid
 
@@ -149,7 +149,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Der Suchabbruch aus Filtern, Grid und Swipe bindet die gerenderte Ansichtsgeneration und die native Vorgangs-ID des laufenden Suchversuchs, bei Swipe zusätzlich die sichtbare Swipe-Session. Nur die aktuelle sichtbare, noch nicht abbrechende Suche darf den nativen Abbruch signalisieren. Der neue Suchstart widerruft alte Abbruch-Callbacks auch nach Fehler oder Abbruch; Lifecycle-Cleanup und native Drain-Grenze bleiben unabhängig.
 - Die Grid-Schnellwahl bindet die gerenderte Ansichtsgeneration und den ausgeführten Run, ohne aktiven Run den gerenderten Entwurf. Veraltete Callbacks erreichen keinen neuen Quellabruf; der Beginn eines Suchlaufs widerruft alte Grid-Aktionen auch bei Fehler oder Abbruch. Swipe und Grid nutzen weiterhin denselben Suchpfad.
 - Rust liefert `activeSearchCards` in Positions-/ID-Reihenfolge mit aktuellen Owner-/Präferenz-/Favoritenzuordnungen. Grid liest diese aktive Ergebnismenge, **nicht** die bereits konsumierte Swipe-Queue.
-- Neutraler Startbestand verwendet Präferenz `NONE`. Im aktiven Run bestimmen natives Filterergebnis, sessionlokale Traversierung und Replay-Likes-Policy gemeinsam zulässige Swipe-Karten. Fachvertrag: [PRODUCT](PRODUCT.md#entdecken-und-entscheidungen).
+- Neutraler Startbestand verwendet Präferenz `NONE`; `DiscoverUiState.localCards` hält das lokal geladene Mitgliedschaftsfenster unabhängig von der Deck-Traversierung. `discoveryMembership` ist der gemeinsame Zugriff für die drei Modi. Ein expliziter Grid-/Karteneinstieg fokussiert das gültige Listing im bestehenden `SwipeSession` ohne künstliche Entscheidung oder Reset. Im aktiven Run bestimmen natives Filterergebnis, sessionlokale Traversierung und Replay-Likes-Policy gemeinsam zulässige Swipe-Karten. Fachvertrag: [PRODUCT](PRODUCT.md#entdecken-und-entscheidungen).
 
 **Entscheidung und Grid-Hide:**
 - `SwipeSession` hält Traversierung/Undo-Records, keinen zweiten fachlichen Store.
@@ -162,7 +162,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Lokale Grid-Pagination bindet manuellen und automatischen Callback an den gerenderten Cursor und die Aktionsgeneration. Nur die sichtbare Grid-Ansicht ohne aktiven Suchlauf oder konkurrierende Operation darf nachladen; die Admission widerruft alte Callbacks auch bei anschließendem Readfehler. Nach einem zugelassenen Swipe-Skip kann dieselbe lokale Lesefunktion ohne Grid-Callback nachladen. Die bestehende Projektionsepoch schützt die Publikation; kein automatischer Grid-Retry nach Readfehler.
 - Der manuelle Grid-Refresh bindet den gerenderten ausgeführten Run (oder lokalen Startbestand) und die Aktionsgeneration. Nur die sichtbare, nicht beschäftigte Ansicht darf vor I/O alte Aktionen widerrufen und den gemeinsamen lokalen Projektionsread auslösen; laufende lokale Pagination darf über die bestehende Projektionsepoch ersetzt werden. Fehler bleiben explizit erneut ladbar; interne Reprojektionen bleiben unabhängig.
 - Präsenz/Alter aus vorhandener eindeutiger Quellen-/Snapshot-Evidenz, keine dekorativen Profilanfragen.
-- Karte hat eigene DB-weite Projektion: [Karte und Sicherheitsgrenzen](#karte-und-sicherheitsgrenzen).
+- Karte projiziert die gemeinsame Listing-Mitgliedschaft: [Karte und Sicherheitsgrenzen](#karte-und-sicherheitsgrenzen).
 
 ### Gemeinsame Profilarchitektur
 
@@ -327,9 +327,9 @@ Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Op
 
 - MapLibre verantwortet Karten-View und Ressourcen. AndroidView-Factory/`onRelease` und Lifecycle-Observer koordinieren **einmal** den nativen View-Lifecycle einschließlich Speicherdruck.
 - Kamera und Auswahl bleiben im `SaveableStateHolder` über Tab-/Profilwechsel erhalten.
-- Rust liefert die DB-weite Kartenprojektion und hält Koordinatencache in `app_settings` (`map:postal:DE:…` / `map:city:DE:…`, ohne separate Schema-Migration), zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg.
-- Gerenderte Kartensteuerung (Aktualisieren, Standortauflösung, Abbruch, Favoritenfilter) bindet Kartenstatus, Kartengeneration und sichtbare Surface-/Lifecycle-Generation. Überholte Callbacks erreichen weder eine neue Standortauflösung noch einen fremden Abbruch oder Filterwechsel. Interne Projektionsaktualisierung und interner Abbruch bleiben unabhängig von der UI-Admission.
-- Offline-Überblick und Auftragsstatus getrennt. Nach Abschluss/Abbruch liest UI **einmal** aktuellen Bestand statt doppelter Listenübertragung. Kartenprojektion nach nativer Quellen-/Mutationsoperation und lokaler Read beim Eintritt in die Karte sind nicht pauschal austauschbar: zwischenzeitliche native Commits können den DB-weiten Bestand ändern. Der Ist-Stand nutzt getrennte Aktualisierungsanlässe mit Epoch-Schutz; eine Zusammenlegung erfordert belegte äquivalente Aktualität und Fehler-Recovery.
+- Rust liefert die Kartenprojektion für die exakt übergebenen Listing-IDs und optional den ausgeführten Run, ohne unabhängige Personendefinition; Kotlin prüft die zurückgelieferte Mitgliedschaft und Owner-/Favoritenwerte. Rust hält Koordinatencache in `app_settings` (`map:postal:DE:…` / `map:city:DE:…`, ohne separate Schema-Migration), zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg.
+- Gerenderte Kartensteuerung (Aktualisieren, Standortauflösung, Abbruch) bindet Kartenstatus, Kartengeneration und sichtbare Surface-/Lifecycle-Generation. Überholte Callbacks erreichen weder eine neue Standortauflösung noch einen fremden Abbruch. Interne Projektionsaktualisierung und interner Abbruch bleiben unabhängig von der UI-Admission.
+- Offline-Überblick und Auftragsstatus getrennt. Nach Abschluss/Abbruch liest UI **einmal** aktuellen Bestand statt doppelter Listenübertragung. Gemeinsame lokale Reprojektion aktualisiert die Kartenmitgliedschaft nach relevanten Commits; beim Eintritt kann eine gültige Kartenprojektion wiederverwendet werden. `MapMembership` und Epoch binden asynchrone Ergebnisse an den aktuellen Run und die exakten Karten; bei geändertem Scope werden alte Ergebnisse nicht übernommen und laufende Auflösungen widerrufen. Kein neuer Quelllauf beim Moduswechsel.
 - Kein eigener Prozess, WebView, Server oder Gerätestandort.
 
 ### Standortauflösung und Provider

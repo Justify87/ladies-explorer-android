@@ -232,13 +232,13 @@ class CoreStore(context: Context) {
         engine.savedPeopleWindow(kind, sort, limits.first, limits.second)
     }
 
-    suspend fun mapOverview(favoritesOnly: Boolean): MapOverview = withContext(Dispatchers.IO) {
-        recorded("mapOverview") { engine.mapOverview(favoritesOnly) }
+    suspend fun mapOverview(listingIds: List<Long>, runId: Long?): MapOverview = withContext(Dispatchers.IO) {
+        recorded("mapOverview") { engine.mapOverview(listingIds, runId) }
     }
 
-    suspend fun resolveMapLocations(favoritesOnly: Boolean, control: RequestControl): UInt =
+    suspend fun resolveMapLocations(listingIds: List<Long>, runId: Long?, control: RequestControl): UInt =
         withContext(Dispatchers.IO) {
-            recorded("resolveMapLocations") { engine.resolveMapLocations(favoritesOnly, 15u, control) }
+            recorded("resolveMapLocations") { engine.resolveMapLocations(listingIds, runId, 15u, control) }
         }
 
     suspend fun profileFacts(snapshotId: Long, filtersJson: String): ProfileFacts =

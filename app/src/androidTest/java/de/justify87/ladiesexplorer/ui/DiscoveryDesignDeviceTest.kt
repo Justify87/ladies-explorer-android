@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.Preference
 import org.junit.Assert.*
 import org.junit.Rule
@@ -133,6 +135,42 @@ class DiscoveryDesignDeviceTest {
         grid.performScrollToIndex(0)
         rule.onNodeWithText(DiscoverMode.Swipe.title).performClick()
         rule.runOnIdle { assertEquals(listOf(DiscoverMode.Swipe), actions) }
+    }
+
+    @Test fun gridReturnKeepsVisibleListingWhenEarlierMembersDisappear() {
+        var route by mutableStateOf(ShellRoute().select(DiscoverMode.Grid))
+        var rows by mutableStateOf((1L..24L).map { id ->
+            DiscoveryCard(id, id, "Fixture $id", "Ort", null, null, null, Preference.NONE,
+                false, false, false, false, null)
+        })
+        rule.setContent {
+            val holder = rememberSaveableStateHolder()
+            LadiesTheme {
+                holder.SaveableStateProvider(route.stateKey) {
+                    if (route.discovery == DiscoverMode.Grid) {
+                        DiscoveryGridScreen(
+                            discovery = DiscoverUiState(localCards = rows, loading = false),
+                            search = SearchUiState(), onRefresh = {}, onLoadMore = {}, onLike = {},
+                            onProfile = { route = route.openSwipe() },
+                            chrome = {}, onCancelSearch = {},
+                            modifier = Modifier.width(360.dp).height(480.dp),
+                        )
+                    } else Text("Swipe")
+                }
+            }
+        }
+        rule.onNode(hasScrollToIndexAction()).performScrollToIndex(8)
+        val profile = rule.onNodeWithText("Fixture 8")
+        profile.assertIsDisplayed()
+        val top = profile.fetchSemanticsNode().boundsInRoot.top
+        profile.performClick()
+        rule.onNodeWithText("Swipe").assertIsDisplayed()
+        rule.runOnIdle {
+            rows = rows.drop(2)
+            route = route.back()
+        }
+        profile.assertIsDisplayed()
+        assertEquals(top, profile.fetchSemanticsNode().boundsInRoot.top, 2f)
     }
 
     @Test fun longIdentityCannotOverlapGridLikeTargetAtIncreasedFontScale() {

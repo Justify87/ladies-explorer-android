@@ -18,15 +18,21 @@ internal enum class BackAction { CloseProfile, CloseSavedResults, Navigate, Syst
 internal data class ShellRoute(
     val root: RootDestination = RootDestination.Discover,
     val discovery: DiscoverMode = DiscoverMode.Swipe,
+    val swipeOrigin: DiscoverMode? = null,
 ) {
     val mapVisible get() = root == RootDestination.Discover && discovery == DiscoverMode.Map
     val stateKey get() = if (root == RootDestination.Discover) "discover/${discovery.name}" else root.name
-    val canGoBack get() = root != RootDestination.Discover || discovery != DiscoverMode.Swipe
+    val canGoBack get() = root != RootDestination.Discover || discovery != DiscoverMode.Swipe || swipeOrigin != null
 
-    fun select(destination: RootDestination) = copy(root = destination)
-    fun select(mode: DiscoverMode) = copy(root = RootDestination.Discover, discovery = mode)
+    fun select(destination: RootDestination) = copy(root = destination, swipeOrigin = null)
+    fun select(mode: DiscoverMode) = copy(root = RootDestination.Discover, discovery = mode, swipeOrigin = null)
+
+    fun openSwipe() = if (root == RootDestination.Discover && discovery != DiscoverMode.Swipe)
+        copy(discovery = DiscoverMode.Swipe, swipeOrigin = discovery) else this
+
     fun back() = when {
         root != RootDestination.Discover -> copy(root = RootDestination.Discover)
+        swipeOrigin != null -> copy(discovery = swipeOrigin, swipeOrigin = null)
         discovery != DiscoverMode.Swipe -> copy(discovery = DiscoverMode.Swipe)
         else -> this
     }
@@ -38,12 +44,15 @@ internal data class ShellRoute(
         else -> BackAction.System
     }
 
-    fun encode() = arrayListOf(root.name, discovery.name)
+    fun encode() = arrayListOf(root.name, discovery.name, swipeOrigin?.name.orEmpty())
 
     companion object {
-        fun decode(parts: List<String>): ShellRoute = ShellRoute(
-            root = RootDestination.entries.firstOrNull { it.name == parts.getOrNull(0) } ?: RootDestination.Discover,
-            discovery = DiscoverMode.entries.firstOrNull { it.name == parts.getOrNull(1) } ?: DiscoverMode.Swipe,
-        )
+        fun decode(parts: List<String>): ShellRoute {
+            val root = RootDestination.entries.firstOrNull { it.name == parts.getOrNull(0) } ?: RootDestination.Discover
+            val mode = DiscoverMode.entries.firstOrNull { it.name == parts.getOrNull(1) } ?: DiscoverMode.Swipe
+            val origin = DiscoverMode.entries.firstOrNull { it.name == parts.getOrNull(2) && it != DiscoverMode.Swipe }
+                ?.takeIf { root == RootDestination.Discover && mode == DiscoverMode.Swipe }
+            return ShellRoute(root, mode, origin)
+        }
     }
 }

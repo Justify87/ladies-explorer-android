@@ -44,7 +44,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ## Entdecken und Entscheidungen
 
-- Swipe und Grid sind zwei Ansichten **derselben ausgeführten Ergebnismenge**. Den neutralen, sichtbar lokalen Startbestand nicht mit einem aktiven Lauf vermischen.
+- Swipe, Grid und Karte sind drei Ansichten **derselben ausgeführten Ergebnismenge** mit gemeinsamen Filtern, Listing-/Personenidentitäten, Präferenzen und Favoriten. Den neutralen, sichtbar lokalen Startbestand nicht mit einem aktiven Lauf vermischen; auch er besitzt eine gemeinsame Mitgliedschaft unabhängig vom Swipe-Fortschritt.
 - Eindeutige Inserate und stabile Reihenfolge; Moduswechsel startet keine neue Suche und erhält die gültige Position.
 - Like/Dislike und Favorit sind unabhängig. Geste und Buttons lösen dieselbe fachliche Entscheidung aus. Erst die bestätigte Entscheidung erlaubt Weitergehen.
 - Später bleibt sessionlokal.
@@ -121,7 +121,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ## Karte
 
-- DB-weiter Bestand: alle Profile oder nur Favoriten; aktuelles Inserat je Person.
+- Kartenmarker ausschließlich für geografisch zuordenbare Listings der gemeinsamen Entdecken-Mitgliedschaft; kein separater DB-weiter Bestand oder Karten-Favoritenfilter. Öffnen eines Kartenprofils oder einer Grid-Kachel startet das exakt ausgewählte Listing im regulären Swipe-Deck; Android-Back erhält den Ursprung einschließlich gültigem Scrollanker bzw. Kamera und Auswahl. Standalone-Profile außerhalb Entdecken bleiben unverändert.
 - Ungefähre deutsche PLZ-Zentren, ansonsten Stadtzentren. Keine Ersatzkoordinaten; GPS/Gerätestandort, exakte Adressen oder andere private Profilinformationen niemals an Geocoder geben.
 - Marker sind keine Treffpunkte/Navigationsziele. Nicht auflösbare Orte bleiben ohne Marker; gleich positionierte Profile lassen sich gemeinsam auswählen.
 - Standortauflösung nur ausdrücklich, höchstens 15 unterschiedliche Schlüssel pro Lauf und keine konkurrierenden Läufe. Abbruch nach laufender Anfrage.

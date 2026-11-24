@@ -1359,7 +1359,10 @@ mod tests {
         let before = core.saved_search_window(saved_id.clone(), 100).unwrap();
         assert_eq!(before.cards[0].person_id, Some(owner));
         assert!(before.searches[0].unread_new_results);
-        assert_eq!(core.map_overview(false).unwrap().total_profiles, 2);
+        let map = core
+            .map_overview(vec![listing, target.listing_id], Some(found.search_run_id))
+            .unwrap();
+        assert_eq!(map.total_profiles, 2);
         let in_flight = listing_target(&core, listing, false).unwrap();
         let profile_before = core.profile_projection(listing).unwrap().unwrap();
         assert_eq!(profile_before.identity.person_id, owner);
@@ -1438,8 +1441,18 @@ mod tests {
                 .unwrap()
         );
         assert!(core.list_saved_searches().unwrap()[0].unread_new_results);
-        assert_eq!(core.map_overview(false).unwrap().total_profiles, 1);
-        assert_eq!(core.map_overview(true).unwrap().total_profiles, 1);
+        let map = core
+            .map_overview(
+                grid.iter().map(|card| card.listing_id).collect(),
+                Some(found.search_run_id),
+            )
+            .unwrap();
+        assert_eq!(map.total_profiles, 2);
+        assert!(
+            map.profiles
+                .iter()
+                .all(|profile| profile.person_id == new_owner && profile.favorite)
+        );
         assert_eq!(core.person_detail(new_owner).unwrap().listings.len(), 2);
         assert!(
             core.acknowledge_saved_search_revision(saved_id, window.searches[0].revision)

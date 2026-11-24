@@ -113,37 +113,45 @@ class ProfileEntryAdmissionTest {
         assertFalse(searchResultOpenMatches(search, discovery.copy(actionSurface = ProfileActionSurface.SAVED_RESULTS), click))
     }
 
-    @Test fun mapControlsRequireRenderedStateAndVisibleRoute() {
+    @Test fun mapControlsRequireRenderedStateAndVisibleMembership() {
+        val cards = listOf(fixtureCard(1), fixtureCard(2))
+        val membership = MapMembership(null, cards)
         val map = MapUiState(overview = MapOverview(emptyList(), 2u, 2u, 2u),
-            actionGeneration = 3L)
-        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.MAP, actionGeneration = 9L)
+            membership = membership, actionGeneration = 3L)
+        val discovery = DiscoverUiState(localCards = cards, loading = false,
+            actionSurface = ProfileActionSurface.MAP, actionGeneration = 9L)
         val search = SearchUiState()
         val action = MapControlAction(map, 9L)
-        for (control in listOf(MapControl.REFRESH, MapControl.RESOLVE, MapControl.FILTER)) {
+        for (control in listOf(MapControl.REFRESH, MapControl.RESOLVE)) {
             assertTrue(mapControlMatches(map, discovery, search, action, control))
             assertFalse(mapControlMatches(map.copy(actionGeneration = 4L), discovery, search, action, control))
-            assertFalse(mapControlMatches(map.copy(favoritesOnly = true), discovery, search, action, control))
+            assertFalse(mapControlMatches(map.copy(membership = MapMembership(7, cards)), discovery, search, action, control))
             assertFalse(mapControlMatches(map.copy(overview = null), discovery, search, action, control))
             assertFalse(mapControlMatches(map, discovery.copy(actionSurface = ProfileActionSurface.NONE), search, action, control))
             assertFalse(mapControlMatches(map, discovery.copy(actionGeneration = 10L), search, action, control))
             assertFalse(mapControlMatches(map, discovery, search.copy(profileOpen = true), action, control))
+            assertFalse(mapControlMatches(map, discovery, search.copy(loading = true), action, control))
+            assertFalse(mapControlMatches(map, discovery.copy(busy = true), search, action, control))
         }
         assertFalse(mapControlMatches(map, discovery, search, action, MapControl.CANCEL))
-        val noPending = map.copy(overview = MapOverview(emptyList(), 0u, 0u, 0u))
+        assertFalse(mapControlMatches(map, discovery.copy(localCards = cards.drop(1)), search, action, MapControl.RESOLVE))
+        val noPending = map.copy(overview = MapOverview(emptyList(), 2u, 2u, 0u))
         assertFalse(mapControlMatches(noPending, discovery, search, MapControlAction(noPending, 9L), MapControl.RESOLVE))
         val failedRead = map.copy(overview = null, error = "read failed", actionGeneration = 4L)
         assertTrue(mapControlMatches(failedRead, discovery, search, MapControlAction(failedRead, 9L), MapControl.REFRESH))
     }
 
     @Test fun mapControlsDistinguishLoadingResolvingAndCancellation() {
-        val map = MapUiState(overview = MapOverview(emptyList(), 2u, 2u, 2u), actionGeneration = 3L)
-        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.MAP, actionGeneration = 9L)
+        val cards = listOf(fixtureCard(1), fixtureCard(2))
+        val map = MapUiState(overview = MapOverview(emptyList(), 2u, 2u, 2u),
+            membership = MapMembership(null, cards), actionGeneration = 3L)
+        val discovery = DiscoverUiState(localCards = cards, loading = false,
+            actionSurface = ProfileActionSurface.MAP, actionGeneration = 9L)
         val search = SearchUiState()
         for (state in listOf(map.copy(loading = true), map.copy(resolving = true), map.copy(resolving = true, cancelling = true))) {
             val action = MapControlAction(state, 9L)
             assertFalse(mapControlMatches(state, discovery, search, action, MapControl.REFRESH))
             assertFalse(mapControlMatches(state, discovery, search, action, MapControl.RESOLVE))
-            assertTrue(mapControlMatches(state, discovery, search, action, MapControl.FILTER))
         }
         val resolving = map.copy(resolving = true, actionGeneration = 4L)
         val cancel = MapControlAction(resolving, 9L)
@@ -153,19 +161,57 @@ class ProfileEntryAdmissionTest {
         assertFalse(mapControlMatches(resolving, discovery.copy(actionGeneration = 10L), search, cancel, MapControl.CANCEL))
     }
 
-    @Test fun mapOpenRequiresCurrentOverviewFilterAndRouteGeneration() {
+    @Test fun mapOpenRequiresCurrentRunListingOwnerPreferenceAndRouteGeneration() {
+        val row = fixtureCard(1, 2).copy(favorite = true)
+        val search = SearchUiState().acceptRun(response(7), listOf(row))
         val profile = MapProfile(1L, 2L, "Fixture", "Leipzig", "Leipzig", 51.34, 12.37, "CITY", true, null)
         val overview = MapOverview(listOf(profile), 1u, 0u, 0u)
-        val map = MapUiState(overview = overview, favoritesOnly = true)
-        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.MAP, actionGeneration = 9, loading = false)
-        val click = MapProfileOpenAction(overview, profile, true, 9)
-        assertTrue(mapProfileOpenMatches(map, discovery, click))
-        assertFalse(mapProfileOpenMatches(map.copy(favoritesOnly = false), discovery, click))
-        assertFalse(mapProfileOpenMatches(map.copy(loading = true), discovery, click))
-        assertFalse(mapProfileOpenMatches(map.copy(overview = overview.copy(profiles = listOf(profile))), discovery, click))
-        assertFalse(mapProfileOpenMatches(map.copy(overview = overview.copy(profiles = listOf(profile.copy(personId = 3L)))), discovery, click))
-        assertFalse(mapProfileOpenMatches(map, discovery.copy(actionGeneration = 10), click))
-        assertFalse(mapProfileOpenMatches(map, discovery.copy(actionSurface = ProfileActionSurface.GRID), click))
-        assertFalse(mapProfileOpenMatches(map, discovery.copy(busy = true), click))
+        val map = MapUiState(overview = overview, membership = MapMembership(7, listOf(row)))
+        val discovery = DiscoverUiState(activeRunId = 7, actionSurface = ProfileActionSurface.MAP, actionGeneration = 9, loading = false)
+        val click = MapProfileOpenAction(overview, profile, 9)
+        assertTrue(mapProfileOpenMatches(map, discovery, search, click))
+        assertFalse(mapProfileOpenMatches(map.copy(loading = true), discovery, search, click))
+        assertFalse(mapProfileOpenMatches(map.copy(overview = overview.copy(profiles = listOf(profile))), discovery, search, click))
+        assertFalse(mapProfileOpenMatches(map.copy(overview = overview.copy(profiles = listOf(profile.copy(personId = 3L)))), discovery, search, click))
+        assertFalse(mapProfileOpenMatches(map, discovery.copy(actionGeneration = 10), search, click))
+        assertFalse(mapProfileOpenMatches(map, discovery.copy(actionSurface = ProfileActionSurface.GRID), search, click))
+        assertFalse(mapProfileOpenMatches(map, discovery.copy(busy = true), search, click))
+        assertFalse(mapProfileOpenMatches(map, discovery, search.copy(activeCards = listOf(row.copy(personId = 3))), click))
+        assertFalse(mapProfileOpenMatches(map, discovery, search.copy(activeCards = listOf(row.copy(preference = de.justify87.ladiesexplorer.core.Preference.LIKE))), click))
+        assertFalse(mapProfileOpenMatches(map, discovery, search.acceptRun(response(8), listOf(row)), click))
+        assertTrue(requireNotNull(map.membership).matches(overview))
+        assertFalse(requireNotNull(map.membership).matches(overview.copy(profiles = listOf(profile.copy(personId = 3)))))
+        assertFalse(requireNotNull(map.membership).matches(overview.copy(profiles = listOf(profile.copy(listingId = 9)))))
+        assertFalse(requireNotNull(map.membership).matches(overview.copy(profiles = listOf(profile.copy(favorite = false)))))
+    }
+
+    @Test fun sharedMembershipAndReturnOriginSurviveDecisionsUndoAndDraftChanges() {
+        val rows = (1L..4L).map { fixtureCard(it) }
+        val search = SearchUiState().acceptRun(response(7), rows)
+        val discovery = DiscoverUiState(activeRunId = 7, loading = false)
+        val scope = requireNotNull(currentMapMembership(discovery, search))
+        assertTrue(scope.cards == gridCards(discovery, search))
+        assertTrue(scope == currentMapMembership(discovery, search.copy(city = "Berlin")))
+        for (mode in listOf(DiscoverMode.Grid, DiscoverMode.Map)) {
+            val origin = ShellRoute().select(mode)
+            val session = SwipeSession()
+            assertTrue(session.focus(scope.cards, 3, 3))
+            val swipe = origin.openSwipe()
+            assertTrue(session.queue(scope.cards, true).first().listingId == 3L)
+            session.visit(SwipeStep(3, 3, presentation = null))
+            session.visit(SwipeStep(1, 1))
+            assertTrue(session.queue(scope.cards, true).first().listingId == 2L)
+            session.undo(requireNotNull(session.last))
+            assertTrue(session.queue(scope.cards, true).first().listingId == 1L)
+            assertTrue(swipe.back() == origin)
+            assertTrue(scope.cards == discoveryMembership(discovery, search))
+        }
+    }
+
+    @Test fun gridAnchorRestoresExactKeyOffsetAndClampsRemovedAnchor() {
+        val keys = listOf("summary", "listing/4", "listing/5")
+        assertTrue(gridRestorePosition(keys, "listing/4", 7, 29) == (1 to 29))
+        assertTrue(gridRestorePosition(keys, "listing/3", 7, 29) == (2 to 0))
+        assertTrue(gridRestorePosition(emptyList(), "listing/3", 7, 29) == (0 to 0))
     }
 }

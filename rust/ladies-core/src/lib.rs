@@ -514,18 +514,23 @@ impl LadiesCore {
         discovery::saved_window(self, kind, sort, regular_limit, recent_limit)
     }
 
-    pub fn map_overview(&self, favorites_only: bool) -> Result<MapOverview, CoreError> {
-        map::overview(self, favorites_only)
+    pub fn map_overview(
+        &self,
+        listing_ids: Vec<i64>,
+        run_id: Option<i64>,
+    ) -> Result<MapOverview, CoreError> {
+        map::overview(self, &listing_ids, run_id)
     }
 
     pub fn resolve_map_locations(
         &self,
-        favorites_only: bool,
+        listing_ids: Vec<i64>,
+        run_id: Option<i64>,
         max_requests: u32,
         control: Arc<RequestControl>,
     ) -> Result<u32, CoreError> {
         self.diagnostics.timed("MAP", "resolve_map_locations", || {
-            map::resolve(self, favorites_only, max_requests, &control)
+            map::resolve(self, &listing_ids, run_id, max_requests, &control)
         })
     }
 

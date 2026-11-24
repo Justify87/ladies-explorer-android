@@ -201,10 +201,12 @@ fun LadiesApp(
         if (old != null && old != saved.editor?.session) searchStateHolder.removeState("editor/$old")
         previousEditorSession = saved.editor?.session
     }
+    val renderedRoute = route
     val renderedProfileOpen = search.profileOpen
     val renderedProfileSession = search.profileSessionId
     val renderedRetryAction = search.detailRetryAction()
     fun back() {
+        if (route != renderedRoute) return
         viewModel.encounters.edit?.let { viewModel.encounters.requestDismiss(it); return }
         viewModel.prices.edit?.let { viewModel.prices.requestDismiss(it); return }
         profileTouchGate.invalidate()
@@ -221,6 +223,7 @@ fun LadiesApp(
             BackAction.CloseProfile -> viewModel.closeProfile(renderedProfileSession)
             BackAction.CloseSavedResults -> viewModel.savedSearch.back()
             BackAction.Navigate -> {
+                if (swipeShell) viewModel.setSwipeVisible(false)
                 viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
                 viewModel.savedSearch.setVisible(false)
                 route = route.back()
@@ -360,7 +363,12 @@ fun LadiesApp(
                                     onRefresh = viewModel::refreshRenderedGrid,
                                     onLoadMore = viewModel::loadMoreDiscovery,
                                     onLike = viewModel::toggleGridLike,
-                                    onProfile = viewModel::openGridProfile,
+                                    onProfile = { action ->
+                                        if (route == renderedRoute && viewModel.openGridProfile(action)) {
+                                            profileTouchGate.invalidate()
+                                            route = route.openSwipe()
+                                        }
+                                    },
                                     chrome = {
                                         val availabilityAction = search.gridAvailabilityAction(discovery.actionGeneration)
                                         val run = search.response
@@ -388,14 +396,22 @@ fun LadiesApp(
                                 onRefresh = viewModel::refreshRenderedMap,
                                 onResolve = viewModel::resolveMapLocations,
                                 onCancel = viewModel::cancelRenderedMapResolution,
-                                onFavoritesOnly = viewModel::setMapFavoritesOnly,
+                                summary = search.response?.let { "${it.city} · ${it.requestedRadiusKm} km · Aktive Suche" }
+                                    ?: "Lokaler Bestand · neutral",
+                                membershipCurrent = map.membership != null &&
+                                    map.membership == currentMapMembership(discovery, search),
                                 generation = discovery.actionGeneration,
-                                onProfile = viewModel::openMapProfile,
+                                onProfile = { action ->
+                                    if (route == renderedRoute && viewModel.openMapProfile(action)) {
+                                        profileTouchGate.invalidate()
+                                        route = route.openSwipe()
+                                    }
+                                },
                                 onMode = { mode ->
                                     viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
                                     route = route.select(mode)
                                 },
-                                profileEnabled = !discovery.busy && !search.loading,
+                                profileEnabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy,
                                 modifier = Modifier.weight(1f),
                             )
                         }

@@ -41,6 +41,37 @@ class SwipeDeckStateTest {
         assertNull(session.last)
     }
 
+    @Test fun explicitEntryUsesExactListingAndOwnerWithoutResettingTraversal() {
+        val session = SwipeSession()
+        val rows = listOf(card(1), card(2, 8), card(3, 8), card(4))
+        session.visit(SwipeStep(1, 1))
+        assertFalse(session.focus(rows, 3, 9))
+        assertTrue(session.focus(rows, 3, 8))
+        assertEquals(listOf(3L, 4L), session.queue(rows, true).map { it.listingId })
+        session.visit(SwipeStep(3, 8, Preference.NONE, Preference.LIKE))
+        assertEquals(listOf(4L), session.queue(rows, true).map { it.listingId })
+        session.undo(requireNotNull(session.last))
+        assertEquals(listOf(3L, 4L), session.queue(rows, true).map { it.listingId })
+        assertEquals(1L, session.last?.listingId)
+    }
+
+    @Test fun explicitEntryCanRevisitButCannotFollowAnUnconfirmedOwnerChange() {
+        val session = SwipeSession()
+        val rows = listOf(card(1), card(2, preference = Preference.LIKE), card(3))
+        session.replayLikes = false
+        session.visit(SwipeStep(1, 1))
+        assertTrue(session.focus(rows, 1, 1))
+        assertEquals(1L, session.queue(rows, true).first().listingId)
+        session.visit(SwipeStep(1, 1))
+        session.undo(requireNotNull(session.last))
+        assertEquals(1L, session.queue(rows, true).first().listingId)
+        assertEquals(listOf(3L), session.queue(listOf(card(1, 99), card(3)), true).map { it.listingId })
+        assertTrue(session.focus(rows, 2, 2))
+        assertEquals(2L, session.queue(rows, true).first().listingId)
+        session.reset()
+        assertEquals(listOf(1L, 3L), session.queue(rows, true).map { it.listingId })
+    }
+
     @Test fun prefetchNeverExceedsTwoFollowingCards() {
         val rows = (1L..8L).map { card(it) }
         assertEquals(listOf(2L, 3L), prefetchCards(rows).map { it.listingId })
