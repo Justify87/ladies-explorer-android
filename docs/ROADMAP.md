@@ -110,7 +110,9 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – Standalone-Archivabbruch (DONE mit Merge):** [PR #72](https://github.com/Justify87/ladies-explorer-android/pull/72) bindet den gerenderten Stopp an die sichtbare Profil-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410911578) erfolgreich.
 
-**Teilauftrag – Standalone-Retry und Back (REVIEW):** [Branch `fix/t10-8-profile-retry-back-admission`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-profile-retry-back-admission) bindet Back an Profil-Session, Retry zusätzlich an Listing, dargestellte Online-Berechtigung und Versuch. Automatische Lifecycle-Wiederherstellung bleibt lokal. JVM-Regressionen für Ersatz-Session, falsche Retry-Berechtigung und fehlgeschlagenen Retry. CI und Merge ausstehend.
+**Integrierter Teilauftrag – Standalone-Retry und Back:** [PR #73](https://github.com/Justify87/ladies-explorer-android/pull/73) bindet Back an Profil-Session, Retry zusätzlich an Listing, dargestellte Online-Berechtigung und Versuch. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45411570068) beim Merge noch nicht abschließend verifiziert.
+
+**Teilauftrag – Notizentwurfsaktionen (REVIEW):** [Branch `fix/t10-8-note-draft-admission`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-note-draft-admission) bindet Speichern, Verwerfen und Konfliktauflösung zusätzlich zum Profil-Token an den gerenderten Entwurf; Texteingaben bleiben fortlaufend. JVM-Regressionen für geänderten Text, Konflikt, Loading und Readfehler; bestehende Owner-Tests und Device-Fixture angepasst. CI und Merge ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
