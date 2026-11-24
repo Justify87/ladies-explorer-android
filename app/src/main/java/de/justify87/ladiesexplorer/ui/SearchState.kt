@@ -269,6 +269,19 @@ internal class DrainingOperation<T> {
     }
 }
 
+internal data class DetailRetryAction(
+    val session: Long,
+    val listingId: Long,
+    val sourceAllowed: Boolean,
+    val attempt: Long,
+)
+
+internal fun SearchUiState.detailRetryAction(): DetailRetryAction? {
+    if (!profileOpen) return null
+    val listing = retryProfileListingId ?: return null
+    return DetailRetryAction(profileSessionId, listing, profileSourceRetryAllowed, profileRetryAttempt)
+}
+
 internal sealed interface ProfileIdentityToken {
     val listingId: Long
     val ownerId: Long

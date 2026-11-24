@@ -106,9 +106,11 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – normale Filterentwurfsaktionen (DONE mit Merge):** [PR #70](https://github.com/Justify87/ladies-explorer-android/pull/70) bindet Entwurfsänderungen und Reset an den gerenderten Filterkontext; Reset zusätzlich an den Entwurf. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45409621564) erfolgreich.
 
-**Integrierter Teilauftrag – Vorschau-Lifecycle:** [PR #71](https://github.com/Justify87/ladies-explorer-android/pull/71) bindet Vorschau an STARTED-Lifecycle, eigene Lease und aktuellen Quellentwurf/Editor-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410399421) beim Merge noch nicht abschließend verifiziert.
+**Abgeschlossener Teilauftrag – Vorschau-Lifecycle (DONE mit Merge):** [PR #71](https://github.com/Justify87/ladies-explorer-android/pull/71) bindet Vorschau an STARTED-Lifecycle, eigene Lease und aktuellen Quellentwurf/Editor-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410399421) erfolgreich.
 
-**Teilauftrag – Standalone-Archivabbruch (REVIEW):** [Branch `fix/t10-8-profile-archive-cancel`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-profile-archive-cancel) bindet den gerenderten Stopp an die sichtbare Profil-Session. JVM-Regressionen für denselben erneut geöffneten Profilkontext, verspäteten Stopp, mehrfachen Cancel und nativen Drain. CI und Merge ausstehend.
+**Abgeschlossener Teilauftrag – Standalone-Archivabbruch (DONE mit Merge):** [PR #72](https://github.com/Justify87/ladies-explorer-android/pull/72) bindet den gerenderten Stopp an die sichtbare Profil-Session. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45410911578) erfolgreich.
+
+**Teilauftrag – Standalone-Retry und Back (REVIEW):** [Branch `fix/t10-8-profile-retry-back-admission`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-profile-retry-back-admission) bindet Back an Profil-Session, Retry zusätzlich an Listing, dargestellte Online-Berechtigung und Versuch. Automatische Lifecycle-Wiederherstellung bleibt lokal. JVM-Regressionen für Ersatz-Session, falsche Retry-Berechtigung und fehlgeschlagenen Retry. CI und Merge ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.

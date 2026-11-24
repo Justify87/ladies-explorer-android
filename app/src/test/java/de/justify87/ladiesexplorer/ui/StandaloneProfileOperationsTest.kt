@@ -86,6 +86,10 @@ class StandaloneProfileOperationsTest {
             assertTrue(controls.isEmpty())
             calls.clear()
         }
+        fun closeCurrent() = operations.closeProfile(search.value.profileSessionId)
+
+        fun retryCurrent() = operations.retryProfileProjection(requireNotNull(search.value.detailRetryAction()))
+
         fun confirmCurrent() {
             operations.confirmIdentity(requireNotNull(search.value.detailIdentityToken()), 2L)
         }
@@ -107,7 +111,7 @@ class StandaloneProfileOperationsTest {
             assertTrue(f.calls.isEmpty())
         }
         f.oldNotes()
-        f.operations.closeProfile()
+        f.closeCurrent()
         f.operations.confirmIdentity(token, 2L)
         f.idle()
         assertTrue(f.calls.isEmpty())
@@ -161,7 +165,7 @@ class StandaloneProfileOperationsTest {
         val token = requireNotNull(f.search.value.detailIdentityToken())
         f.operations.confirmIdentity(token, 2L)
         started.awaitSignal()
-        f.operations.closeProfile()
+        f.closeCurrent()
         assertFalse(f.search.value.profileOpen)
         assertTrue(f.discovery.value.busy)
         f.operations.confirmIdentity(token, 2L)
@@ -201,7 +205,7 @@ class StandaloneProfileOperationsTest {
         assertEquals(listOf("home", "map", "profile:4", "project:1", "saved"), f.calls.drop(1).sorted())
         f.operations.confirmIdentity(token, 2L)
         f.identityError = null
-        f.operations.retryProfileProjection()
+        f.retryCurrent()
         f.idle()
         assertEquals(2L, f.search.value.profileIdentity?.personId)
         assertNull(f.search.value.retryProfileListingId)
@@ -260,11 +264,11 @@ class StandaloneProfileOperationsTest {
         assertTrue(f.search.value.error!!.contains("Profilzuordnung"))
         assertTrue(f.controls.isEmpty())
         f.calls.clear()
-        f.operations.retryProfileProjection()
+        f.retryCurrent()
         f.idle()
         assertNull(f.search.value.profile)
         assertFalse(f.calls.any { it.startsWith("source:") })
-        f.operations.closeProfile()
+        f.closeCurrent()
         f.operations.loadProfile(4L, 7L) {}
         f.idle()
         assertEquals(7L, f.search.value.profileIdentity?.personId)
@@ -313,7 +317,7 @@ class StandaloneProfileOperationsTest {
         assertNull(f.search.value.profile)
         assertEquals(1, f.calls.count { it.startsWith("source:") })
         f.source = { fixtureProfile(12L) }
-        f.operations.retryProfileProjection()
+        f.retryCurrent()
         f.idle()
         assertEquals(12L, f.search.value.profile?.snapshotId)
         assertFalse(f.search.value.profileSourceRetryAllowed)
@@ -327,7 +331,7 @@ class StandaloneProfileOperationsTest {
         f.cached = null
         try { f.operations.refreshLocalProfile(session, 4L); fail("expected missing projection") }
         catch (_: IllegalStateException) { }
-        f.operations.retryProfileProjection()
+        f.retryCurrent()
         f.idle()
         assertFalse(f.search.value.profileSourceRetryAllowed)
         assertNull(f.search.value.detailIdentityToken())
@@ -342,7 +346,7 @@ class StandaloneProfileOperationsTest {
         f.operations.loadProfile(4L, 1L) {}
         started.awaitSignal()
         val oldSession = f.search.value.profileSessionId
-        f.operations.closeProfile()
+        f.closeCurrent()
         f.owner = 7L
         f.cached = fixtureProfile(12L)
         f.source = { error("offline") }
@@ -418,7 +422,7 @@ class StandaloneProfileOperationsTest {
         assertEquals(1, f.controls.single().cancelled)
         assertTrue(f.search.value.archiving)
         assertTrue(coroutineContext[Job]!!.children.single().isActive)
-        f.operations.closeProfile()
+        f.closeCurrent()
         assertEquals(1, f.controls.single().cancelled)
         f.calls.clear()
         finish.complete(Unit)
@@ -450,7 +454,7 @@ class StandaloneProfileOperationsTest {
             f.operations.loadProfile(4L, 1L) {}
             firstStarted.awaitSignal()
             val old = f.search.value.profileSessionId
-            f.operations.closeProfile()
+            f.closeCurrent()
             assertEquals(1, f.controls.single().cancelled)
             f.operations.loadProfile(4L, 1L) {}
             val current = f.search.value.profileSessionId
@@ -517,7 +521,7 @@ class StandaloneProfileOperationsTest {
         assertFalse(f.search.value.archiving)
         f.identityError = null
         f.calls.clear()
-        f.operations.retryProfileProjection()
+        f.retryCurrent()
         f.idle()
         assertNotNull(f.search.value.detailIdentityToken())
         assertNull(f.search.value.retryProfileListingId)
@@ -589,7 +593,7 @@ class StandaloneProfileOperationsTest {
         val oldSession = f.search.value.profileSessionId
         val oldToken = requireNotNull(f.search.value.detailIdentityToken())
         val oldTicket = f.tickets.invalidate(1L)
-        f.operations.closeProfile()
+        f.closeCurrent()
         f.owner = 7L
         f.openOffline()
         assertNotEquals(oldSession, f.search.value.profileSessionId)
@@ -635,6 +639,63 @@ class StandaloneProfileOperationsTest {
         assertEquals(setOf(3L), f.notes.value.keys)
         assertFalse(f.discovery.value.busy)
     }
+    @Test(timeout = 15_000) fun staleBackAndRetryCannotAffectReplacementOfSameListing() = runBlocking {
+        val f = Fixture(this)
+        f.cached = null
+        f.operations.loadProfile(4L, 1L) {}
+        f.idle()
+        val old = requireNotNull(f.search.value.detailRetryAction())
+        assertTrue(old.sourceAllowed)
+        f.closeCurrent()
+        f.operations.loadProfile(4L, 1L) {}
+        f.idle()
+        val current = requireNotNull(f.search.value.detailRetryAction())
+        assertNotEquals(old.session, current.session)
+        f.calls.clear()
+        f.operations.closeProfile(old.session)
+        f.operations.retryProfileProjection(old)
+        // A locally labelled retry cannot inherit the current online permission.
+        f.operations.retryProfileProjection(current.copy(sourceAllowed = false))
+        f.idle()
+        assertTrue(f.calls.isEmpty())
+        assertTrue(f.search.value.profileOpen)
+        assertEquals(current, f.search.value.detailRetryAction())
+        f.source = { fixtureProfile(12L) }
+        f.operations.retryProfileProjection(current)
+        f.idle()
+        assertEquals(12L, f.search.value.profile?.snapshotId)
+        assertEquals(1, f.calls.count { it.startsWith("source:") })
+        f.operations.closeProfile(current.session)
+        assertTrue(f.search.value.profileOpen)
+        f.closeCurrent()
+        assertFalse(f.search.value.profileOpen)
+    }
+
+    @Test(timeout = 15_000) fun failedLocalRetryRevokesOldAttemptWithoutReplayingSource() = runBlocking {
+        val f = Fixture(this)
+        f.source = { fixtureProfile(12L) }
+        f.identityError = IllegalStateException("local read failed")
+        f.operations.loadProfile(4L, 1L) {}
+        f.idle()
+        val old = requireNotNull(f.search.value.detailRetryAction())
+        assertFalse(old.sourceAllowed)
+        f.operations.retryProfileProjection(old)
+        f.idle()
+        val current = requireNotNull(f.search.value.detailRetryAction())
+        assertEquals(old.session, current.session)
+        assertNotEquals(old.attempt, current.attempt)
+        f.calls.clear()
+        f.operations.retryProfileProjection(old)
+        f.idle()
+        assertTrue(f.calls.isEmpty())
+        f.identityError = null
+        f.operations.retryProfileProjection(current)
+        f.idle()
+        assertEquals(12L, f.search.value.profile?.snapshotId)
+        assertFalse(f.calls.any { it.startsWith("source:") })
+        assertNull(f.search.value.detailRetryAction())
+    }
+
     @Test(timeout = 15_000) fun initialSourceCommitThenLocalReadFailureRetriesOnlyLocalProjection() = runBlocking {
         val f = Fixture(this)
         f.source = { fixtureProfile(12L) }
@@ -645,7 +706,7 @@ class StandaloneProfileOperationsTest {
         assertNull(f.search.value.profile)
         assertEquals(1, f.calls.count { it.startsWith("source:") })
         f.identityError = null
-        f.operations.retryProfileProjection()
+        f.retryCurrent()
         f.idle()
         assertEquals(12L, f.search.value.profile?.snapshotId)
         assertEquals(1, f.calls.count { it.startsWith("source:") })

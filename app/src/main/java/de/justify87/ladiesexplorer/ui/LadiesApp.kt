@@ -213,14 +213,22 @@ fun LadiesApp(
         if (old != null && old != saved.editor?.session) searchStateHolder.removeState("editor/$old")
         previousEditorSession = saved.editor?.session
     }
+    val renderedProfileOpen = search.profileOpen
+    val renderedProfileSession = search.profileSessionId
+    val renderedRetryAction = search.detailRetryAction()
     fun back() {
         profileTouchGate.invalidate()
+        // A delayed detail Back must never fall through to the root route after closing.
+        if (renderedProfileOpen) {
+            viewModel.closeProfile(renderedProfileSession)
+            return
+        }
         if (!search.profileOpen && (savedEditorOpen || savedOverviewOpen || savedResultsOpen)) {
             viewModel.savedSearch.back()
             return
         }
         when (route.backAction(search.profileOpen, savedResultsOpen)) {
-            BackAction.CloseProfile -> viewModel.closeProfile()
+            BackAction.CloseProfile -> viewModel.closeProfile(renderedProfileSession)
             BackAction.CloseSavedResults -> viewModel.savedSearch.back()
             BackAction.Navigate -> {
                 viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
@@ -330,8 +338,8 @@ fun LadiesApp(
                     isProfileCurrent = viewModel::isProfileActionCurrent,
                     onConfirmIdentity = viewModel::confirmIdentity,
                     onCancelArchive = viewModel::cancelMediaArchive,
-                    onRetryProfile = viewModel::retryProfileProjection,
-                    onBack = viewModel::closeProfile,
+                    onRetryProfile = { renderedRetryAction?.let(viewModel::retryProfileProjection) },
+                    onBack = { viewModel.closeProfile(renderedProfileSession) },
                     actionsBusy = discovery.busy,
                     touchGate = profileTouchGate,
                     modifier = modifier,

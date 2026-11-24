@@ -136,15 +136,18 @@ internal class StandaloneProfileOperations<C : Any>(
         archiveCall?.cancel(io.cancelArchive)
     }
 
+    private fun admitsSession(session: Long): Boolean =
+        presentationVisible && profileGeneration.isCurrent(session) &&
+            _searchUiState.value.let { it.profileOpen && it.profileSessionId == session }
+
     fun cancelMediaArchive(session: Long) {
-        val active = _searchUiState.value
-        if (!presentationVisible || !active.profileOpen || !active.archiving ||
-            active.profileSessionId != session || !profileGeneration.isCurrent(session)) return
+        if (!admitsSession(session) || !_searchUiState.value.archiving) return
         // Cancellation signals the call; it owns the slot until drain.
         archiveCall?.cancel(io.cancelArchive)
     }
 
-    fun closeProfile() {
+    fun closeProfile(session: Long) {
+        if (!admitsSession(session)) return
         requestedListingId = null
         invalidateProfileRequest()
         _searchUiState.update {
@@ -309,7 +312,7 @@ internal class StandaloneProfileOperations<C : Any>(
             val ticket = profileGeneration.value
             scope.launch {
                 _discoverState.first { !it.busy }
-                if (presentationVisible && profileGeneration.isCurrent(ticket)) retryProfileProjection()
+                if (admitsSession(ticket)) recoverProfileProjection(explicitSourceRetry = false)
             }
         }
     }
@@ -325,14 +328,19 @@ internal class StandaloneProfileOperations<C : Any>(
         readDetail(session, listingId) { local, revision -> withProjection(local, revision) }
     }
 
-    /** Recover locally; only explicit retry after confirmed absence may fetch from source. */
-    fun retryProfileProjection() {
+    fun retryProfileProjection(action: DetailRetryAction) {
+        if (!admitsSession(action.session) || _searchUiState.value.detailRetryAction() != action) return
+        recoverProfileProjection(explicitSourceRetry = action.sourceAllowed)
+    }
+
+    /** Resume may recover locally, but never inherits a UI permission to fetch from source. */
+    private fun recoverProfileProjection(explicitSourceRetry: Boolean) {
         val active = _searchUiState.value
         val listingId = active.retryProfileListingId ?: return
-        if (!presentationVisible || !active.profileOpen || active.actionBusy || _discoverState.value.busy) return
-        val requestId = profileGeneration.value
-        val explicitSourceRetry = active.profileSourceRetryAllowed
-        _searchUiState.update { it.copy(actionBusy = true, actionError = null, error = null) }
+        if (!admitsSession(active.profileSessionId) || active.loading || active.actionBusy || _discoverState.value.busy) return
+        val requestId = active.profileSessionId
+        _searchUiState.update { it.copy(actionBusy = true, actionError = null, error = null,
+            profileRetryAttempt = it.profileRetryAttempt + 1) }
         scope.launch {
             try {
                 sourceCall?.drained?.await()
