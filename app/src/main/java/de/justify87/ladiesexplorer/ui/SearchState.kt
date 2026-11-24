@@ -4,6 +4,11 @@ import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.LocalVisibility
 import de.justify87.ladiesexplorer.core.SearchResponse
 import de.justify87.ladiesexplorer.core.SearchRequest
+import de.justify87.ladiesexplorer.core.SourceFilterCatalog
+import de.justify87.ladiesexplorer.core.FrequentFilter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -178,6 +183,28 @@ internal class RequestGeneration {
 
     fun invalidate() { value++ }
     fun isCurrent(ticket: Long): Boolean = ticket == value
+}
+
+internal suspend fun refreshSearchFilters(
+    state: MutableStateFlow<SearchUiState>,
+    current: () -> Boolean,
+    readCatalog: suspend () -> SourceFilterCatalog,
+    readFrequent: suspend () -> List<FrequentFilter>,
+) {
+    try {
+        // The source catalog is packaged in Rust; only usage counts depend on committed searches.
+        val catalog = state.value.filterCatalog ?: readCatalog()
+        val frequent = readFrequent()
+        if (current()) state.update {
+            it.copy(filterCatalog = catalog, frequentFilters = frequent, filterError = null)
+        }
+    } catch (cancel: CancellationException) {
+        throw cancel
+    } catch (failure: Exception) {
+        if (current()) state.update {
+            it.copy(filterError = failure.message ?: "Filter konnten nicht geladen werden")
+        }
+    }
 }
 
 internal fun SearchUiState.beginRun(attemptId: Long = searchAttemptId + 1): SearchUiState = copy(

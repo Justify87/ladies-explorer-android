@@ -148,7 +148,7 @@ fun LadiesApp(
             viewModel.setProfileActionSurface(if (started) currentActionSurface else ProfileActionSurface.NONE)
         }
         val observer = LifecycleEventObserver { _, event ->
-            publishVisibility()
+            if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_STOP) publishVisibility()
             if (event == Lifecycle.Event.ON_PAUSE) profileTouchGate.invalidate()
             if (event == Lifecycle.Event.ON_START) viewModel.setProfilePresentationVisible(true)
             if (event == Lifecycle.Event.ON_STOP) {

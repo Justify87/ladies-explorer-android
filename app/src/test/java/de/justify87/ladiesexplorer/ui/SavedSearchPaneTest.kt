@@ -306,6 +306,10 @@ class SavedSearchPaneTest {
         assertTrue(c.state.value.resultDirty)
         assertFalse(c.state.value.busy)
         c.setVisible(true); idle(c)
+        val generation = c.state.value.actionGeneration
+        repeat(5) { c.setVisible(true) }
+        idle(c)
+        assertEquals(generation, c.state.value.actionGeneration)
         assertEquals(listOf(100u, 100u, 100u), fake.windows)
         assertNull(c.state.value.windowError)
         assertTrue(c.state.value.result!!.ready)

@@ -10,6 +10,9 @@ import org.junit.Test
 import kotlinx.coroutines.runBlocking
 import de.justify87.ladiesexplorer.core.DiscoveryCursor
 import de.justify87.ladiesexplorer.core.DiscoveryPage
+import de.justify87.ladiesexplorer.core.SourceFilterCatalog
+import de.justify87.ladiesexplorer.core.FrequentFilter
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class SearchRunStateTest {
     private fun response(id: Long, partial: Boolean = false) = SearchResponse(
@@ -357,6 +360,48 @@ class SearchRunStateTest {
         assertFalse(nearDiscoveryEnd(-1, 0))
         assertFalse(nearDiscoveryEnd(1, 50))
         assertTrue(nearDiscoveryEnd(47, 50))
+    }
+
+    @Test fun staticCatalogIsReusedWhileUsageCountsRefreshAndErrorsRecover() = runBlocking {
+        val state = MutableStateFlow(SearchUiState())
+        val catalog = SourceFilterCatalog(emptyList(), emptyList())
+        var catalogReads = 0
+        var frequentReads = 0
+        var fail = true
+        var current = true
+        suspend fun refresh() = refreshSearchFilters(state, { current },
+            readCatalog = { catalogReads++; catalog },
+            readFrequent = {
+                frequentReads++
+                if (fail) error("usage failed")
+                listOf(FrequentFilter("category", "fixture", frequentReads.toUInt()))
+            })
+        refresh()
+        assertEquals(null, state.value.filterCatalog)
+        assertEquals("usage failed", state.value.filterError)
+        fail = false
+        refresh()
+        assertEquals(catalog, state.value.filterCatalog)
+        assertEquals(null, state.value.filterError)
+        refresh()
+        assertEquals(2, catalogReads)
+        assertEquals(3, frequentReads)
+        assertEquals(3u, state.value.frequentFilters.single().count)
+        fail = true
+        refresh()
+        assertEquals(catalog, state.value.filterCatalog)
+        assertEquals("usage failed", state.value.filterError)
+        fail = false
+        current = false
+        refresh()
+        assertEquals("usage failed", state.value.filterError)
+        assertEquals(3u, state.value.frequentFilters.single().count)
+        current = true
+        refresh()
+        assertEquals(2, catalogReads)
+        assertEquals(6, frequentReads)
+        assertEquals(6u, state.value.frequentFilters.single().count)
+        assertEquals(null, state.value.filterError)
     }
 
     @Test fun generationsForPreviewAndFullSearchAreIndependent() {

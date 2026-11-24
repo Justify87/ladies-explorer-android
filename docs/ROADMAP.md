@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: M05.11 (G11), T11.2 READY.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: M05.11 (G11), T11.2 DOING.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -109,7 +109,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - Gemeinsame Statusdarstellung in Profil und gespeicherten Personen; nicht belegte Statuswerte bleiben unbekannt.
 - Technische Abnahme: vollständiges CI-Gate erfolgreich; Rust-/JVM-Regressionen, native DB-Regression, Clippy, Android-Build, Lint und Architekturprüfungen. Geräteprüfungen gemäß Merge-Regel DONE.
 
-### T11.2 — READY · Zustands- und Aufrufredundanzen
+### T11.2 — DOING · Zustands- und Aufrufredundanzen
 
 **Abhängigkeit:** T11.1 abgeschlossen; Arbeiten am selben State/API nicht parallel. **Anker:** `ui/LadiesApp.kt`, `ui/MainViewModel.kt`, `ui/DiscoveryState.kt`, `ui/SavedPeopleState.kt`, `ui/SavedSearchState.kt`; `ShellRouteTest`, `SearchRunStateTest`, `ProfileProjectionTest`, `SavedPeopleStateTest`, `SavedSearchPaneTest`.
 
@@ -117,6 +117,8 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - [ ] Mehrfache Sichtbarkeits-/Aktionskontext-Schreiber auf tatsächlich redundante Aufrufe prüfen; notwendige sofortige Revocation bei Navigation und Lifecycle-Synchronisierung unterscheiden. Nur sichere Doppelungen entfernen, keine neue Shell-State-Architektur voraussetzen.
 - [ ] Sucherfolg, `activeSearchCards`, Discovery-/SavedPeople-Projektionen und statische Filterkatalog-Reads gezielt auf unnötige Wiederholung prüfen; nur bei bestätigter Gleichwertigkeit zusammenfassen. Recovery nach Fehler, Cancel oder möglichem Teil-Commit erhalten.
 - [ ] Einzel-/Batchstatus und `mutateDiscovery` hinsichtlich unbegründeter Swipe-Invalidierung, unnötiger Projektionen und Teilfehlerdarstellung prüfen; vorhandene Operations-/Resultatstypen bevorzugt vereinfachen statt eine generische Reconciliation-Infrastruktur einzuführen.
+
+**Zwischenstand (Branch `fix/t11-2-redundant-reads`):** Sichtbarkeitspublikation auf relevante Lifecycle-Übergänge begrenzt, identische SavedSearch-Sichtbarkeit ohne erneute Dirty-Prüfung; statischer Filterkatalog nach erfolgreicher Publikation wiederverwendet; Statusprüfung invalidiert SavedSearch im gemeinsamen Mutationspfad, bei Coroutine-Cancel separat. Zweiter aktiver Karten-Read und Swipe-Profilinvalidierung bleiben vorerst erhalten (mögliche zwischenzeitliche native Commits bzw. Statusdaten im Profil). Rest: weitere Aufrufer und Projektionspfade auf sichere Redundanz prüfen, vollständige CI und Abschlussreview belegen; keine lokale Android-/Rust-Toolchain in der aktuellen Ausführungsumgebung.
 
 **Abnahme:** Entfernte Aufrufe sind durch Caller-Review und gezielte Zähler/Tests als redundant belegt. Navigation, Stale-Action-Admission, Native Drain, Commit-ohne-Write-Replay, Teilfehler, Undo und unabhängige Projektionen bleiben korrekt; keine Performanceverbesserung ohne Messbeleg behaupten.
 
