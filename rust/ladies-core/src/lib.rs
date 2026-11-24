@@ -10,6 +10,7 @@ mod map;
 mod media;
 mod media_url;
 mod operation;
+mod prices;
 mod profile_detail;
 #[cfg(test)]
 mod reference_fixture;
@@ -140,6 +141,7 @@ pub use identity::IdentityCandidate;
 pub use map::{MapOverview, MapProfile};
 pub use media::{DisplayImage, DisplayVideo, MediaArchiveReport};
 pub use operation::RequestControl;
+pub use prices::{PaidEncounter, PriceItem, PriceList, PriceListValues, PriceOverview};
 pub use profile_detail::{
     EvidenceStatus, FilterEvidence, PersonDetail, PersonListing, ProfileFacts, ProfileField,
     SnapshotDifference,
@@ -433,6 +435,42 @@ impl LadiesCore {
         expected: Encounter,
     ) -> Result<(), CoreError> {
         encounters::delete(self, listing_id, person_id, expected)
+    }
+
+    pub fn price_overview(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+    ) -> Result<PriceOverview, CoreError> {
+        prices::overview(self, listing_id, person_id)
+    }
+
+    pub fn create_price_list(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+        values: PriceListValues,
+    ) -> Result<PriceList, CoreError> {
+        prices::create(self, listing_id, person_id, values)
+    }
+
+    pub fn update_price_list(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+        expected: PriceList,
+        values: PriceListValues,
+    ) -> Result<PriceList, CoreError> {
+        prices::update(self, listing_id, person_id, expected, values)
+    }
+
+    pub fn delete_price_list(
+        &self,
+        listing_id: i64,
+        person_id: i64,
+        expected: PriceList,
+    ) -> Result<(), CoreError> {
+        prices::delete(self, listing_id, person_id, expected)
     }
 
     pub fn compare_snapshots(
