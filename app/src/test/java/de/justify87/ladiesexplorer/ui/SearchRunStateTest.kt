@@ -142,6 +142,33 @@ class SearchRunStateTest {
         assertFalse(state.searchCancelling)
     }
 
+    @Test fun gridRefreshRequiresCurrentRenderedRunAndIdleVisibleSurface() {
+        val grid = DiscoverUiState(actionSurface = ProfileActionSurface.GRID, actionGeneration = 7, loading = false)
+        val local = SearchUiState()
+        val action = GridRefreshAction(null, 7)
+        assertTrue(gridRefreshMatches(grid, local, action))
+        assertFalse(gridRefreshMatches(grid.copy(actionSurface = ProfileActionSurface.NONE), local, action))
+        assertFalse(gridRefreshMatches(grid.copy(actionSurface = ProfileActionSurface.SAVED), local, action))
+        assertFalse(gridRefreshMatches(grid.copy(actionGeneration = 8), local, action))
+        assertFalse(gridRefreshMatches(grid.copy(busy = true), local, action))
+        assertFalse(gridRefreshMatches(grid.copy(loading = true), local, action))
+        assertFalse(gridRefreshMatches(grid, local.copy(profileOpen = true), action))
+        assertFalse(gridRefreshMatches(grid, local.copy(actionBusy = true), action))
+        assertFalse(gridRefreshMatches(grid, local.beginRun(), action))
+        assertTrue(gridRefreshMatches(grid.copy(loadingMore = true), local, action))
+
+        val active = local.acceptRun(response(1), listOf(card(1)))
+        val runAction = GridRefreshAction(1, 7)
+        assertTrue(gridRefreshMatches(grid, active, runAction))
+        assertFalse(gridRefreshMatches(grid, active, action))
+        assertFalse(gridRefreshMatches(grid, local, runAction))
+        assertFalse(gridRefreshMatches(grid, active.acceptRun(response(2), listOf(card(2))), runAction))
+        // The failed projection must remain retryable, but old callbacks must not.
+        val failed = grid.copy(actionGeneration = 8, error = "read failed")
+        assertFalse(gridRefreshMatches(failed, active, runAction))
+        assertTrue(gridRefreshMatches(failed, active, runAction.copy(generation = 8)))
+    }
+
     @Test fun activeGridIsNotTheConsumedSwipeQueue() {
         val rows = listOf(card(1), card(2), card(3).copy(preference = Preference.LIKE))
         val search = SearchUiState().acceptRun(response(1), rows)
