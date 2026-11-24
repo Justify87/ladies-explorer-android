@@ -5,7 +5,7 @@ import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.ProfileIdentity
 import de.justify87.ladiesexplorer.core.ProfileResponse
 
-/** Reserve non-overlapping chrome; move secondary controls into the menu in constrained windows. */
+/** Reserve non-overlapping chrome; use inline decisions in constrained windows. */
 internal data class ProfileShellBudget(
     val header: Float,
     val notice: Float,
@@ -20,13 +20,15 @@ internal data class ProfileShellBudget(
 }
 
 internal fun discoveryLeadingHeight(fontScale: Float): Float =
-    116f * maxOf(1f, fontScale)
+    60f * maxOf(1f, fontScale)
 
 // Context scrolls with the hero. On short viewports allow the hero to fill the body after scrolling.
 internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float, leadingHeight: Float = 0f): Float {
     val h = usableHeight.coerceAtLeast(0f)
     val available = viewportHeight.coerceIn(0f, h)
-    val desired = minOf(h * .63f, width.coerceAtLeast(0f) * 1.55f)
+    val discovery = leadingHeight > 0f
+    val desired = minOf(h * if (discovery) .76f else .63f,
+        width.coerceAtLeast(0f) * if (discovery) 1.85f else 1.55f)
     val afterContext = (available - leadingHeight).coerceAtLeast(0f)
     val visible = if (afterContext >= 250f) afterContext else available
     val peek = if (visible >= 274f) 24f else 0f
