@@ -51,7 +51,7 @@ internal fun DiscoveryGridScreen(
     var anchorOffset by rememberSaveable { mutableIntStateOf(0) }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val inlineChrome = maxHeight < 360.dp || (maxHeight < 460.dp && LocalDensity.current.fontScale > 1.3f)
-        val showStatus = search.response != null || search.loading || search.error != null
+        val showStatus = hasDiscoverySearchStatus(search)
         val keys = buildList {
             if (inlineChrome) add("discovery-chrome")
             if (showStatus) add("search-status")
@@ -101,7 +101,7 @@ internal fun DiscoveryGridScreen(
                 if (inlineChrome) item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) { chrome() }
                 if (showStatus) {
                     item(key = "search-status", span = { GridItemSpan(maxLineSpan) }) {
-                        GridSearchRunStatus(search, onCancelSearch)
+                        DiscoverySearchRunStatus(search, onCancelSearch)
                     }
                 }
                 item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
@@ -167,17 +167,16 @@ internal fun DiscoveryGridScreen(
     }
 }
 
+internal fun hasDiscoverySearchStatus(state: SearchUiState): Boolean =
+    state.loading || state.error != null || state.response?.let { it.partial || !it.radiusVerified } == true
+
 @Composable
-private fun GridSearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
+internal fun DiscoverySearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         val active = state.response
-        if (active != null) {
-            Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
+        if (active != null && (active.partial || !active.radiusVerified)) {
+            Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.labelMedium)
-            if (active.partial || !active.radiusVerified) {
-                Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.labelMedium)
-            }
         }
         if (state.loading) {
             Row(verticalAlignment = Alignment.CenterVertically) {
