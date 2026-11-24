@@ -98,11 +98,7 @@ fn read_one(db: &Connection, id: i64) -> Result<Option<Encounter>, CoreError> {
         .optional()?)
 }
 
-fn require_current(
-    db: &Connection,
-    person_id: i64,
-    expected: &Encounter,
-) -> Result<(), CoreError> {
+fn require_current(db: &Connection, person_id: i64, expected: &Encounter) -> Result<(), CoreError> {
     if expected.person_id != person_id
         || read_one(db, expected.encounter_id)?.as_ref() != Some(expected)
     {
@@ -143,7 +139,7 @@ pub(crate) fn create(
     let tx = db.transaction()?;
     require_owner(&tx, listing_id, person_id)?;
     validate(&tx, person_id, &values)?;
-    // Random positive IDs avoid recycling a deleted row's editor identity.
+    // Random nonnegative IDs avoid recycling a deleted row's editor identity.
     tx.execute(
         "INSERT INTO encounters
          (encounter_id,person_id,listing_id,occurred_at,duration_minutes,total_price_cents,
