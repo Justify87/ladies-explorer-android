@@ -142,7 +142,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ### Persönliche Begegnungen und Preise
 
-Bestätigtes fachliches Soll für M06; Umsetzung und Status ausschließlich in [ROADMAP](ROADMAP.md#danach--m06--persönliche-begegnungen-und-preise).
+Bestätigtes fachliches Soll für M06; Umsetzung und Status ausschließlich in [ROADMAP](ROADMAP.md#m06--persönliche-begegnungen-und-preise).
 
 - Begegnungen gehören einer Person; ein optionales Inserat muss ihr zugeordnet sein. Zeitpunkt, optionale Dauer, Grund-/Gesamtpreis, Gesamt-/Sympathiebewertung (1–5), Begegnungsnotiz und einfache persönliche Leistungszeilen können bewusst erfasst, korrigiert und gelöscht werden. Personennotiz, Präferenz, Favorit, Quellinformationen und Begegnungsdaten bleiben unabhängig.
 - Angebotspreise werden ausschließlich manuell als datierte Preislisten in EUR erfasst. Eine neue Liste erhält die frühere Liste; Korrekturen und bestätigtes Löschen sind möglich. Die neueste erfasste Liste ist kein Nachweis aktueller Gültigkeit. Tatsächlich bezahlte Beträge werden ausschließlich aus Begegnungen abgeleitet und getrennt bezeichnet.
