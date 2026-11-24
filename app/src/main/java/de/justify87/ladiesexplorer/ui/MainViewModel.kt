@@ -84,6 +84,7 @@ data class MapUiState(
     val failedLookups: UInt = 0u,
     val favoritesOnly: Boolean = false,
     val error: String? = null,
+    val actionGeneration: Long = 0L,
 )
 
 data class SearchUiState(
@@ -518,11 +519,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refreshMap() {
+    private fun admitsMapControl(action: MapControlAction, control: MapControl): Boolean =
+        mapControlMatches(_mapState.value, _discoverState.value, _searchUiState.value, action, control)
+
+    internal fun refreshRenderedMap(action: MapControlAction) {
+        if (admitsMapControl(action, MapControl.REFRESH)) refreshMap()
+    }
+
+    private fun refreshMap() {
         if (mapControl != null) return // completion refreshes from the actual database
         val epoch = ++mapEpoch
         val favoritesOnly = _mapState.value.favoritesOnly
-        _mapState.update { it.copy(loading = true, error = null, failedLookups = 0u) }
+        _mapState.update { it.copy(loading = true, error = null, failedLookups = 0u, actionGeneration = it.actionGeneration + 1) }
         viewModelScope.launch {
             projectMapOverview(_mapState, { epoch == mapEpoch }, { core.mapOverview(favoritesOnly) }) { state, overview ->
                 state.copy(overview = overview, loading = false)
@@ -530,25 +538,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setMapFavoritesOnly(value: Boolean) {
-        if (_mapState.value.favoritesOnly == value) return
+    internal fun setMapFavoritesOnly(action: MapControlAction, value: Boolean) {
+        if (!admitsMapControl(action, MapControl.FILTER) || _mapState.value.favoritesOnly == value) return
         cancelMapResolution()
-        _mapState.update { it.copy(favoritesOnly = value, overview = null, failedLookups = 0u) }
+        _mapState.update { it.copy(favoritesOnly = value, overview = null, failedLookups = 0u, actionGeneration = it.actionGeneration + 1) }
         refreshMap()
     }
 
-    fun cancelMapResolution() {
-        val control = mapControl ?: return
-        control.cancel()
-        _mapState.update { it.copy(cancelling = true) }
+    internal fun cancelRenderedMapResolution(action: MapControlAction) {
+        if (admitsMapControl(action, MapControl.CANCEL)) cancelMapResolution()
     }
 
-    fun resolveMapLocations() {
-        if (mapControl != null || _mapState.value.loading) return
+    private fun cancelMapResolution() {
+        val control = mapControl ?: return
+        control.cancel()
+        _mapState.update { it.copy(cancelling = true, actionGeneration = it.actionGeneration + 1) }
+    }
+
+    internal fun resolveMapLocations(action: MapControlAction) {
+        if (!admitsMapControl(action, MapControl.RESOLVE) || mapControl != null) return
         val control = RequestControl()
         val favoritesOnly = _mapState.value.favoritesOnly
         mapControl = control
-        _mapState.update { it.copy(resolving = true, cancelling = false, error = null, failedLookups = 0u) }
+        _mapState.update { it.copy(resolving = true, cancelling = false, error = null, failedLookups = 0u,
+            actionGeneration = it.actionGeneration + 1) }
         viewModelScope.launch {
             var failureMessage: String? = null
             var failedLookups = 0u
@@ -569,7 +582,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             // Cancellation may leave committed results; re-read local state.
             val epoch = ++mapEpoch
-            _mapState.update { it.copy(loading = true) }
+            _mapState.update { it.copy(loading = true, actionGeneration = it.actionGeneration + 1) }
             projectMapOverview(_mapState, { epoch == mapEpoch }, { core.mapOverview(_mapState.value.favoritesOnly) }) { state, latest ->
                 state.copy(overview = latest, failedLookups = failedLookups, loading = false, error = failureMessage)
             }

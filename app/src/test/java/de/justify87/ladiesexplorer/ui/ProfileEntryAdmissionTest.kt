@@ -70,6 +70,46 @@ class ProfileEntryAdmissionTest {
         assertFalse(searchResultOpenMatches(search, discovery.copy(actionSurface = ProfileActionSurface.SAVED_RESULTS), click))
     }
 
+    @Test fun mapControlsRequireRenderedStateAndVisibleRoute() {
+        val map = MapUiState(overview = MapOverview(emptyList(), 2u, 2u, 2u),
+            actionGeneration = 3L)
+        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.MAP, actionGeneration = 9L)
+        val search = SearchUiState()
+        val action = MapControlAction(map, 9L)
+        for (control in listOf(MapControl.REFRESH, MapControl.RESOLVE, MapControl.FILTER)) {
+            assertTrue(mapControlMatches(map, discovery, search, action, control))
+            assertFalse(mapControlMatches(map.copy(actionGeneration = 4L), discovery, search, action, control))
+            assertFalse(mapControlMatches(map.copy(favoritesOnly = true), discovery, search, action, control))
+            assertFalse(mapControlMatches(map.copy(overview = null), discovery, search, action, control))
+            assertFalse(mapControlMatches(map, discovery.copy(actionSurface = ProfileActionSurface.NONE), search, action, control))
+            assertFalse(mapControlMatches(map, discovery.copy(actionGeneration = 10L), search, action, control))
+            assertFalse(mapControlMatches(map, discovery, search.copy(profileOpen = true), action, control))
+        }
+        assertFalse(mapControlMatches(map, discovery, search, action, MapControl.CANCEL))
+        val noPending = map.copy(overview = MapOverview(emptyList(), 0u, 0u, 0u))
+        assertFalse(mapControlMatches(noPending, discovery, search, MapControlAction(noPending, 9L), MapControl.RESOLVE))
+        val failedRead = map.copy(overview = null, error = "read failed", actionGeneration = 4L)
+        assertTrue(mapControlMatches(failedRead, discovery, search, MapControlAction(failedRead, 9L), MapControl.REFRESH))
+    }
+
+    @Test fun mapControlsDistinguishLoadingResolvingAndCancellation() {
+        val map = MapUiState(overview = MapOverview(emptyList(), 2u, 2u, 2u), actionGeneration = 3L)
+        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.MAP, actionGeneration = 9L)
+        val search = SearchUiState()
+        for (state in listOf(map.copy(loading = true), map.copy(resolving = true), map.copy(resolving = true, cancelling = true))) {
+            val action = MapControlAction(state, 9L)
+            assertFalse(mapControlMatches(state, discovery, search, action, MapControl.REFRESH))
+            assertFalse(mapControlMatches(state, discovery, search, action, MapControl.RESOLVE))
+            assertTrue(mapControlMatches(state, discovery, search, action, MapControl.FILTER))
+        }
+        val resolving = map.copy(resolving = true, actionGeneration = 4L)
+        val cancel = MapControlAction(resolving, 9L)
+        assertTrue(mapControlMatches(resolving, discovery, search, cancel, MapControl.CANCEL))
+        assertFalse(mapControlMatches(resolving.copy(cancelling = true), discovery, search, cancel, MapControl.CANCEL))
+        assertFalse(mapControlMatches(resolving.copy(actionGeneration = 5L), discovery, search, cancel, MapControl.CANCEL))
+        assertFalse(mapControlMatches(resolving, discovery.copy(actionGeneration = 10L), search, cancel, MapControl.CANCEL))
+    }
+
     @Test fun mapOpenRequiresCurrentOverviewFilterAndRouteGeneration() {
         val profile = MapProfile(1L, 2L, "Fixture", "Leipzig", "Leipzig", 51.34, 12.37, "CITY", true, null)
         val overview = MapOverview(listOf(profile), 1u, 0u, 0u)

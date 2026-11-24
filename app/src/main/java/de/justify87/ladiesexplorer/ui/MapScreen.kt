@@ -69,10 +69,10 @@ private const val MAP_SINGLE = "ladies-single"
 @Composable
 internal fun MapScreen(
     state: MapUiState,
-    onRefresh: () -> Unit,
-    onResolve: () -> Unit,
-    onCancel: () -> Unit,
-    onFavoritesOnly: (Boolean) -> Unit,
+    onRefresh: (MapControlAction) -> Unit,
+    onResolve: (MapControlAction) -> Unit,
+    onCancel: (MapControlAction) -> Unit,
+    onFavoritesOnly: (MapControlAction, Boolean) -> Unit,
     generation: Long,
     onProfile: (MapProfileOpenAction) -> Unit,
     modifier: Modifier = Modifier,
@@ -80,6 +80,7 @@ internal fun MapScreen(
     var selectedListingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var camera by rememberSaveable { mutableStateOf<CameraPosition?>(null) }
     var mapAttempt by remember { mutableIntStateOf(0) }
+    val controls = MapControlAction(state, generation)
     val points = state.overview?.profiles.orEmpty()
     val active = points.firstOrNull { it.listingId == selectedListingId }
     val selection = if (active == null) emptyList() else points.filter {
@@ -92,7 +93,7 @@ internal fun MapScreen(
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text("Lokaler Bestand", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Text("Nur Favoriten", style = MaterialTheme.typography.labelMedium)
-            Switch(checked = state.favoritesOnly, onCheckedChange = onFavoritesOnly)
+            Switch(checked = state.favoritesOnly, onCheckedChange = { onFavoritesOnly(controls, it) })
         }
         Text("Unabhängig von der aktuellen Suche", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val overview = state.overview
@@ -103,13 +104,13 @@ internal fun MapScreen(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onRefresh, enabled = !state.resolving && !state.loading) {
+            OutlinedButton(onClick = { onRefresh(controls) }, enabled = !state.resolving && !state.loading) {
                 Text("Aktualisieren")
             }
             if (state.resolving) {
-                OutlinedButton(onClick = onCancel, enabled = !state.cancelling) { Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen") }
+                OutlinedButton(onClick = { onCancel(controls) }, enabled = !state.cancelling) { Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen") }
             } else if ((overview?.pendingLocations ?: 0u) > 0u) {
-                Button(onClick = onResolve, enabled = !state.loading) {
+                Button(onClick = { onResolve(controls) }, enabled = !state.loading) {
                     Text("Standorte auflösen")
                 }
             }
