@@ -220,7 +220,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 ### Personen und Status
 
 - `saved_people_window` in Rust projiziert Favoriten, Likes und Dislikes nach stabiler Personen-ID. Gerenderte Aktionen binden Auswahl, Fenster-/Navigationsgeneration und vollständigen Row-Snapshot; nur atomare Rust-CAS-Operationen schreiben Präferenz/Favorit, für kartenlose Personen ohne erfundenes Listing.
-- Recent (Produktzeitfenster) und Regular samt Favoriten-/Datum-Counts entstehen unter demselben SQLite-Guard und Zeitanker. Nachladen liest ein kohärentes erweitertes Fenster; Kotlin hält nur Kapazität, Auswahl und Scrollzustand.
+- Recent (Produktzeitfenster) und Regular samt Favoriten-/Datum-Counts entstehen unter demselben SQLite-Guard und Zeitanker. Manuelle und automatische Pagination binden die gerenderte Regular- beziehungsweise Recent-Fensterinstanz, Auswahl und Aktionsgeneration. Nur das sichtbare, nicht beschäftigte Fenster mit Folgeseite darf vor I/O seine Kapazität erweitern. Nachladen liest ein kohärentes erweitertes Fenster; Kotlin hält nur Kapazität, Auswahl und Scrollzustand.
 - Keyset-Cursor bindet Auswahl, Zeitgrenze und SQLite-`total_changes`-Revision. Namenssortierung mit NFD, Case-/Mark-Folding und ß/ss (keine vollständige CLDR-Kollation). Metadaten fallen deterministisch auf vorhandene Daten zurück; Relisting behält fachlichen Ereigniszeitpunkt.
 
 **Statusoperation:**

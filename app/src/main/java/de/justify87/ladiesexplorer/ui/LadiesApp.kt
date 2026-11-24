@@ -465,7 +465,6 @@ fun LadiesApp(
                         onFavorite = viewModel::toggleFavorite,
                         onPreference = viewModel::choosePreference,
                         onLoadMore = viewModel::loadMoreSavedPeople,
-                        onLoadMoreRecent = viewModel::loadMoreRecentPeople,
                         onCheckAll = viewModel::checkAllSavedStatus,
                         onCheckSingle = viewModel::checkSingleSavedStatus,
                         onCancelCheck = viewModel::cancelSavedStatus,

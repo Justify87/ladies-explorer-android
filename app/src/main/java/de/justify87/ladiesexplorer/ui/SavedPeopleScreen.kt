@@ -39,8 +39,7 @@ internal fun SavedPeopleScreen(
     onProfile: (SavedPersonAction) -> Unit,
     onFavorite: (SavedPersonAction) -> Unit,
     onPreference: (SavedPersonAction, Preference) -> Unit,
-    onLoadMore: () -> Unit,
-    onLoadMoreRecent: () -> Unit,
+    onLoadMore: (SavedPeoplePageAction) -> Unit,
     onCheckAll: (SavedStatusBatchAction) -> Unit,
     onCheckSingle: (SavedPersonAction) -> Unit,
     onCancelCheck: () -> Unit,
@@ -124,14 +123,18 @@ internal fun SavedPeopleScreen(
         scrollMemory.SaveableStateProvider(selection) {
             val listState = rememberLazyListState()
             var expanded by rememberSaveable { mutableStateOf(false) }
+            val pageAction = SavedPeoplePageAction(page, state.savedKind, state.savedSort, state.actionGeneration, false)
+            val recentAction = recent?.let {
+                SavedPeoplePageAction(it, state.savedKind, state.savedSort, state.actionGeneration, true)
+            }
             val canPage = page.nextCursor != null && enabled && !state.savedLoadingMore && !state.savedRecentLoadingMore
-            LaunchedEffect(listState, page.nextCursor, canPage, state.savedError) {
+            LaunchedEffect(listState, pageAction, canPage, state.savedError) {
                 if (canPage && state.savedError == null) {
                     snapshotFlow {
                         val layout = listState.layoutInfo
                         nearDiscoveryEnd(layout.visibleItemsInfo.lastOrNull()?.index ?: -1, layout.totalItemsCount)
                     }.first { it }
-                    onLoadMore()
+                    onLoadMore(pageAction)
                 }
             }
             // Keep the list mounted during refresh to preserve root/tab scroll state.
@@ -158,7 +161,7 @@ internal fun SavedPeopleScreen(
                         }
                     }
                     if (expanded && recent.nextCursor != null) item(key = "recent-more") {
-                        TextButton(onClick = onLoadMoreRecent,
+                        TextButton(onClick = { recentAction?.let(onLoadMore) },
                             enabled = enabled && !state.savedRecentLoadingMore && !state.savedLoadingMore) {
                             Text(if (state.savedRecentLoadingMore) "Lädt …" else "Weitere Änderungen")
                         }
@@ -173,7 +176,7 @@ internal fun SavedPeopleScreen(
                 }
                 if (state.savedLoadingMore) item { CircularProgressIndicator() }
                 else if (page.nextCursor != null) item {
-                    TextButton(onClick = onLoadMore, enabled = canPage) { Text("Weitere Profile") }
+                    TextButton(onClick = { onLoadMore(pageAction) }, enabled = canPage) { Text("Weitere Profile") }
                 }
             }
         }
