@@ -22,6 +22,22 @@ internal class SavedWindowMemory {
     }
 }
 
+internal data class SavedPeopleControlAction(
+    val kind: SavedPersonKind,
+    val sort: SavedPersonSort,
+    val generation: Long,
+)
+
+internal fun DiscoverUiState.savedPeopleControlAction() =
+    SavedPeopleControlAction(savedKind, savedSort, actionGeneration)
+
+internal fun savedPeopleControlMatches(
+    state: DiscoverUiState, search: SearchUiState, action: SavedPeopleControlAction,
+): Boolean =
+    state.actionSurface == ProfileActionSurface.SAVED &&
+        state.savedPeopleControlAction() == action &&
+        !state.loading && !state.busy && !search.profileOpen && !search.loading && !search.actionBusy
+
 /** A saved action belongs to the rendered tab, window, surface and row. */
 internal data class SavedPersonAction(
     val row: SavedPersonRow,
