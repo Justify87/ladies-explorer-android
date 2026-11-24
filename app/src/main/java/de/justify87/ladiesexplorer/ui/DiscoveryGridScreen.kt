@@ -1,5 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,6 +24,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,15 +42,18 @@ internal fun DiscoveryGridScreen(
     discovery: DiscoverUiState,
     search: SearchUiState,
     onLoadMore: (GridPageAction) -> Unit,
-    onLike: (GridLikeAction) -> Unit,
+    onDecision: (GridLikeAction, Preference) -> Unit,
+    onUndo: (GridUndoAction) -> Unit,
     onProfile: (GridLikeAction) -> Unit,
     chrome: @Composable () -> Unit,
     onCancelSearch: () -> Unit,
     modifier: Modifier = Modifier,
+    touchGate: ProfileTouchGate? = null,
 ) {
     val cards = gridCards(discovery, search)
     val active = search.response != null
     val enabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy
+    val undoAction = discovery.gridUndo?.let { GridUndoAction(it, discovery.actionGeneration) }
     val pageAction = if (active) null else discovery.nextCursor?.let { GridPageAction(it, discovery.actionGeneration) }
     val canPage = pageAction != null && gridPageMatches(discovery, search, pageAction)
     var anchorKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -52,6 +64,7 @@ internal fun DiscoveryGridScreen(
         val showStatus = hasDiscoverySearchStatus(search)
         val keys = buildList {
             if (inlineChrome) add("discovery-chrome")
+            if (inlineChrome && undoAction != null) add("grid-undo")
             if (showStatus) add("search-status")
             if (discovery.mutationError != null) add("mutation-error")
             if (discovery.error != null) add("error")
@@ -87,6 +100,7 @@ internal fun DiscoveryGridScreen(
         }
         Column(Modifier.fillMaxSize()) {
             if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { chrome() }
+            if (!inlineChrome && undoAction != null) GridUndoButton(undoAction, enabled, onUndo)
             LazyVerticalGrid(
                 columns = profileGridCells(),
                 state = listState,
@@ -96,6 +110,9 @@ internal fun DiscoveryGridScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (inlineChrome) item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) { chrome() }
+                if (inlineChrome && undoAction != null) item(key = "grid-undo", span = { GridItemSpan(maxLineSpan) }) {
+                    GridUndoButton(undoAction, enabled, onUndo)
+                }
                 if (showStatus) {
                     item(key = "search-status", span = { GridItemSpan(maxLineSpan) }) {
                         DiscoverySearchRunStatus(search, onCancelSearch)
@@ -130,13 +147,15 @@ internal fun DiscoveryGridScreen(
                         age = card.age,
                         thumbnailUrl = card.thumbnailUrl,
                         localPath = card.localPath,
-                        liked = card.preference == Preference.LIKE,
+                        preference = card.preference,
+                        decisionOwner = action,
+                        touchGate = touchGate,
                         enabled = enabled,
                         onOpen = {
                             currentAnchor()?.let(::saveAnchor)
                             onProfile(action)
                         },
-                        onLike = { onLike(action) },
+                        onDecision = { target -> onDecision(action, target) },
                     )
                 }
                 if (pageAction != null) {
@@ -162,57 +181,120 @@ internal fun profileGridCells(): GridCells =
     GridCells.Adaptive(if (LocalDensity.current.fontScale >= 1.5f) 240.dp else 148.dp)
 
 @Composable
+private fun GridUndoButton(action: GridUndoAction, enabled: Boolean, onUndo: (GridUndoAction) -> Unit) {
+    TextButton(onClick = { onUndo(action) }, enabled = enabled,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+        Text("Letzte Entscheidung rückgängig")
+    }
+}
+
+internal fun gridPreferenceLabel(preference: Preference): String = when (preference) {
+    Preference.LIKE -> "Gefällt"
+    Preference.NONE -> "Unbewertet"
+    Preference.DISLIKE -> "Gefällt nicht"
+}
+
+@Composable
 internal fun ProfileGridCard(
     name: String,
     age: String?,
     thumbnailUrl: String?,
     localPath: String?,
-    liked: Boolean,
     enabled: Boolean,
     onOpen: () -> Unit,
-    onLike: (() -> Unit)?,
     modifier: Modifier = Modifier,
     place: String? = null,
+    preference: Preference? = null,
+    decisionOwner: Any? = null,
+    onDecision: ((Preference) -> Unit)? = null,
+    touchGate: ProfileTouchGate? = null,
 ) {
-    val shape = MaterialTheme.shapes.large
+    if (preference == null || onDecision == null) {
+        GridCardContent(name, age, place, thumbnailUrl, localPath, enabled, onOpen, modifier)
+        return
+    }
+    var drag by remember(decisionOwner) { mutableFloatStateOf(0f) }
+    val limit = with(LocalDensity.current) { 16.dp.toPx() }
+    val shift by animateFloatAsState((drag * .18f).coerceIn(-limit, limit), label = "grid decision")
+    PhotoGestureSurface(owner = decisionOwner, modifier = modifier.fillMaxWidth(),
+        galleryEnabled = enabled, onSwipe = onDecision.takeIf { enabled }, onDrag = { drag = it },
+        touchGate = touchGate) { hit ->
+        key(decisionOwner) {
+            val actions = Modifier.semantics {
+                contentDescription = name.ifBlank { "Inserat" }
+                stateDescription = gridPreferenceLabel(preference)
+                if (enabled) customActions = listOf(
+                    CustomAccessibilityAction("Gefällt") { onDecision(Preference.LIKE); true },
+                    CustomAccessibilityAction("Gefällt nicht") { onDecision(Preference.DISLIKE); true },
+                    CustomAccessibilityAction("Bewertung entfernen") { onDecision(Preference.NONE); true },
+                )
+            }
+            GridCardContent(name, age, null, thumbnailUrl, localPath, enabled, onOpen,
+                Modifier.then(hit.photo).then(hit.previous).then(actions), preference, shift, drag)
+        }
+    }
+}
+
+@Composable
+private fun GridCardContent(
+    name: String, age: String?, place: String?, thumbnailUrl: String?, localPath: String?,
+    enabled: Boolean, onOpen: () -> Unit, modifier: Modifier, preference: Preference? = null,
+    shift: Float = 0f, drag: Float = 0f,
+) {
     val largeText = LocalDensity.current.fontScale >= 1.5f
     Box(
-        modifier.fillMaxWidth().heightIn(min = if (largeText) 220.dp else 0.dp).clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+        modifier.fillMaxWidth().heightIn(min = if (largeText) 220.dp else 0.dp)
+            .clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceVariant)
             .shellFocus().clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen),
     ) {
         Spacer(Modifier.fillMaxWidth().aspectRatio(1.03f))
-        ProfileImage(thumbnailUrl, localPath, Modifier.matchParentSize(), description = "$name – Profilbild")
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(
-            0f to Color.Transparent, .44f to Color.Black.copy(alpha = .02f),
-            1f to Color.Black.copy(alpha = .82f),
-        )))
-        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
-            .padding(top = if (onLike != null) 64.dp else 0.dp)
-            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .65f), Color.Black.copy(alpha = .85f))))
-            .padding(12.dp)) {
-            Text(listOfNotNull(name.ifBlank { "Inserat" }, age?.takeIf { it.isNotBlank() }).joinToString(" · "),
-                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            place?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+        ProfileImage(thumbnailUrl, localPath, Modifier.matchParentSize().graphicsLayer { translationX = shift },
+            description = "$name – Profilbild")
+        if (preference != null) {
+            age?.takeIf { it.isNotBlank() }?.let {
+                Text(it, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
+                    .background(Color.Black.copy(alpha = .78f), MaterialTheme.shapes.small).padding(horizontal = 7.dp, vertical = 3.dp),
+                    color = Color.White, style = MaterialTheme.typography.bodySmall)
+            }
+            GridPreferenceIcon(preference, Modifier.align(Alignment.TopEnd).padding(8.dp))
+            if (drag != 0f) {
+                Text(if (drag > 0f) "Gefällt" else "Gefällt nicht",
+                    modifier = Modifier.align(Alignment.Center)
+                        .background(Color.Black.copy(alpha = .82f), MaterialTheme.shapes.small).padding(6.dp),
+                    color = Color.White, style = MaterialTheme.typography.bodySmall)
+            }
+        } else {
+            Box(Modifier.matchParentSize().background(Brush.verticalGradient(
+                0f to Color.Transparent, .44f to Color.Black.copy(alpha = .02f),
+                1f to Color.Black.copy(alpha = .82f),
+            )))
+            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .65f), Color.Black.copy(alpha = .85f))))
+                .padding(12.dp)) {
+                Text(listOfNotNull(name.ifBlank { "Inserat" }, age?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                    color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                place?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
-        if (onLike != null) {
-            IconButton(
-                onClick = onLike,
-                enabled = enabled,
-                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(48.dp).shellFocus()
-                    .background(if (liked) MaterialTheme.colorScheme.primaryContainer
-                    else Color.White.copy(alpha = .94f), CircleShape),
-            ) {
-                Icon(
-                    if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = if (liked) "Like für $name entfernen" else "$name gefällt mir",
-                    tint = if (liked) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF6B7280),
-                )
-            }
+    }
+}
+
+@Composable
+private fun GridPreferenceIcon(preference: Preference, modifier: Modifier) {
+    val liked = preference == Preference.LIKE
+    val foreground = if (liked) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFFD1D5DB)
+    Box(modifier.size(30.dp).background(
+        if (liked) MaterialTheme.colorScheme.primaryContainer else Color.Black.copy(alpha = .82f), CircleShape),
+        contentAlignment = Alignment.Center) {
+        Icon(if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+            contentDescription = null, tint = foreground, modifier = Modifier.size(18.dp))
+        if (preference == Preference.DISLIKE) Canvas(Modifier.size(18.dp)) {
+            drawLine(Color.White, Offset(size.width * .12f, size.height * .12f),
+                Offset(size.width * .88f, size.height * .88f), strokeWidth = 2.dp.toPx())
         }
     }
 }

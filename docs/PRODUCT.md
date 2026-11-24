@@ -51,7 +51,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 - Undo stellt den vorherigen **vollständigen** Präferenzzustand und den gültigen Deckschritt wieder her; Präsentationswiederherstellung siehe [DESIGN](DESIGN.md#gesten-und-präsentation).
 - Reset/Replay starten Traversierung neu, ohne persistierte Entscheidungen zu löschen.
 - Standalone-Präferenz, Neutral-Rücksetzung und Favorit erzeugen keine Deck-Visits.
-- Grid erlaubt Like direkt ohne Profilöffnung. Neu gelikte Inserate werden **nur im aktiven Grid** temporär ausgeblendet; bei Writefehler wird das Ausblenden zurückgenommen.
+- Grid erlaubt Like/Dislike ohne Profilöffnung durch horizontale Geste und zugängliche nicht-gestische Aktionen einschließlich Neutral-Rücksetzung. Die bestätigte Präferenz wird gemeinsam projiziert; kein exklusives Grid-Ausblenden. Der letzte gültige Grid-Commit ist innerhalb des aktuellen Grid-Kontexts per erwartungsgeprüftem Undo rückgängig zu machen, ohne Deck-Visit. Bei Writefehler bleibt der fachliche Zustand unverändert; bei Readfehler gilt der bestehende Recovery-Vertrag.
 - Technische Kontext- und Commit-Sicherheit: [ARCHITECTURE](ARCHITECTURE.md#operations--und-konsistenzmodell).
 
 ## Profile, Medien und Kontakte

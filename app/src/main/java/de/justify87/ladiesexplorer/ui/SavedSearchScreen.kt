@@ -171,13 +171,13 @@ internal fun SavedSearchResultsScreen(
             val listing = card.listingId
             val person = card.personId
             Column {
-                ProfileGridCard(card.name, card.age, card.thumbnailUrl, card.localPath, false,
+                ProfileGridCard(card.name, card.age, card.thumbnailUrl, card.localPath,
                     enabled && !state.busy && listing != null && person != null,
                     onOpen = {
                         if (listing != null && person != null) {
                             onOpen(SavedSearchProfileOpenAction(result, card, generation))
                         }
-                    }, onLike = null, place = card.city)
+                    }, place = card.city)
                 if (listing == null || person == null) Text("Kein lokales Profil",
                     style = MaterialTheme.typography.bodySmall, maxLines = 2)
             }

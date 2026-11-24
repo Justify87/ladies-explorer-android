@@ -8,6 +8,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
@@ -92,24 +95,40 @@ class DiscoveryDesignDeviceTest {
         }
     }
 
-    @Test fun modeSelectionAndGridLikeAreExplicitIndependentActions() {
+    @Test fun gridHorizontalDecisionsTapAndVerticalScrollAreExclusive() {
         val actions = mutableListOf<String>()
+        var preference by mutableStateOf(Preference.NONE)
+        var owner by mutableIntStateOf(1)
         rule.setContent {
             MaterialTheme {
-                var active by remember { mutableStateOf(DiscoverMode.Swipe) }
-                Column(Modifier.width(320.dp)) {
-                    DiscoverModeSwitcher(active, onSelect = { active = it; actions.add(it.name) }, modifier = Modifier)
-                    ProfileGridCard("Fixture", "30", null, null, false, true,
-                        onOpen = { actions.add("open") }, onLike = { actions.add("like") },
-                        modifier = Modifier.testTag("card").width(160.dp), place = "Ort")
+                LazyColumn(Modifier.width(320.dp).height(320.dp)) {
+                    item {
+                        ProfileGridCard("Fixture", "30", null, null, true,
+                            onOpen = { actions.add("open") },
+                            modifier = Modifier.testTag("card").width(240.dp), place = "Ort",
+                            preference = preference, decisionOwner = owner,
+                            onDecision = { actions.add(it.name); preference = it })
+                    }
+                    items(20) { Text("Detail", Modifier.height(60.dp)) }
                 }
             }
         }
-        rule.onNodeWithText(DiscoverMode.Swipe.title).assertIsSelected()
-        rule.onNodeWithText(DiscoverMode.Grid.title).performClick().assertIsSelected()
-        rule.onNodeWithContentDescription("Fixture gefällt mir").performClick()
-        rule.onNodeWithTag("card").performClick()
-        rule.runOnIdle { assertEquals(listOf(DiscoverMode.Grid.name, "like", "open"), actions) }
+        val card = rule.onNodeWithTag("card")
+        rule.onNodeWithText("Fixture").assertDoesNotExist()
+        rule.onNodeWithText("Ort").assertDoesNotExist()
+        rule.onNodeWithText("30").assertExists()
+        card.performTouchInput { click(center) }
+        card.performTouchInput { swipe(Offset(width * .15f, center.y), Offset(width * .85f, center.y)) }
+        card.performTouchInput { swipe(Offset(width * .85f, center.y), Offset(width * .15f, center.y)) }
+        card.performTouchInput { down(center); moveTo(center + Offset(width * .1f, 0f)); up() }
+        card.performTouchInput { down(center); moveTo(center + Offset(width * .4f, 0f)); cancel() }
+        card.performTouchInput { down(Offset(width * .15f, center.y)); moveTo(Offset(width * .85f, center.y)) }
+        rule.runOnIdle { owner++ }
+        card.performTouchInput { up() }
+        rule.runOnIdle { assertEquals(listOf("open", "LIKE", "DISLIKE"), actions) }
+        rule.onNodeWithContentDescription("Fixture", substring = true).assertExists()
+        card.performTouchInput { swipe(Offset(center.x, height * .8f), Offset(center.x, height * .1f)) }
+        rule.runOnIdle { assertEquals(listOf("open", "LIKE", "DISLIKE"), actions) }
     }
 
     @Test fun quickChoiceKeepsRunOwnerAndAllOptionsAcrossModesAndThemes() {
@@ -158,7 +177,7 @@ class DiscoveryDesignDeviceTest {
                     DiscoveryGridScreen(
                         discovery = DiscoverUiState(loading = false),
                         search = SearchUiState(error = "Synthetischer Suchstatus"),
-                        onLoadMore = {}, onLike = {}, onProfile = {},
+                        onLoadMore = {}, onDecision = { _, _ -> }, onUndo = {}, onProfile = {},
                         chrome = {
                             DiscoverModeSwitcher(DiscoverMode.Grid, { actions.add(it) }, Modifier)
                         },
@@ -191,7 +210,7 @@ class DiscoveryDesignDeviceTest {
                     if (route.discovery == DiscoverMode.Grid) {
                         DiscoveryGridScreen(
                             discovery = DiscoverUiState(localCards = rows, loading = false),
-                            search = SearchUiState(), onLoadMore = {}, onLike = {},
+                            search = SearchUiState(), onLoadMore = {}, onDecision = { _, _ -> }, onUndo = {},
                             onProfile = { route = route.openSwipe() },
                             chrome = {}, onCancelSearch = {},
                             modifier = Modifier.width(360.dp).height(480.dp),
@@ -201,7 +220,7 @@ class DiscoveryDesignDeviceTest {
             }
         }
         rule.onNode(hasScrollToIndexAction()).performScrollToIndex(7)
-        val profile = rule.onNodeWithText("Fixture 8")
+        val profile = rule.onNodeWithContentDescription("Fixture 8")
         profile.assertIsDisplayed()
         val top = profile.fetchSemanticsNode().boundsInRoot.top
         profile.performClick()
@@ -214,30 +233,40 @@ class DiscoveryDesignDeviceTest {
         assertEquals(top, profile.fetchSemanticsNode().boundsInRoot.top, 2f)
     }
 
-    @Test fun longIdentityCannotOverlapGridLikeTargetAtIncreasedFontScale() {
+    @Test fun compactGridStatusAndAccessibleActionsAcrossThemesAndFontScale() {
         val name = "Sehr langer synthetischer Profilname"
         var font by mutableFloatStateOf(1.3f)
-        var likes = 0
+        var dark by mutableStateOf(true)
+        var preference by mutableStateOf(Preference.NONE)
+        val decisions = mutableListOf<Preference>()
         rule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, font)) {
-                LadiesTheme(darkTheme = true) {
-                    ProfileGridCard(name, "30", null, null, false, true, {}, { likes++ },
-                        modifier = Modifier.width(160.dp).testTag("long-card"),
-                        place = "Langer synthetischer Ortsname")
+                LadiesTheme(darkTheme = dark) {
+                    ProfileGridCard(name, "30", null, null, true, {},
+                        modifier = Modifier.width(160.dp).testTag("compact-card"),
+                        preference = preference, decisionOwner = preference,
+                        onDecision = { decisions.add(it); preference = it })
                 }
             }
         }
         for (scale in listOf(1.3f, 2f)) {
-            rule.runOnIdle { font = scale }
-            val like = rule.onNodeWithContentDescription("$name gefällt mir")
-            val target = like.fetchSemanticsNode().boundsInRoot
-            val identity = rule.onNodeWithText("$name · 30", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            val card = rule.onNodeWithTag("long-card").fetchSemanticsNode().boundsInRoot
-            assertTrue(target.bottom <= identity.top + 1f)
-            assertTrue(card.height >= card.width / 1.03f - 1f)
-            like.performClick()
+            rule.runOnIdle { font = scale; dark = scale == 1.3f }
+            val card = rule.onNodeWithContentDescription(name)
+            val bounds = card.fetchSemanticsNode().boundsInRoot
+            assertTrue(bounds.height >= bounds.width / 1.03f - 1f)
+            rule.onNodeWithText(name).assertDoesNotExist()
+            rule.onNodeWithText("30").assertExists()
+            for ((label, value) in listOf("Gefällt" to Preference.LIKE, "Gefällt nicht" to Preference.DISLIKE,
+                "Bewertung entfernen" to Preference.NONE)) {
+                rule.runOnIdle {
+                    val actions = card.fetchSemanticsNode().config[SemanticsActions.CustomActions]
+                    assertTrue(actions.single { it.label == label }.action())
+                }
+                card.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, gridPreferenceLabel(value)))
+            }
         }
-        rule.runOnIdle { assertEquals(2, likes) }
+        rule.runOnIdle { assertEquals(listOf(Preference.LIKE, Preference.DISLIKE, Preference.NONE,
+            Preference.LIKE, Preference.DISLIKE, Preference.NONE), decisions) }
     }
 }

@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.2 sind abgeschlossen. Nächste abhängige Aufgabe: M09.3 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.2 sind abgeschlossen. M09.3 ist vom Nutzer freigegeben und in Prüfung (Branch `m09.3-grid-decisions`); M09.4 folgt nach Integration und gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,7 +18,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.3 — Entdecken-Grid: kompakte Karten und horizontale Entscheidungen
 
-**Status:** PLANNED.
+**Status:** REVIEW — Branch `m09.3-grid-decisions`; Implementierung und gezielte Regressionen vorgelegt, vollständiges CI-Gate und Merge-Freigabe ausstehend.
 
 **Abhängigkeit:** M09.2; gesonderter Nutzerauftrag.
 

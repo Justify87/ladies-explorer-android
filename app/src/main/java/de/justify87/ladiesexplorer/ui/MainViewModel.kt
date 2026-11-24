@@ -68,6 +68,7 @@ data class DiscoverUiState(
     val activeVisibleCount: Int = 0,
     val replayLikes: Boolean = true,
     val canUndoSwipe: Boolean = false,
+    val gridUndo: GridUndoReceipt? = null,
     val swipeRestore: SwipePresentation? = null,
     val swipePresentationGeneration: Long = 0L,
     val loadingMore: Boolean = false,
@@ -110,7 +111,6 @@ data class SearchUiState(
     val previewLoading: Boolean = false,
     val previewError: String? = null,
     val activeCards: List<DiscoveryCard> = emptyList(),
-    val gridHiddenLikes: Set<Long> = emptySet(),
     val loading: Boolean = false,
     val searchCancelling: Boolean = false,
     val searchAttemptId: Long = 0L,
@@ -219,7 +219,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal fun setProfileActionSurface(surface: ProfileActionSurface) {
         _discoverState.update { state ->
             if (state.actionSurface == surface) state
-            else state.copy(actionSurface = surface, actionGeneration = state.actionGeneration + 1)
+            else state.copy(actionSurface = surface, actionGeneration = state.actionGeneration + 1,
+                gridUndo = if (surface == ProfileActionSurface.GRID) state.gridUndo else null)
         }
     }
 
@@ -572,7 +573,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 swipeSession.reset()
                 discoveryEpoch++
                 _discoverState.update {
-                    it.copy(cards = swipeSession.queue(cards, active = true), localCards = emptyList(), canUndoSwipe = false, swipeRestore = null,
+                    it.copy(cards = swipeSession.queue(cards, active = true), localCards = emptyList(), canUndoSwipe = false, gridUndo = null, swipeRestore = null,
                         swipePresentationGeneration = it.swipePresentationGeneration + 1, nextCursor = null, activeRunId = result.searchRunId,
                         activeVisibleCount = cards.size, loading = false, loadingMore = false,
                         savedLoadingMore = false, savedRecentLoadingMore = false, error = null, actionGeneration = it.actionGeneration + 1)
@@ -911,10 +912,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshProfileWindow: Boolean = true,
         recoverWriteFailure: suspend () -> Unit = {},
         localRecordOnly: Boolean = false,
+        retainGridUndo: Boolean = false,
     ) {
         invalidateSwipeActions(clearMergeNotice = !localRecordOnly)
         val epoch = ++discoveryEpoch
         _discoverState.update { it.copy(busy = true, loading = false, mutationError = null,
+            gridUndo = if (retainGridUndo) it.gridUndo else null,
             loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false) }
         viewModelScope.launch {
             var message: String? = null
@@ -985,19 +988,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _discoverState.update { it.copy(swipeRestore = null) }
     }
 
-    internal fun toggleGridLike(action: GridLikeAction) {
+    internal fun chooseGridPreference(action: GridLikeAction, target: Preference) {
         val state = _discoverState.value
         val search = _searchUiState.value
-        if (!gridActionMatches(state, search, action)) return
+        if (hasProfileEditor || !gridActionMatches(state, search, action)) return
         val card = action.card
-        val target = gridLikeTarget(card.preference)
-        val hide = action.runId != null && target == Preference.LIKE
-        if (hide) _searchUiState.update { it.hideGridLike(card.listingId) }
-        mutateDiscovery("Like konnte nicht gespeichert werden", write = {
-            core.setSwipePreference(card.listingId, card.personId, card.preference, target)
+        if (card.preference == target) return
+        mutateDiscovery("Entscheidung konnte nicht gespeichert werden", write = {
+            val before = core.setSwipePreference(card.listingId, card.personId, card.preference, target)
+            _discoverState.update {
+                if (it.actionSurface == ProfileActionSurface.GRID && it.activeRunId == action.runId)
+                    it.copy(gridUndo = GridUndoReceipt(action.runId, card.listingId, card.personId, before, target))
+                else it
+            }
+        }, retainGridUndo = true)
+    }
+
+    internal fun undoGridPreference(action: GridUndoAction) {
+        if (hasProfileEditor || !gridUndoMatches(_discoverState.value, _searchUiState.value, action)) return
+        val receipt = action.receipt
+        mutateDiscovery("Undo fehlgeschlagen", write = {
+            undoSwipeStep(receipt.step(), core::setSwipePreference, { core.profileIdentity(it).personId }) {
+                _discoverState.update { state -> state.copy(gridUndo = null) }
+            }
         }, onWriteFailure = {
-            if (hide) _searchUiState.update { it.restoreGridLike(card.listingId) }
-        })
+            _discoverState.update { it.copy(gridUndo = null) }
+        }, retainGridUndo = true)
     }
 
     private suspend fun refreshSelectedPerson(personId: Long) =
