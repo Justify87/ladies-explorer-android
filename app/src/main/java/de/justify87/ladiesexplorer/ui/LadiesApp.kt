@@ -322,10 +322,6 @@ fun LadiesApp(
                             val cancelAction = SearchCancelAction(ProfileActionSurface.GRID, discovery.actionGeneration, search.searchAttemptId)
                             SearchRunStatus(search) { viewModel.cancelActiveSearch(cancelAction) }
                         }
-                        if (route.discovery == DiscoverMode.Map) DiscoverModeSwitcher(route.discovery, onSelect = {
-                            viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
-                            route = route.select(it)
-                        })
                         if (route.discovery == DiscoverMode.Swipe) {
                             val cancelAction = SearchCancelAction(ProfileActionSurface.NONE,
                                 discovery.actionGeneration, search.searchAttemptId, discovery.swipeSessionId)
@@ -391,6 +387,11 @@ fun LadiesApp(
                                 onFavoritesOnly = viewModel::setMapFavoritesOnly,
                                 generation = discovery.actionGeneration,
                                 onProfile = viewModel::openMapProfile,
+                                onMode = { mode ->
+                                    viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                                    route = route.select(mode)
+                                },
+                                profileEnabled = !discovery.busy && !search.loading,
                                 modifier = Modifier.weight(1f),
                             )
                         }
