@@ -5,7 +5,7 @@ import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.ProfileIdentity
 import de.justify87.ladiesexplorer.core.ProfileResponse
 
-/** Reserve non-overlapping chrome; move secondary controls into the menu in constrained windows. */
+/** Reserve non-overlapping chrome; use inline decisions in constrained windows. */
 internal data class ProfileShellBudget(
     val header: Float,
     val notice: Float,
@@ -15,18 +15,20 @@ internal data class ProfileShellBudget(
     val narrowHeader: Boolean,
     val compactGallery: Boolean,
 ) {
-    val railInMenu get() = rail == 0f
+    val railInContent get() = rail == 0f
     val noticeInHeader get() = notice == 0f
 }
 
 internal fun discoveryLeadingHeight(fontScale: Float): Float =
-    116f * maxOf(1f, fontScale)
+    60f * maxOf(1f, fontScale)
 
 // Context scrolls with the hero. On short viewports allow the hero to fill the body after scrolling.
 internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float, leadingHeight: Float = 0f): Float {
     val h = usableHeight.coerceAtLeast(0f)
     val available = viewportHeight.coerceIn(0f, h)
-    val desired = minOf(h * .63f, width.coerceAtLeast(0f) * 1.55f)
+    val discovery = leadingHeight > 0f
+    val desired = minOf(h * if (discovery) .76f else .63f,
+        width.coerceAtLeast(0f) * if (discovery) 1.85f else 1.55f)
     val afterContext = (available - leadingHeight).coerceAtLeast(0f)
     val visible = if (afterContext >= 250f) afterContext else available
     val peek = if (visible >= 274f) 24f else 0f
@@ -77,30 +79,12 @@ internal fun LazyListState.headerOwnsIdentity(key: String, identityHeight: Int):
 internal fun gallerySideFraction(width: Float, video: Boolean = false): Float =
     if (width <= 0f) 0f else if (video) .33f else .5f
 
-/** Menu actions remain bound to the profile/run where the menu opened. */
-internal data class SwipeMenuContext(
+/** Rendered deck controls retain their original deck and profile tokens. */
+internal data class SwipeControlsContext(
     val deck: SwipeDeckToken, val card: SwipeCardToken?, val profile: SwipeActionToken?,
-    val deckEnabled: Boolean, val availabilityEnabled: Boolean, val matchingRun: Boolean,
+    val deckEnabled: Boolean, val availabilityEnabled: Boolean,
     val availability: AvailabilityMode, val replay: Boolean, val canUndo: Boolean,
-    val medium: String? = null,
 )
-
-internal fun swipeMenuCurrent(opened: SwipeMenuContext?, current: SwipeMenuContext): Boolean =
-    opened != null && opened == current
-
-internal fun swipeContextLabel(summary: String, executed: Boolean, matchingRun: Boolean, availability: AvailabilityMode): String =
-    when {
-        !matchingRun -> "$summary · Swipe · Suchlauf wird übernommen"
-        executed -> "$summary · Swipe · ${availability.label}"
-        else -> "$summary · Swipe"
-    }
-
-internal fun swipeContextShort(hasRun: Boolean, matchingRun: Boolean, availability: AvailabilityMode): String =
-    when {
-        !matchingRun -> "Swipe · Suchwechsel"
-        hasRun -> "Suche · ${availability.label} · Swipe"
-        else -> "Lokal · Swipe"
-    }
 
 internal data class HeroIdentity(
     val name: String,

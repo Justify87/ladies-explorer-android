@@ -147,6 +147,9 @@ internal fun ProfileMediaHero(
     playbackVisible: Boolean = true,
     galleryNavigationEnabled: Boolean = true,
     onMediaSettled: (Boolean) -> Unit = {},
+    favorite: Boolean? = null,
+    onFavorite: (() -> Unit)? = null,
+    imageScale: ContentScale = ContentScale.Crop,
 ) {
     val index = selection.resolve(media, projectionAvailable)
     LaunchedEffect(media, index, projectionAvailable) {
@@ -175,13 +178,14 @@ internal fun ProfileMediaHero(
         Box(surface.background(MaterialTheme.colorScheme.surfaceVariant)) {
             when (item?.kind) {
                 "IMAGE" -> ProfileImageSurface(item.url, item.localPath, Modifier.fillMaxSize(),
-                    ContentScale.Crop, "Profilbild ${index + 1}", true, imageModifier = imageMotion) { feedback ->
+                    imageScale, "Profilbild ${index + 1}", true, imageModifier = imageMotion) { feedback ->
                     SideEffect { onMediaSettled(!feedback.loading) }
                     BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                         // Reserve the center for retry or video controls.
                         val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed) else 0f
                         GalleryTargets(side, hit, gestureOwner, previous, next,
-                            { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
+                            { selection.select(media, index - 1) }, { selection.select(media, index + 1) },
+                            reserveFavorite = favorite != null)
                         if (feedback.failed || feedback.loading) Box(Modifier.align(Alignment.Center)
                             .fillMaxWidth(if (side < .5f) 1f - side * 2 else .5f), contentAlignment = Alignment.Center) {
                             ImageFeedbackContent(feedback)
@@ -197,7 +201,8 @@ internal fun ProfileMediaHero(
                         controlsModifier = Modifier.align(Alignment.Center),
                         onTargets = {
                             GalleryTargets(side, hit, gestureOwner, previous, next,
-                                { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
+                                { selection.select(media, index - 1) }, { selection.select(media, index + 1) },
+                            reserveFavorite = favorite != null)
                         })
                 }
                 else -> Box(Modifier.fillMaxSize().then(hit.photo), contentAlignment = Alignment.Center) {
@@ -209,6 +214,18 @@ internal fun ProfileMediaHero(
                 color = MaterialTheme.colorScheme.inverseSurface, shape = MaterialTheme.shapes.medium) {
                 Text(if (displayedDrag > 0f) "Gefällt" else "Nein", Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     color = MaterialTheme.colorScheme.inverseOnSurface)
+            }
+            if (favorite != null) key(actionToken) {
+                IconButton(onClick = { if (actionsEnabled && isCurrent()) onFavorite?.invoke() },
+                    enabled = actionsEnabled && onFavorite != null,
+                    modifier = Modifier.align(Alignment.TopEnd).size(48.dp).shellFocus()) {
+                    Box(Modifier.size(34.dp).background(Color.Black.copy(alpha = .78f), MaterialTheme.shapes.small),
+                        contentAlignment = Alignment.Center) {
+                        Icon(if (favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = if (favorite) "Favorit entfernen" else "Als Favorit speichern",
+                            tint = Color.White)
+                    }
+                }
             }
             if (identity != null && !compact) {
                 val hidden = if (headerOwnsIdentity) Modifier.alpha(0f).clearAndSetSemantics {} else Modifier
@@ -235,14 +252,17 @@ internal fun HeroIdentityOverlay(identity: HeroIdentity, modifier: Modifier = Mo
 
 @Composable
 private fun GalleryTargets(side: Float, hit: PhotoHitModifiers, owner: Any?,
-    previous: Boolean, next: Boolean, onPrevious: () -> Unit, onNext: () -> Unit) {
+    previous: Boolean, next: Boolean, onPrevious: () -> Unit, onNext: () -> Unit,
+    reserveFavorite: Boolean = false) {
     if (side <= 0f) return
     Row(Modifier.fillMaxSize()) {
         PhotoTapTarget("Vorheriges Medium", Modifier.weight(side).fillMaxHeight().then(hit.previous), owner,
             if (previous) onPrevious else null)
         if (side < .5f) Spacer(Modifier.weight(1f - side * 2))
-        PhotoTapTarget("Nächstes Medium", Modifier.weight(side).fillMaxHeight().then(hit.next), owner,
-            if (next) onNext else null)
+        Box(Modifier.weight(side).fillMaxHeight().padding(top = if (reserveFavorite) 48.dp else 0.dp)) {
+            PhotoTapTarget("Nächstes Medium", Modifier.fillMaxSize().then(hit.next), owner,
+                if (next) onNext else null)
+        }
     }
 }
 
@@ -260,7 +280,7 @@ internal fun ProfileImageDialog(item: ProfileMediaItem, onDismiss: () -> Unit) {
     }
 }
 
-/** Identity is rendered only in the hero or fixed header. */
+/** Secondary source and archive metadata; identity belongs to the enclosing profile presentation. */
 @Composable
 internal fun ProfileMetadata(
     profile: ProfileResponse,

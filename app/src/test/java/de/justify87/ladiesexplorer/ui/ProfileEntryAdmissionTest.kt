@@ -21,10 +21,16 @@ class ProfileEntryAdmissionTest {
     @Test fun gridAvailabilityRequiresRenderedRouteRunAndDraft() {
         val discovery = DiscoverUiState(loading = false, actionSurface = ProfileActionSurface.GRID, actionGeneration = 4L)
         val search = SearchUiState(city = "Leipzig")
-        val action = search.gridAvailabilityAction(4L)
-        assertTrue(gridAvailabilityMatches(discovery, search, action))
-        assertFalse(gridAvailabilityMatches(discovery, search.copy(city = "Berlin"), action))
-        assertFalse(gridAvailabilityMatches(discovery, search.copy(local = search.local.copy(videoOnly = true)), action))
+        val action = search.discoveryAvailabilityAction(4L)
+        assertTrue(discoveryAvailabilityMatches(discovery, search, action))
+        val map = discovery.copy(actionSurface = ProfileActionSurface.MAP)
+        val mapAction = search.discoveryAvailabilityAction(4L, ProfileActionSurface.MAP)
+        assertTrue(discoveryAvailabilityMatches(map, search, mapAction))
+        assertFalse(discoveryAvailabilityMatches(discovery, search, mapAction))
+        assertFalse(discoveryAvailabilityMatches(map, search, action))
+        assertFalse(discoveryAvailabilityMatches(map.copy(actionGeneration = 5L), search, mapAction))
+        assertFalse(discoveryAvailabilityMatches(discovery, search.copy(city = "Berlin"), action))
+        assertFalse(discoveryAvailabilityMatches(discovery, search.copy(local = search.local.copy(videoOnly = true)), action))
         for (state in listOf(
             discovery.copy(actionSurface = ProfileActionSurface.NONE),
             discovery.copy(actionSurface = ProfileActionSurface.MAP),
@@ -32,32 +38,32 @@ class ProfileEntryAdmissionTest {
             discovery.copy(activeRunId = 7L),
             discovery.copy(loading = true),
             discovery.copy(busy = true),
-        )) assertFalse(gridAvailabilityMatches(state, search, action))
+        )) assertFalse(discoveryAvailabilityMatches(state, search, action))
         for (state in listOf(search.copy(loading = true), search.copy(actionBusy = true), search.copy(profileOpen = true))) {
-            assertFalse(gridAvailabilityMatches(discovery, state, action))
+            assertFalse(discoveryAvailabilityMatches(discovery, state, action))
         }
 
         val active = search.acceptRun(response(7), emptyList())
         val activeDiscovery = discovery.copy(activeRunId = 7L, actionGeneration = 5L)
-        val activeAction = active.gridAvailabilityAction(5L)
-        assertTrue(gridAvailabilityMatches(activeDiscovery, active, activeAction))
+        val activeAction = active.discoveryAvailabilityAction(5L)
+        assertTrue(discoveryAvailabilityMatches(activeDiscovery, active, activeAction))
         // Header quick selection uses the executed query, not the unexecuted draft.
-        assertTrue(gridAvailabilityMatches(activeDiscovery, active.copy(city = "Berlin"), activeAction))
-        assertFalse(gridAvailabilityMatches(activeDiscovery, active, action))
-        assertFalse(gridAvailabilityMatches(activeDiscovery.copy(activeRunId = 8L),
+        assertTrue(discoveryAvailabilityMatches(activeDiscovery, active.copy(city = "Berlin"), activeAction))
+        assertFalse(discoveryAvailabilityMatches(activeDiscovery, active, action))
+        assertFalse(discoveryAvailabilityMatches(activeDiscovery.copy(activeRunId = 8L),
             active.acceptRun(response(8), emptyList()), activeAction))
     }
 
     @Test fun gridAvailabilityRejectsOldCallbackAfterFailedOrCancelledRun() {
         val search = SearchUiState()
         val discovery = DiscoverUiState(loading = false, actionSurface = ProfileActionSurface.GRID, actionGeneration = 4L)
-        val action = search.gridAvailabilityAction(4L)
+        val action = search.discoveryAvailabilityAction(4L)
         val revoked = discovery.copy(actionGeneration = 5L)
         val loading = search.beginRun()
-        assertFalse(gridAvailabilityMatches(revoked, loading, action))
+        assertFalse(discoveryAvailabilityMatches(revoked, loading, action))
         for (ended in listOf(loading.endRun("failed"), loading.endRun())) {
-            assertFalse(gridAvailabilityMatches(revoked, ended, action))
-            assertTrue(gridAvailabilityMatches(revoked, ended, ended.gridAvailabilityAction(5L)))
+            assertFalse(discoveryAvailabilityMatches(revoked, ended, action))
+            assertTrue(discoveryAvailabilityMatches(revoked, ended, ended.discoveryAvailabilityAction(5L)))
         }
     }
 

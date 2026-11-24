@@ -113,6 +113,8 @@ class ProfileGestureDeviceTest {
 
     @Test fun actualHeroSideTapAndSwipeDoNotInvokeEachOther() {
         val decisions = mutableListOf<Preference>()
+        var favorites by mutableIntStateOf(0)
+        var current by mutableStateOf(true)
         rule.setContent {
             MaterialTheme {
                 // Use the real geometry policy; requires at least 320dp usable width.
@@ -121,13 +123,20 @@ class ProfileGestureDeviceTest {
                         media = listOf(ProfileMediaItem("IMAGE", "", null, 0u),
                             ProfileMediaItem("VIDEO", "", null, 1u)),
                         height = 360.dp, modifier = Modifier.testTag("hero"),
-                        actionsEnabled = true, isCurrent = { true }, selection = remember { ProfileMediaSelection() },
+                        actionsEnabled = true, isCurrent = { current }, selection = remember { ProfileMediaSelection() },
                         identity = null, actionToken = null, compact = false, headerOwnsIdentity = false,
+                        favorite = favorites % 2 == 1, onFavorite = { favorites++ },
                         onIdentityMeasured = {}, onSwipe = { decisions.add(it) })
                 }
             }
         }
         val hero = rule.onNodeWithTag("hero")
+        val favorite = rule.onNodeWithContentDescription("Als Favorit speichern")
+        favorite.performTouchInput { click(center) }
+        rule.onNodeWithContentDescription("Favorit entfernen").assertExists()
+        rule.runOnIdle { assertEquals(1, favorites); assertTrue(decisions.isEmpty()); current = false }
+        rule.onNodeWithContentDescription("Favorit entfernen").performClick()
+        rule.runOnIdle { assertEquals(1, favorites); current = true }
         rule.onNodeWithTag("gallery-video-control").assertDoesNotExist()
         hero.performTouchInput { swipe(Offset(width * .85f, height * .6f), Offset(width * .15f, height * .6f)) }
         rule.onNodeWithTag("gallery-video-control").assertDoesNotExist()

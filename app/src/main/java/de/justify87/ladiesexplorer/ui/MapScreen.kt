@@ -74,10 +74,10 @@ internal fun mapSelectedProfile(points: List<MapProfile>, listingId: Long?, owne
 @Composable
 internal fun MapScreen(
     state: MapUiState,
+    searchStatus: @Composable () -> Unit,
     onRefresh: (MapControlAction) -> Unit,
     onResolve: (MapControlAction) -> Unit,
     onCancel: (MapControlAction) -> Unit,
-    summary: String,
     membershipCurrent: Boolean,
     generation: Long,
     onProfile: (MapProfileOpenAction) -> Unit,
@@ -125,13 +125,11 @@ internal fun MapScreen(
             (LocalDensity.current.fontScale >= 1.5f && availableHeight < 600.dp)
         Column(
             Modifier.fillMaxSize().then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            DiscoveryContextStrip {
-                Text(summary, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-            }
             DiscoverModeSwitcher(DiscoverMode.Map, onMode, Modifier)
+            searchStatus()
             Surface(
                 modifier = Modifier.fillMaxWidth()
                     .then(if (compact) Modifier.height(280.dp) else Modifier.weight(1f)),

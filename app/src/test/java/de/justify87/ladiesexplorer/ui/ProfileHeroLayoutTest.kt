@@ -12,7 +12,9 @@ class ProfileHeroLayoutTest {
             assertEquals(height - root, budget.header + budget.rail + budget.notice + budget.body, .01f)
             val hero = profileHeroHeight(width, height, budget.body, discoveryLeadingHeight(1f))
             assertTrue(hero > 250f)
-            assertTrue(hero <= height * .63f + .01f)
+            assertTrue(hero <= height * .76f + .01f)
+            val previousHero = minOf(height * .63f, width * 1.55f, budget.body - 116f - 24f)
+            assertTrue("More room for the hero", hero > previousHero)
             assertTrue(hero + discoveryLeadingHeight(1f) + 24f <= budget.body + .01f)
             assertEquals(80f, budget.rail, .01f)
             assertFalse(budget.compactGallery)
@@ -28,7 +30,7 @@ class ProfileHeroLayoutTest {
                 assertTrue(plan.notice == 0f || plan.notice == 48f)
                 assertTrue(plan.rail in setOf(0f, 48f, 80f))
                 if (height < 240f) {
-                    assertTrue(plan.railInMenu)
+                    assertTrue(plan.railInContent)
                     assertTrue(plan.noticeInHeader)
                 }
             }
@@ -93,8 +95,8 @@ class ProfileHeroLayoutTest {
                         assertEquals(context, usable, budget.header + budget.notice + budget.rail + budget.body, .01f)
                         assertTrue(context, budget.body >= minOf(96f, usable - budget.header) - .01f)
                         assertTrue(context, hero >= 0f && hero <= budget.body + .01f)
-                        assertTrue(context, !rail || budget.railInMenu || budget.rail >= 48f)
-                        assertTrue(context, rail || budget.railInMenu)
+                        assertTrue(context, !rail || budget.railInContent || budget.rail >= 48f)
+                        assertTrue(context, rail || budget.railInContent)
                         assertTrue(context, !notice || budget.noticeInHeader || budget.notice >= 48f)
                         if (usable >= 144f) assertTrue(context, budget.header >= 48f && budget.body > 0f)
                     }

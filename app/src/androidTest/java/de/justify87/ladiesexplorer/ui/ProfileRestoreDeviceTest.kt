@@ -170,7 +170,7 @@ class ProfileRestoreDeviceTest {
                             } else Text("Deck beendet")
                         }
                         Box(Modifier.fillMaxWidth().height(48.dp)) {
-                            val context = SwipeMenuContext(deck, card, action, true, true, true,
+                            val context = SwipeControlsContext(deck, card, action, true, true,
                                 AvailabilityMode.All, true, session.last != null)
                             SwipeDecisionControls(context, if (cardVisible) "Fixture" else null,
                                 onUndo = {

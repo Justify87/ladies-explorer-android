@@ -123,10 +123,10 @@ class ProfileShellDeviceTest {
                 clear = { empty = true }
                 jump = { scope.launch { list.scrollToItem(1) } }
                 val deck = SwipeDeckToken(null, 1)
-                val context = SwipeMenuContext(deck, if (empty) null else SwipeCardToken(deck, 4, 1),
+                val context = SwipeControlsContext(deck, if (empty) null else SwipeCardToken(deck, 4, 1),
                     if (empty) null else SwipeActionToken(null, 1, 4, 1, 11, 1,
                         Preference.NONE, false, emptyList()),
-                    true, true, true, AvailabilityMode.All, true, true)
+                    true, true, AvailabilityMode.All, true, true)
                 ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero", hasRail = true,
                     notices = emptyList(), noticeOwner = context,
                     header = { presentation, _, _ -> Text(if (presentation.identityInHeader) "B" else "A") },

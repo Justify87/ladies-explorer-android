@@ -30,14 +30,17 @@ class DiscoveryDesignDeviceTest {
                 pxPerDp = LocalDensity.current.density
                 val list = rememberLazyListState()
                 val deck = SwipeDeckToken(null, 1)
-                val context = SwipeMenuContext(deck, SwipeCardToken(deck, 4, 1),
+                val context = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1),
                     SwipeActionToken(null, 1, 4, 1, 11, 1, Preference.NONE, false, emptyList()),
-                    true, true, true, AvailabilityMode.All, false, true)
+                    true, true, AvailabilityMode.All, false, true)
                 Column(Modifier.fillMaxSize()) {
                     ProfileShell(Modifier.weight(1f), list, "hero", rootHeight = 64.dp,
                         hasRail = true, notices = emptyList(), noticeOwner = context,
                         heroLeadingHeight = discoveryLeadingHeight(LocalDensity.current.fontScale).dp,
-                        header = { _, _, _ -> Box(Modifier.fillMaxSize().testTag("header")) { Text("Ladies") } },
+                        header = { _, _, _ -> Row(Modifier.fillMaxSize().testTag("header")) {
+                            Text("Entdecken", Modifier.weight(1f))
+                            AvailabilityQuickChoice(AvailabilityMode.All, true, deck, {})
+                        } },
                         rail = {
                             Box(Modifier.fillMaxSize().testTag("rail")) {
                                 SwipeDecisionControls(context, "Fixture", {}, {}, {})
@@ -47,8 +50,7 @@ class DiscoveryDesignDeviceTest {
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             item(key = "discover-context") {
                                 Box(Modifier.padding(horizontal = 16.dp).testTag("context")) {
-                                    DiscoveryChrome("Lokaler Bestand", AvailabilityMode.All, true, deck,
-                                        DiscoverMode.Swipe, {}, {})
+                                    DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
                                 }
                             }
                             item(key = "hero") {
@@ -56,7 +58,7 @@ class DiscoveryDesignDeviceTest {
                                     ProfileMediaHero(emptyList(), presentation.heroHeight,
                                         actionsEnabled = false, isCurrent = { false },
                                         selection = remember { ProfileMediaSelection() },
-                                        identity = HeroIdentity("Fixture", place = "Ort"),
+                                        identity = null, favorite = false, onFavorite = {},
                                         actionToken = null, compact = presentation.budget.compactGallery,
                                         headerOwnsIdentity = presentation.identityInHeader, onIdentityMeasured = measured)
                                 }
@@ -79,6 +81,10 @@ class DiscoveryDesignDeviceTest {
         assertTrue(hero.top >= context.bottom - 1f)
         assertTrue(hero.height > 0f && hero.bottom <= rail.top + 1f)
         assertTrue(rail.bottom <= nav.top + 1f)
+        val favorite = rule.onNodeWithContentDescription("Als Favorit speichern").fetchSemanticsNode().boundsInRoot
+        assertTrue(favorite.width >= 48 * pxPerDp - 1f && favorite.height >= 48 * pxPerDp - 1f)
+        assertTrue(favorite.top >= hero.top - 1f && favorite.right <= hero.right + 1f)
+        rule.onNodeWithText("Fixture").assertDoesNotExist()
         listOf("Undo", "Nein", "Später", "Gefällt").forEach { label ->
             val bounds = rule.onNodeWithContentDescription(label).fetchSemanticsNode().boundsInRoot
             assertTrue(bounds.width >= 48 * pxPerDp - 1f)
@@ -92,8 +98,7 @@ class DiscoveryDesignDeviceTest {
             MaterialTheme {
                 var active by remember { mutableStateOf(DiscoverMode.Swipe) }
                 Column(Modifier.width(320.dp)) {
-                    DiscoveryChrome("Lokaler Bestand", AvailabilityMode.All, true, "fixture", active,
-                        onMode = { active = it; actions.add(it.name) }, onAvailability = {})
+                    DiscoverModeSwitcher(active, onSelect = { active = it; actions.add(it.name) }, modifier = Modifier)
                     ProfileGridCard("Fixture", "30", null, null, false, true,
                         onOpen = { actions.add("open") }, onLike = { actions.add("like") },
                         modifier = Modifier.testTag("card").width(160.dp), place = "Ort")
@@ -107,6 +112,43 @@ class DiscoveryDesignDeviceTest {
         rule.runOnIdle { assertEquals(listOf(DiscoverMode.Grid.name, "like", "open"), actions) }
     }
 
+    @Test fun quickChoiceKeepsRunOwnerAndAllOptionsAcrossModesAndThemes() {
+        var owner by mutableIntStateOf(1)
+        var dark by mutableStateOf(true)
+        var mode by mutableStateOf(DiscoverMode.Swipe)
+        var availability by mutableStateOf(AvailabilityMode.All)
+        val choices = mutableListOf<AvailabilityMode>()
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
+                LadiesTheme(darkTheme = dark) {
+                    Column(Modifier.width(360.dp)) {
+                        Row {
+                            Text("Entdecken", Modifier.weight(1f))
+                            AvailabilityQuickChoice(availability, true, owner, {
+                                choices.add(it)
+                                availability = it
+                            })
+                        }
+                        DiscoverModeSwitcher(mode, { mode = it }, Modifier)
+                    }
+                }
+            }
+        }
+        rule.onNodeWithText("Alle ▾").performClick()
+        rule.onNodeWithText("Heute").performClick()
+        rule.onNodeWithText("Heute ▾").assertExists()
+        rule.onNodeWithText("Heute ▾").performClick()
+        rule.runOnIdle { owner++ }
+        rule.onNodeWithText("Jetzt").assertDoesNotExist()
+        rule.runOnIdle { dark = false }
+        rule.onNodeWithText("Grid").performClick().assertIsSelected()
+        rule.onNodeWithText("Karte").performClick().assertIsSelected()
+        rule.onNodeWithText("Heute ▾").performClick()
+        rule.onNodeWithText("Jetzt").performClick()
+        rule.runOnIdle { assertEquals(listOf(AvailabilityMode.Today, AvailabilityMode.Now), choices) }
+    }
+
     @Test fun shortGridScrollsPastChromeAndBackToModeSelection() {
         val actions = mutableListOf<DiscoverMode>()
         rule.setContent {
@@ -116,10 +158,9 @@ class DiscoveryDesignDeviceTest {
                     DiscoveryGridScreen(
                         discovery = DiscoverUiState(loading = false),
                         search = SearchUiState(error = "Synthetischer Suchstatus"),
-                        onRefresh = {}, onLoadMore = {}, onLike = {}, onProfile = {},
+                        onLoadMore = {}, onLike = {}, onProfile = {},
                         chrome = {
-                            DiscoveryChrome("Lokaler Bestand", AvailabilityMode.All, true, "fixture",
-                                DiscoverMode.Grid, { actions.add(it) }, {})
+                            DiscoverModeSwitcher(DiscoverMode.Grid, { actions.add(it) }, Modifier)
                         },
                         onCancelSearch = {},
                         modifier = Modifier.width(360.dp).height(150.dp),
@@ -130,7 +171,7 @@ class DiscoveryDesignDeviceTest {
         val grid = rule.onNode(hasScrollToIndexAction())
         grid.performScrollToIndex(1)
         rule.onNodeWithText("Synthetischer Suchstatus").assertIsDisplayed()
-        grid.performScrollToIndex(3)
+        grid.performScrollToIndex(2)
         rule.onNodeWithText("Keine Treffer.").assertIsDisplayed()
         grid.performScrollToIndex(0)
         rule.onNodeWithText(DiscoverMode.Swipe.title).performClick()
@@ -150,7 +191,7 @@ class DiscoveryDesignDeviceTest {
                     if (route.discovery == DiscoverMode.Grid) {
                         DiscoveryGridScreen(
                             discovery = DiscoverUiState(localCards = rows, loading = false),
-                            search = SearchUiState(), onRefresh = {}, onLoadMore = {}, onLike = {},
+                            search = SearchUiState(), onLoadMore = {}, onLike = {},
                             onProfile = { route = route.openSwipe() },
                             chrome = {}, onCancelSearch = {},
                             modifier = Modifier.width(360.dp).height(480.dp),
@@ -159,7 +200,7 @@ class DiscoveryDesignDeviceTest {
                 }
             }
         }
-        rule.onNode(hasScrollToIndexAction()).performScrollToIndex(8)
+        rule.onNode(hasScrollToIndexAction()).performScrollToIndex(7)
         val profile = rule.onNodeWithText("Fixture 8")
         profile.assertIsDisplayed()
         val top = profile.fetchSemanticsNode().boundsInRoot.top
