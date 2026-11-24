@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: M06/M07 erst auf Nutzerauftrag.** M05.10 abgeschlossen. L01 unabhängig klären.
+**Nächster Schritt: M05.11 (G11), T11.1 READY.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -17,6 +17,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
 | M05.10 Unified Profile Experience | DONE | T10.0–T10.7 abgeschlossen; T10.8 [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75) integriert; T10.8/T10.9 Abschlussbilanz unten. |
+| M05.11 Gezielte Qualitätskonsolidierung | READY | T11.1–T11.4: belegte Inkonsistenzen und Redundanzen vor M06 gezielt beheben; keine großflächige Neuarchitektur. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -37,7 +38,7 @@ Diagnose (Logging, Messungen, HTTP/HAR, TXT-Export) ist integriert [#7](https://
 - Je Arbeitskontext eine Aufgabe. Main, offene PRs, Abhängigkeiten, relevante Spezifikation/Code/Tests prüfen; konkrete beobachtbare Kriterien vor Umsetzung festlegen. Kein konkurrierender Umbau am selben State.
 - Bei Unterbrechung Stand/nächsten Schritt/Blocker hier aktualisieren. Bei Abschluss Kriterien abgleichen, Beleg (PR/Commit/Test/Lauf) verlinken, Status und geänderte Fachverträge im selben PR pflegen. Erledigte Detailchecklisten zu einem Beleg verdichten; Review-Historie in PR/Git, nicht anhängen. Keine eigenmächtige Merge-/Veröffentlichungsfreigabe.
 
-## Jetzt – M05.10 (G10)
+## Abgeschlossen – M05.10 (G10)
 
 ### T10.0–T10.6 — DONE
 
@@ -93,9 +94,58 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - [x] Technischer Abschlussbeleg: [CI #45412651895](https://github.com/Justify87/ladies-explorer-android/actions/runs/45412651895) mit erfolgreichem ARM64-Debug-APK-/Instrumentierungs-APK-Build, JVM-Tests, Lint, Rust-Tests, synthetischer nativer DB-Regression, Clippy, Quell-/APK-Architekturprüfungen und abschließendem build-Gate. Reguläre automatische CI speichert gemäß README kein Debug-APK-Artefakt; keine separate manuelle Veröffentlichung.
 - Abschluss mit Merge von [PR #76](https://github.com/Justify87/ladies-explorer-android/pull/76); keine Code-, CI- oder Fachvertragsänderung. M06/M07 bleiben gesperrt bis Nutzerauftrag.
 
+## Jetzt – M05.11 (G11) · Gezielte Qualitätskonsolidierung
+
+**Abhängigkeit:** M05.10 DONE. **Reihenfolge:** vor M06; M06/M07 bleiben ohne gesonderten Nutzerauftrag ungestartet. **Ziel:** Nachgewiesene fachliche Widersprüche, unnötige Zustands-/Aufrufdoppelungen und sichtbare Redundanzen ursächlich beheben, ohne die bewährte Kotlin-/Rust-Architektur oder den Hobbyprojektumfang aufzublähen.
+
+**Arbeitsweise:** Vor jeder Änderung betroffene Aufrufer, aktuellen Ist-Stand und [PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md) bzw. [DESIGN](DESIGN.md) bedarfsorientiert abgleichen. Vermutete Probleme erst belegen; zulässiges Ergebnis ist eine begründete Nichtänderung. Kleine, thematisch abgeschlossene PRs auf integriertem `main`, gezielte positive/negative Regressionen und vorhandene CI. Kein repoweiter neuer Aufrufgraph, neues Framework, Event-Bus, allgemeiner Operationsmanager, zusätzliche Testinfrastruktur oder pauschale Legacy-/Datenbankmigration. Bestehende Owner-/CAS-, UI-Admission-, Drain-/Cancel-, Undo- und Reprojektionsverträge erhalten; keine stillen Fachänderungen.
+
+### T11.1 — READY · Fachliche Inkonsistenzen
+
+**Anker:** `rust/ladies-core/src/identity.rs` (`normalize_phone`), `ui/ProfileComponents.kt` (`phoneForWhatsApp`, Statusdarstellung), `rust/ladies-core/src/saved_search.rs` (`LocalVisibility`), `rust/ladies-core/src/source/parse.rs`, `ui/SavedPeopleScreen.kt`.
+
+**Umfang:**
+- [ ] Telefon-Normalisierung in Rust und Kontakt-URL-Erzeugung in Kotlin einschließlich internationaler Vorwahlen abgleichen; nur nachgewiesene Abweichungen korrigieren. Identitätsevidenz und persistierte Kennungen schützen; interne Schemaentwicklung ausschließlich bei belegter Notwendigkeit.
+- [ ] `ALL/AI/NATURAL` gegen tatsächlich vorhandene Quellenmarker prüfen; nicht belegte Natürlichkeit nicht behaupten. Normale und gespeicherte Suche behalten dieselben Sichtbarkeitsregeln; gespeicherte Definitionen nicht unbemerkt umdeuten.
+- [ ] Statuslabels in Profil und gespeicherten Personen auf fachlich widersprüchliche Aussagen prüfen; ggf. vorhandene Darstellung vereinheitlichen, ohne eine neue Statusdomäne einzuführen.
+
+**Abnahme:** Relevante Rust-/JVM-Tests für Grenzfälle und historische Daten bestehen; keine neue Identitätszuordnung, Datenverlust oder falsche Status-/KI-Aussage. Nur tatsächlich erforderliche Fachvertragsänderungen im selben PR dokumentiert.
+
+### T11.2 — PLANNED · Zustands- und Aufrufredundanzen
+
+**Abhängigkeit:** T11.1 abgeschlossen; Arbeiten am selben State/API nicht parallel. **Anker:** `ui/LadiesApp.kt`, `ui/MainViewModel.kt`, `ui/DiscoveryState.kt`, `ui/SavedPeopleState.kt`, `ui/SavedSearchState.kt`; `ShellRouteTest`, `SearchRunStateTest`, `ProfileProjectionTest`, `SavedPeopleStateTest`, `SavedSearchPaneTest`.
+
+**Umfang:**
+- [ ] Mehrfache Sichtbarkeits-/Aktionskontext-Schreiber auf tatsächlich redundante Aufrufe prüfen; notwendige sofortige Revocation bei Navigation und Lifecycle-Synchronisierung unterscheiden. Nur sichere Doppelungen entfernen, keine neue Shell-State-Architektur voraussetzen.
+- [ ] Sucherfolg, `activeSearchCards`, Discovery-/SavedPeople-Projektionen und statische Filterkatalog-Reads gezielt auf unnötige Wiederholung prüfen; nur bei bestätigter Gleichwertigkeit zusammenfassen. Recovery nach Fehler, Cancel oder möglichem Teil-Commit erhalten.
+- [ ] Einzel-/Batchstatus und `mutateDiscovery` hinsichtlich unbegründeter Swipe-Invalidierung, unnötiger Projektionen und Teilfehlerdarstellung prüfen; vorhandene Operations-/Resultatstypen bevorzugt vereinfachen statt eine generische Reconciliation-Infrastruktur einzuführen.
+
+**Abnahme:** Entfernte Aufrufe sind durch Caller-Review und gezielte Zähler/Tests als redundant belegt. Navigation, Stale-Action-Admission, Native Drain, Commit-ohne-Write-Replay, Teilfehler, Undo und unabhängige Projektionen bleiben korrekt; keine Performanceverbesserung ohne Messbeleg behaupten.
+
+### T11.3 — PLANNED · Nutzerseitige Doppelungen
+
+**Abhängigkeit:** T11.2 abgeschlossen. **Anker:** `ui/SavedPeopleScreen.kt`, `ui/ProfileComponents.kt`, `ui/ProfilePanels.kt`, `ui/SearchScreen.kt`, `ui/LadiesApp.kt`; [DESIGN](DESIGN.md#informationshierarchie--progressive-offenlegung).
+
+**Umfang:**
+- [ ] Nachweislich doppelte Datums- und Anzeigenanzahl-Angaben sowie uneindeutige Status-/Aktualisierungsbeschriftungen vereinfachen; unterschiedliche fachliche Zeitpunkte und Zählgrundlagen zuvor unterscheiden.
+- [ ] Die zusätzliche Ergebnisliste in der Suche auf eigenständigen Nutzwert prüfen; nur bei bestätigter Redundanz einschließlich Zustand, Callback und Tests entfernen. Swipe/Grid und eigenständige gespeicherte Suchergebnisse erhalten.
+- [ ] Geänderte Screens im bestehenden UI-/Accessibility-Vertrag prüfen; keine allgemeine Neugestaltung und kein Verlust verfügbarer Profilinformationen.
+
+**Abnahme:** Die betroffenen Screens zeigen Informationen konsistent und ohne vermeidbare Wiederholung. Suchlauf, Filterentwurf, Ergebnis- und Profilzugriff, Back/Rotation sowie gültige Aktionskontexte bleiben erhalten; UI-Änderungen durch gezielte Tests/Prüfung belegt.
+
+### T11.4 — PLANNED · Enges Altcode- und Abschlussreview
+
+**Abhängigkeit:** T11.1–T11.3 abgeschlossen. **Anker:** jeweils betroffene Kotlin-/Rust-/UniFFI-Aufrufer, Tests, `docs/` und bestehender [CI-Vertrag](../README.md#prüfung--ci).
+
+**Umfang:**
+- [ ] Ausschließlich im Zuge der vorigen Aufgaben eindeutig abgelöste Funktionen, State-Felder, Wrapper, FFI-Exporte, Kommentare und Tests vollständig bereinigen. Native Altdefinitionen, Serialisierung, Framework-Aufrufer und interne Schemaentwicklung nur nach belegter Entbehrlichkeit anfassen.
+- [ ] Betroffene UI→CoreStore→Rust→SQLite-Pfade und umgekehrte Aufrufer auf verbleibende Widersprüche, funktionale Regressionen und unnötige neue Abstraktionen reviewen; vorhandene gezielte Tests und vollständigen CI-Gate für den integrierten Abschlussstand belegen.
+
+**Akzeptanz:** Keine offenen hohen In-Scope-Befunde, keine zweite fachliche Implementierungsroute, kein belegter Funktionsverlust und keine zusätzlichen Frameworks/Jobs. ROADMAP und tatsächlich geänderte Verträge im jeweiligen PR aktualisieren; Abschlussbelege nennen, danach Status DONE. Kein eigenmächtiger Merge; keine separate Geräteabnahme nach [Merge-Regel](#pflege).
+
 ## Danach – M06
 
-Erst nach G10 und Nutzerauftrag. Schema `rust/ladies-core/src/schema.rs` (encounters, encounter_services, price_lists, price_items) vorhanden, keine daraus abgeleitete vollständige UI.
+Erst nach M05.11 (G11) und gesondertem Nutzerauftrag. Schema `rust/ladies-core/src/schema.rs` (encounters, encounter_services, price_lists, price_items) vorhanden, keine daraus abgeleitete vollständige UI.
 - [ ] **M06.1 — PLANNED:** Begegnungen/Besuche, Service-Details, Gesamt-/Sympathiebewertung, private Begegnungsnotiz/Preisangaben: tatsächliche Daten/API und bestätigten fachlichen Bedarf abgleichen, fehlenden nativen Bearbeitungsumfang festlegen und umsetzen. Personennotiz getrennt; Persistenz-/Identitätsintegrität prüfen.
 - [ ] **M06.2 — PLANNED / Scope bestätigen:** manuelle Preislisten/-historie/letzter Preis gegen fachlichen Bedarf und Schema abgleichen; nur bestätigten UI-Umfang umsetzen, keine automatische Extraktion.
 - [ ] **M06.3 — PLANNED / Scope bestätigen:** globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, Karten-/Geocoding-Erweiterungen gegen Hauptplan abgleichen; keine Implementierung ohne Nutzerentscheidung. Vorhandene Karte/SavedSearch/WhatsApp nicht erneut entwickeln.
