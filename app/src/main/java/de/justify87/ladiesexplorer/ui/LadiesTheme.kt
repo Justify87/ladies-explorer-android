@@ -77,9 +77,9 @@ private val ladiesTypography = Typography(
 )
 
 @Composable
-fun LadiesTheme(content: @Composable () -> Unit) {
+fun LadiesTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) ladiesDarkColors else ladiesLightColors,
+        colorScheme = if (darkTheme) ladiesDarkColors else ladiesLightColors,
         shapes = ladiesShapes,
         typography = ladiesTypography,
         content = content,

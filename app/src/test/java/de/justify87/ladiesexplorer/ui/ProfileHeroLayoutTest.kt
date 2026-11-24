@@ -78,4 +78,28 @@ class ProfileHeroLayoutTest {
         assertEquals("Unbekannt", HeroIdentity("", "", "").title)
         assertEquals("Ort unbekannt", HeroIdentity("", "", "").subtitle)
     }
+
+    @Test fun responsiveBudgetAcrossWidthsFontScalesInsetsAndShortWindows() {
+        for ((width, height) in listOf(360f to 740f, 390f to 844f, 430f to 932f, 600f to 900f, 740f to 360f)) {
+            for (font in listOf(1f, 1.3f, 2f)) for (system in listOf(0f, 48f, 80f)) {
+                for (ime in listOf(0f, 220f, 320f)) for (notice in listOf(false, true)) {
+                    for (rail in listOf(false, true)) {
+                        val root = if (rail) 64f * font else 0f
+                        val usable = (height - system - ime - root).coerceAtLeast(0f)
+                        val budget = profileShellBudget(width, usable, root, font, notice, rail)
+                        val hero = profileHeroHeight(width, usable + root, budget.body,
+                            if (rail) discoveryLeadingHeight(font) else 0f)
+                        val context = "width=$width, height=$height, font=$font, system=$system, ime=$ime, rail=$rail"
+                        assertEquals(context, usable, budget.header + budget.notice + budget.rail + budget.body, .01f)
+                        assertTrue(context, budget.body >= minOf(96f, usable - budget.header) - .01f)
+                        assertTrue(context, hero >= 0f && hero <= budget.body + .01f)
+                        assertTrue(context, !rail || budget.railInMenu || budget.rail >= 48f)
+                        assertTrue(context, rail || budget.railInMenu)
+                        assertTrue(context, !notice || budget.noticeInHeader || budget.notice >= 48f)
+                        if (usable >= 144f) assertTrue(context, budget.header >= 48f && budget.body > 0f)
+                    }
+                }
+            }
+        }
+    }
 }

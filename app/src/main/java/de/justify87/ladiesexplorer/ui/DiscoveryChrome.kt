@@ -54,11 +54,11 @@ internal fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode)
     modifier: Modifier = Modifier.padding(horizontal = 16.dp)) {
     val scheme = MaterialTheme.colorScheme
     Surface(modifier.fillMaxWidth(), color = scheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) {
-        Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp),
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically) {
             DiscoverMode.entries.forEach { mode ->
                 val selected = mode == active
-                Surface(Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()
+                Surface(Modifier.weight(1f).heightIn(min = 48.dp).fillMaxHeight().shellFocus()
                     .selectable(selected = selected, role = Role.Tab, onClick = { if (!selected) onSelect(mode) }),
                     color = if (selected) scheme.primaryContainer else scheme.surfaceContainerHigh,
                     shape = MaterialTheme.shapes.medium) {

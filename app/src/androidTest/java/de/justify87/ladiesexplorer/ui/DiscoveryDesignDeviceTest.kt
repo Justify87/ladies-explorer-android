@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Preference
 import org.junit.Assert.*
@@ -102,5 +103,62 @@ class DiscoveryDesignDeviceTest {
         rule.onNodeWithContentDescription("Fixture gefällt mir").performClick()
         rule.onNodeWithTag("card").performClick()
         rule.runOnIdle { assertEquals(listOf(DiscoverMode.Grid.name, "like", "open"), actions) }
+    }
+
+    @Test fun shortGridScrollsPastChromeAndBackToModeSelection() {
+        val actions = mutableListOf<DiscoverMode>()
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                LadiesTheme(darkTheme = true) {
+                    DiscoveryGridScreen(
+                        discovery = DiscoverUiState(loading = false),
+                        search = SearchUiState(error = "Synthetischer Suchstatus"),
+                        onRefresh = {}, onLoadMore = {}, onLike = {}, onProfile = {},
+                        chrome = {
+                            DiscoveryChrome("Lokaler Bestand", AvailabilityMode.All, true, "fixture",
+                                DiscoverMode.Grid, { actions.add(it) }, {})
+                        },
+                        onCancelSearch = {},
+                        modifier = Modifier.width(360.dp).height(150.dp),
+                    )
+                }
+            }
+        }
+        val grid = rule.onNode(hasScrollToIndexAction())
+        grid.performScrollToIndex(1)
+        rule.onNodeWithText("Synthetischer Suchstatus").assertIsDisplayed()
+        grid.performScrollToIndex(3)
+        rule.onNodeWithText("Keine Treffer.").assertIsDisplayed()
+        grid.performScrollToIndex(0)
+        rule.onNodeWithText(DiscoverMode.Swipe.title).performClick()
+        rule.runOnIdle { assertEquals(listOf(DiscoverMode.Swipe), actions) }
+    }
+
+    @Test fun longIdentityCannotOverlapGridLikeTargetAtIncreasedFontScale() {
+        val name = "Sehr langer synthetischer Profilname"
+        var font by mutableFloatStateOf(1.3f)
+        var likes = 0
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, font)) {
+                LadiesTheme(darkTheme = true) {
+                    ProfileGridCard(name, "30", null, null, false, true, {}, { likes++ },
+                        modifier = Modifier.width(160.dp).testTag("long-card"),
+                        place = "Langer synthetischer Ortsname")
+                }
+            }
+        }
+        for (scale in listOf(1.3f, 2f)) {
+            rule.runOnIdle { font = scale }
+            val like = rule.onNodeWithContentDescription("$name gefällt mir")
+            val target = like.fetchSemanticsNode().boundsInRoot
+            val identity = rule.onNodeWithText("$name · 30", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val card = rule.onNodeWithTag("long-card").fetchSemanticsNode().boundsInRoot
+            assertTrue(target.bottom <= identity.top + 1f)
+            assertTrue(card.height >= card.width / 1.03f - 1f)
+            like.performClick()
+        }
+        rule.runOnIdle { assertEquals(2, likes) }
     }
 }
