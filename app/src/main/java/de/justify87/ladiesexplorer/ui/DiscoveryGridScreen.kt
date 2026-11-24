@@ -35,6 +35,7 @@ internal fun DiscoveryGridScreen(
     onLike: (GridLikeAction) -> Unit,
     onProfile: (GridLikeAction) -> Unit,
     chrome: @Composable () -> Unit,
+    onCancelSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cards = gridCards(discovery, search)
@@ -53,75 +54,111 @@ internal fun DiscoveryGridScreen(
             onLoadMore(pageAction)
         }
     }
-    LazyVerticalGrid(
-        columns = profileGridCells(),
-        state = listState,
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) { chrome() }
-        }
-        item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (active) "Aktive Suche · ${cards.size} sichtbar" else "Lokaler Bestand · neutrale Deckprofile",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { onRefresh(refreshAction) },
-                    enabled = gridRefreshMatches(discovery, search, refreshAction)) { Text("Aktualisieren") }
-            }
-        }
-        discovery.mutationError?.let { message ->
-            item(key = "mutation-error", span = { GridItemSpan(maxLineSpan) }) {
-                Text(message, color = MaterialTheme.colorScheme.error)
-            }
-        }
-        discovery.error?.let { message ->
-            item(key = "error", span = { GridItemSpan(maxLineSpan) }) {
-                Text(message, color = MaterialTheme.colorScheme.error)
-            }
-        }
-        if ((discovery.loading || search.loading) && cards.isEmpty()) {
-            item(key = "loading", span = { GridItemSpan(maxLineSpan) }) {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            }
-        } else if (cards.isEmpty()) {
-            item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                Text("Keine Treffer.", style = MaterialTheme.typography.bodyLarge)
-            }
-        }
-        items(cards, key = { it.listingId }) { card ->
-            val action = GridLikeAction(card, search.response?.searchRunId, discovery.actionGeneration)
-            ProfileGridCard(
-                name = card.name,
-                place = card.city,
-                age = card.age,
-                thumbnailUrl = card.thumbnailUrl,
-                localPath = card.localPath,
-                liked = card.preference == Preference.LIKE,
-                enabled = enabled,
-                onOpen = { onProfile(action) },
-                onLike = { onLike(action) },
-            )
-        }
-        if (pageAction != null) {
-            item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
-                if (discovery.loadingMore) {
-                    Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(Modifier.size(24.dp))
-                    }
-                } else {
-                    TextButton(onClick = { onLoadMore(pageAction) }, enabled = canPage, modifier = Modifier.fillMaxWidth()) {
-                        Text("Weitere Profile")
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val inlineChrome = maxHeight < 360.dp || (maxHeight < 460.dp && LocalDensity.current.fontScale > 1.3f)
+        Column(Modifier.fillMaxSize()) {
+            if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { chrome() }
+            LazyVerticalGrid(
+                columns = profileGridCells(),
+                state = listState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (inlineChrome) item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) { chrome() }
+                if (search.response != null || search.loading || search.error != null) {
+                    item(key = "search-status", span = { GridItemSpan(maxLineSpan) }) {
+                        GridSearchRunStatus(search, onCancelSearch)
                     }
                 }
+                item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (active) "Aktive Suche · ${cards.size} sichtbar" else "Lokaler Bestand · neutrale Deckprofile",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { onRefresh(refreshAction) },
+                            enabled = gridRefreshMatches(discovery, search, refreshAction)) { Text("Aktualisieren") }
+                    }
+                }
+                discovery.mutationError?.let { message ->
+                    item(key = "mutation-error", span = { GridItemSpan(maxLineSpan) }) {
+                        Text(message, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                discovery.error?.let { message ->
+                    item(key = "error", span = { GridItemSpan(maxLineSpan) }) {
+                        Text(message, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                if ((discovery.loading || search.loading) && cards.isEmpty()) {
+                    item(key = "loading", span = { GridItemSpan(maxLineSpan) }) {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                } else if (cards.isEmpty()) {
+                    item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                        Text("Keine Treffer.", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                items(cards, key = { it.listingId }) { card ->
+                    val action = GridLikeAction(card, search.response?.searchRunId, discovery.actionGeneration)
+                    ProfileGridCard(
+                        name = card.name,
+                        place = card.city,
+                        age = card.age,
+                        thumbnailUrl = card.thumbnailUrl,
+                        localPath = card.localPath,
+                        liked = card.preference == Preference.LIKE,
+                        enabled = enabled,
+                        onOpen = { onProfile(action) },
+                        onLike = { onLike(action) },
+                    )
+                }
+                if (pageAction != null) {
+                    item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
+                        if (discovery.loadingMore) {
+                            Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(Modifier.size(24.dp))
+                            }
+                        } else {
+                            TextButton(onClick = { onLoadMore(pageAction) }, enabled = canPage, modifier = Modifier.fillMaxWidth()) {
+                                Text("Weitere Profile")
+                            }
+                        }
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun GridSearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val active = state.response
+        if (active != null) {
+            Text("${active.city} · ${active.requestedRadiusKm} km · Quelle: ${active.serverCount?.takeIf { active.radiusVerified } ?: "unbekannt"}",
+                style = MaterialTheme.typography.labelMedium)
+            if (active.partial || !active.radiusVerified) {
+                Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        if (state.loading) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Suche läuft …", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onCancel, enabled = !state.searchCancelling,
+                    modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(if (state.searchCancelling) "Wird beendet …" else "Abbrechen")
+                }
+            }
+        }
+        state.error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
