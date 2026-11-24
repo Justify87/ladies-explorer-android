@@ -175,6 +175,7 @@ fun LadiesApp(
         profileTouchGate.invalidate()
         if (swipeShell) viewModel.setSwipeVisible(false)
         viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+        viewModel.clearPreview()
         route = route.select(destination)
         viewModel.savedSearch.setVisible(destination == RootDestination.Search && !search.profileOpen &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
@@ -453,7 +454,8 @@ fun LadiesApp(
                             }
                         } else { change -> viewModel.editSearchDraft(draftAction, change) },
                         onReset = { viewModel.resetSearchDraft(draftAction, SearchDraft.from(search)) },
-                        onPreviewTarget = viewModel::setPreviewTarget,
+                        onPreviewStart = viewModel::beginPreview,
+                        onPreviewStop = viewModel::endPreview,
                         onSearch = viewModel::submitSearch,
                         onCancelSearch = { viewModel.cancelActiveSearch(searchCancelAction) },
                         onSave = viewModel.savedSearch::saveEditor,

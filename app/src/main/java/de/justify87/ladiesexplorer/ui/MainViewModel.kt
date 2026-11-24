@@ -104,6 +104,7 @@ data class SearchUiState(
     val filterError: String? = null,
     val preview: SearchPreview? = null,
     val previewTarget: SearchRequest? = null,
+    val previewEditorSession: Long? = null,
     val previewLoading: Boolean = false,
     val previewError: String? = null,
     val activeCards: List<DiscoveryCard> = emptyList(),
@@ -160,7 +161,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var previewControl: RequestControl? = null
     private var previewJob: Job? = null
     private val previewGeneration = RequestGeneration()
-    private var previewRequest: SearchRequest? = null
+    private val previewOwner = SearchPreviewOwner()
     private var discoveryEpoch = 0L
     private var swipeVisible = false
     private var renderedSwipe: SwipeActionToken? = null
@@ -354,7 +355,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         savedStatusControl?.cancel()
         savedSearch.cancelCheck()
         cancelMapResolution()
-        cancelPreview()
+        clearPreview()
         invalidateActiveSearch()
         invalidateProfileRequest()
         super.onCleared()
@@ -378,36 +379,55 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update { it.copy(previewLoading = false) }
     }
 
-    fun setPreviewTarget(target: SearchRequest?) {
-        if (previewRequest == target) return
-        previewRequest = target
+    internal fun beginPreview(lease: SearchPreviewLease) {
+        if (searchPreviewTarget(_searchUiState.value, savedSearch.state.value) != lease.target) return
+        previewOwner.replace(lease)
         schedulePreview()
+    }
+
+    internal fun endPreview(lease: SearchPreviewLease) {
+        if (previewOwner.release(lease)) clearPreview()
+    }
+
+    internal fun clearPreview() {
+        previewOwner.clear()
+        cancelPreview()
+        _searchUiState.update { it.copy(preview = null, previewError = null, previewTarget = null,
+            previewEditorSession = null) }
     }
 
     private fun schedulePreview() {
         cancelPreview()
-        val input = previewRequest
-        _searchUiState.update { it.copy(preview = null, previewError = null, previewTarget = input) }
-        if (input == null || _searchUiState.value.loading || input.city.isBlank()) return
+        val lease = previewOwner.current
+        val target = lease?.target?.takeIf { it == searchPreviewTarget(_searchUiState.value, savedSearch.state.value) }
+        val input = target?.draft?.request()
+        _searchUiState.update { it.copy(preview = null, previewError = null, previewTarget = input,
+            previewEditorSession = target?.editorSession) }
+        if (lease == null || input == null || input.city.isBlank()) return
         val epoch = previewGeneration.value
+        fun current() = previewGeneration.isCurrent(epoch) && previewOwner.accepts(lease) &&
+            searchPreviewTarget(_searchUiState.value, savedSearch.state.value) == lease.target
         val control = RequestControl()
         previewControl = control
         _searchUiState.update { it.copy(previewLoading = true) }
         previewJob = viewModelScope.launch {
             try {
                 delay(350)
+                if (!current()) return@launch
                 val result = core.preview(input, control)
-                if (previewGeneration.isCurrent(epoch)) _searchUiState.update {
-                    it.copy(preview = result, previewLoading = false)
-                }
+                if (current()) _searchUiState.update { it.copy(preview = result, previewLoading = false) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                if (previewGeneration.isCurrent(epoch)) _searchUiState.update {
+                if (current()) _searchUiState.update {
                     it.copy(previewLoading = false, previewError = failure.message ?: "Vorschau nicht verfügbar")
                 }
             } finally {
-                if (previewGeneration.isCurrent(epoch)) previewControl = null
+                if (previewGeneration.isCurrent(epoch)) {
+                    previewControl = null
+                    previewJob = null
+                    _searchUiState.update { it.copy(previewLoading = false) }
+                }
             }
         }
     }
@@ -532,7 +552,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     savedSearch.refresh()
                     // Preserve source policy for an accepted replacement run.
                     refreshAfterSourceSearch(invalidateProfileWindow = !acceptedRun)
-                    schedulePreview()
+                    if (acceptedRun) clearPreview() else schedulePreview()
                 }
             }
         }
@@ -1078,7 +1098,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadProfile(listingId: Long, personId: Long) {
         if (_discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
         invalidateSwipeActions()
-        cancelPreview()
+        clearPreview()
         invalidateActiveSearch()
         profileOperations.loadProfile(listingId, personId) { savedSearch.setVisible(false) }
     }

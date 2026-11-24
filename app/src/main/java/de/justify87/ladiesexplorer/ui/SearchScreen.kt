@@ -21,7 +21,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,7 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.DiscoveryCard
-import de.justify87.ladiesexplorer.core.SearchRequest
+import androidx.lifecycle.compose.LifecycleStartEffect
 
 @Composable
 internal fun SearchScreen(
@@ -45,7 +44,8 @@ internal fun SearchScreen(
     canEditDraft: Boolean,
     onDraftChange: ((SearchDraft) -> SearchDraft) -> Unit,
     onReset: () -> Boolean,
-    onPreviewTarget: (SearchRequest?) -> Unit,
+    onPreviewStart: (SearchPreviewLease) -> Unit,
+    onPreviewStop: (SearchPreviewLease) -> Unit,
     onSearch: (SearchSubmitAction) -> Unit,
     onCancelSearch: () -> Unit,
     onSave: (SavedEditorAction) -> Unit,
@@ -83,13 +83,14 @@ internal fun SearchScreen(
     val changeDraft: ((SearchDraft) -> SearchDraft) -> Unit = { change ->
         if (editorVisible && currentFilterContext === filterContext) onDraftChange(change)
     }
-    val target = if (editorVisible && !search.loading && !saved.blockingNavigation)
-        draft.request().copy(maxPages = 1u) else null
-    DisposableEffect(target) {
-        onPreviewTarget(target)
-        onDispose { onPreviewTarget(null) }
+    val target = if (editorVisible) searchPreviewTarget(search, saved) else null
+    if (target != null) LifecycleStartEffect(target) {
+        val lease = SearchPreviewLease(target)
+        onPreviewStart(lease)
+        onStopOrDispose { onPreviewStop(lease) }
     }
-    val previewMatches = target != null && state.previewTarget == target
+    val previewMatches = target != null && state.previewTarget == target.draft.request() &&
+        state.previewEditorSession == target.editorSession
     Column(modifier = modifier.imePadding()) {
     LazyColumn(
         state = listState,
