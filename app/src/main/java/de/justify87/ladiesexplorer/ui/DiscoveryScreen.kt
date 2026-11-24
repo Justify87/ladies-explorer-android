@@ -336,7 +336,7 @@ internal fun DiscoverScreen(
                     }
                     if (presentation.budget.railInContent) item {
                         SwipeDecisionControls(controls, identity?.title, undo, skip, choose,
-                            modifier = Modifier.fillMaxWidth().height(96.dp))
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
                     }
                     item {
                         if (state.loading || searchLoading) CircularProgressIndicator()
@@ -364,7 +364,7 @@ internal fun DiscoverScreen(
                     }
                     if (presentation.budget.railInContent) item(key = "compact-decisions") {
                         SwipeDecisionControls(controls, identity?.title, undo, skip, choose,
-                            modifier = Modifier.fillMaxWidth().height(96.dp))
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
                     }
                     item(key = "hero") {
                         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
