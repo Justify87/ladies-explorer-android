@@ -1,14 +1,10 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -22,6 +18,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.LocalVisibility
 import de.justify87.ladiesexplorer.core.SourceFilterGroup
@@ -85,24 +83,24 @@ internal fun LazyListScope.searchFilterEditor(
             label = { Text("Filter suchen") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     }
     item {
-        FilterCard("Standort") {
+        ScreenGroup("Standort") {
             OutlinedTextField(value = state.city, onValueChange = onCity,
                 label = { Text("Ort") }, singleLine = true,
                 enabled = enabled, modifier = Modifier.fillMaxWidth())
             Text("Umkreis", style = MaterialTheme.typography.titleSmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (radius in listOf(5u,10u,20u,30u,50u,70u,100u)) {
-                    FilterChip(selected = state.radiusKm == radius,
+                    ScreenChoice(selected = state.radiusKm == radius,
                         onClick = { onRadius(radius) }, enabled = enabled, label = { Text("$radius km") })
                 }
             }
         }
     }
     if (state.frequentFilters.isNotEmpty() && filterQuery.isBlank()) item {
-        FilterCard("Häufige Filter") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        ScreenGroup("Häufige Filter") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 state.frequentFilters.forEach { filter ->
-                    FilterChip(
+                    ScreenChoice(
                         selected = if (filter.group == "category") state.category == filter.value
                             else filter.value in state.selectedFilters[filter.group].orEmpty(),
                         onClick = {
@@ -117,12 +115,12 @@ internal fun LazyListScope.searchFilterEditor(
         }
     }
     item {
-        FilterCard("Verfügbarkeit") {
+        ScreenGroup("Verfügbarkeit") {
             AvailabilitySelector(availabilityMode(state.selectedFilters), enabled, onAvailability)
         }
     }
     item {
-        FilterCard("Alter") {
+        ScreenGroup("Alter") {
             Text("${state.ageMin}–${state.ageMax} Jahre", style = MaterialTheme.typography.titleSmall)
             RangeSlider(value = state.ageMin.toFloat()..state.ageMax.toFloat(),
                 onValueChange = { onAge(it.start.roundToInt().toUInt().coerceIn(18u,60u),
@@ -138,17 +136,17 @@ internal fun LazyListScope.searchFilterEditor(
     }
     if (filterQuery.isBlank() || "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) ||
         state.filterCatalog?.categories.orEmpty().any { (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }) item {
-        FilterCard("Rubrik") {
+        ScreenGroup("Rubrik") {
             OutlinedButton(onClick = { onCategoryExpanded(!categoryExpanded) }, enabled = enabled,
                 modifier = Modifier.fillMaxWidth()) {
                 Text(categoryLabels[state.category] ?: state.category)
             }
             if (categoryExpanded || filterQuery.isNotBlank()) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.filterCatalog?.categories.orEmpty()
                         .filter { "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) || (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }
                         .forEach { category ->
-                            FilterChip(selected = state.category == category, enabled = enabled,
+                            ScreenChoice(selected = state.category == category, enabled = enabled,
                                 onClick = { onCategory(category) }, label = { Text(categoryLabels[category] ?: category) })
                         }
                 }
@@ -156,7 +154,7 @@ internal fun LazyListScope.searchFilterEditor(
         }
     }
     if (filterQuery.isBlank() || "Größe Groesse Körpergröße cm".contains(filterQuery, ignoreCase = true)) item {
-        FilterCard("Größe") {
+        ScreenGroup("Größe") {
             Text("${state.heightMin}–${state.heightMax} cm", style = MaterialTheme.typography.titleSmall)
             RangeSlider(value = state.heightMin.toFloat()..state.heightMax.toFloat(),
                 onValueChange = { onHeight(it.start.roundToInt().toUInt().coerceIn(140u,200u),
@@ -185,10 +183,10 @@ internal fun LazyListScope.searchFilterEditor(
         }
     }
     if (matchesLocalFilterQuery(filterQuery)) item {
-        FilterCard(LOCAL_FILTER_TITLE) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        ScreenGroup(LOCAL_FILTER_TITLE) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 imageModeLabels.forEach { (mode, label) ->
-                    FilterChip(selected = state.local.imageMode.ifBlank { "ALL" } == mode, enabled = enabled,
+                    ScreenChoice(selected = state.local.imageMode.ifBlank { "ALL" } == mode, enabled = enabled,
                         onClick = {
                             if (state.local.imageMode.ifBlank { "ALL" } != mode) {
                                 onLocalVisibility(state.local.copy(imageMode = mode))
@@ -213,10 +211,10 @@ internal fun LazyListScope.searchFilterEditor(
         }
     }
     item {
-        FilterCard("Seitenlimit") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        ScreenGroup("Seitenlimit") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (pages in listOf(1u,5u,10u,25u,50u)) {
-                    FilterChip(selected = state.maxPages == pages, onClick = { onPages(pages) },
+                    ScreenChoice(selected = state.maxPages == pages, onClick = { onPages(pages) },
                         enabled = enabled, label = { Text("$pages") })
                 }
             }
@@ -226,20 +224,10 @@ internal fun LazyListScope.searchFilterEditor(
 
 @Composable
 internal fun AvailabilitySelector(active: AvailabilityMode, enabled: Boolean, onSelect: (AvailabilityMode) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         AvailabilityMode.entries.forEach { mode ->
-            FilterChip(modifier = Modifier.weight(1f), selected = mode == active, enabled = enabled,
+            ScreenChoice(selected = mode == active, enabled = enabled,
                 onClick = { onSelect(mode) }, label = { Text(mode.label) })
-        }
-    }
-}
-
-@Composable
-private fun FilterCard(title: String, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            content()
         }
     }
 }
@@ -248,7 +236,8 @@ private fun FilterCard(title: String, content: @Composable () -> Unit) {
 private fun LocalFilterRow(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled,
+            modifier = Modifier.semantics { contentDescription = label })
     }
 }
 
@@ -266,15 +255,15 @@ private fun FilterSection(
     onToggle: (String) -> Unit,
 ) {
     var expanded by rememberSaveable(group.key) { mutableStateOf(initiallyExpanded) }
-    FilterCard((groupLabels[group.key] ?: group.key) + if (selected.isEmpty()) "" else " (${selected.size})") {
+    ScreenGroup((groupLabels[group.key] ?: group.key) + if (selected.isEmpty()) "" else " (${selected.size})") {
         OutlinedButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
             Text(if (expanded) "Weniger anzeigen" else "Optionen anzeigen")
         }
         if (expanded || query.isNotBlank()) {
             val all = (groupLabels[group.key] ?: group.key).contains(query, ignoreCase = true)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 group.options.filter { all || it.contains(query, ignoreCase = true) || it in selected }.forEach { option ->
-                    FilterChip(selected = option in selected, onClick = { onToggle(option) }, enabled = enabled,
+                    ScreenChoice(selected = option in selected, onClick = { onToggle(option) }, enabled = enabled,
                         label = { Text(option) })
                 }
             }

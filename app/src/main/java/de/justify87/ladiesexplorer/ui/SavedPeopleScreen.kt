@@ -1,6 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +18,6 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.SavedPersonKind
@@ -51,78 +52,85 @@ internal fun SavedPeopleScreen(
     val controlAction = state.savedPeopleControlAction()
     val page = state.savedPage
     val recent = state.savedRecent
-    Column(modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            savedKinds.forEach { (kind, label) ->
-                FilterChip(
-                    selected = state.savedKind == kind,
-                    onClick = { onKind(controlAction, kind) },
-                    enabled = controlsEnabled,
-                    modifier = Modifier.weight(1f),
-                    label = { Text(label, maxLines = 1) },
-                )
-            }
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            val label = savedKinds.first { it.first == state.savedKind }.second
-            Text(page?.let {
-                val singular = when (state.savedKind) {
-                    SavedPersonKind.FAVORITE -> "Favorit"
-                    SavedPersonKind.LIKE -> "Like"
-                    SavedPersonKind.DISLIKE -> "Dislike"
-                }
-                "${it.total} ${if (it.total == 1u) singular else label}"
-            } ?: label,
-                style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            var sortMenu by remember(controlAction, controlsEnabled) { mutableStateOf(false) }
-            Box {
-                TextButton(onClick = { sortMenu = true }, enabled = controlsEnabled) {
-                    Text(if (state.savedSort == SavedPersonSort.DATE) "Datum" else "Name")
-                }
-                DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                    listOf(SavedPersonSort.DATE to "Datum", SavedPersonSort.NAME to "Name").forEach { (sort, text) ->
-                        DropdownMenuItem(text = { Text(text) }, enabled = controlsEnabled,
-                            onClick = { sortMenu = false; onSort(controlAction, sort) })
+    Column(modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        val controls: @Composable () -> Unit = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    savedKinds.forEach { (kind, label) ->
+                        ScreenChoice(
+                            selected = state.savedKind == kind,
+                            onClick = { onKind(controlAction, kind) },
+                            enabled = controlsEnabled,
+                            label = { Text(label) },
+                        )
                     }
                 }
-            }
-            TextButton(onClick = { onRefresh(controlAction) }, enabled = controlsEnabled) { Text("Liste neu laden") }
-        }
-        val batchAction = page?.let { SavedStatusBatchAction(it, state.savedKind, state.savedSort, state.actionGeneration) }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { batchAction?.let(onCheckAll) }, enabled = enabled && batchAction != null) {
-                Text("Status aller gespeicherten Anzeigen prüfen")
-            }
-            val progress = state.savedStatusProgress
-            if (progress?.running == true) {
-                val cancelAction = SavedStatusCancelAction(progress.attemptId, state.actionGeneration)
-                TextButton(onClick = { onCancelCheck(cancelAction) }, enabled = !progress.cancelled) {
-                    Text(if (progress.cancelled) "Abbruch …" else "Abbrechen")
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val label = savedKinds.first { it.first == state.savedKind }.second
+                    Text(page?.let {
+                        val singular = when (state.savedKind) {
+                            SavedPersonKind.FAVORITE -> "Favorit"
+                            SavedPersonKind.LIKE -> "Like"
+                            SavedPersonKind.DISLIKE -> "Dislike"
+                        }
+                        "${it.total} ${if (it.total == 1u) singular else label}"
+                    } ?: label,
+                        style = MaterialTheme.typography.titleSmall, modifier = Modifier.fillMaxWidth())
+                    var sortMenu by remember(controlAction, controlsEnabled) { mutableStateOf(false) }
+                    Box {
+                        TextButton(onClick = { sortMenu = true }, enabled = controlsEnabled) {
+                            Text(if (state.savedSort == SavedPersonSort.DATE) "Datum" else "Name")
+                        }
+                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                            listOf(SavedPersonSort.DATE to "Datum", SavedPersonSort.NAME to "Name").forEach { (sort, text) ->
+                                DropdownMenuItem(text = { Text(text) }, enabled = controlsEnabled,
+                                    onClick = { sortMenu = false; onSort(controlAction, sort) })
+                            }
+                        }
+                    }
+                    TextButton(onClick = { onRefresh(controlAction) }, enabled = controlsEnabled) { Text("Liste neu laden") }
                 }
+                val batchAction = page?.let { SavedStatusBatchAction(it, state.savedKind, state.savedSort, state.actionGeneration) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { batchAction?.let(onCheckAll) }, enabled = enabled && batchAction != null) {
+                        Text("Status aller gespeicherten Anzeigen prüfen")
+                    }
+                    val progress = state.savedStatusProgress
+                    if (progress?.running == true) {
+                        val cancelAction = SavedStatusCancelAction(progress.attemptId, state.actionGeneration)
+                        TextButton(onClick = { onCancelCheck(cancelAction) }, enabled = !progress.cancelled) {
+                            Text(if (progress.cancelled) "Abbruch …" else "Abbrechen")
+                        }
+                    }
+                }
+                state.savedStatusProgress?.let { progress ->
+                    if (progress.running) {
+                        if (progress.total == 0) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        else LinearProgressIndicator(
+                            progress = { progress.done.toFloat() / progress.total },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Text("${progress.done}/${progress.total} geprüft · ${progress.failed} fehlgeschlagen" +
+                        if (progress.cancelled) " · Abgebrochen" else "",
+                        style = MaterialTheme.typography.bodySmall)
+                    progress.lastError?.let { error ->
+                        Text(error, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                state.mutationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                state.savedError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         }
-        state.savedStatusProgress?.let { progress ->
-            if (progress.running) {
-                if (progress.total == 0) LinearProgressIndicator(Modifier.fillMaxWidth())
-                else LinearProgressIndicator(
-                    progress = { progress.done.toFloat() / progress.total },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            Text("${progress.done}/${progress.total} geprüft · ${progress.failed} fehlgeschlagen" +
-                if (progress.cancelled) " · Abgebrochen" else "",
-                style = MaterialTheme.typography.bodySmall)
-            progress.lastError?.let { error ->
-                Text(error, color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall, maxLines = 2,
-                    overflow = TextOverflow.Ellipsis)
-            }
-        }
-        state.mutationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        state.savedError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         val selection = "${state.savedKind.name}-${state.savedSort.name}"
         if (page == null) {
-            if (state.loading) CircularProgressIndicator()
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                controls()
+                if (state.loading) CircularProgressIndicator()
+                else if (state.savedError == null) Text("Liste noch nicht geladen.")
+            }
             return@Column
         }
         scrollMemory.SaveableStateProvider(selection) {
@@ -146,9 +154,10 @@ internal fun SavedPeopleScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(top = 6.dp, bottom = 12.dp),
+                contentPadding = PaddingValues(top = 12.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                item(key = "saved-controls") { controls() }
                 if (!state.loading && page.total == 0u) item {
                     Text("Noch nichts gespeichert.", modifier = Modifier.padding(16.dp))
                 }
@@ -217,7 +226,8 @@ private fun SavedPersonCard(
     val card = row.card
     // An open menu must not silently rebind to a newer person window or owner.
     var menu by remember(action) { mutableStateOf(false) }
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Row(
             Modifier.fillMaxWidth().padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -230,13 +240,13 @@ private fun SavedPersonCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ProfileThumbnail(card?.thumbnailUrl, Modifier.size(76.dp, 94.dp).clip(MaterialTheme.shapes.medium),
+                ProfileThumbnail(card?.thumbnailUrl, Modifier.size(64.dp, 80.dp).clip(MaterialTheme.shapes.medium),
                     card?.localPath)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(listOfNotNull(row.name, card?.age).joinToString(" · "),
-                        style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        style = MaterialTheme.typography.titleSmall)
                     Text(card?.city?.takeIf { it.isNotBlank() } ?: "Ort unbekannt",
-                        style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        style = MaterialTheme.typography.bodySmall)
                     Text(statusLabel(row.status) + if (row.listingCount > 1u) " · ${row.listingCount} Anzeigen" else "",
                         style = MaterialTheme.typography.labelSmall)
                     if (row.recent) Text(when (row.latestChangeType) {
@@ -251,25 +261,24 @@ private fun SavedPersonCard(
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Row {
-                    IconButton(onClick = { onFavorite(action) }, enabled = enabled) {
-                        Icon(if (row.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = if (row.favorite) "Favorit entfernen" else "Favorit hinzufügen")
+                IconButton(onClick = { onFavorite(action) }, enabled = enabled) {
+                    Icon(if (row.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (row.favorite) "Favorit entfernen" else "Favorit hinzufügen",
+                        tint = if (row.favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Box {
+                    IconButton(onClick = { menu = true }, enabled = enabled) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Weitere Aktionen")
                     }
-                    Box {
-                        IconButton(onClick = { menu = true }, enabled = enabled) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Weitere Aktionen")
-                        }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            if (card != null) DropdownMenuItem(
-                                text = { Text("Status prüfen") },
-                                onClick = { menu = false; onCheckSingle(action) },
-                            )
-                            listOf(Preference.LIKE to "Like", Preference.DISLIKE to "Dislike",
-                                Preference.NONE to "Entscheidung entfernen").forEach { (target, title) ->
-                                DropdownMenuItem(text = { Text(title) }, enabled = row.preference != target,
-                                    onClick = { menu = false; onPreference(action, target) })
-                            }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (card != null) DropdownMenuItem(
+                            text = { Text("Status prüfen") },
+                            onClick = { menu = false; onCheckSingle(action) },
+                        )
+                        listOf(Preference.LIKE to "Like", Preference.DISLIKE to "Dislike",
+                            Preference.NONE to "Entscheidung entfernen").forEach { (target, title) ->
+                            DropdownMenuItem(text = { Text(title) }, enabled = row.preference != target,
+                                onClick = { menu = false; onPreference(action, target) })
                         }
                     }
                 }

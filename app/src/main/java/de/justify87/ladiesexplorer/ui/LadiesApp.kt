@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,7 +21,8 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Bookmarks
-import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,7 +30,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
-import androidx.compose.material3.RadioButton
 import de.justify87.ladiesexplorer.core.CaptureMode
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,6 +49,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -98,6 +102,7 @@ fun LadiesApp(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val actionSurface = when {
         search.profileOpen -> ProfileActionSurface.NONE
+        route.root == RootDestination.Settings -> ProfileActionSurface.SETTINGS
         route.root == RootDestination.Saved -> ProfileActionSurface.SAVED
         route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid -> ProfileActionSurface.GRID
         route.root == RootDestination.Discover && route.discovery == DiscoverMode.Map -> ProfileActionSurface.MAP
@@ -453,6 +458,9 @@ fun LadiesApp(
                     )
                     RootDestination.Settings -> SettingsScreen(
                         state=home,
+                        replayLikes = discovery.replayLikes,
+                        replayEnabled = !home.loading && settingsReplayMatches(discovery, search, discovery.settingsReplayAction()),
+                        onReplayLikes = { viewModel.setSettingsReplayLikes(discovery.settingsReplayAction(), it) },
                         onRefresh=viewModel::refresh,
                         onSaveDiagnostics=onSaveDiagnostics,
                         onShareDiagnostics=onShareDiagnostics,
@@ -494,8 +502,11 @@ private fun SearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
 }
 
 @Composable
-private fun SettingsScreen(
+internal fun SettingsScreen(
     state: HomeUiState,
+    replayLikes: Boolean,
+    replayEnabled: Boolean,
+    onReplayLikes: (Boolean) -> Unit,
     onRefresh: () -> Unit,
     onSaveDiagnostics: () -> Unit,
     onShareDiagnostics: () -> Unit,
@@ -507,76 +518,80 @@ private fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier=modifier.verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement=Arrangement.spacedBy(14.dp),
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Lokale Datenbasis",style=MaterialTheme.typography.headlineMedium)
-        Text("Personen, Inserate und Historie liegen in der Rust-eigenen SQLite-Datenbank.")
-        if (state.loading) CircularProgressIndicator()
-        state.error?.let { Text("Fehler: $it",color=MaterialTheme.colorScheme.error) }
-        state.schemaVersion?.let {
-            Text("Datenbankschema: v$it")
-            Text("Personen: ${state.personCount} · Quellenprofile: ${state.sourceProfileCount} · Inserate: ${state.listingCount}")
+        ScreenGroup("Lokale Datenbasis") {
+            Text("Personen, Inserate und Historie liegen in der Rust-eigenen SQLite-Datenbank.",
+                style = MaterialTheme.typography.bodySmall)
+            if (state.loading) CircularProgressIndicator()
+            state.error?.let { Text("Fehler: $it", color = MaterialTheme.colorScheme.error) }
+            val schema = state.schemaVersion
+            if (schema == null) Text("Datenbankstatus noch nicht bekannt.")
+            else {
+                Text("Datenbankschema: v$schema", style = MaterialTheme.typography.titleSmall)
+                Text("Personen: ${state.personCount} · Quellenprofile: ${state.sourceProfileCount} · Inserate: ${state.listingCount}")
+            }
+            OutlinedButton(onClick = onRefresh, enabled = !state.loading,
+                modifier = Modifier.heightIn(min = 48.dp)) { Text("Datenbankstatus aktualisieren") }
         }
-        Button(onClick=onRefresh,enabled=!state.loading,modifier=Modifier.fillMaxWidth()) {
-            Text("Datenbankstatus aktualisieren")
-        }
-        Text("Diagnose",style=MaterialTheme.typography.titleLarge)
-        androidx.compose.foundation.layout.Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-            Text("Debug-Details", modifier=Modifier.weight(1f))
-            Switch(checked=state.debugLoggingEnabled,onCheckedChange=onDebugLogging)
-        }
-        Text("Debug-Protokolle können persönliche Inhalte enthalten. Teile sie nur bewusst.",style=MaterialTheme.typography.bodySmall)
-        state.diagnosticLastError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
-        Text(
-            if (state.diagnosticAvailable) "Log-Datei: ${state.diagnosticSizeBytes} Bytes"
-            else "Noch keine Log-Datei vorhanden.",
-            style=MaterialTheme.typography.bodySmall,
-        )
-        Button(
-            onClick=onSaveDiagnostics,enabled=state.diagnosticAvailable,
-            modifier=Modifier.fillMaxWidth(),
-        ) { Text("Debug-Log als Datei speichern") }
-        Button(
-            onClick=onShareDiagnostics,enabled=state.diagnosticAvailable,
-            modifier=Modifier.fillMaxWidth(),
-        ) { Text("Debug-Log teilen") }
-        Text("HTTP-Aufzeichnung",style=MaterialTheme.typography.titleMedium)
-        Text(
-            "Standardmäßig aus – auch nach jedem Neustart. HTML/JSON können personenbezogene Daten enthalten. HAR-Dateien nur bewusst exportieren und teilen.",
-            style=MaterialTheme.typography.bodySmall,
-        )
-        listOf(
-            CaptureMode.OFF to "Aus",
-            CaptureMode.METADATA to "Metadaten",
-            CaptureMode.TEXT to "Mit Textantworten",
-        ).forEach { (mode, label) ->
-            androidx.compose.foundation.layout.Row(
-                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
-                modifier=Modifier.fillMaxWidth(),
-            ) {
-                RadioButton(selected=state.httpCaptureMode==mode,onClick={onCaptureMode(mode)})
-                Text(label)
+        ScreenGroup("Entdecken") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Likes erneut zeigen")
+                    Text("Bereits gelikte Profile im Swipe-Deck", style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = replayLikes, onCheckedChange = onReplayLikes, enabled = replayEnabled,
+                    modifier = Modifier.semantics { contentDescription = "Likes erneut zeigen" })
             }
         }
-        Text(
-            "Aufzeichnung: ${state.httpCaptureEntries} Requests · ${state.httpCaptureBytes} Bytes / 25 MiB",
-            style=MaterialTheme.typography.bodySmall,
-        )
-        if (state.httpCaptureStopped) Text(
-            "Sitzungslimit erreicht. Export weiter möglich; zum Neustart Aufzeichnung löschen.",
-            color=MaterialTheme.colorScheme.error,
-        )
-        state.httpCaptureError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
-        Button(onClick=onSaveHar,enabled=state.httpCaptureEntries>0u,modifier=Modifier.fillMaxWidth()) {
-            Text("HAR speichern")
+        ScreenGroup("Diagnose") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Debug-Details")
+                    Text(if (state.debugLoggingEnabled) "DEBUG" else "INFO", style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = state.debugLoggingEnabled, onCheckedChange = onDebugLogging,
+                    modifier = Modifier.semantics { contentDescription = "Debug-Details" })
+            }
+            Text("Debug-Protokolle können persönliche Inhalte enthalten. Teile sie nur bewusst.",
+                style = MaterialTheme.typography.bodySmall)
+            state.diagnosticLastError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Text(if (state.diagnosticAvailable) "Log-Datei: ${state.diagnosticSizeBytes} Bytes"
+                else "Noch keine Log-Datei vorhanden.", style = MaterialTheme.typography.bodySmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onSaveDiagnostics, enabled = state.diagnosticAvailable,
+                    modifier = Modifier.heightIn(min = 48.dp)) { Text("Debug-Log speichern") }
+                TextButton(onClick = onShareDiagnostics, enabled = state.diagnosticAvailable,
+                    modifier = Modifier.heightIn(min = 48.dp)) { Text("Debug-Log teilen") }
+            }
         }
-        Button(onClick=onShareHar,enabled=state.httpCaptureEntries>0u,modifier=Modifier.fillMaxWidth()) {
-            Text("HAR teilen")
-        }
-        Button(onClick=onClearHar,enabled=state.httpCaptureEntries>0u || state.httpCaptureStopped,
-            modifier=Modifier.fillMaxWidth()) {
-            Text("Aufzeichnung löschen")
+        ScreenGroup("HTTP-Aufzeichnung") {
+            Text("Standardmäßig aus – auch nach jedem Neustart. HTML/JSON können personenbezogene Daten enthalten. HAR-Dateien nur bewusst exportieren und teilen.",
+                style = MaterialTheme.typography.bodySmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(CaptureMode.OFF to "Aus", CaptureMode.METADATA to "Metadaten", CaptureMode.TEXT to "Mit Textantworten")
+                    .forEach { (mode, label) ->
+                        ScreenChoice(selected = state.httpCaptureMode == mode, enabled = true,
+                            onClick = { onCaptureMode(mode) }, label = { Text(label) })
+                    }
+            }
+            Text("Aufzeichnung: ${state.httpCaptureEntries} Requests · ${state.httpCaptureBytes} Bytes / 25 MiB",
+                style = MaterialTheme.typography.bodySmall)
+            if (state.httpCaptureStopped) Text("Sitzungslimit erreicht. Export weiter möglich; zum Neustart Aufzeichnung löschen.",
+                color = MaterialTheme.colorScheme.error)
+            state.httpCaptureError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onSaveHar, enabled = state.httpCaptureEntries > 0u,
+                    modifier = Modifier.heightIn(min = 48.dp)) { Text("HAR speichern") }
+                TextButton(onClick = onShareHar, enabled = state.httpCaptureEntries > 0u,
+                    modifier = Modifier.heightIn(min = 48.dp)) { Text("HAR teilen") }
+            }
+            TextButton(onClick = onClearHar, enabled = state.httpCaptureEntries > 0u || state.httpCaptureStopped,
+                modifier = Modifier.heightIn(min = 48.dp),
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                Text("Aufzeichnung löschen")
+            }
         }
     }
 }
