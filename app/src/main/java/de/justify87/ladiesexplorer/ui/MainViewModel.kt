@@ -679,23 +679,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun loadMoreSavedPeople() = loadMoreSaved(false)
-
-    fun loadMoreRecentPeople() = loadMoreSaved(true)
-
-    private fun loadMoreSaved(recent: Boolean) {
-        val state = _discoverState.value
-        val page = (if (recent) state.savedRecent else state.savedPage) ?: return
-        if (page.nextCursor == null || state.loading || state.savedLoadingMore ||
-            state.savedRecentLoadingMore || state.busy) return
+    internal fun loadMoreSavedPeople(action: SavedPeoplePageAction) {
+        if (!savedPeoplePageMatches(_discoverState.value, _searchUiState.value, action)) return
+        val recent = action.watchlist
         val epoch = discoveryEpoch
-        savedWindows.requestMore(state.savedKind, state.savedSort, recent, page.rows.size)
+        savedWindows.requestMore(action.kind, action.sort, recent, action.page.rows.size)
+        val limits = savedWindows.limits(action.kind, action.sort)
         _discoverState.update {
             it.copy(savedLoadingMore = !recent, savedRecentLoadingMore = recent, savedError = null)
         }
         viewModelScope.launch {
             try {
-                val next = savedPage()
+                val next = core.savedPeopleWindow(action.kind, action.sort, limits)
                 if (epoch == discoveryEpoch) {
                     _discoverState.update {
                         it.copy(savedPage = next.regular, savedRecent = next.recent,
