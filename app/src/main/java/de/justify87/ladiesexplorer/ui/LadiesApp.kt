@@ -408,9 +408,9 @@ fun LadiesApp(
                         } else {
                             MapScreen(
                                 state = map,
-                                onRefresh = viewModel::refreshMap,
+                                onRefresh = viewModel::refreshRenderedMap,
                                 onResolve = viewModel::resolveMapLocations,
-                                onCancel = viewModel::cancelMapResolution,
+                                onCancel = viewModel::cancelRenderedMapResolution,
                                 onFavoritesOnly = viewModel::setMapFavoritesOnly,
                                 generation = discovery.actionGeneration,
                                 onProfile = viewModel::openMapProfile,

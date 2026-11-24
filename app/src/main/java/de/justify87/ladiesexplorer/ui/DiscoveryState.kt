@@ -13,6 +13,24 @@ import kotlinx.coroutines.CancellationException
 
 enum class ProfileActionSurface { NONE, GRID, SAVED, SEARCH, SAVED_RESULTS, MAP }
 
+internal data class MapControlAction(val rendered: MapUiState, val generation: Long)
+
+internal enum class MapControl { REFRESH, RESOLVE, CANCEL, FILTER }
+
+internal fun mapControlMatches(
+    map: MapUiState, discovery: DiscoverUiState, search: SearchUiState,
+    action: MapControlAction, control: MapControl,
+): Boolean {
+    if (discovery.actionSurface != ProfileActionSurface.MAP ||
+        discovery.actionGeneration != action.generation || search.profileOpen || map != action.rendered) return false
+    return when (control) {
+        MapControl.REFRESH -> !map.loading && !map.resolving
+        MapControl.RESOLVE -> !map.loading && !map.resolving && (map.overview?.pendingLocations ?: 0u) > 0u
+        MapControl.CANCEL -> map.resolving && !map.cancelling
+        MapControl.FILTER -> true
+    }
+}
+
 internal data class MapProfileOpenAction(
     val overview: MapOverview,
     val profile: MapProfile,

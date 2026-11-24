@@ -90,6 +90,8 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – lokale Entdecken-/Grid-Pagination (DONE):** [PR #62](https://github.com/Justify87/ladies-explorer-android/pull/62) bindet manuelle und automatische Grid-Pagination an gerenderten Cursor und Aktionsgeneration; der zugelassene Swipe-Skip verwendet dieselbe lokale Lesefunktion. JVM-Regressionen für alte Kontexte, Cursorwechsel, Busy, aktive Suche und explizite Fehler-Recovery; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45399966122) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
+**Teilauftrag – Kartensteuerung (REVIEW):** Branch `fix/t10-8-map-control-admission`: gerenderte Kartenaktionen an Ansichtsgeneration und Kartenstatus binden; JVM-Regressionen für Kontext-/Filterwechsel, fehlende Standortkandidaten, Busy, Abbruch und erneuten Read. CI und Merge noch offen.
+
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
 - [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision sowie Fehler/Offline/Status/Radius/Pagination.
