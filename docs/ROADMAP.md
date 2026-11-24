@@ -4,11 +4,29 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 und damit der bestätigte initiale lokale Produktumfang abgeschlossen. Keine weiteren geplanten Entwicklungsmeilensteine; bedarfsorientierte Wartung nur bei konkretem Auftrag. L01 unabhängig vor weiterer öffentlicher Distribution klären.
+M07 / G07 und damit der bestätigte initiale lokale Produktumfang sind abgeschlossen. Der gesondert beauftragte neue Meilenstein **M08 – Native Designkonsolidierung** beginnt mit M08.0 (Designbasis im eigenen PR zur Prüfung); die native Implementierung ist noch nicht erfolgt. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
-Keine. Weitere Entwicklung nur bei konkretem Bedarf und ausdrücklichem Auftrag; Produktgrenzen gemäß [PRODUCT](PRODUCT.md). Lokale Nutzungsreife ist keine öffentliche Distributionsfreigabe. Ein ausdrücklich beauftragtes Release-APK erfordert die gezielte Qualifizierung des vorhandenen minifizierten Release-Builds einschließlich nativer UniFFI/JNA/JNI-/libmpv-Schnittstellen und Installierbarkeit; Debug-CI ersetzt diesen Nachweis nicht. Signierung/Versionierung nur bei bestätigtem Bedarf; L01 vor weiterer öffentlicher Distribution klären. Keine automatische Veröffentlichung, Store-Anbindung oder neue Release-Infrastruktur.
+### M08 — Native Designkonsolidierung · PLANNED
+
+**Freigabe:** Der Nutzer hat am 24.11.2026 die Übernahme der Design Reference v3 in einem **eigenen PR** beauftragt. Nur **M08.0** ist damit zur Umsetzung freigegeben; die folgenden nativen Aufgaben bedürfen eines gesonderten Entwicklungsauftrags. Bereits abgeschlossene M00–M07/G07 bleiben DONE und werden nicht wiedereröffnet.
+
+**Ziel:** Das vorhandene lokale Android-Produkt in Kotlin/Jetpack Compose anhand der [Designreferenz](../design-referenz/README.md) konsistent neu gestalten. Maßgeblich ist ausschließlich der [Designvertrag](DESIGN.md); [PRODUCT](PRODUCT.md) und [ARCHITECTURE](ARCHITECTURE.md) behalten fachliche bzw. technische Autorität. Kein WebView-Port, keine neue Fachfunktion, kein zusätzlicher Core-/Daten-/Netzwerkpfad und keine Nutzerdatenmigration. Der Referenzprototyp enthält synthetische Daten und lokale JS-Simulationen, die nicht in die App übernommen werden.
+
+| Aufgabe | Status | Abhängigkeit | Beobachtbare Abnahme |
+| --- | --- | --- | --- |
+| **M08.0 – Designbasis und Referenz** | **REVIEW** (eigener PR, noch nicht gemergt) | Nutzerfreigabe 24.11.2026 | `design-referenz/` mit HTML/CSS/JS, synthetischen Bildern und offline auflösbaren lokalen Assets; `docs/DESIGN.md` vollständig auf Orange-Dark als visuelles Soll umgestellt und gültige Fach-/UX-Verträge einschließlich M06 erhalten; bisheriger Hero-Messwiderspruch ausdrücklich geregelt; Light-Mode-Pflicht erhalten; `README.md` verlinkt die Referenz; kein nativer Code geändert |
+| **M08.1 – Theme, gemeinsame Shell und Navigation** | PLANNED | M08.0 integriert; gesonderter Auftrag | Material-3-Farbrollen und ein gleichwertiger Light Mode, einheitliche Header/Root-Nav/Insets/Tokens, 48-dp-Ziele, Fokus; keine parallele Theme-Bibliothek |
+| **M08.2 – Entdecken (Swipe/Grid)** | PLANNED | M08.1 | Gemeinsame ausgeführte Ergebnisse, unveränderte Owner-/Undo-/Skip-/Favorite-/Statusverträge; Galerie, Video, ein vertikaler Profilfluss, Hero-Entscheidungsgesten und feste Rail; native Layoutmessung gegen die Referenz, kein Extra-Fetch |
+| **M08.3 – Karte** | PLANNED | M08.1, M08.2 | Vorhandenes MapLibre, DB-weiter Bestand statt aktueller Suche, ungefähre Orte, Cluster, Auswahl/Zurück, Cancel/Partial/Offline ohne GPS oder neue Geocodingroute |
+| **M08.4 – Profil und lokale M06-Editoren** | PLANNED | M08.2 | Gemeinsamer Swipe-/Standalone-Profilinhalt, Notizen, Begegnungen, manuelle EUR-Preislisten, Medien, Analyse, Identität, Historie, Kontakte; Edit/Back/CAS/Owner-/Merge-/Lifecycle-Regressionsschutz |
+| **M08.5 – Suche, Gespeichert, Einstellungen** | PLANNED | M08.1 und M08.4 | Draft ≠ Preview ≠ Run, letzte Suche und gespeicherte Suchen, ausdrückliches SavedSearch-Ack, Statusnachweise/Watchlist, Diagnose/Capture/Export, sichere Cancel-/Error-/Partial-Zustände |
+| **M08.6 – Gesamtintegration / G08** | PLANNED | M08.1–M08.5 | Dark/Light; 360/390/430/600 dp, Scale 1/1,3/2, Insets/IME, Back, Fokus/TalkBack/DPAD soweit verfügbar; alle betroffenen technischen Regressionen und vollständiges CI-Gate; keine obsoleten UI-Parallelpfade; tatsächlich ausgeführte Prüfungen und Restgrenzen dokumentieren |
+
+**Umsetzung:** Ein nachvollziehbarer UI-Task pro Arbeitskontext; bestehende Compose-Komponenten, ViewModels und Rust-Core weiterverwenden. Kein automatisches Merge oder Release. Den Status und Prüfbelege jeder Aufgabe ausschließlich in diesem Register aktualisieren; vergangene technische Abschlussbelege nicht umdeuten. Ein Docs-/HTML-/Assets-PR fällt nach den geltenden CI-Scope-Regeln unter `full`, nicht unter `docs`-only. Browser-Screenshot-Vergleich und native Abnahme sind unterschiedliche Prüfungen.
+
+**Ausdrücklich außerhalb M08:** neue Lizenz-/Release-Qualifizierung, globaler Verlauf/Statistik/Medienbrowser, neue Karte/Geocoder, Datenmigration, neue Backend- oder Scrapingfunktionen und zusätzliche dauerhafte UI-Testinfrastruktur. Der unabhängige Lizenzpunkt L01 bleibt bestehen.
 
 ## Unabhängige Aufgaben
 

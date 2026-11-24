@@ -1,168 +1,163 @@
 # UI- und Designvertrag
 
-Meilensteinübergreifende UI-/UX-Autorität. Modern, ruhig, nativ, bildorientiert, kompakt und informationsreich. Bestehendes Branding und Material 3 verwenden; neue Funktionen bevorzugt mit vorhandenen Mustern gestalten. Fachliche Anforderungen: [PRODUCT](PRODUCT.md); technische Umsetzung und Grenzen: [ARCHITECTURE](ARCHITECTURE.md).
+Dieser Vertrag ist die maßgebliche UI-/UX-Sollbeschreibung für die native Android-App. Der lokale [Designprototyp](../design-referenz/README.md) veranschaulicht Gestaltung und Interaktionen, ist aber weder WebView-Vorlage noch Produkt- oder Architekturvertrag. Fachfunktionen: [PRODUCT](PRODUCT.md); technische Grenzen: [ARCHITECTURE](ARCHITECTURE.md); Aufgabenstatus: [ROADMAP](ROADMAP.md).
 
-## Visuelle Identität
+**Designentscheidung (24.11.2026):** Dunkles Orange-Design gemäß v3-Referenz ersetzt bisheriges Pink und frühere widersprüchliche visuelle Werte. Gültige fachliche und barrierefreie Verträge bleiben bestehen. Gleichwertiger nativer Light Mode ist verpflichtend und wird in M08.1 gestaltet; die HTML-Referenz zeigt allein Dark Mode.
 
-**Verbindlich:**
-- Bestehendes Branding und Material 3 verwenden. Markentypisches Pink, helle/neutrale Oberflächen, passende dunkle Palette und semantische Status-/Fehlerfarben.
-- Maßgebliche Farb-, Shape- und Typografie-Tokens: [LadiesTheme.kt](../app/src/main/java/de/justify87/ladiesexplorer/ui/LadiesTheme.kt).
-- System-Dunkelmodus gleichwertig unterstützen; dynamische Systemfarben nicht standardmäßig.
-- Vorhandene `MaterialTheme`-Rollen bevorzugen, keine parallele Token-Bibliothek.
-- Lesbare Informationshierarchie, Kontrast, Font Scale, Insets und Bedienbarkeit haben Vorrang.
+## 1. Quellen, Autorität und verbindlicher Geltungsbereich
 
-**Richtwerte:** Wenige Akzente, weiche Rundungen und kontextabhängige Abstände; Legacy 4/7/10/14/18/24 dp sind eine Orientierung, keine fixen Tokens.
+**Priorität:** (1) ausdrücklich bestätigte Nutzerentscheidung; (2) `docs/PRODUCT.md` für Fachsemantik und Produktgrenzen; (3) `docs/ARCHITECTURE.md` für technische Invarianten, Lifecycle und Datenhoheit; (4) `docs/DESIGN.md` für UI/UX; (5) `design-referenz/` als ergänzende **visuelle und interaktive** Referenz; (6) vorhandene, hiervon abweichende visuelle Implementierung. Eine Demo-Interaktion überschreibt niemals Produkt- oder Architekturvorgaben.
 
-## Komponenten und Interaktion
+**[MUSS]** Die gemeinsame dunkle, ruhige Gestaltung mit Orange als Hauptakzent ersetzt die bisherige verbindliche **pinke** Markenfarbe, ihre inkonsistenten visuellen Farb-/Shape-Vorgaben und die verstreute alte Abstandsleiter. Material 3 Expressive und `MaterialTheme`-Rollen **beibehalten**. `LadiesTheme.kt` ist nach der M08.1-Implementierung die konkrete native Tokenquelle; die folgenden CSS-Variablen beschreiben Sollwerte zur Übersetzung, keine parallele Android-Tokenbibliothek.
 
-- Pro Handlungskontext eine erkennbare Hauptaktion; sekundäre Aktionen zurücknehmen.
-- Chips für Filter/kleine Auswahlen, nicht für jeden Datenwert. Kompakte Listenzeilen mit Thumbnail, Identität, Status und direkten Aktionen; Details progressiv offenlegen.
-- Fehler, unbekannte Werte, Loading, Empty, Teilresultate und Retry erkennbar und erreichbar darstellen; Status nie nur über Farbe.
-- Keine künstlichen Handyrahmen, Systemleisten, Dummy-Features oder erfundenen Profilinformationen.
-- Funktionale, unterbrechbare Animationen. Reduzierte Bewegung und Systemanimationseinstellungen berücksichtigen.
-- Native Semantik, TalkBack, Tastatur/DPAD und Fokus; **Touch-Ziele mindestens 48 dp**.
+**[MUSS]** Bereits gültige UI- und Fachverträge bleiben: vier Root-Ziele; ein gemeinsamer Profilfluss für Swipe/Standalone; keine zweiten vertikalen Scroller; Galerie-Tapzonen, Video/Play-Priorität, Hero-Swipe ausschließlich bei dominant horizontaler Geste und Schwellwert ≥max(72 dp, 25 % Kartenbreite); saubere Cancel-/Undo-/Owner-/Lifecycle-Verträge; M06-Begegnungen und Preislisten; separate Personennotiz; Suche/Resultat/Preview-Trennung; SavedSearch-Revision/Quittierung; Karte als lokaler Gesamtbestand; Diagnosegrenzen; 48-dp-Touchziel; helle und dunkle Darstellung.
 
-## Navigation und Bildschirmmuster
+**Begriffe:** `[MUSS]` = später verbindlich; `[RICHTWERT]` = nativ zu messen/abzugleichen; `[DEMO]` = nicht normativ, ausschließlich Abbildung. Nicht stillschweigend aus Mockup-Bildartefakten, erfundenen Orten, Namen oder Zählerständen weitere Produktfeatures ableiten.
 
-### Root-Navigation und Entdecken
+## 2. Farbrollen und Typografie
 
-- Vier Root-Ziele: Entdecken, Suche, Gespeichert, Einstellungen.
-- Kontextabhängiger Header mit Branding, Alle/Jetzt/Heute in Entdecken und Suchsymbol beziehungsweise gespeicherten Suchen mit Neu-Indikator in Suche.
-- Swipe/Grid/Karte sind Ansichtswechsel. Standalone-Profil ohne Root-Navigation, mit Back/Mehr im festen Header.
+Maßgebliche CSS-Quelle: [`../design-referenz/styles.css`](../design-referenz/styles.css), `:root`. Semantische Rollen und Startwerte:
 
-### Grid
+| Rolle | CSS-Token | Startwert | Geplante Material-3-Abbildung |
+| --- | --- | --- | --- |
+| App-Hintergrund | `--bg` | `#202123` | `background` / `surface` nach Kontext |
+| Erhöhte Oberfläche | `--surface` | `#343638` | `surfaceContainerHigh` / `surfaceVariant` |
+| Zwischenfläche | `--surface-alt` | `#292B2D` | `surfaceContainer` |
+| Tiefere Fläche | `--surface-deep` | `#191B1D` | `surfaceContainerLow` |
+| Primärakzent | `--accent` | `#FF510A` | `primary`, aktive Selection |
+| Text auf Akzent | `--on-accent` | `#1E160F` | `onPrimary` |
+| Primärtext | `--primary` | `#F7F7F7` | `onSurface` |
+| Sekundärtext | `--secondary` | `#A6A6AA` | `onSurfaceVariant` |
+| Kontur/Trennlinie | `--line` | `#48494D` | `outlineVariant` |
+| Ablehnen | `--negative` | `#F72F49` | getrennte semantische negative Aktionsfarbe |
+| Gefällt | `--positive` | `#4CDA36` | getrennte semantische positive Aktionsfarbe |
+| Favorit | `--favorite` | `#D26BEC` | eigene Favoritenrolle, nicht Preference-Like |
+| Erfolg | `--success` | `#5DE44E` | Status, nicht automatisch Like |
+| Fokus | `--focus` | `#FFC18D` | gut sichtbarer Focus-Ring |
 
-- Gemeinsame Profilkarte für Entdecken und gespeicherte Suchergebnisse; zwei Spalten im üblichen Smartphone-Fenster.
-- Seitenverhältnis Breite/Höhe circa 0,77 und Rundung circa 23 dp als **Richtwerte**.
-- Cover, Dunkelgradient am unteren Bildrand, Name/Alter und Platzhalter bei fehlenden Medien.
-- Direktes Like oben rechts in Entdecken; übrige Aktionen kontextabhängig.
+**[MUSS]** Akzenttext klein und regulär **dunkel**, nicht weiß: berechneter Kontrast Dunkel auf Orange ca. 5,47:1; Weiß auf Orange nur ca. 3,26:1. Primärtext auf Grund ca. 15:1. Kontrast auf Porträts ist mit Scrim/Gradient und Prüfung für reale Hintergründe zu sichern. Fehler/Erfolg/Favorit nie ausschließlich farblich signalisieren. Die Farbe des Vorschaumodus wird nicht durch Zufallsbilder abgeleitet. Status-/Fehlerfarben im nativen Theme für beide Helligkeiten separat prüfen.
+
+**[MUSS]** Benannte Rollen mit Gewicht/Zeilenhöhe verwenden, ohne per Screen unbekannte Sondergrößen zu verteilen. Die lokale Browserreferenz verwendet eine verfügbare System-Sans-Schrift; Android richtet sich nach Material-3-/Roboto-Metriken und `sp`. Keine fremden Webfonts oder CDN-Abhängigkeiten.
+
+| Rolle | CSS-Richtgröße | Gewicht / Zeile | Typischer Einsatz |
+| --- | --- | --- | --- |
+| `title` | 22 px / 1,375 rem | 700 / 1,23 | Marke und große Hauptüberschriften |
+| `heading` | 19 px / 1,1875 rem | 700 / 1,23 | Abschnittsüberschriften |
+| `body` | 14 px / 0,875 rem | 400–600 / 1,4 | Beschreibung und Gruppen |
+| `label` | 13 px / 0,8125 rem | 500–700 / 1,4 | Segment, Zeile, Action |
+| `caption` | 12 px / 0,75 rem | 400–600 / 1,4 | ergänzende Metadaten |
+
+**[RICHTWERT]** CSS `px` für Dimensionen → Android `dp`, Texthierarchie → `sp`; nicht von identischer Pixelgeometrie ausgehen. Bei Font Scale 1,3/2, IME und Barrierefreiheit responsive auf mehrzeilige/vertikale Anordnung wechseln. Die browserseitige Textskalierung ist kein TalkBack-Test.
+
+## 3. Raster, Formen und wiederverwendbare Komponenten
+
+| Dimension | Variable | Ziel |
+| --- | --- | --- |
+| Abstandsleiter | `--space-1/2/3/4/6/8` | 4 / 8 / 12 / 16 / 24 / 32 dp |
+| Außenabstand | `--outside` | 16 dp |
+| Kartenabstand | `--card-gap` | 12 dp |
+| Abschnittsabstand | `--section-gap` | 16 dp |
+| Hero/Karte | `--card-radius` | 24 dp |
+| Sekundärgruppe | `--group-radius` | 17 dp, Rundungsfamilie vereinheitlichen |
+| Segment/Pill | `--pill-radius` | vollgerundet |
+| Header | `--header-height` | 56 dp |
+| Root-Navigation | `--nav-height` | 64 dp (ohne Android-Systeminsets) |
+| Minimales Interaktionsziel | `--touch` | **48 × 48 dp** |
+
+**[MUSS]** Gemeinsame, kontextfreie UI-Komponenten statt pro Screen duplizierter Strukturen: `AppShell`, `AppHeader`, `RootNavigation`, `ViewModeSwitch`, `ContextStrip`, `ProfileHero`, `ProfileCard`, `DecisionRail`, `FilterSection`, `SettingsGroup`, `ProfileSection`, `RecordEditorDialog`, `FeedbackState`. Aktiver/normaler/deaktivierter/Fokuszustand darf keine Geometrie verändern. Die CSS-Fassung nutzt keine externen Icons, sondern zentral definierte SVG-Stroke-Symbole; in Compose nach Möglichkeit vorhandene Material-Icons statt neuer paralleler Icon-Bibliothek verwenden.
+
+**[MUSS]** Labels und Werte sind anhand tatsächlich verfügbarer Felder darzustellen. Kein erfundener „jetzt verfügbar“-Status, keine fiktive Entfernung als bestätigt, keine zufällige Quellaktivität, kein stillschweigender Statuswechsel. Leere optionale Felder auslassen; relevante Unbekanntheit explizit zeigen. Buttons erscheinen nur bei gültigem Handlungsbezug oder sind mit plausibler Erklärung deaktiviert.
+
+## 4. Shell, Navigation, Scroll- und Insets-Vertrag
+
+**[MUSS]** Die Root-Ansichten Entdecken, Suche, Gespeichert und Einstellungen teilen **dieselbe** App-Bar und 4-Ziele-Bottom-Navigation. Entdecken hat **drei** Modi Swipe, Grid und Karte mit identischer Umschalterposition; der Moduswechsel führt keinen neuen Suchlauf aus. Suche und Einstellungen teilen Abschnittstitel-Muster. Das Standalone-Profil ersetzt Header/Navigation kontextgerecht durch Back, Identität, Favorit und Mehr – **keine Bottom-Navigation, keine Decision Rail, keine Profil-Deck-Geste**.
+
+**[MUSS]** Jede Ansicht verwendet genau einen vertikalen Hauptscrollfluss; bei Swipe bleiben Hero und Details im selben Fluss. Die feststehenden Header-/Aktions-/Navigationsflächen überdecken keine Inhalte. In der Android-App Systemleisten, Edge-to-Edge, IME, Tastatur und Navigationsgesten über vorhandene `WindowInsets`-/Scaffold-Verträge behandeln; Browserrahmen `.reference-stage`/`.phone` und eventuell sichtbare Desktopumgebung **nicht übertragen**. Kein WebView-Port, kein CSS-/JS-Runtime in der APK.
+
+**[MUSS]** Gültige Scroll-, Foto- und Modusposition beim Profilbesuch und Back erhalten. Bei Notizentwurf oder Record-Editor Back/Owner-Wechsel nicht still verwerfen. Dialoge haben eine eindeutige Überschrift, Fokusführung und explizites Schließen/Abbrechen. Keyboard, DPAD und TalkBack dürfen nicht von Touch-Gesten abhängen.
+
+**[MUSS – ausdrücklich ersetzte alte Hero-Geometrie]** Die v3-Gestaltung verwendet zwei kompakte Kontext-/Moduszeilen oberhalb des Fotos. Der bisherige pauschale 14-%-Maximalwert für den Hero-Beginn und die mindestens 65-%-Höhe bei 390–430 dp sind für dieses **neue visuelle Soll aufgehoben**, nicht unverändert weiter anzuwenden. Bei 390×844 CSS-px misst die Referenz näherungsweise `x=12, y=171, w=366, h=534` (63 % der gesamten Referenzhöhe). Dies sind **Browserreferenzwerte**, keine unveränderten nativen dp-Mindestwerte. M08.2 hat den Hero anhand realer WindowInsets, 48-dp-Touchziele und der sichtbaren Decision Rail zu vermessen: großer Bildanteil und sofort erkennbare Identität, ohne verdeckte Aktionen oder doppeltes Padding. Auf 360 dp, bei IME, Font Scale, Rotation und niedrigen Höhen ist ein begründeter kompakter Fallback zulässig. Die fachliche Ein-Scrollfluss-/Swipe-Arbitration bleibt voll gültig.
+
+**[RICHTWERT]** Im Grid sind die Referenzkarten näherungsweise quadratisch (`aspect-ratio:1.03`, Web) – anders als der bislang dokumentierte Richtwert Breite/Höhe 0,77. Der bisherige Richtwert 0,77 wird durch die v3-Referenz ersetzt; die native Umsetzung übernimmt diesen Richtwert auf Grundlage dieser visuellen Freigabe, ohne Inhaltsverlust oder Textabschneiden. Auf Tablet/600 dp Karte/Grid adaptiv begrenzen, nicht die Gesamtoberfläche skalieren.
+
+## 5. Ansichts- und State-Verträge
+
+### Entdecken: Swipe und Grid
+
+**[MUSS]** Der sichtbare lokale Ausgangsbestand ist explizit vom **ausgeführten** Suchlauf getrennt. Swipe und Grid teilen denselben gültigen Run-/Results-Snapshot; Wechsel oder Scroll lösen keinen HTTP-Read aus. Neutraler Ausgangskontext heißt in v3 sichtbar „Lokaler Bestand“. Die Karte zeigt unabhängig davon den datenbankweiten Bestand.
+
+**[MUSS]** Der Hero hat Cover, unten kontrastgesicherten Namen/Alter/Ort sofern bekannt und seitliche Galerie-Tapzonen. Keine permanente Galerie-Chrome oder fingierte Videos. Horizontaler Entscheidungs-Swipe nur am Hero mit eindeutiger Achse, ohne Tap-Kollision. Vertikales Scrollen öffnet Details im selben Fluss. `Undo`, `Nein`, `Später`, `Gefällt` bleiben erreichbar; `Später` ist sessionlokal. Favorit ist eine **andere** Personeneigenschaft als Preference-Like. Deckentscheidungen erst nach bestätigtem Commit weiterschalten; Undo stellt den vorherigen vollständigen gültigen Präferenz- und Presentationsschritt her.
+
+**[MUSS]** Grid zeigt dieselben Treffer, kann direkt liken und nur im **aktiven Grid** nach erfolgreicher Aktion einen gelikten Eintrag temporär ausblenden. Ausblenden nach Fehler zurücknehmen; nicht zusätzlich in einer zweiten Datenmenge verändern. Profilöffnung und Rückkehr ohne Requery/Positionverlust.
+
+### Karte
+
+**[MUSS]** Lokaler Gesamtdatenbestand unabhängig vom aktuellen Suchlauf. Favoritenfilter, Marker/Cluster, gemeinsame Auswahl für identische angenäherte Ortslagen, Auswahlkarte und Profileinstieg. Ungefähre Stadt-/PLZ-Zentren erkennbar, niemals exakte versteckte Adressen/GPS, keine erfundenen Koordinaten. Geocoding nur ausdrücklich, begrenzt, abbrechbar, mit erhaltenen Teilergebnissen und gültiger Owner-/Lifecycle-Policy. MapLibre im realen Android-Code beibehalten; die SVG-Karte aus `prototype/assets/` ist ausschließlich Illustration.
+
+### Standalone-Profil und neuere M06-Bereiche
+
+**[MUSS]** Gemeinsamer vorhandener `ProfileFlow` statt zweiter Detailimplementierung. Wesentliche belegte Merkmale, Beschreibung, Kontakt nur bei gültigem Datensatz, Dienste/Evidenz, Identitätsanalyse, getrennte Personennotiz, **Meine Begegnungen**, **Manuelle Angebotspreise**, Historie und verknüpfte Anzeigen bleiben im selben Profil zugänglich. Galerie und Video mit bestehenden Sicherheits-/Lifecycle-Verträgen, Kontakt nur durch ausdrückliche Nutzerhandlung.
+
+**[MUSS]** Begegnungen sind personenbezogen und beinhalten nach vorhandenem Produktvertrag bewusste Eingabe von Zeitpunkt, ggf. Dauer, Grund-/Gesamtpreis, Gesamt-/Sympathiebewertung, Begegnungsnotiz und persönliche Leistungszeilen. Angebotspreise werden manuell als datierte Preislisten mit Positionen erfasst; frühere Listen bleiben erhalten, bezahlte Beträge stammen **nur** aus Begegnungen und werden getrennt ausgewiesen. Notizentwürfe, CAS-/Owner-Prüfung, Konflikte, Fehler und Rückkehr verlässlich behandeln. **[DEMO]** Die v3-Formulare veranschaulichen Feldgruppen und lokale Rückmeldung; sie implementieren **nicht** die vollständigen nativen Editier-/Merge-/Persistenzverträge.
 
 ### Suche
 
-- Globaler Filtertext, Ort/Radius, Top 5, Verfügbarkeit, Alter (dual range), Treffpunkt, einklappbare Kategorien/Eigenschaften (einschließlich Größe), Services und weitere Optionen.
-- Footer mit Reset und Suche samt Count/Status; Gruppenstatus und Scrollposition erhalten.
-- Letzter Suchlauf bleibt unabhängig vom Filterentwurf zugänglich: Liste der lokal sichtbaren Run-Treffer einschließlich der nur im Grid temporär ausgeblendeten Likes, mit Profilöffnung und eindeutiger Rückkehr zum Filter.
+**[MUSS]** Filterentwurf, leichtgewichtige nichtpersistente Vorschau und ausgeführter Run sind unterschiedliche Zustände. Alter, Radius, Ort, Verfügbarkeit, Kategorie, Treffpunkt, Merkmale, Größe, Services und Seitenlimit bleiben erreichbar. Letzte ausgeführte Ergebnisliste unabhängig vom Entwurf erreichbar. Suche zeigt Loading und Cancel, Erfolg öffnet Entdecken; Fehler/Abbruch erhalten letzten bestätigten Run. Teilresultat und unbestätigter Radius sind kein vollständiger Nulltreffer und verändern keine SavedSearch-Mitgliedschaft. Schnellfilter Alle/Jetzt/Heute startet nur an den dafür vorgesehenen Stellen sofort.
 
 ### Gespeichert
 
-- Tabs, Counts, Sortierung, Statusprüfung und aufklappbare Watchlist gemäß [PRODUCT](PRODUCT.md#gespeicherte-personen).
-- Kompakte Zeilen: Thumbnail, Name/Alter, Ort, Anzeigenstatus, eindeutige Sichtungs-/Änderungs-/Statusprüfzeitpunkte, Anzeigenanzahl sowie Herz/Mehr. Lokales Neuladen von der Quellenstatusprüfung unterscheiden.
-- Gespeicherte Suchen: eigene Übersicht mit Neu-Indikator, Delta, Editor und Ergebnisgrid.
+**[MUSS]** Favoriten/Likes/Dislikes getrennt mit korrekten Personenzuordnungen, Counts, Status-/Sichtungszeiten und Sortierung. Watchlist „Neu & geändert“ nach bestehendem Produktvertrag einschließlich explizitem Prüf- und Abbruchverhalten. Gespeicherte Suchen mit getrenntem Editor, Ergebnissen, Neu-Indikator, Delta, expliziter Quittierung und Fehlerzuständen. Öffnen/Reload markiert Neuigkeiten **nicht** automatisch gelesen. Die Demo enthält keine wahrheitsfähigen Quellenstatusdaten; Anzeigenzahl/Zeiten und Watchlist-Logik dürfen nicht aus Beispielwerten übernommen werden.
 
-### Karte und Einstellungen
+### Einstellungen und Diagnose
 
-- Große Kartenfläche, zurückhaltende Controls; Datenumfang und ungefähre Standorte kennzeichnen.
-- Marker/Cluster und gemeinsame Auswahl gleich positionierter Profile. Bestehende Profilnavigation sowie Kamera/Auswahl bei Tab-/Profilwechseln erhalten.
-- Fehler/Retry, Auflösungsfortschritt und Abbruch sichtbar; gecachte Zentren bleiben während der Auflösung sichtbar.
-- Einstellungen in schlichten funktionalen Gruppen. Neue Funktionen verwenden vorhandene Muster.
+**[MUSS]** Echter DB-/Core-Status; Replay-Likes sauber von lokaler Hide-Likes-Sichtbarkeit unterscheiden. INFO/DEBUG und HTTP-Aufzeichnung Aus/Metadaten/Textantworten nur gemäß bestehendem Core- und Diagnosevertrag. Ein Neustart schaltet Capture aus; keine unbewusste Freigabe privater Logs/HAR/Notizen, keine automatische Weitergabe. Die Demo meldet die fehlende Datenbankverbindung und erzeugt lediglich ein gekennzeichnetes Beispielprotokoll.
 
-## Profile und Medien
+### Repräsentative Fehlerzustände
 
-Priorität: (1) korrekte Identität/Entscheidung, keine falsche Aktion oder Datenverluste; (2) eindeutige Tap-/Swipe-/Scroll-Interaktion; (3) große Galerie und Orientierung; (4) kompakte zugängliche Details; (5) Animation/Dekoration. Keine neuen Felder nur fürs Layout; Datenumfang und Evidenz gemäß [PRODUCT](PRODUCT.md#profile-medien-und-kontakte).
+**[MUSS]** Loading, Empty, Fehler mit Retry, Partial und unbekannte Werte sind als normale Produktzustände präsentationsfähig. Testbedingte Statusinjektion ist kein sichtbares App-Feature und kein neues fachliches Event. Bestehende FFI-/Owner-/Session-Konfliktsemantik hat immer Vorrang vor JS-Simulation.
 
-### UX-Vertrag — zwei Zustände, ein Scrollfluss
+## 6. Compose-Zuordnung ohne Parallelarchitektur
 
-**A — Swipe-Ausgangszustand (Default):**
+| Referenzkomponente (`design-referenz/`) | Bestehender oder passender Android-Code | State/Ereignis | Tokens |
+| --- | --- | --- | --- |
+| `AppShell`, `AppHeader`, `RootNavigation` – `app.js` | `LadiesApp`, `ShellRoute`, vorhandene Material-3-Navigation | `selectRoot`, `back`, aktives Ziel | Hintergrund, Header, Bottom-Navigation |
+| `ViewModeSwitch`, `ContextStrip` | `DiscoverModeSwitcher`, `MainViewModel` | `onSelectMode`, aktiver Run vs lokaler Bestand | Akzent, Touch, Oberfläche |
+| `ProfileHero`, `DecisionRail` | `DiscoverScreen`, `SwipeShellHeader`, `SwipeDecisionControls`, `ProfileFlow` | `onGallery`, `onLike`, `onDislike`, `onSkip`, `onUndo`, `onFavoriteToggle` | Hero-Radius, Statusfarben, Typografie |
+| `ProfileCard`, `ProfilesGrid` | existierende Discovery-Grid-/Karten-Komponenten | `onOpenProfile`, `onLike`, Person/Listing-Identität | Grid-Gap, Card-Shape |
+| `MapSurface`, `SelectedCard` | `MapScreen`, `NativeProfileMap`, MapLibre | `onResolve`, `onCancel`, `onFavoritesOnly`, `onProfile` | Oberfläche, Marker/Favorit |
+| `ProfileSections`, `NoteEditor` | `ProfilePanels`/`ProfileFlow`, `NoteEditorActions` | `onSaveNote`, Draft/Conflict/Owner, `onBack` | Abschnitt, Text, Aktionen |
+| `RecordEditorDialog` (Begegnung/Preis) | `EncounterEditor`, `PriceEditor`, `EncounterEditorDialog`, `PriceEditorDialog` | lokaler Draft; `onCreate/Update/Delete`, CAS/Owner | Dialog, Touch, Titel |
+| `FilterSection`, `SearchResults` | `SearchScreen`, `MainViewModel`, vorhandene SearchUiState | Draft/Preview/Run, `onSearch`, `onCancel` | Felder, Segmente, Abstände |
+| `SavedPeople`, `SavedSearches` | bestehende Saved-Panels / `SavedSearchController` | `onOpen`, `onAck`, `onRun`, Statusprüfung | Zeilen, Badge, Tab |
+| `SettingsGroup`, `FeedbackState` | `SettingsScreen` in `LadiesApp`, `MainViewModel` | `onRefresh`, `onCaptureMode`, `onExport` | Gruppenoberfläche, Status |
 
-- Kompakte Marken-/Such-/Filterleiste mit eindeutig gekennzeichneter aktueller Suche, Modus und Verfügbarkeit; großflächiges Foto unmittelbar darunter.
-- Keine obere Galerie-Bedienleiste, Storysegmente, Zähler, permanente Pfeile oder Gestentutorials. Original/Fit im Profilmenü.
-- Native seitliche Tap-Zonen; Video erhält mittiges Play/Pause.
-- Name, Alter, Ort und explizite Verfügbarkeit/Status nur soweit bekannt, kontrastgesichert am unteren Bildrand. Fehlendes Alter nicht schätzen.
-- Kurzer Detailhinweis/Anschnitt zeigt Scrollbarkeit; keine vollständige Beschreibung im ersten Viewport erzwingen.
-- Fixierte Decision Rail direkt über Root-Navigation: Undo, Nein, Später, Gefällt; Nein/Gefällt visuell primär, Undo/Später sekundär, alle Ziele mindestens 48 dp. Keine zusätzliche Like-/Dislike-Leiste im Inhalt.
-- Favorit unabhängig über separates erreichbares Symbol oder Option.
-- Neue Karte startet in A. Alte Karte bleibt bis bestätigter Entscheidung oder eindeutigem Kontextwechsel sichtbar.
+**[MUSS]** Reihen/Spalten nicht screenshotabhängig duplizieren; Compose `Row`/`Column`/`Box`/Lazy-Layouts und bestehende ViewModels nutzen. Keine Kotlin-HTTP-Anfragen an die Quelle, kein SQL in der UI, keine WebView, keine Import-/Migrationsroute. Die Web-Simulation enthält keinerlei fachliche Zeit-/Transaktionsgarantien und darf daher nicht in den Core kopiert werden.
 
-**B — heruntergescrollt (Details):**
+## 7. Fokus, Accessibility, responsive und Bewegung
 
-- **Derselbe** vertikale Scrollfluss: kein Modal, zweite Route oder zweiter Content-Scroller. Swipe-Header/Filter scrollen aus oder kollabieren koordiniert.
-- Nach Verlassen der Identitätsüberlagerung kompakter Profilheader mit Name/Alter und gegebenenfalls belegtem Ort/Status. Kleiner Thumbnail nur optional ohne Platzverlust/Ladezeit; keine zweite dauerhafte Identitätsüberschrift.
-- Decision Rail bleibt erreichbar und nennt das aktuell sichtbare Profil; Root-Navigation bleibt, keine zusätzliche Leiste.
-- Primärer Profil-Swipe nur am Hero; in Details vertikal scrollen und per Buttons entscheiden.
-- Zurückscrollen zum Hero stellt A samt gewählter Galerieposition wieder her. Tap auf kompakte Identität oder zugänglicher „Zum Foto“-Shortcut scrollt ohne neue Navigation zurück.
-- Headerwechsel ohne Layoutsprung, Flackern, Scroll-Reset oder Interaktionsverlust. Relevante Status-/Fehler-/Abbruchanzeige bleibt sichtbar.
-- Keine erzwungene Snap-/Scroll-Animation; reduzierte Bewegung/Systemanimationseinstellungen beachten.
-- Standalone nutzt denselben Inhalt mit Back statt Deck-Steuerung, ohne Root-Navigation und ohne horizontale Profilentscheidung.
+**[MUSS]** Zielgrößen ≥48 dp auch bei Segmenten, Radius-Chips, Kartenmarkern und Menü-Icons. Verständliche Semantik/Accessible Names, TalkBack, DPAD, Hardkeyboard, Fokusindikator, Dialogfokus und IME-Rückkehr. Gesperrte Aktionen sind begründet und nicht als aktiv erscheinende tote Klickflächen darzustellen. Kontrast auf Fotos, dynamisch lange Werte und 200 % Schriftgröße prüfen. Nativer Scroll- und Insets-Vertrag gilt über Browserwerte hinaus.
 
-Schematische Abnahme (nicht maßstabsgetreue Figma-Spezifikation):
-```text
-A: Entdecken/Filter/Modus (kompakt)     B: Name · belegter Kurzstatus (kompakt)
-   ┌──────────────────────────────┐       Verfügbarkeit · wichtige Fakten
-   │                              │       Merkmale · Beschreibung
-   │                              │       Dienste · Kontakt
-   │        GROSSES FOTO          │       ▸ Analyse / Identität
-   │ tap ←              → tap     │       ▸ Meine Notiz • falls Entwurf
-   │                              │       ▸ Verlauf / verknüpfte Anzeigen
-   │ Name, Alter · Ort/Status     │
-   └──────────────────────────────┘
-   ↓ Profilinfos                         ↑ Zum Foto (zugänglich)
-   Undo | Nein | Später | Gefällt        Undo | Nein | Später | Gefällt
-   Entdecken · Suche · Gesp. · Einst.    Entdecken · Suche · Gesp. · Einst.
-```
+**[MUSS]** Bewegung folgt der Aktion und wird unter System-Animator-Scale beziehungsweise Web `prefers-reduced-motion` reduziert; kein erzwungener Scroll-Snap. Gestenpriorität: interaktiver Child > Galerie-Tap > eindeutige horizontale Hero-Entscheidung > vertikales Profilscrollen; bei Drag kein verspäteter Foto-Tap.
 
-### Messbarer Flächenvertrag und responsive Darstellung
+**[RICHTWERT]** Prüfraster 360×740, 390×844, 430×932 und 600 px Breite sowie Font Scale 1/1,3/2. Größere Browserfenster zentrieren die Preview; die native App darf keine künstlichen Geräte-/Screenshot-Rahmen erhalten. Die Referenz besteht nur im Dark Mode. Die **gleichwertige Light-Mode-Variante** ist vor vollständiger Designabnahme nativ auszugestalten und separat zu prüfen, nicht per CSS-Invertierung zu simulieren.
 
-**Messbasis:** `H` ist die tatsächlich nutzbare Gesamthöhe zwischen Systemstatus-/Navigationsinsets **einschließlich** eigener App-Bar, Action Rail und Root-Navigation; `W` ist die nutzbare Fensterbreite. An einem geladenen Normalprofil in Portrait, Startscroll, Font Scale 1, ohne IME/Fehler messen.
+## 8. Prüfkriterien und Übergabegrenzen
 
-| Geltungsbereich | Hero-Fotohöhe / Startposition | Verbindlichkeit |
-| --- | --- | --- |
-| `W` 390–430 dp, `H` ≥780 dp | Ziel 70 % `H`, regulär mindestens 65 % vor Fallback, höchstens 72 % `H` soweit Controls passen | Normalfall-Anforderung |
-| `W` um 360 dp, `H` ≥680 dp | Ziel mindestens 60 % `H` | Normalfall-Ziel für kleineres Fenster |
-| Hero-Anfang bei `H` 780 dp (Beispiel 109 dp) | Maximal 14 % `H`, Ziel 12 % `H` | Normalfall-Anforderung und Ziel |
-| Hero-Seitenabstand | 0–8 dp | Layout-Ziel |
-| Header und zusätzliche Filter-/Moduszeile | Headerhöhe 48–56 dp als Richtwert | **Verbindlich:** maximal eine zusätzliche kompakte Zeile, keine doppelte Padding-Kette |
+1. Die gemessenen Header-/Bottom-Navigation-Rechtecke sind über sämtliche Root-Screens identisch; Farben, Radien, Segmente, Labels und Fokus reagieren konsistent.
+2. Keine Demo-Toolbar, Szenario-Menüs, Reset-Oberfläche, künstliche Systemleisten, Netzwerkaufrufe, reale Kontakte oder automatische Quellabfragen. Desktop-Rahmen bleibt ausschließlich Vorschau.
+3. Swipe-/Grid-Datensatz identisch im gültigen Run, Karte unabhängig, Profil öffnet mit identischem Owner und kehrt an gültige Position zurück.
+4. Like/Dislike/Später/Undo/Favorit sind verschieden; kein zweiter fachlicher State oder impliziter Write beim Rendern.
+5. Galerie/Video/Scroll/Gesten und persönliche Editoren respektieren interaktive Kindziele, Draft-/Owner-/Lifecycle-Sicherheit; keine Datenverluste beim Back.
+6. Suche: Draft ≠ Preview ≠ Run, Cancel/Fehler/Teilresultat erhalten bestätigte Daten; gespeicherte Suchen ohne implizites Ack.
+7. M06-Begegnungen/Preislisten bleiben vollständig erreichbar; keine fiktiven Preise, keine automatische Preiserfassung, bezahlter Betrag nicht mit Angebotspreis verwechseln.
+8. MapLibre-/Geocoder- und Diagnose-APIs werden nicht durch HTML-/JS-Implementierungen ersetzt.
+9. Dark **und** Light, Systeminsets, IME, 360/390/430/600 dp, Font Scale 1/1,3/2, TalkBack/DPAD und Fokus müssen auf nativer Zielplattform geprüft werden; Web-Tests ersetzen sie nicht.
+10. Widersprüche der alten `docs/DESIGN.md` (Pink, Grid-Aspekt, altes Hero-Startbudget) werden beim späteren Integrations-PR **explizit aufgelöst**, nicht als pauschales Löschen der übrigen UX-Regeln verstanden. `PRODUCT.md`, `ARCHITECTURE.md` und bestehende Schutzprüfungen bleiben maßgeblich.
 
-**Planungsbudget bei `H=780`:** App-Bar 48 + Filterzeile 48 + Rail 56 + Root-Navigation 64 + Detailhinweis/Abstand 12 = 228 dp; Hero 546 dp (70 %) mit 6 dp Reserve. Das ist **kein** Satz fester Material-3-Höhen. Tatsächlich gemessene Insets und Komponenten entscheiden.
+## 9. Unverbindliche Demo-Daten, Risiken und Grenzen
 
-**Berechnung:** Verfügbare Hero-Höhe = `H` minus gemessene feste Leisten, notwendige Abstände und optionalen Detail-Peek. Wunschhöhe auf diesen Platz begrenzen.
+**[DEMO]** Acht erfundene volljährige Personen samt Fotos/Namen/Orten, ein schematisches Leipzig-SVG, flüchtige Such- und Mapzustände, lokale Begegnungs-/Preisformulare sowie nicht verbundene Datenbank/HTTP/Contact-Aktionen. Sie sind **keine** Referenz für echte Preise, Felder, Server-Semantik, Archivierung, Lizenz- oder Datenschutzfreigabe. Die Positionszeilen und Datumsfelder der Web-Editoren sind illustrative UI und keine vollständige Rust-/UniFFI-API-Spezifikation.
 
-**Fallback, wenn 65 % nicht erreichbar sind – in dieser Reihenfolge:**
-1. Dauerhaft sichtbare sekundäre Controls zusammenfassen.
-2. Doppelte Abstände entfernen.
-3. Optionalen Detail-Peek reduzieren.
-4. Erst danach begründeten adaptiven Fallback zulassen (kleines Fenster, Font Scale, Querformat, IME oder Fehler).
+**Beleg:** Die v3-Referenz wurde vor Übernahme separat in Chromium an repräsentativen Viewports geprüft; diese frühere Browserprüfung ist **kein** Nachweis aktueller nativer Android-UI- oder Laufzeittests. Die HTML-Referenz ist unter [`design-referenz/`](../design-referenz/README.md) abgelegt.
 
-Keine willkürliche Max-Height-Unterschreitung, abgeschnittene Aktionen oder verkleinerte Touch-Ziele. Für Desktop-/Tablet-Fenster sinnvoll begrenzte Inhaltsbreite oder adaptive Anordnung; kein neues Desktop-Feature.
-
-**Medien:** Hero-Cover als Default; vorhandener Fit-Vollbildmodus explizit. Video eingebettet, stumm, mit Autoplay/Loop nur bei sichtbarem Medium und gültigem Lifecycle. Medienfallback gemäß [PRODUCT](PRODUCT.md).
-
-**Abnahme:** Hero-Start, -Höhe, -Breite und Leisten messen; 360×740/390×844/430×932 dp und 600 dp, Font Scale 1/1.3/2, hell/dunkel, Rotation, Insets, IME, TalkBack/DPAD. Normalfall ist verbindliche Layoutanforderung.
-
-### Informationshierarchie — progressive Offenlegung
-
-Visuelle Hierarchie nach Relevanz für schnelle Profilentscheidung; keine Sammlung gleich gewichteter Karten. Scanbare kurze Labels und Werte statt redundanter Überschriften; Gruppenabstand 12–16 dp, innerhalb 4–8 dp, Außenabstand Details 12–16 dp als Richtwert, Touch-Ziele bleiben ≥48 dp; Material3-Typografie, klare Kontraste, Dark Mode. Keine durchgängigen dicken Kartenrahmen oder für jedes Merkmal eigene Pill. Ruhige Oberfläche, wenige Akzentfarben, Divider nur zur Trennung sinnvoller Gruppen. Werte nicht doppelt (z.B. Alter nur in Identität, nicht nochmals Info-Raster; wenn Overlay weg, kompakter Header). Wichtige Informationen ohne Pflicht-Tabwechsel sichtbar:
-
-| Rang | Darstellung | Umfang/Regel |
-|---|---|---|
-| 0 | Identität/entscheidungsrelevanter Status im Hero bzw. kompakten Header | Name, Alter, Ort, angezeigter Quellenstatus/Verfügbarkeit mit Unsicherheit; Archiv-/Fehler-/Ownerwarnung sichtbar und nicht mit Aktivität verwechseln |
-| 1 | Kompakte Übersicht | Tatsächlich vorhandene Öffnungszeiten/Verfügbarkeit, Anzeigenanzahl der Person und wichtige belegte Merkmale, responsive 1–2 Spalten; keine erfundene „jetzt verfügbar“-Ableitung. Anzeigenanzahl nur bei fehlender Personenzusammenfassung aus der Analyse ergänzen. |
-| 2 | Beschreibung | Kurzer mehrzeiliger Auszug, „Mehr anzeigen“ wenn abgeschnitten; voller Originaltext zugänglich, kein KI-Resümee |
-| 3 | Dienste/Filterbelege | Gruppierte Textzeilen oder wenige Chips, explizit Ja/Nein/Unbekannt; kompakte Zusammenfassung mit Zugang zu allen Werten, keine irreführende Verdichtung |
-| 4 | Kontakt und externe Aktionen | Direkt zugängliche vorhandene Kontaktregeln/Telefon/WhatsApp/Original; Favorit separat, keine automatischen Aktionen |
-| 5 | Analyse/Identitätskandidaten | Eingeklappt, vorhandene Evidenz und explizite Bestätigung; Evidenz gemäß PRODUCT |
-| 6 | Meine Notiz | Eingeklappt; Entwurfs-/Konflikt-/Speicherhinweis bereits am Abschnittskopf; bestehende Speichern/Konfliktauflösung in-place |
-| 7 | Persönliche Begegnungen und Angebotspreise | Getrennte, eingeklappte lokale Sektionen mit gemeinsamem Editor-Verhalten. Neueste erfasste Liste und frühere Listen kennzeichnen; bezahlten Gesamtbetrag getrennt anzeigen. |
-| 8 | Verlauf und verknüpfte Anzeigen | Eingeklappt, Liste mit bestehenden Zeit-/Filter-/Vergleichsfunktionen, externe Original-URLs unverändert |
-
-Kein Verlust tatsächlich verfügbarer Felder. Bei fehlenden optionalen Feldern kein leerer Kartenblock; fachlich relevante unbekannte Werte zeigen. Kritische Warnungen/Fehler, aktive Mutationen, Notizkonflikte und Loading/Retry nicht hinter Menüs verbergen. Kurze Abschnittstitel und semantische Überschriften; Ausklappen nur für die betreffende Sektion, übrige Scrollanker stabil. Bei langen Werten/Font Scale auf einspaltig wechseln und nicht abschneiden. Zwischen A und B keine Doppelroute, kein künstlicher Sheet-Handle. Filter: ausgeführter Ort/Radius, Verfügbarkeit, Modus, Quelle/visible/deck als kompakte Zusammenfassung bzw. beschriftete zugängliche Detailanzeige; aktive Suche vs lokaler Bestand immer erkennbar; Teilresultat/Radiuswarnung/Cancel beim Auftreten sichtbar. Replay/Reset/Refresh ins erreichbare Deckmenü, Undo direkt. Kein neuer Suchlauf durch Darstellung, Scroll oder Moduswechsel. Andere Screens nicht ohne Bedarf neu gestalten.
-
-### Gesten und Präsentation
-
-**Galerie und Entscheidung:**
-- Seitliche native Tap-Zonen wechseln Medien; am Rand bleibt der Index unverändert.
-- Horizontaler Swipe entscheidet **nur am Hero**, bei eindeutig dominanter Achse und **mindestens 25 % Kartenbreite sowie 72 dp**; Fling allein genügt nicht. Vertikal scrollen.
-- Diagonale Mehrdeutigkeit, Long-Press vor Lock, Mehrfinger, Cancel, Back, Busy oder Kontextwechsel verhindern die Entscheidung.
-- Interaktive Kindziele (Play/Pause/Retry, Menü, Back, Vollbild, Editor, Kontakt, Rail) haben Vorrang.
-- Nach Drag kein Tap; Feedback nur während Drag. Bei Cancel, Writefehler oder unterschwelligem Drag zurückfedern; bestätigter Exit erst nach gültiger Entscheidung.
-- Standalone verwendet dieselbe Galerie **ohne** Swipe-Entscheidung.
-
-**Wiederherstellung und kleiner Viewport:**
-- Undo stellt die letzte **noch gültige** Medien-/Scrollposition und Sektionen wieder her; sonst kontrollierter Hero-Fallback.
-- Back, Moduswechsel oder Rotation bewahren Position und Medien im gültigen Kontext. Neuer Kontext oder Reset startet in A.
-- Ein Scrollfluss, keine zweite Detailroute.
-- Bei sehr kleinen Fenstern/hoher Schriftvergrößerung Identität außerhalb des Bildes und Rail-Aktionen im erreichbaren Menü; kritische Statusanzeige bleibt verfügbar.
-- Video-Retry am Medium.
-
-## Prüfung und Gestaltungsspielraum
-
-Verbindlich sind bestätigte UX-Entscheidungen, Normalfall-Hero-Anforderungen mit adaptiven Ausnahmen, verständliche Zustände, zugängliche Aktionen und konsistente Markenidentität. Andere Maße, sekundäre Anordnung und Material-Komponenten sind Richtwerte bzw. autonome Entscheidungen. Bei geänderten Screens gezielt helle/dunkle Darstellung, 360/390/430 dp und größere Fenster (600 dp), Font Scale 1/1,3/2, Rotation, Insets/IME, TalkBack/DPAD, Back, schnelle Navigation und Fehlerfälle prüfen soweit relevant und verfügbar. Optionale native Geräteprüfung nach [Merge-Regel](ROADMAP.md#pflege); konkrete Belege im PR, keine privaten Bilder. Kein neuer Design- oder Teststack.
+**Offen für M08:** Vollständige native Light-Mode-Palette, präzise Android-Hero-/Insets-Messung, visuelles und fachliches Regressionsreview der bestehenden M06-/SavedSearch-/Watchlist-Komponenten. Das Design ist als Soll beschlossen, nicht bereits nativ implementiert.

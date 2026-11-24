@@ -10,6 +10,10 @@ Entdecken, Suche, Profile, Medien, Personen, gespeicherte Suchen, Karte und loka
 
 Den nächsten ausführbaren Schritt dem [Arbeitsregister](docs/ROADMAP.md) entnehmen. Einstieg für Agenten: [AGENTS.md](AGENTS.md).
 
+## Designreferenz
+
+[Design Reference v3](design-referenz/README.md) ist die offline nutzbare, synthetische HTML/CSS-Vorschau für den geplanten nativen Redesign-Meilenstein M08. Verbindliches UI-/UX-Soll: [DESIGN](docs/DESIGN.md); Implementierungsstand und Aufgaben: [ROADMAP](docs/ROADMAP.md). Die Referenz ist keine WebView-App und führt keine echten Quellenzugriffe aus.
+
 ## Architektur
 
 Technische Architektur und Grenzen: [ARCHITECTURE.md](docs/ARCHITECTURE.md). Gradle baut die native Bibliothek und Bindings für das APK.
