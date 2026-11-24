@@ -268,6 +268,21 @@ class CoreStore(context: Context) {
     suspend fun deleteEncounter(listingId: Long, personId: Long, expected: Encounter) =
         withContext(Dispatchers.IO) { engine.deleteEncounter(listingId, personId, expected) }
 
+    suspend fun priceOverview(listingId: Long, personId: Long): PriceOverview =
+        withContext(Dispatchers.IO) { engine.priceOverview(listingId, personId) }
+
+    suspend fun createPriceList(listingId: Long, personId: Long, values: PriceListValues): PriceList =
+        withContext(Dispatchers.IO) { engine.createPriceList(listingId, personId, values) }
+
+    suspend fun updatePriceList(
+        listingId: Long, personId: Long, expected: PriceList, values: PriceListValues,
+    ): PriceList = withContext(Dispatchers.IO) {
+        engine.updatePriceList(listingId, personId, expected, values)
+    }
+
+    suspend fun deletePriceList(listingId: Long, personId: Long, expected: PriceList) =
+        withContext(Dispatchers.IO) { engine.deletePriceList(listingId, personId, expected) }
+
     suspend fun compareSnapshots(personId: Long, fromId: Long, toId: Long): List<SnapshotDifference> =
         withContext(Dispatchers.IO) { engine.compareSnapshots(personId, fromId, toId) }
 
