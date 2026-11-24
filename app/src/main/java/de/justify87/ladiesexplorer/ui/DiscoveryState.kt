@@ -99,7 +99,7 @@ internal fun gridActionMatches(discovery: DiscoverUiState, search: SearchUiState
     discovery.actionSurface == ProfileActionSurface.GRID &&
         discovery.actionGeneration == action.generation &&
         !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy && !search.profileOpen &&
-        search.response?.searchRunId == action.runId &&
+        discovery.activeRunId == action.runId && search.response?.searchRunId == action.runId &&
         gridCards(discovery, search).firstOrNull { it.listingId == action.card.listingId } == action.card
 
 internal data class GridRefreshAction(val runId: Long?, val generation: Long)
@@ -122,21 +122,31 @@ internal fun gridPageMatches(discovery: DiscoverUiState, search: SearchUiState, 
         discovery.actionGeneration == action.generation &&
         localDiscoveryPageMatches(discovery, search, action.cursor)
 
-/** Traversal and temporary Grid hiding never own result membership. */
+/** Traversal never owns result membership. */
 internal fun discoveryMembership(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
     if (search.response != null) search.activeCards else discovery.localCards
 
 internal fun gridCards(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
-    discoveryMembership(discovery, search).filterNot { search.response != null && it.listingId in search.gridHiddenLikes }
+    discoveryMembership(discovery, search)
 
-internal fun gridLikeTarget(preference: Preference): Preference =
-    if (preference == Preference.LIKE) Preference.NONE else Preference.LIKE
+/** A local preference receipt, not a deck visit. */
+data class GridUndoReceipt(
+    val runId: Long?,
+    val listingId: Long,
+    val ownerId: Long,
+    val before: Preference,
+    val after: Preference,
+) {
+    internal fun step() = SwipeStep(listingId, ownerId, before, after)
+}
 
-internal fun SearchUiState.hideGridLike(listingId: Long): SearchUiState =
-    copy(gridHiddenLikes = gridHiddenLikes + listingId)
+internal data class GridUndoAction(val receipt: GridUndoReceipt, val generation: Long)
 
-internal fun SearchUiState.restoreGridLike(listingId: Long): SearchUiState =
-    copy(gridHiddenLikes = gridHiddenLikes - listingId)
+internal fun gridUndoMatches(discovery: DiscoverUiState, search: SearchUiState, action: GridUndoAction): Boolean =
+    discovery.actionSurface == ProfileActionSurface.GRID &&
+        discovery.actionGeneration == action.generation && discovery.gridUndo == action.receipt &&
+        discovery.activeRunId == action.receipt.runId && search.response?.searchRunId == action.receipt.runId &&
+        !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy && !search.profileOpen
 
 internal fun gridAnchorKey(key: Any): String = if (key is Long) "listing/$key" else key.toString()
 

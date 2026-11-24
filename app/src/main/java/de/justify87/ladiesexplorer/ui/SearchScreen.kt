@@ -181,10 +181,6 @@ internal fun SearchScreen(
                             if (response.radiusBoundaryStopped) {
                                 Text("Weitere Ergebnisse außerhalb des gewählten Radius wurden nicht übernommen.")
                             }
-                            if (state.activeCards.any { it.listingId in state.gridHiddenLikes }) {
-                                Text("Hier bleiben im Grid vorübergehend ausgeblendete Likes sichtbar.",
-                                    style = MaterialTheme.typography.bodySmall)
-                            }
                         }
                     }
                     items(state.activeCards, key = { it.listingId }) { card ->

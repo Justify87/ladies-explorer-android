@@ -151,10 +151,10 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Rust liefert `activeSearchCards` in Positions-/ID-Reihenfolge mit aktuellen Owner-/Präferenz-/Favoritenzuordnungen. Grid liest diese aktive Ergebnismenge, **nicht** die bereits konsumierte Swipe-Queue.
 - Neutraler Startbestand verwendet Präferenz `NONE`; `DiscoverUiState.localCards` hält das lokal geladene Mitgliedschaftsfenster unabhängig von der Deck-Traversierung. `discoveryMembership` ist der gemeinsame Zugriff für die drei Modi. Ein expliziter Grid-/Karteneinstieg fokussiert das gültige Listing im bestehenden `SwipeSession` ohne künstliche Entscheidung oder Reset. Im aktiven Run bestimmen natives Filterergebnis, sessionlokale Traversierung und Replay-Likes-Policy gemeinsam zulässige Swipe-Karten. Fachvertrag: [PRODUCT](PRODUCT.md#entdecken-und-entscheidungen).
 
-**Entscheidung und Grid-Hide:**
+**Entscheidung:**
 - `SwipeSession` hält Traversierung/Undo-Records, keinen zweiten fachlichen Store.
 - Geste und Rail teilen dieselbe gerenderte Admission und native CAS-Präferenzoperation; Queue-Projektion ist autoritativ.
-- Grid-Herz bindet den gerenderten Listing-/Owner-/Präferenz- und Run-Snapshot samt Präsentationsgeneration und führt eine erwartungsgeprüfte LIKE/NONE- beziehungsweise LIKE-Mutation aus. Das rungebundene temporäre Hide wird bei neuem Run zurückgesetzt, verändert weder native Ergebnismenge noch Swipe-Historie.
+- Grid-Geste und zugängliche Aktionen binden gerenderten Listing-/Owner-/Präferenz- und Run-Snapshot samt Aktionsgeneration und nutzen dieselbe native CAS-Präferenzoperation. Kein Grid-Hide oder Deck-Visit. Ein einzelnes `GridUndoReceipt` bindet den bestätigten Vorher-/Nachher-Zustand an Run, Listing und Owner; Undo nutzt den vorhandenen CAS-Rückschreibvertrag ohne Deck-Traversierung. Grid verlassen, erfolgreicher neuer Run oder konkurrierende Mutationen widerrufen das Receipt. Fehlgeschlagenes Undo widerruft das Receipt und reconciliert den Bestand; kein automatisches Wiederholen.
 - Fehler, Commit und Kontext: [Operationsmodell](#operations--und-konsistenzmodell) und PRODUCT.
 
 **Unabhängige Projektionen:**
@@ -194,7 +194,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 ### Gesten, Präsentation und Undo
 
 **Gesten-Admission:**
-- `PhotoGestureResolver` klassifiziert denselben Hero-Pointer-Stream anhand Android-Touch-Slop, gemessener Grenzen und dominanter Achse; [Schwellen/Interaktion](DESIGN.md#gesten-und-präsentation).
+- `PhotoGestureResolver` klassifiziert denselben Hero- bzw. Grid-Karten-Pointer-Stream anhand Android-Touch-Slop, gemessener Grenzen und dominanter Achse; [Schwellen/Interaktion](DESIGN.md#gesten-und-präsentation).
 - Native Clickables besitzen Galerie-Taps, Fokus und Semantik; interaktive Kindziele haben Vorrang. Horizontaler Lock übernimmt den Stream; vertikales Scrollen bleibt bei der LazyColumn.
 - Mehrfinger, Fokus-/Geometrie-/Kontextwechsel, Pause, Back, Cancel oder widerrufene Touch-Intention verhindern den Commit.
 - `ProfileTouchGate` widerruft gesamten Touch-Stream bis zum letzten Up; Semantik-/Tastaturaktionen bleiben nativ. Standalone: Galerie-Taps ohne Swipe-Entscheidung.

@@ -220,10 +220,10 @@ internal fun SearchUiState.endRun(errorMessage: String? = null): SearchUiState =
 internal fun SearchUiState.acceptRun(
     run: SearchResponse,
     cards: List<DiscoveryCard>,
-): SearchUiState = copy(loading = false, searchCancelling = false, error = null, response = run, activeCards = cards, gridHiddenLikes = emptySet())
+): SearchUiState = copy(loading = false, searchCancelling = false, error = null, response = run, activeCards = cards)
 
 internal fun SearchUiState.applyDraftChange(next: SearchUiState): SearchUiState =
-    next.copy(response = response, activeCards = activeCards, gridHiddenLikes = gridHiddenLikes, error = null)
+    next.copy(response = response, activeCards = activeCards, error = null)
 
 internal data class SearchDraft(
     val city: String = "Leipzig",

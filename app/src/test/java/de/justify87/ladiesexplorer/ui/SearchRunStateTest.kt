@@ -120,7 +120,7 @@ class SearchRunStateTest {
     @Test fun resetRequiresRenderedDraftAndRevokesOldEditContextWithoutChangingRun() {
         val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 7)
         val saved = SavedSearchUiState(actionGeneration = 4)
-        val search = SearchUiState(city = "Dresden").acceptRun(response(1), listOf(card(1))).hideGridLike(1)
+        val search = SearchUiState(city = "Dresden").acceptRun(response(1), listOf(card(1)))
         val action = SearchDraftEditAction(7, 4)
         val rendered = SearchDraft.from(search)
         assertTrue(searchDraftResetMatches(discovery, search, saved, action, rendered))
@@ -132,7 +132,6 @@ class SearchRunStateTest {
         assertEquals(SearchDraft(), SearchDraft.from(reset))
         assertEquals(search.response, reset.response)
         assertEquals(search.activeCards, reset.activeCards)
-        assertEquals(search.gridHiddenLikes, reset.gridHiddenLikes)
         assertFalse(searchDraftEditMatches(next, reset, saved, action))
         assertTrue(searchDraftEditMatches(next, reset, saved, action.copy(generation = 8)))
     }
@@ -284,28 +283,24 @@ class SearchRunStateTest {
         assertEquals(rows, discoveryMembership(local, SearchUiState()))
     }
 
-    @Test fun gridLikeHidesOnlyGridUntilSuccessfulNewRunAndRestoresOnFailure() {
-        val rows = listOf(card(1), card(2).copy(favorite = true))
-        val initial = SearchUiState().acceptRun(response(1), rows)
-        val swipe = SwipeSession().apply { visit(SwipeStep(1, 1)) }
-        val last = swipe.last
-        val deck = DiscoverUiState(cards = swipe.queue(rows, true))
-        val pending = initial.hideGridLike(2)
-        assertEquals(listOf(1L), gridCards(deck, pending).map { it.listingId })
-        assertEquals(rows, pending.activeCards)
-        val searchSurface = deck.copy(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 7)
-        val openHidden = SearchResultOpenAction(rows[1], 1L, 7L)
-        assertTrue(searchResultOpenMatches(pending, searchSurface, openHidden))
-        assertFalse(searchResultOpenMatches(pending, searchSurface.copy(actionSurface = ProfileActionSurface.GRID), openHidden))
-        assertFalse(searchResultOpenMatches(pending.acceptRun(response(2), rows), searchSurface, openHidden))
-        assertEquals(last, swipe.last)
-        assertEquals(rows, gridCards(deck, pending.restoreGridLike(2)))
-        assertEquals(pending.gridHiddenLikes, pending.beginRun().endRun().gridHiddenLikes)
-        assertEquals(pending.gridHiddenLikes, pending.applyDraftChange(SearchUiState()).gridHiddenLikes)
-        assertTrue(pending.acceptRun(response(2), rows).gridHiddenLikes.isEmpty())
-        assertEquals(Preference.LIKE, gridLikeTarget(Preference.NONE))
-        assertEquals(Preference.LIKE, gridLikeTarget(Preference.DISLIKE))
-        assertEquals(Preference.NONE, gridLikeTarget(Preference.LIKE))
+    @Test fun gridPreferenceKeepsSharedMembershipAndUndoAdmission() {
+        val rows = listOf(card(1), card(2).copy(preference = Preference.DISLIKE, favorite = true))
+        val search = SearchUiState().acceptRun(response(1), rows)
+        val receipt = GridUndoReceipt(1L, 2L, rows[1].personId, Preference.NONE, Preference.DISLIKE)
+        val grid = DiscoverUiState(activeRunId = 1L, actionSurface = ProfileActionSurface.GRID,
+            actionGeneration = 7, gridUndo = receipt, loading = false)
+        val undo = GridUndoAction(receipt, 7)
+        assertEquals(rows, gridCards(grid, search))
+        assertEquals(rows, currentMapMembership(grid, search)?.cards)
+        assertTrue(gridUndoMatches(grid, search, undo))
+        assertFalse(gridUndoMatches(grid.copy(actionGeneration = 8), search, undo))
+        assertFalse(gridUndoMatches(grid.copy(gridUndo = null), search, undo))
+        assertFalse(gridUndoMatches(grid.copy(busy = true), search, undo))
+        assertFalse(gridUndoMatches(grid.copy(actionSurface = ProfileActionSurface.MAP), search, undo))
+        assertFalse(gridUndoMatches(grid, search.acceptRun(response(2), rows), undo))
+        assertEquals("Unbewertet", gridPreferenceLabel(Preference.NONE))
+        assertEquals("Gefällt", gridPreferenceLabel(Preference.LIKE))
+        assertEquals("Gefällt nicht", gridPreferenceLabel(Preference.DISLIKE))
     }
 
     @Test fun gridLikeRejectsReplacedRowRunAndNavigationAndNeverReinterpretsClick() {
@@ -315,7 +310,6 @@ class SearchRunStateTest {
         val local = SearchUiState()
         val action = GridLikeAction(row, null, 15)
         assertTrue(gridActionMatches(deck, local, action))
-        assertEquals(Preference.LIKE, gridLikeTarget(action.card.preference))
         assertFalse(gridActionMatches(deck.copy(localCards = listOf(row.copy(preference = Preference.LIKE))), local, action))
         assertFalse(gridActionMatches(deck.copy(localCards = listOf(row.copy(personId = 99L))), local, action))
         assertFalse(gridActionMatches(deck.copy(actionGeneration = 16), local, action))
@@ -324,9 +318,10 @@ class SearchRunStateTest {
         assertFalse(gridActionMatches(deck, local.copy(profileOpen = true), action))
         val running = local.acceptRun(response(1), listOf(row))
         val runAction = GridLikeAction(row, 1, 15)
-        assertTrue(gridActionMatches(deck, running, runAction))
-        assertFalse(gridActionMatches(deck, running.acceptRun(response(2), listOf(row)), runAction))
-        assertFalse(gridActionMatches(deck, running.hideGridLike(row.listingId), runAction))
+        val activeDeck = deck.copy(activeRunId = 1)
+        assertFalse(gridActionMatches(deck, running, runAction))
+        assertTrue(gridActionMatches(activeDeck, running, runAction))
+        assertFalse(gridActionMatches(activeDeck, running.acceptRun(response(2), listOf(row)), runAction))
         assertFalse(gridActionMatches(deck, running, action))
     }
 
@@ -345,26 +340,47 @@ class SearchRunStateTest {
         assertTrue(result.cards.last().favorite)
     }
 
-    @Test fun successfulGridWriteKeepsFavoriteAndSwipeHistoryInSharedProjection() = runBlocking {
+    @Test fun gridDecisionAndUndoUseExpectedPreferenceWithoutDeckVisit() = runBlocking {
         val old = card(2).copy(favorite = true)
         var stored = old
         val swipe = SwipeSession().apply { visit(SwipeStep(1, 1)) }
         val step = swipe.last
-        var search = SearchUiState().acceptRun(response(1), listOf(card(1), old)).hideGridLike(2)
-        var discovery = DiscoverUiState(cards = swipe.queue(search.activeCards, true))
-        val result = writeAndProject(
-            write = { stored = stored.copy(preference = gridLikeTarget(stored.preference)) },
-            project = {
-                search = search.copy(activeCards = listOf(card(1), stored))
-                discovery = discovery.copy(cards = swipe.queue(search.activeCards, true))
-            },
-            onWriteFailure = { search = search.restoreGridLike(2) },
+        var search = SearchUiState().acceptRun(response(1), listOf(card(1), old))
+        var discovery = DiscoverUiState(cards = swipe.queue(search.activeCards, true), activeRunId = 1)
+        val project: suspend () -> Unit = {
+            search = search.copy(activeCards = listOf(card(1), stored))
+            discovery = discovery.copy(cards = swipe.queue(search.activeCards, true))
+        }
+        val write: suspend (Long, Long, Preference?, Preference) -> Preference = { listing, owner, expected, target ->
+            check(listing == stored.listingId && owner == stored.personId && expected == stored.preference)
+            val before = stored.preference
+            stored = stored.copy(preference = target)
+            before
+        }
+        for (target in listOf(Preference.LIKE, Preference.DISLIKE)) {
+            val result = writeAndProject(
+                write = { write(old.listingId, old.personId, Preference.NONE, target) },
+                project = project,
+            )
+            assertEquals(DiscoveryMutationOutcome.Success, result)
+            assertEquals(target, gridCards(discovery, search).last().preference)
+            assertTrue(gridCards(discovery, search).last().favorite)
+            assertEquals(step, swipe.last)
+            val receipt = GridUndoReceipt(1L, old.listingId, old.personId, Preference.NONE, target)
+            val undo = writeAndProject(write = {
+                undoSwipeStep(receipt.step(), write, { old.personId }, {})
+            }, project = project)
+            assertEquals(DiscoveryMutationOutcome.Success, undo)
+            assertEquals(old, gridCards(discovery, search).last())
+            assertEquals(step, swipe.last)
+        }
+        val failed = writeAndProject(
+            write = { write(old.listingId, old.personId + 1, Preference.NONE, Preference.LIKE) },
+            project = project,
         )
-        assertEquals(DiscoveryMutationOutcome.Success, result)
-        assertEquals(Preference.LIKE, discovery.cards.single().preference)
-        assertTrue(discovery.cards.single().favorite)
+        assertTrue(failed is DiscoveryMutationOutcome.WriteFailed)
+        assertEquals(old, gridCards(discovery, search).last())
         assertEquals(step, swipe.last)
-        assertEquals(listOf(1L), gridCards(discovery, search).map { it.listingId })
     }
 
     @Test fun reprojectStopsAtEndEvenWhenRequestedWindowIsLarger() = runBlocking {

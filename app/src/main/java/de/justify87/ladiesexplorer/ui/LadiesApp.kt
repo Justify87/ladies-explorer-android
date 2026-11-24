@@ -122,7 +122,8 @@ fun LadiesApp(
     val profileTouchGate = remember { ProfileTouchGate() }
     val windowInfo = LocalWindowInfo.current
     val swipeShell = !search.profileOpen && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe
-    val profileTouchEnabled = swipeShell || search.profileOpen
+    val profileTouchEnabled = swipeShell || search.profileOpen ||
+        (route.root == RootDestination.Discover && route.discovery == DiscoverMode.Grid)
     DisposableEffect(route, search.profileOpen, search.profileSessionId, discovery.swipeSessionId) {
         onDispose { profileTouchGate.invalidate() }
     }
@@ -380,7 +381,9 @@ fun LadiesApp(
                                     discovery = discovery,
                                     search = search,
                                     onLoadMore = viewModel::loadMoreDiscovery,
-                                    onLike = viewModel::toggleGridLike,
+                                    onDecision = viewModel::chooseGridPreference,
+                                    onUndo = viewModel::undoGridPreference,
+                                    touchGate = profileTouchGate,
                                     onProfile = { action ->
                                         if (route == renderedRoute && viewModel.openGridProfile(action)) {
                                             profileTouchGate.invalidate()
@@ -389,6 +392,7 @@ fun LadiesApp(
                                     },
                                     chrome = {
                                         DiscoverModeSwitcher(DiscoverMode.Grid, { mode ->
+                                            profileTouchGate.invalidate()
                                             viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
                                             route = route.select(mode)
                                         }, Modifier)
