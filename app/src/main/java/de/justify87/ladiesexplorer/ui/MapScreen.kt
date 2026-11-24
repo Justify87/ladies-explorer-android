@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -91,6 +93,10 @@ internal fun MapScreen(
     val active = points.firstOrNull { it.listingId == selectedListingId }
     val selection = remember(points, selectedListingId) { mapSelection(points, selectedListingId) }
     val latestPoints by rememberUpdatedState(points)
+    val detailsScroll = rememberScrollState()
+    LaunchedEffect(selectedListingId, state.resolving, tileState) {
+        detailsScroll.scrollTo(0)
+    }
     val scheme = MaterialTheme.colorScheme
     val dark = scheme.surface.luminance() < .5f
     val marker = (if (dark) scheme.primaryContainer else scheme.primary).toArgb()
@@ -175,7 +181,7 @@ internal fun MapScreen(
                 },
                 modifier = Modifier.fillMaxWidth().then(
                     if (compact) Modifier else Modifier.heightIn(max = availableHeight * .48f)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(detailsScroll)
                 ),
             )
         }
@@ -250,19 +256,8 @@ internal fun MapDetails(
                 Text("Karte erneut laden")
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = onRefresh, enabled = !state.loading && !state.resolving,
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) { Text("Aktualisieren") }
-            if (state.resolving) {
-                OutlinedButton(onClick = onCancel, enabled = !state.cancelling,
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) {
-                    Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen")
-                }
-            } else if ((overview?.pendingLocations ?: 0u) > 0u) {
-                Button(onClick = onResolve, enabled = !state.loading,
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) { Text("Standorte auflösen") }
-            }
+        if (state.resolving) {
+            MapActionRow(state, onRefresh, onResolve, onCancel)
         }
         if (overview != null && overview.profiles.isEmpty() && !state.loading) {
             Text(
@@ -285,8 +280,8 @@ internal fun MapDetails(
                             Text(active.name.ifBlank { "Profil" }, style = MaterialTheme.typography.titleMedium)
                             Text(active.locationLabel, style = MaterialTheme.typography.bodySmall)
                         }
-                        TextButton(onClick = onClear, modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
-                            Text("Auswahl lösen")
+                        ShellIconButton(onClick = onClear) {
+                            Icon(Icons.Default.Close, contentDescription = "Auswahl lösen")
                         }
                     }
                     if (selectionCount > 1) {
@@ -304,8 +299,34 @@ internal fun MapDetails(
                 Text("Kartierte Profile auswählen")
             }
         }
+        if (!state.resolving) {
+            MapActionRow(state, onRefresh, onResolve, onCancel)
+        }
         Text("Nur PLZ-/Stadtzentren, keine exakten Adressen. Kartenkacheln sind cacheabhängig; Standortauflösung benötigt Internet.",
             style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun MapActionRow(
+    state: MapUiState,
+    onRefresh: () -> Unit,
+    onResolve: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = onRefresh, enabled = !state.loading && !state.resolving,
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) { Text("Aktualisieren") }
+        if (state.resolving) {
+            OutlinedButton(onClick = onCancel, enabled = !state.cancelling,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) {
+                Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen")
+            }
+        } else if ((state.overview?.pendingLocations ?: 0u) > 0u) {
+            Button(onClick = onResolve, enabled = !state.loading,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) { Text("Standorte auflösen") }
+        }
     }
 }
 

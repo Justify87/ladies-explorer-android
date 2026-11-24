@@ -21,21 +21,21 @@ internal fun DiscoveryChrome(summary: String, availability: AvailabilityMode, av
     val latestEnabled by rememberUpdatedState(availabilityEnabled)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         DiscoveryContextStrip {
-                Text(summary, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Box {
-                    TextButton(onClick = { opened = true }, enabled = availabilityEnabled,
-                        modifier = Modifier.heightIn(min = 48.dp).shellFocus()) { Text(availability.label + " ▾") }
-                    DropdownMenu(expanded = opened && availabilityEnabled, onDismissRequest = { opened = false }) {
-                        AvailabilityMode.entries.forEach { mode ->
-                            DropdownMenuItem(text = { Text(if (mode == availability) "✓ ${mode.label}" else mode.label) },
-                                onClick = {
-                                    opened = false
-                                    if (latestEnabled && latestOwner == owner) onAvailability(mode)
-                                })
-                        }
+            Text(summary, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Box {
+                TextButton(onClick = { opened = true }, enabled = availabilityEnabled,
+                    modifier = Modifier.heightIn(min = 48.dp).shellFocus()) { Text(availability.label + " ▾") }
+                DropdownMenu(expanded = opened && availabilityEnabled, onDismissRequest = { opened = false }) {
+                    AvailabilityMode.entries.forEach { mode ->
+                        DropdownMenuItem(text = { Text(if (mode == availability) "✓ ${mode.label}" else mode.label) },
+                            onClick = {
+                                opened = false
+                                if (latestEnabled && latestOwner == owner) onAvailability(mode)
+                            })
                     }
                 }
+            }
         }
         DiscoverModeSwitcher(active, onMode, Modifier)
     }
