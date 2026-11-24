@@ -24,7 +24,7 @@ Nächster Schritt: [M06.1b](#m061b--leistungsdetails). M06 begonnen; M07 erst na
 
 #### M06.1b — Leistungsdetails
 
-**Status:** DOING · **Branch:** `feature/m06-1b-encounter-details` · **Abhängigkeit:** M06.1a abgeschlossen.
+**Status:** DOING · **Branch:** `feature/m06-1b-encounter-details` ([#88](https://github.com/Justify87/ladies-explorer-android/pull/88)) · **Abhängigkeit:** M06.1a abgeschlossen.
 
 **Umfang:** Optionalen Grundpreis und einfache manuell erfasste Leistungszeilen (Bezeichnung, optionaler Betrag) im selben Begegnungseditor ergänzen. Keine separate Serviceverwaltung und kein zusätzlicher Kriterienkatalog.
 
@@ -33,7 +33,7 @@ Nächster Schritt: [M06.1b](#m061b--leistungsdetails). M06 begonnen; M07 erst na
 - Unbekannt bleibt unbekannt; Gesamtpreis nicht aus unvollständigen Einzelangaben erfinden.
 - Leistungszeilen bei Merge vollständig erhalten und niemals mit Quellprofil-Diensten gleichsetzen.
 
-**Prüfung:** Rust-CRUD, Kindzeilen-CAS, Rollback, Merge-Erhalt und JVM-Entwurfsvalidierung/Zeilenidentität ergänzt; vorhandene Profil-Instrumentierung für beide Kontexte erweitert. Nächster Schritt: vollständiges PR-CI-Gate und abschließender Review; Ergebnisse noch nicht verifiziert.
+**Prüfung:** Rust-CRUD, Kindzeilen-CAS, Rollback, Merge-Erhalt und JVM-Entwurfsvalidierung/Zeilenidentität ergänzt; vorhandene Profil-Instrumentierung für beide Kontexte erweitert. [Erster CI-Lauf](https://github.com/Justify87/ladies-explorer-android/actions/runs/45450465456): Rust-Tests, DB-Regression, Clippy und Architektur-Quellprüfungen erfolgreich; rustfmt-Befund korrigiert. Nächster Schritt: vollständiges CI-Gate des korrigierten Stands; Android-Integration noch nicht verifiziert.
 
 #### M06.2 — Minimale manuelle Angebotspreise
 
