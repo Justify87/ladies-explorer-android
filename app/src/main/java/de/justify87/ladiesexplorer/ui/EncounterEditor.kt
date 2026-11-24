@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Encounter
+import de.justify87.ladiesexplorer.core.EncounterService
 import de.justify87.ladiesexplorer.core.EncounterValues
 import kotlinx.coroutines.CancellationException
 import java.time.Instant
@@ -24,6 +25,12 @@ private val encounterTime = DateTimeFormatter.ofPattern("dd.MM.uuuu HH:mm")
     .withResolverStyle(ResolverStyle.STRICT)
 private val utcMillis = DateTimeFormatterBuilder().appendInstant(3).toFormatter()
 
+internal data class EncounterServiceDraft(
+    val id: Long,
+    val name: String = "",
+    val amount: String = "",
+)
+
 internal data class EncounterDraft(
     val whenText: String,
     val duration: String = "",
@@ -32,7 +39,20 @@ internal data class EncounterDraft(
     val sympathy: String = "",
     val note: String = "",
     val listingId: Long? = null,
+    val baseAmount: String = "",
+    val services: List<EncounterServiceDraft> = emptyList(),
+    val nextServiceId: Long = 0,
 ) {
+    fun addService() = copy(
+        services = services + EncounterServiceDraft(nextServiceId),
+        nextServiceId = nextServiceId + 1,
+    )
+
+    fun changeService(id: Long, transform: (EncounterServiceDraft) -> EncounterServiceDraft) =
+        copy(services = services.map { if (it.id == id) transform(it) else it })
+
+    fun removeService(id: Long) = copy(services = services.filterNot { it.id == id })
+
     fun values(expected: Encounter?, zone: ZoneId): EncounterValues {
         val original = expected?.values
         val timestamp = if (original != null && whenText == displayTime(original.occurredAt, zone)) original.occurredAt
@@ -47,16 +67,13 @@ internal data class EncounterDraft(
             return text.trim().toLongOrNull()?.takeIf { it in range }
                 ?: throw IllegalArgumentException("Dauer muss positiv, Bewertungen müssen 1–5 sein.")
         }
-        val cents = if (amount.isBlank()) null else {
-            val normalized = amount.trim().replace(',', '.')
-            require(Regex("[0-9]+(\\.[0-9]{1,2})?").matches(normalized)) {
-                "Betrag muss in EUR mit höchstens zwei Nachkommastellen angegeben werden."
-            }
-            normalized.toBigDecimal().movePointRight(2).longValueExact()
+        val serviceValues = services.map {
+            require(it.name.isNotBlank()) { "Leistungsbezeichnung darf nicht leer sein." }
+            EncounterService(it.name.trim(), optionalCents(it.amount))
         }
         return EncounterValues(listingId, timestamp, optionalNumber(duration, 1L..Long.MAX_VALUE),
-            cents, optionalNumber(overall, 1L..5L), optionalNumber(sympathy, 1L..5L),
-            note.takeUnless { it.isBlank() })
+            optionalCents(amount), optionalNumber(overall, 1L..5L), optionalNumber(sympathy, 1L..5L),
+            note.takeUnless { it.isBlank() }, optionalCents(baseAmount), serviceValues)
     }
 
     companion object {
@@ -70,9 +87,23 @@ internal data class EncounterDraft(
                 sympathy = v?.sympathyRating?.toString().orEmpty(),
                 note = v?.note.orEmpty(),
                 listingId = v?.listingId,
+                baseAmount = v?.basePriceCents?.let(::euro).orEmpty(),
+                services = v?.services.orEmpty().mapIndexed { index, service ->
+                    EncounterServiceDraft(index.toLong(), service.name, service.amountCents?.let(::euro).orEmpty())
+                },
+                nextServiceId = v?.services.orEmpty().size.toLong(),
             )
         }
     }
+}
+
+private fun optionalCents(amount: String): Long? {
+    if (amount.isBlank()) return null
+    val normalized = amount.trim().replace(',', '.')
+    require(Regex("[0-9]+(\\.[0-9]{1,2})?").matches(normalized)) {
+        "Betrag muss in EUR mit höchstens zwei Nachkommastellen angegeben werden."
+    }
+    return normalized.toBigDecimal().movePointRight(2).longValueExact()
 }
 
 private fun displayTime(value: String, zone: ZoneId): String =
@@ -246,6 +277,22 @@ internal fun EncounterEditorDialog(editor: EncounterEditor) {
                     Text("Zeitzone: ${edit.zone.id}", style = MaterialTheme.typography.bodySmall)
                     EncounterField(d.duration, "Dauer in Minuten (optional)", enabled, KeyboardType.Number) { value -> change { it.copy(duration = value) } }
                     EncounterField(d.amount, "Bezahlt in EUR (optional)", enabled, KeyboardType.Decimal) { value -> change { it.copy(amount = value) } }
+                    EncounterField(d.baseAmount, "Grundpreis in EUR (optional)", enabled, KeyboardType.Decimal) { value -> change { it.copy(baseAmount = value) } }
+                    Text("Persönliche Leistungsdetails", style = MaterialTheme.typography.titleSmall)
+                    d.services.forEachIndexed { index, service ->
+                        key(service.id) {
+                            EncounterField(service.name, "Leistung ${index + 1}", enabled) { value ->
+                                change { it.changeService(service.id) { line -> line.copy(name = value) } }
+                            }
+                            EncounterField(service.amount, "Betrag ${index + 1} in EUR (optional)", enabled, KeyboardType.Decimal) { value ->
+                                change { it.changeService(service.id) { line -> line.copy(amount = value) } }
+                            }
+                            TextButton(enabled = enabled, onClick = { change { it.removeService(service.id) } }) {
+                                Text("Leistung ${index + 1} entfernen")
+                            }
+                        }
+                    }
+                    TextButton(enabled = enabled, onClick = { change { it.addService() } }) { Text("Leistung hinzufügen") }
                     EncounterField(d.overall, "Gesamtbewertung 1–5 (optional)", enabled, KeyboardType.Number) { value -> change { it.copy(overall = value) } }
                     EncounterField(d.sympathy, "Sympathie 1–5 (optional)", enabled, KeyboardType.Number) { value -> change { it.copy(sympathy = value) } }
                     OutlinedTextField(d.note, { value -> change { it.copy(note = value) } },
@@ -288,6 +335,13 @@ internal fun EncounterRow(row: Encounter, enabled: Boolean, onEdit: () -> Unit, 
         Text(displayTime(v.occurredAt, ZoneId.systemDefault()), style = MaterialTheme.typography.titleMedium)
         Text("Dauer: ${v.durationMinutes?.let { "$it Min." } ?: "Unbekannt"} · Bezahlt: ${v.totalPriceCents?.let { "${euro(it)} €" } ?: "Unbekannt"}")
         Text("Gesamt: ${v.overallRating?.let { "$it/5" } ?: "Unbekannt"} · Sympathie: ${v.sympathyRating?.let { "$it/5" } ?: "Unbekannt"}")
+        v.basePriceCents?.let { Text("Grundpreis: ${euro(it)} €") }
+        if (v.services.isNotEmpty()) {
+            Text("Persönliche Leistungsdetails", style = MaterialTheme.typography.titleSmall)
+            v.services.forEach { service ->
+                Text("${service.name} · ${service.amountCents?.let { "${euro(it)} €" } ?: "Unbekannt"}")
+            }
+        }
         v.listingId?.let { Text("Anzeige #$it", style = MaterialTheme.typography.bodySmall) }
         v.note?.let { Text(it) }
         Row {
