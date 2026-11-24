@@ -739,6 +739,7 @@ impl LocalVisibility {
             && (!self.hide_likes || preference != "LIKE")
             && match self.image_mode.as_str() {
                 "AI" => has_ai,
+                // NATURAL is the persisted name for absence of a source marker.
                 "NATURAL" => !has_ai,
                 _ => true,
             }
@@ -759,8 +760,8 @@ impl LocalVisibility {
             active.push("Ohne Likes");
         }
         match self.image_mode.as_str() {
-            "AI" => active.push("KI-Bilder"),
-            "NATURAL" => active.push("Ohne KI-Bilder"),
+            "AI" => active.push("KI-markiert"),
+            "NATURAL" => active.push("Ohne KI-Markierung"),
             _ => {}
         }
         active.join(" · ")
@@ -1205,6 +1206,45 @@ mod tests {
             shown
         );
         assert!(list(&core).unwrap()[0].definition_supported);
+    }
+
+    #[test]
+    fn image_marker_filter_preserves_native_definition_and_membership() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let natural = LocalVisibility {
+            image_mode: "NATURAL".into(),
+            ..LocalVisibility::default()
+        };
+        let ai = LocalVisibility {
+            image_mode: "AI".into(),
+            ..LocalVisibility::default()
+        };
+        let all = LocalVisibility::default();
+        for (rules, marked, unmarked) in [
+            (&natural, false, true),
+            (&ai, true, false),
+            (&all, true, true),
+        ] {
+            assert_eq!(rules.allows(false, true, true, "NONE"), marked);
+            assert_eq!(rules.allows(false, true, false, "NONE"), unmarked);
+        }
+        let id = save_with_local(
+            &core,
+            "Marker".into(),
+            SearchRequest::for_test(),
+            natural.clone(),
+        )
+        .unwrap();
+        let before = definition(&core, &id).unwrap();
+        core.rename_saved_search(id.clone(), "Renamed".into())
+            .unwrap();
+        assert_eq!(definition(&core, &id).unwrap(), before);
+        assert_eq!(load_definition(&core, id).unwrap().local, natural);
+        assert_eq!(
+            list(&core).unwrap()[0].local_filter_summary,
+            "Ohne KI-Markierung"
+        );
+        assert_eq!(ai.summary(), "KI-markiert");
     }
 
     #[test]

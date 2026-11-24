@@ -222,11 +222,7 @@ private fun SavedPersonCard(
                         style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(card?.city?.takeIf { it.isNotBlank() } ?: "Ort unbekannt",
                         style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(when (row.status) {
-                        "ACTIVE" -> "Aktiv"
-                        "UNAVAILABLE", "INACTIVE", "REMOVED" -> "Nicht verfügbar"
-                        else -> "Status unbekannt"
-                    } + if (row.listingCount > 1u) " · +${row.listingCount - 1u}" else "",
+                    Text(statusLabel(row.status) + if (row.listingCount > 1u) " · +${row.listingCount - 1u}" else "",
                         style = MaterialTheme.typography.labelSmall)
                     if (row.recent) Text(when (row.latestChangeType) {
                         "NEW_LISTING_FOR_PERSON" -> "Neue Anzeige"

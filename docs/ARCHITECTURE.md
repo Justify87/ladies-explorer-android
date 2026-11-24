@@ -82,7 +82,7 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 - Rückkehr zu früherem Inhalt aktiviert dessen Snapshot und dokumentiert den echten Übergang vom vorher aktiven Snapshot.
 
 **Evidenz und Kandidaten:**
-- Normalisierte Telefonnummer, Quellprofil-ID und 64-bit-dHash liefern Kandidatenevidenz.
+- Normalisierte Telefonnummer, Quellprofil-ID und 64-bit-dHash liefern Kandidatenevidenz. Internationale 00-Vorwahlen werden als Landesvorwahl normalisiert. Historische Telefonschlüssel bleiben erhalten; bei vorhandenem Rohwert wird die Evidenz mit der aktuellen Normalisierung bestätigt. Ein abweichender historischer Schlüssel ohne Rohwert liefert keine zusätzliche Evidenz.
 - Bildhash-Abstand bis 8 kann Evidenz sein; unabhängige Bildpaare eindeutig paaren, Gleichstand nicht bevorzugen.
 - Fremd zugeordnete Quellprofil-IDs bleiben erhalten; Konflikt dedupliziert als Evidenz protokollieren. Keine automatische Zusammenführung.
 

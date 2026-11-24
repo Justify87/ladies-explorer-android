@@ -932,6 +932,7 @@ mod tests {
         assert_eq!(cards.len(), 1);
         assert!(cards[0].has_18plus);
         assert!(cards[0].has_stars);
+        assert!(!cards[0].has_ai_content);
     }
 
     #[test]

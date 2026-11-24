@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: M05.11 (G11), T11.1 READY.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: M05.11 (G11), T11.1 REVIEW – technische CI und Merge ausstehend.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -17,7 +17,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 | M04 Identität, Historie, Medien | DONE | [#5](https://github.com/Justify87/ladies-explorer-android/pull/5); abgeschlossen. |
 | M05.0–M05.9 Frontend-Parität | DONE (Nutzerabschluss 19.11.) | [#23](https://github.com/Justify87/ladies-explorer-android/pull/23), CI #393. Keine Wiedereröffnung. |
 | M05.10 Unified Profile Experience | DONE | T10.0–T10.7 abgeschlossen; T10.8 [#54](https://github.com/Justify87/ladies-explorer-android/pull/54)–[#58](https://github.com/Justify87/ladies-explorer-android/pull/58), [#60](https://github.com/Justify87/ladies-explorer-android/pull/60)–[#75](https://github.com/Justify87/ladies-explorer-android/pull/75) integriert; T10.8/T10.9 Abschlussbilanz unten. |
-| M05.11 Gezielte Qualitätskonsolidierung | READY | T11.1–T11.4: belegte Inkonsistenzen und Redundanzen vor M06 gezielt beheben; keine großflächige Neuarchitektur. |
+| M05.11 Gezielte Qualitätskonsolidierung | DOING | T11.1–T11.4: belegte Inkonsistenzen und Redundanzen vor M06 gezielt beheben; keine großflächige Neuarchitektur. |
 | M06 Weitere Fachfunktionen | PLANNED / teilintegriert | Karte [#10](https://github.com/Justify87/ladies-explorer-android/pull/10), gespeicherte Suchen, Einstellungen, WhatsApp vorhanden; Rest unten. |
 | M07 Gesamtintegration | PLANNED | Gesamtintegration, Stabilität und Release-Umfang; M07.2 siehe unten. |
 
@@ -100,16 +100,18 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Arbeitsweise:** Vor jeder Änderung betroffene Aufrufer, aktuellen Ist-Stand und [PRODUCT](PRODUCT.md), [ARCHITECTURE](ARCHITECTURE.md) bzw. [DESIGN](DESIGN.md) bedarfsorientiert abgleichen. Vermutete Probleme erst belegen; zulässiges Ergebnis ist eine begründete Nichtänderung. Kleine, thematisch abgeschlossene PRs auf integriertem `main`, gezielte positive/negative Regressionen und vorhandene CI. Kein repoweiter neuer Aufrufgraph, neues Framework, Event-Bus, allgemeiner Operationsmanager, zusätzliche Testinfrastruktur oder pauschale Legacy-/Datenbankmigration. Bestehende Owner-/CAS-, UI-Admission-, Drain-/Cancel-, Undo- und Reprojektionsverträge erhalten; keine stillen Fachänderungen.
 
-### T11.1 — READY · Fachliche Inkonsistenzen
+### T11.1 — REVIEW · Fachliche Inkonsistenzen
 
 **Anker:** `rust/ladies-core/src/identity.rs` (`normalize_phone`), `ui/ProfileComponents.kt` (`phoneForWhatsApp`, Statusdarstellung), `rust/ladies-core/src/saved_search.rs` (`LocalVisibility`), `rust/ladies-core/src/source/parse.rs`, `ui/SavedPeopleScreen.kt`.
 
-**Umfang:**
-- [ ] Telefon-Normalisierung in Rust und Kontakt-URL-Erzeugung in Kotlin einschließlich internationaler Vorwahlen abgleichen; nur nachgewiesene Abweichungen korrigieren. Identitätsevidenz und persistierte Kennungen schützen; interne Schemaentwicklung ausschließlich bei belegter Notwendigkeit.
-- [ ] `ALL/AI/NATURAL` gegen tatsächlich vorhandene Quellenmarker prüfen; nicht belegte Natürlichkeit nicht behaupten. Normale und gespeicherte Suche behalten dieselben Sichtbarkeitsregeln; gespeicherte Definitionen nicht unbemerkt umdeuten.
-- [ ] Statuslabels in Profil und gespeicherten Personen auf fachlich widersprüchliche Aussagen prüfen; ggf. vorhandene Darstellung vereinheitlichen, ohne eine neue Statusdomäne einzuführen.
+**Review-Branch:** [`fix/t11-1-fachliche-inkonsistenzen`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t11-1-fachliche-inkonsistenzen), Basis `1f79c53919b0a17d1e93077da8b5a7f7660d535e`.
 
-**Abnahme:** Relevante Rust-/JVM-Tests für Grenzfälle und historische Daten bestehen; keine neue Identitätszuordnung, Datenverlust oder falsche Status-/KI-Aussage. Nur tatsächlich erforderliche Fachvertragsänderungen im selben PR dokumentiert.
+**Umfang:**
+- [x] Nichtdeutsche 00-Vorwahlen korrigiert; bestehende WhatsApp-Normalisierung abgeglichen. Historische Schlüssel bleiben erhalten; Kandidatenevidenz wird bei vorhandenem Rohwert erneut verifiziert. Keine Schemaänderung oder automatische Zuordnung.
+- [x] `ALL/AI/NATURAL` behalten gemeinsame Sichtbarkeitsregeln und Definitionsbytes; Beschriftungen beziehen sich ausdrücklich auf Quellenmarker statt tatsächliche Bildherkunft.
+- [x] Profil und gespeicherte Personen verwenden dieselbe Statusdarstellung; historische nicht belegte Statuswerte werden nicht als bestätigte Nichtverfügbarkeit dargestellt.
+
+**Abnahme:** Relevante Rust-/JVM-Regressionen ergänzt, lokale Gesamtprüfung und CI noch nicht bestätigt. Keine neue Identitätszuordnung, Datenverlust oder falsche Status-/KI-Aussage nach statischem Review; Abschluss nach erfolgreicher technischer Prüfung und Merge. Danach T11.2.
 
 ### T11.2 — PLANNED · Zustands- und Aufrufredundanzen
 

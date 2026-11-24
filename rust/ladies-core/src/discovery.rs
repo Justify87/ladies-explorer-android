@@ -824,6 +824,13 @@ mod tests {
         let rows = active_search_cards(&core, 1, &media).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].listing_id, lb);
+        let unmarked = crate::saved_search::LocalVisibility {
+            image_mode: "NATURAL".into(),
+            ..all.clone()
+        };
+        let rows = active_search_cards(&core, 1, &unmarked).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].listing_id, la);
         let unsupported = crate::saved_search::LocalVisibility {
             image_mode: "STUDIO".into(),
             ..all

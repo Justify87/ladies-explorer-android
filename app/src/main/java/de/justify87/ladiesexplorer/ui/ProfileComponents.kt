@@ -40,7 +40,6 @@ internal fun mediaModels(localPath: String?, url: String?): List<Any> =
 
 internal fun statusLabel(status: String?): String = when (status) {
     "ACTIVE" -> "Anzeige aktiv"
-    "INACTIVE" -> "Anzeige inaktiv"
     "UNAVAILABLE" -> "Anzeige nicht verfügbar"
     else -> "Status unbekannt"
 }

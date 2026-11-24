@@ -24,6 +24,9 @@ class ProfileComponentsTest {
     @Test fun unknownStatusNeverBecomesActive() {
         assertEquals("Status unbekannt", statusLabel(null))
         assertEquals("Status unbekannt", statusLabel("TIMEOUT"))
+        assertEquals("Status unbekannt", statusLabel("UNKNOWN"))
+        assertEquals("Status unbekannt", statusLabel("INACTIVE"))
+        assertEquals("Status unbekannt", statusLabel("REMOVED"))
         assertEquals("Anzeige aktiv", statusLabel("ACTIVE"))
         assertEquals("Anzeige nicht verfügbar", statusLabel("UNAVAILABLE"))
     }
@@ -31,6 +34,10 @@ class ProfileComponentsTest {
     @Test fun externalContactNormalizesInternationalPrefixesAndRejectsShortNumbers() {
         assertEquals("491234567890", phoneForWhatsApp("0123 4567890"))
         assertEquals("441234567890", phoneForWhatsApp("0044 1234567890"))
+        assertEquals("441234567890", phoneForWhatsApp("+44 1234567890"))
+        assertEquals("441234567890", phoneForWhatsApp("wa.me/441234567890"))
+        assertEquals("491234567890", phoneForWhatsApp("tel:0123 4567890"))
+        assertNull(phoneForWhatsApp("00"))
         assertEquals("491234567890", phoneForWhatsApp("+49 1234567890"))
         assertNull(phoneForWhatsApp("123"))
         assertNull(phoneForWhatsApp(""))

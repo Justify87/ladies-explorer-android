@@ -232,7 +232,7 @@ private fun SearchResultRow(action: SearchResultOpenAction, onProfile: (SearchRe
                         listOfNotNull(
                             "Video".takeIf { card.hasVideo },
                             "Premium".takeIf { card.isPremium },
-                            "KI".takeIf { card.hasAiContent },
+                            "KI-markiert".takeIf { card.hasAiContent },
                         ).joinToString(" · "),
                         style=MaterialTheme.typography.labelSmall,
                     )
