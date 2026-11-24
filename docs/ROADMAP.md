@@ -104,7 +104,7 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – Grid-Aktualisierung (DONE mit Merge):** [PR #69](https://github.com/Justify87/ladies-explorer-android/pull/69) bindet manuelles Aktualisieren an gerenderten Run bzw. lokalen Bestand und Ansichtsgeneration. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45408924898) erfolgreich.
 
-**Integrierter Teilauftrag – normale Filterentwurfsaktionen:** [PR #70](https://github.com/Justify87/ladies-explorer-android/pull/70) bindet Entwurfsänderungen und Reset an den gerenderten Filterkontext; Reset zusätzlich an den Entwurf. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45409621564) beim Merge noch nicht abschließend verifiziert.
+**Abgeschlossener Teilauftrag – normale Filterentwurfsaktionen (DONE mit Merge):** [PR #70](https://github.com/Justify87/ladies-explorer-android/pull/70) bindet Entwurfsänderungen und Reset an den gerenderten Filterkontext; Reset zusätzlich an den Entwurf. Geräteprüfungen gemäß Merge-Regel DONE; [PR-CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45409621564) erfolgreich.
 
 **Teilauftrag – Vorschau-Lifecycle (REVIEW):** [Branch `fix/t10-8-preview-lifecycle`](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-preview-lifecycle) bindet Vorschau an STARTED-Lifecycle, eigene Lease und aktuellen Quellentwurf/Editor-Session. JVM-Regressionen für identischen Ersatzrequest, verspäteten Release, Pane-/Entwurfswechsel und unveränderte lokale Filter. CI und Merge ausstehend.
 
