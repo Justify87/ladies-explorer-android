@@ -213,8 +213,8 @@ pub(crate) fn create(
     )?;
     let id = tx.last_insert_rowid();
     replace_services(&tx, id, &values.services)?;
-    let result = read_one(&tx, id)?
-        .ok_or_else(|| CoreError::Storage("Created encounter missing".into()))?;
+    let result =
+        read_one(&tx, id)?.ok_or_else(|| CoreError::Storage("Created encounter missing".into()))?;
     tx.commit()?;
     Ok(result)
 }
@@ -374,7 +374,10 @@ mod tests {
         let mut invalid = input.clone();
         invalid.services[0].amount_cents = Some(-1);
         assert!(update(&core, listing, person, original.clone(), invalid).is_err());
-        assert_eq!(list(&core, listing, person).unwrap(), vec![original.clone()]);
+        assert_eq!(
+            list(&core, listing, person).unwrap(),
+            vec![original.clone()]
+        );
         {
             let db = core.connection().unwrap();
             db.execute_batch(
@@ -391,7 +394,10 @@ mod tests {
         });
         assert!(create(&core, listing, person, failing.clone()).is_err());
         assert!(update(&core, listing, person, original.clone(), failing).is_err());
-        assert_eq!(list(&core, listing, person).unwrap(), vec![original.clone()]);
+        assert_eq!(
+            list(&core, listing, person).unwrap(),
+            vec![original.clone()]
+        );
         {
             let db = core.connection().unwrap();
             db.execute_batch("DROP TRIGGER fail_service").unwrap();
