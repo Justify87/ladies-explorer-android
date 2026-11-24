@@ -841,7 +841,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     internal fun setSettingsReplayLikes(action: SettingsReplayAction, replay: Boolean) {
-        if (hasProfileEditor || swipeVisible ||
+        if (hasProfileEditor || swipeVisible || _uiState.value.loading ||
             !settingsReplayMatches(_discoverState.value, _searchUiState.value, action)) return
         applyReplayLikes(replay)
     }

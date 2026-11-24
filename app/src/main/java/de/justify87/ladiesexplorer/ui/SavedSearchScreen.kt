@@ -149,7 +149,7 @@ internal fun SavedSearchResultsScreen(
         contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
-            ScreenGroup(info?.name) {
+            ScreenGroup {
                 Text(info?.let(::savedDeltaText) ?: "${result.cards.size} geladene Treffer", style = MaterialTheme.typography.titleSmall)
                 Text("${result.cards.size} geladen · aktuelle lokale Profildaten", style = MaterialTheme.typography.bodySmall)
                 info?.lastError?.let { Text("Letzte Prüfung fehlgeschlagen: $it", color = MaterialTheme.colorScheme.error) }
