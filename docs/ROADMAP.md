@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: M05.11 (G11), T11.3 READY.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: M05.11 (G11), T11.4 READY.** M05.10 abgeschlossen; M06/M07 erst nach G11 und auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -119,18 +119,15 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 - Regressionen in `SearchRunStateTest`, `SavedSearchPaneTest` und `SavedPeopleStateTest` ergänzt; vollständiger PR-CI-Lauf erfolgreich, Geräteprüfungen gemäß Merge-Regel DONE. Keine separate lokale Testausführung oder gemessene Beschleunigung behauptet.
 - Weitergehender Caller-/Projektionsreview war vor Nutzerabschluss nicht vollständig belegt; verbleibende konkrete Befunde ausschließlich im regulären Scope von T11.4 behandeln, keine pauschale Wiedereröffnung.
 
-### T11.3 — READY · Nutzerseitige Doppelungen
+### T11.3 — DONE · Nutzerseitige Doppelungen
 
-**Abhängigkeit:** T11.2 abgeschlossen. **Anker:** `ui/SavedPeopleScreen.kt`, `ui/ProfileComponents.kt`, `ui/ProfilePanels.kt`, `ui/SearchScreen.kt`, `ui/LadiesApp.kt`; [DESIGN](DESIGN.md#informationshierarchie--progressive-offenlegung).
+**Abschlussbeleg:** [PR #82](https://github.com/Justify87/ladies-explorer-android/pull/82), Implementierungscommit `9022ffdf2577f4494b6763f8d5a1ad6ce11c16b4`, [CI #45422297688](https://github.com/Justify87/ladies-explorer-android/actions/runs/45422297688) vollständig erfolgreich. Merge ausdrücklich freigegeben am 24.11.2026.
 
-**Umfang:**
-- [ ] Nachweislich doppelte Datums- und Anzeigenanzahl-Angaben sowie uneindeutige Status-/Aktualisierungsbeschriftungen vereinfachen; unterschiedliche fachliche Zeitpunkte und Zählgrundlagen zuvor unterscheiden.
-- [ ] Die zusätzliche Ergebnisliste in der Suche auf eigenständigen Nutzwert prüfen; nur bei bestätigter Redundanz einschließlich Zustand, Callback und Tests entfernen. Swipe/Grid und eigenständige gespeicherte Suchergebnisse erhalten.
-- [ ] Geänderte Screens im bestehenden UI-/Accessibility-Vertrag prüfen; keine allgemeine Neugestaltung und kein Verlust verfügbarer Profilinformationen.
+- Sichtungsdatum nur einmal, Änderungsdatum bei gleicher Tagesangabe zusammengefasst; Quellenstatusprüfung vom lokalen Neuladen abgegrenzt. Anzeigenanzahl in der Profilübersicht konsolidiert, Analyse-Fallback bei fehlender Personenzusammenfassung.
+- Suchliste wegen eigenständigem Zugriff auf nur im Grid ausgeblendete Likes erhalten; doppelter Filterwechsel und Trefferzahl im Warntext entfernt. Suchentwurf, Navigation und bestehende Aktionskontexte unverändert.
+- Gezielte JVM-Regressionen in `SavedPeopleStateTest`, `ProfilePanelsTest` und `SearchRunStateTest`; ARM64- und Instrumentierungs-APK, JVM-Tests, Lint, Rust-Tests, native DB-Regression, Clippy, Quell-/APK-Architekturprüfungen und Build-Gate erfolgreich. Geräteprüfungen mit Merge gemäß Merge-Regel DONE; keine separate Geräteausführung oder lokale Build-Ausführung behauptet.
 
-**Abnahme:** Die betroffenen Screens zeigen Informationen konsistent und ohne vermeidbare Wiederholung. Suchlauf, Filterentwurf, Ergebnis- und Profilzugriff, Back/Rotation sowie gültige Aktionskontexte bleiben erhalten; UI-Änderungen durch gezielte Tests/Prüfung belegt.
-
-### T11.4 — PLANNED · Enges Altcode- und Abschlussreview
+### T11.4 — READY · Enges Altcode- und Abschlussreview
 
 **Abhängigkeit:** T11.1–T11.3 abgeschlossen. **Anker:** jeweils betroffene Kotlin-/Rust-/UniFFI-Aufrufer, Tests, `docs/` und bestehender [CI-Vertrag](../README.md#prüfung--ci).
 

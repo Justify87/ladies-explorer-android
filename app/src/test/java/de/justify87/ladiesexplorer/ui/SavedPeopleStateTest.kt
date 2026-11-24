@@ -15,6 +15,19 @@ class SavedPeopleStateTest {
         savedPage = SavedPersonPage(listOf(row), 1u, 1u, 123L, null),
     )
 
+    @Test fun activityLabelsDistinguishSeenChangedAndStatusCheckWithoutRepeatingDates() {
+        val seen = row().copy(lastSeenAt = "2026-11-22T08:00:00Z")
+        assertEquals(listOf("Zuletzt gesehen: 2026-11-22"), savedPersonActivityLabels(seen))
+        val recent = seen.copy(recent = true, latestChangeAt = "2026-11-22T09:00:00Z")
+        assertEquals(listOf("Gesehen und geändert: 2026-11-22"), savedPersonActivityLabels(recent))
+        assertEquals(listOf("Zuletzt gesehen: 2026-11-22", "Geändert: 2026-11-21",
+            "Anzeigenstatus geprüft: 2026-11-24 10:15 UTC"),
+            savedPersonActivityLabels(recent.copy(latestChangeAt = "2026-11-21T09:00:00Z",
+                statusCheckedAt = "2026-11-24T10:15:00Z")))
+        assertEquals(savedPersonActivityLabels(seen), savedPersonActivityLabels(recent.copy(latestChangeAt = null)))
+        assertEquals(savedPersonActivityLabels(seen), savedPersonActivityLabels(recent.copy(recent = false)))
+    }
+
     @Test fun savedControlsRequireVisibleCurrentSelectionAndIdleReadContext() {
         val state = displayed(row())
         val search = SearchUiState()

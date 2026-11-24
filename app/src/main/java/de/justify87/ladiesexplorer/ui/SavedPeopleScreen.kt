@@ -86,12 +86,12 @@ internal fun SavedPeopleScreen(
                     }
                 }
             }
-            TextButton(onClick = { onRefresh(controlAction) }, enabled = controlsEnabled) { Text("Laden") }
+            TextButton(onClick = { onRefresh(controlAction) }, enabled = controlsEnabled) { Text("Liste neu laden") }
         }
         val batchAction = page?.let { SavedStatusBatchAction(it, state.savedKind, state.savedSort, state.actionGeneration) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { batchAction?.let(onCheckAll) }, enabled = enabled && batchAction != null) {
-                Text("Alle Status prüfen")
+                Text("Status aller Einträge prüfen")
             }
             val progress = state.savedStatusProgress
             if (progress?.running == true) {
@@ -158,7 +158,7 @@ internal fun SavedPeopleScreen(
                     }
                     items(if (expanded) recent.rows else recent.rows.take(3), key = { it.personId }) { row ->
                         SavedPersonCard(SavedPersonAction(row, state.savedKind, state.savedSort, state.actionGeneration),
-                            enabled, onProfile, onFavorite, onPreference, onCheckSingle, preferChangeTime = true)
+                            enabled, onProfile, onFavorite, onPreference, onCheckSingle)
                     }
                     if (recent.sectionTotal > 3u) item(key = "recent-toggle") {
                         TextButton(onClick = { expanded = !expanded }) {
@@ -172,7 +172,7 @@ internal fun SavedPeopleScreen(
                         }
                     }
                     if (page.rows.isNotEmpty()) item(key = "regular-header") {
-                        Text("Weitere Favoriten", style = MaterialTheme.typography.titleMedium)
+                        Text("Weitere Einträge", style = MaterialTheme.typography.titleMedium)
                     }
                 }
                 items(page.rows, key = { it.personId }) { row ->
@@ -188,6 +188,22 @@ internal fun SavedPeopleScreen(
     }
 }
 
+internal fun savedPersonActivityLabels(row: SavedPersonRow): List<String> {
+    val seen = row.lastSeenAt.take(10)
+    val changed = row.latestChangeAt?.takeIf { row.recent }?.take(10)
+    return buildList {
+        if (changed == seen) {
+            add("Gesehen und geändert: $seen")
+        } else {
+            add("Zuletzt gesehen: $seen")
+            changed?.let { add("Geändert: $it") }
+        }
+        row.statusCheckedAt?.let {
+            add("Anzeigenstatus geprüft: ${it.take(16).replace('T', ' ')} UTC")
+        }
+    }
+}
+
 @Composable
 private fun SavedPersonCard(
     action: SavedPersonAction,
@@ -196,7 +212,6 @@ private fun SavedPersonCard(
     onFavorite: (SavedPersonAction) -> Unit,
     onPreference: (SavedPersonAction, Preference) -> Unit,
     onCheckSingle: (SavedPersonAction) -> Unit,
-    preferChangeTime: Boolean = false,
 ) {
     val row = action.row
     val card = row.card
@@ -222,7 +237,7 @@ private fun SavedPersonCard(
                         style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(card?.city?.takeIf { it.isNotBlank() } ?: "Ort unbekannt",
                         style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(statusLabel(row.status) + if (row.listingCount > 1u) " · +${row.listingCount - 1u}" else "",
+                    Text(statusLabel(row.status) + if (row.listingCount > 1u) " · ${row.listingCount} Anzeigen" else "",
                         style = MaterialTheme.typography.labelSmall)
                     if (row.recent) Text(when (row.latestChangeType) {
                         "NEW_LISTING_FOR_PERSON" -> "Neue Anzeige"
@@ -230,15 +245,12 @@ private fun SavedPersonCard(
                             if (row.listingCount == 1u) "Neu" else "Geändert"
                         else -> "Geändert"
                     }, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
-                    Text("Zuletzt: ${row.lastSeenAt.take(10)}", style = MaterialTheme.typography.labelSmall)
-                    row.statusCheckedAt?.let {
-                        Text("Geprüft: ${it.take(16).replace('T', ' ')} UTC", style = MaterialTheme.typography.labelSmall)
+                    savedPersonActivityLabels(row).forEach { label ->
+                        Text(label, style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text((if (preferChangeTime) row.latestChangeAt ?: row.lastSeenAt else row.lastSeenAt).take(10),
-                    style = MaterialTheme.typography.labelSmall)
                 Row {
                     IconButton(onClick = { onFavorite(action) }, enabled = enabled) {
                         Icon(if (row.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
