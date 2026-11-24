@@ -338,8 +338,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchOwner.cancel { it.cancel() }
     }
 
-    fun cancelActiveSearch() {
-        if (!searchOwner.occupied) return
+    internal fun cancelActiveSearch(action: SearchCancelAction) {
+        if (!searchOwner.occupied ||
+            !searchCancelMatches(_discoverState.value, _searchUiState.value, savedSearch.state.value, swipeVisible, action)) return
         invalidateActiveSearch()
         _searchUiState.update { it.copy(searchCancelling = true) }
     }

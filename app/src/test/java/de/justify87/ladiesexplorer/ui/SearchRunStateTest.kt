@@ -78,6 +78,58 @@ class SearchRunStateTest {
         }
     }
 
+    @Test fun searchCancelRequiresCurrentRenderedSurfaceAndSwipeSession() {
+        val search = SearchUiState().beginRun()
+        val saved = SavedSearchUiState()
+        val grid = DiscoverUiState(actionSurface = ProfileActionSurface.GRID, actionGeneration = 7)
+        val gridAction = SearchCancelAction(ProfileActionSurface.GRID, 7)
+        assertTrue(searchCancelMatches(grid, search, saved, false, gridAction))
+        assertFalse(searchCancelMatches(grid, search.endRun(), saved, false, gridAction))
+        assertFalse(searchCancelMatches(grid, search.copy(searchCancelling = true), saved, false, gridAction))
+        assertFalse(searchCancelMatches(grid, search.copy(profileOpen = true), saved, false, gridAction))
+        val filters = grid.copy(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 8)
+        val filterAction = SearchCancelAction(ProfileActionSurface.SEARCH, 8)
+        assertFalse(searchCancelMatches(filters, search, saved, false, gridAction))
+        assertTrue(searchCancelMatches(filters, search, saved, false, filterAction))
+        assertFalse(searchCancelMatches(filters, search, saved.copy(overview = true), false, filterAction))
+        val swipe = grid.copy(actionSurface = ProfileActionSurface.NONE, actionGeneration = 9, swipeSessionId = 12)
+        val swipeAction = SearchCancelAction(ProfileActionSurface.NONE, 9, 12)
+        assertTrue(searchCancelMatches(swipe, search, saved, true, swipeAction))
+        assertFalse(searchCancelMatches(swipe, search, saved, false, swipeAction))
+        assertFalse(searchCancelMatches(swipe.copy(swipeSessionId = 13), search, saved, true, swipeAction))
+        assertFalse(searchCancelMatches(swipe, search, saved, true, swipeAction.copy(swipeSession = null)))
+        assertFalse(searchCancelMatches(grid.copy(actionSurface = ProfileActionSurface.MAP),
+            search, saved, false, SearchCancelAction(ProfileActionSurface.MAP, 7)))
+    }
+
+    @Test fun searchCancelCannotSignalReplacementOwnerAfterFailureOrDrain() {
+        val owner = DrainingOperation<String>()
+        val saved = SavedSearchUiState()
+        val previous = SearchUiState().acceptRun(response(1), listOf(card(1)))
+        val first = owner.start("first")!!
+        val discovery = DiscoverUiState(actionSurface = ProfileActionSurface.SEARCH, actionGeneration = 7)
+        val oldAction = SearchCancelAction(ProfileActionSurface.SEARCH, 7)
+        assertTrue(searchCancelMatches(discovery, previous.beginRun(), saved, false, oldAction))
+        assertTrue(owner.finish(first))
+        val replacement = owner.start("replacement")!!
+        val current = discovery.copy(actionGeneration = 8)
+        for (state in listOf(previous.beginRun().endRun(), previous.beginRun().endRun("offline"))) {
+            val loading = state.beginRun()
+            if (searchCancelMatches(current, loading, saved, false, oldAction)) owner.cancel { error("stale cancellation") }
+            assertTrue(owner.accepts(replacement))
+            assertTrue(searchCancelMatches(current, loading, saved, false, oldAction.copy(generation = 8)))
+            assertEquals(previous.response, loading.response)
+        }
+        var signals = 0
+        owner.cancel { signals++ }
+        owner.cancel { signals++ }
+        assertEquals(1, signals)
+        assertTrue(owner.occupied)
+        assertFalse(owner.accepts(replacement))
+        assertEquals(null, owner.start("too early"))
+        assertTrue(owner.finish(replacement))
+    }
+
     @Test fun partialRunReplacesPreviousResultsWithoutInventingRadiusVerification() {
         val old = SearchUiState().acceptRun(response(1), listOf(card(1))).beginRun()
         val partial = response(2, partial = true)

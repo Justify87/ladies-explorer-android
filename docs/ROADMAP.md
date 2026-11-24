@@ -2,7 +2,7 @@
 
 Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahmen.
 
-**Nächster Schritt: T10.8 – verbleibende G10.3-Regressionsmatrix prüfen und belegte Defekte beheben.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
+**Nächster Schritt: T10.8 – Suchabbruch-Admission reviewen, danach verbleibende G10.3-Regressionsmatrix prüfen und belegte Defekte beheben.** M05.10 abschließen, M06/M07 erst auf Nutzerauftrag. L01 unabhängig klären.
 
 ## Ziel und Grenzen
 
@@ -95,6 +95,8 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 **Abgeschlossener Teilauftrag – Grid-Schnellwahl (DONE mit Merge):** [PR #64](https://github.com/Justify87/ladies-explorer-android/pull/64) bindet die Grid-Verfügbarkeitswahl an gerenderten Run bzw. lokalen Entwurf und Ansichtsgeneration. JVM-Regressionen für Kontextwechsel, Busy, Runwechsel, Fehler/Abbruch und erneuten Versuch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45402502512) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
 **Abgeschlossener Teilauftrag – normaler Suchstart (DONE mit Merge):** [PR #65](https://github.com/Justify87/ladies-explorer-android/pull/65) bindet den Suchbutton an gerenderten Entwurf, lokale Sichtbarkeit und Ansichtsgeneration. JVM-Regressionen für Entwurfs-/Kontextwechsel, Busy, Fehler/Abbruch und erneuten Versuch; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45403653759) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
+
+**Teilauftrag – Suchabbruch (REVIEW):** Branch `fix/t10-8-search-cancel-admission`. Bindet die Abbruchaktionen aus Filtern, Grid und Swipe an gerenderte Ansichtsgeneration und bei Swipe an die sichtbare Session. Regressionen in `SearchRunStateTest` für veraltete Aktionen, Kontextwechsel, neue Versuche nach Fehler/Drain und wiederholten Abbruch. Technische CI-Prüfung ausstehend.
 
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
