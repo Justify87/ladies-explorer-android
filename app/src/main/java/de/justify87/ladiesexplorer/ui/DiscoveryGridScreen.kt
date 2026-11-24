@@ -32,7 +32,6 @@ import de.justify87.ladiesexplorer.core.Preference
 internal fun DiscoveryGridScreen(
     discovery: DiscoverUiState,
     search: SearchUiState,
-    onRefresh: (GridRefreshAction) -> Unit,
     onLoadMore: (GridPageAction) -> Unit,
     onLike: (GridLikeAction) -> Unit,
     onProfile: (GridLikeAction) -> Unit,
@@ -43,7 +42,6 @@ internal fun DiscoveryGridScreen(
     val cards = gridCards(discovery, search)
     val active = search.response != null
     val enabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy
-    val refreshAction = GridRefreshAction(search.response?.searchRunId, discovery.actionGeneration)
     val pageAction = if (active) null else discovery.nextCursor?.let { GridPageAction(it, discovery.actionGeneration) }
     val canPage = pageAction != null && gridPageMatches(discovery, search, pageAction)
     var anchorKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -55,7 +53,6 @@ internal fun DiscoveryGridScreen(
         val keys = buildList {
             if (inlineChrome) add("discovery-chrome")
             if (showStatus) add("search-status")
-            add("summary")
             if (discovery.mutationError != null) add("mutation-error")
             if (discovery.error != null) add("error")
             if (cards.isEmpty()) add(if (discovery.loading || search.loading) "loading" else "empty")
@@ -102,13 +99,6 @@ internal fun DiscoveryGridScreen(
                 if (showStatus) {
                     item(key = "search-status", span = { GridItemSpan(maxLineSpan) }) {
                         DiscoverySearchRunStatus(search, onCancelSearch)
-                    }
-                }
-                item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { onRefresh(refreshAction) },
-                            enabled = gridRefreshMatches(discovery, search, refreshAction)) { Text("Aktualisieren") }
                     }
                 }
                 discovery.mutationError?.let { message ->
@@ -163,32 +153,6 @@ internal fun DiscoveryGridScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-internal fun hasDiscoverySearchStatus(state: SearchUiState): Boolean =
-    state.loading || state.error != null || state.response?.let { it.partial || !it.radiusVerified } == true
-
-@Composable
-internal fun DiscoverySearchRunStatus(state: SearchUiState, onCancel: () -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        val active = state.response
-        if (active != null && (active.partial || !active.radiusVerified)) {
-            Text("Teilergebnis / Radius nicht bestätigt", color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.labelMedium)
-        }
-        if (state.loading) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Suche läuft …", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onCancel, enabled = !state.searchCancelling,
-                    modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(if (state.searchCancelling) "Wird beendet …" else "Abbrechen")
-                }
-            }
-        }
-        state.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
