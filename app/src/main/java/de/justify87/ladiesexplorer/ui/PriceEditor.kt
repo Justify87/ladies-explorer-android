@@ -1,12 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
@@ -90,61 +86,33 @@ internal class PriceEditor(
 
 @Composable
 internal fun PriceEditorDialog(editor: PriceEditor) {
-    val edit = editor.edit ?: return
-    val enabled = editor.canEdit(edit)
-    if (edit.discardRequested) {
-        AlertDialog(onDismissRequest = { editor.keep(edit) }, title = { Text("Entwurf verwerfen?") },
-            text = { Text("Ungespeicherte Änderungen gehen verloren.") },
-            confirmButton = { TextButton(onClick = { editor.discard(edit) }) { Text("Verwerfen") } },
-            dismissButton = { TextButton(onClick = { editor.keep(edit) }) { Text("Weiter bearbeiten") } })
-        return
-    }
-    AlertDialog(
-        onDismissRequest = { editor.requestDismiss(edit) },
-        title = { Text(if (edit.deleting) "Preisliste löschen?" else if (edit.expected == null) "Neue Preisliste" else "Preisliste korrigieren") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (edit.deleting) Text("Die gespeicherte Preisliste wird dauerhaft gelöscht.")
-                else {
-                    val d = edit.draft
-                    fun change(transform: (PriceListDraft) -> PriceListDraft) = editor.change(edit, transform)
-                    ProfileEditorField(d.dateText, "Datum (TT.MM.JJJJ)", enabled) { value -> change { it.copy(dateText = value) } }
-                    d.items.forEachIndexed { index, item ->
-                        key(item.id) {
-                            Text("Position ${index + 1}", style = MaterialTheme.typography.titleSmall)
-                            ProfileEditorField(item.label, "Bezeichnung (optional)", enabled) { value ->
-                                change { it.changeItem(item.id) { line -> line.copy(label = value) } }
-                            }
-                            ProfileEditorField(item.duration, "Dauer in Minuten (optional)", enabled, KeyboardType.Number) { value ->
-                                change { it.changeItem(item.id) { line -> line.copy(duration = value) } }
-                            }
-                            ProfileEditorField(item.amount, "Betrag in EUR", enabled, KeyboardType.Decimal) { value ->
-                                change { it.changeItem(item.id) { line -> line.copy(amount = value) } }
-                            }
-                            TextButton(enabled = enabled, onClick = { change { it.removeItem(item.id) } }) {
-                                Text("Position ${index + 1} entfernen")
-                            }
-                        }
-                    }
-                    TextButton(enabled = enabled, onClick = { change { it.addItem() } }) { Text("Preisposition hinzufügen") }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(d.listingId != null, { checked ->
-                            change { it.copy(listingId = if (checked) edit.expected?.values?.listingId ?: edit.token.listingId else null) }
-                        }, enabled = enabled)
-                        Text(if (d.listingId == null) "Anzeige zuordnen" else "Anzeige #${d.listingId} zugeordnet")
-                    }
+    ProfileRecordDialog(editor, "Neue Preisliste", "Preisliste korrigieren", "Preisliste löschen?",
+        "Die gespeicherte Preisliste wird dauerhaft gelöscht.") { edit, enabled ->
+        val d = edit.draft
+        fun change(transform: (PriceListDraft) -> PriceListDraft) = editor.change(edit, transform)
+        ProfileEditorField(d.dateText, "Datum (TT.MM.JJJJ)", enabled) { value -> change { it.copy(dateText = value) } }
+        d.items.forEachIndexed { index, item ->
+            key(item.id) {
+                Text("Position ${index + 1}", style = MaterialTheme.typography.titleSmall)
+                ProfileEditorField(item.label, "Bezeichnung (optional)", enabled) { value ->
+                    change { it.changeItem(item.id) { line -> line.copy(label = value) } }
                 }
-                edit.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (edit.writing) CircularProgressIndicator(Modifier.size(24.dp))
-                else if (!enabled) {
-                    Text("Der ursprüngliche Profilkontext ist nicht mehr aktiv. Der Entwurf bleibt erhalten.")
-                    if (editor.canResume(edit)) TextButton(onClick = { editor.resume(edit) }) { Text("Im aktuellen Profil fortsetzen") }
+                ProfileEditorField(item.duration, "Dauer in Minuten (optional)", enabled, KeyboardType.Number) { value ->
+                    change { it.changeItem(item.id) { line -> line.copy(duration = value) } }
+                }
+                ProfileEditorField(item.amount, "Betrag in EUR", enabled, KeyboardType.Decimal) { value ->
+                    change { it.changeItem(item.id) { line -> line.copy(amount = value) } }
+                }
+                TextButton(enabled = enabled, onClick = { change { it.removeItem(item.id) } }) {
+                    Text("Position ${index + 1} entfernen")
                 }
             }
-        },
-        confirmButton = { TextButton(enabled = enabled, onClick = { editor.save(edit) }) { Text(if (edit.deleting) "Löschen" else "Speichern") } },
-        dismissButton = { TextButton(enabled = !edit.writing, onClick = { editor.requestDismiss(edit) }) { Text("Abbrechen") } },
-    )
+        }
+        TextButton(enabled = enabled, onClick = { change { it.addItem() } }) { Text("Preisposition hinzufügen") }
+        ProfileListingAssociation(d.listingId, enabled) { checked ->
+            change { it.copy(listingId = if (checked) edit.expected?.values?.listingId ?: edit.token.listingId else null) }
+        }
+    }
 }
 
 @Composable
