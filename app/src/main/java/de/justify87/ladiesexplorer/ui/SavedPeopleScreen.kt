@@ -42,7 +42,7 @@ internal fun SavedPeopleScreen(
     onLoadMore: (SavedPeoplePageAction) -> Unit,
     onCheckAll: (SavedStatusBatchAction) -> Unit,
     onCheckSingle: (SavedPersonAction) -> Unit,
-    onCancelCheck: () -> Unit,
+    onCancelCheck: (SavedStatusCancelAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scrollMemory = rememberSaveableStateHolder()
@@ -90,9 +90,11 @@ internal fun SavedPeopleScreen(
             TextButton(onClick = { batchAction?.let(onCheckAll) }, enabled = enabled && batchAction != null) {
                 Text("Alle Status prüfen")
             }
-            if (state.savedStatusProgress?.running == true) {
-                TextButton(onClick = onCancelCheck, enabled = !state.savedStatusProgress.cancelled) {
-                    Text(if (state.savedStatusProgress.cancelled) "Abbruch …" else "Abbrechen")
+            val progress = state.savedStatusProgress
+            if (progress?.running == true) {
+                val cancelAction = SavedStatusCancelAction(progress.attemptId, state.actionGeneration)
+                TextButton(onClick = { onCancelCheck(cancelAction) }, enabled = !progress.cancelled) {
+                    Text(if (progress.cancelled) "Abbruch …" else "Abbrechen")
                 }
             }
         }
