@@ -18,6 +18,49 @@ class ProfileEntryAdmissionTest {
         profiles = emptyList(),
     )
 
+    @Test fun gridAvailabilityRequiresRenderedRouteRunAndDraft() {
+        val discovery = DiscoverUiState(loading = false, actionSurface = ProfileActionSurface.GRID, actionGeneration = 4L)
+        val search = SearchUiState(city = "Leipzig")
+        val action = search.gridAvailabilityAction(4L)
+        assertTrue(gridAvailabilityMatches(discovery, search, action))
+        assertFalse(gridAvailabilityMatches(discovery, search.copy(city = "Berlin"), action))
+        assertFalse(gridAvailabilityMatches(discovery, search.copy(local = search.local.copy(videoOnly = true)), action))
+        for (state in listOf(
+            discovery.copy(actionSurface = ProfileActionSurface.NONE),
+            discovery.copy(actionSurface = ProfileActionSurface.MAP),
+            discovery.copy(actionGeneration = 5L),
+            discovery.copy(activeRunId = 7L),
+            discovery.copy(loading = true),
+            discovery.copy(busy = true),
+        )) assertFalse(gridAvailabilityMatches(state, search, action))
+        for (state in listOf(search.copy(loading = true), search.copy(actionBusy = true), search.copy(profileOpen = true))) {
+            assertFalse(gridAvailabilityMatches(discovery, state, action))
+        }
+
+        val active = search.acceptRun(response(7), emptyList())
+        val activeDiscovery = discovery.copy(activeRunId = 7L, actionGeneration = 5L)
+        val activeAction = active.gridAvailabilityAction(5L)
+        assertTrue(gridAvailabilityMatches(activeDiscovery, active, activeAction))
+        // Header quick selection uses the executed query, not the unexecuted draft.
+        assertTrue(gridAvailabilityMatches(activeDiscovery, active.copy(city = "Berlin"), activeAction))
+        assertFalse(gridAvailabilityMatches(activeDiscovery, active, action))
+        assertFalse(gridAvailabilityMatches(activeDiscovery.copy(activeRunId = 8L),
+            active.acceptRun(response(8), emptyList()), activeAction))
+    }
+
+    @Test fun gridAvailabilityRejectsOldCallbackAfterFailedOrCancelledRun() {
+        val search = SearchUiState()
+        val discovery = DiscoverUiState(loading = false, actionSurface = ProfileActionSurface.GRID, actionGeneration = 4L)
+        val action = search.gridAvailabilityAction(4L)
+        val revoked = discovery.copy(actionGeneration = 5L)
+        val loading = search.beginRun()
+        assertFalse(gridAvailabilityMatches(revoked, loading, action))
+        for (ended in listOf(loading.endRun("failed"), loading.endRun())) {
+            assertFalse(gridAvailabilityMatches(revoked, ended, action))
+            assertTrue(gridAvailabilityMatches(revoked, ended, ended.gridAvailabilityAction(5L)))
+        }
+    }
+
     @Test fun gridPaginationRequiresRenderedCursorGenerationAndVisibleLocalContext() {
         val cursor = DiscoveryCursor(false, "2026-11-24", 7L)
         val discovery = DiscoverUiState(loading = false, nextCursor = cursor,

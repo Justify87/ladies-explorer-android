@@ -92,6 +92,8 @@ Gerätefeedback 20.11. (hakender Swipe, Layoutsprünge, Galerie-Chrome, Videos) 
 
 **Abgeschlossener Teilauftrag – Kartensteuerung (DONE mit Merge):** [PR #63](https://github.com/Justify87/ladies-explorer-android/pull/63) bindet Aktualisierung, Standortauflösung, Abbruch und Favoritenfilter an gerenderten Kartenstatus und Ansichtsgeneration. JVM-Regressionen für Kontext-/Filterwechsel, fehlende Standortkandidaten, Busy, Abbruch und erneuten Read; [PR-CI des Implementierungsstands](https://github.com/Justify87/ladies-explorer-android/actions/runs/45401460748) erfolgreich. Geräteprüfungen gemäß Merge-Regel DONE mit Merge.
 
+**Teilauftrag – Grid-Schnellwahl (REVIEW):** Die Grid-Verfügbarkeitswahl bindet gerenderten Run bzw. lokalen Entwurf und Ansichtsgeneration; alte Callbacks nach Navigation, Busy, neuem Run, Fehler oder Abbruch werden vor dem Quellabruf verworfen. JVM-Regressionen in `ProfileEntryAdmissionTest`; [Branch](https://github.com/Justify87/ladies-explorer-android/tree/fix/t10-8-grid-availability-admission). Technische CI und Merge stehen aus.
+
 **Umfang:**
 - [ ] Swipe/Grid/Karte/Suche/Gespeichert einschließlich gespeicherter Ergebnisse, Rückkehr, A/B, Informationsdichte, Accessibility und Altcode überprüfen.
 - [ ] Vertikale Regression von UI bis SQLite soweit betroffen: Präferenz/Favorit/Undo/Skip/Reset/Replay, Merge/Dirty Notes/Late Write/Archive Cancel, unabhängige Projektionen, SavedSearch-Ack/Revision sowie Fehler/Offline/Status/Radius/Pagination.

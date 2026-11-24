@@ -7,6 +7,23 @@ import de.justify87.ladiesexplorer.core.SearchRequest
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal data class GridAvailabilityAction(
+    val runId: Long?,
+    val draft: SearchDraft?,
+    val generation: Long,
+)
+
+internal fun SearchUiState.gridAvailabilityAction(generation: Long) =
+    GridAvailabilityAction(response?.searchRunId, if (response == null) SearchDraft.from(this) else null, generation)
+
+internal fun gridAvailabilityMatches(
+    discovery: DiscoverUiState, search: SearchUiState, action: GridAvailabilityAction,
+): Boolean =
+    discovery.actionSurface == ProfileActionSurface.GRID &&
+        discovery.activeRunId == action.runId &&
+        search.gridAvailabilityAction(discovery.actionGeneration) == action &&
+        !discovery.loading && !discovery.busy && !search.loading && !search.actionBusy && !search.profileOpen
+
 internal data class SearchResultOpenAction(
     val card: DiscoveryCard,
     val runId: Long,
