@@ -132,6 +132,7 @@ internal class ProfileScrollMemory(
             saved.key.startsWith("listing/") -> "profile-listings-head"
             saved.key.startsWith("event/") -> "profile-history-head"
             saved.key.startsWith("candidate/") -> "profile-candidate-head"
+            saved.key.startsWith("encounter/") -> "profile-encounters-head"
             else -> "profile-facts"
         }
         return keys.indexOf(fallback).takeIf { it >= 0 }?.let { it to 0 } ?: (0 to 0)
@@ -159,7 +160,7 @@ internal fun rememberProfileScrollMemory(reset: Boolean): ProfileScrollMemory = 
 ) { ProfileScrollMemory(initialRecovery = reset) }
 
 /** Resolve anchors against the actual lazy row manifest. */
-internal enum class ProfileRowRead { Facts, Detail, Note }
+internal enum class ProfileRowRead { Facts, Detail, Note, Encounters }
 
 internal class ProfileFlowRows(val mediaSelection: ProfileMediaSelection) {
     data class Entry(val key: String, val read: ProfileRowRead?, val content: @Composable () -> Unit)
