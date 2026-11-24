@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Preference
 import org.junit.Assert.*
@@ -102,5 +103,33 @@ class DiscoveryDesignDeviceTest {
         rule.onNodeWithContentDescription("Fixture gefällt mir").performClick()
         rule.onNodeWithTag("card").performClick()
         rule.runOnIdle { assertEquals(listOf(DiscoverMode.Grid.name, "like", "open"), actions) }
+    }
+
+    @Test fun shortGridScrollsPastChromeAndBackToModeSelection() {
+        val actions = mutableListOf<DiscoverMode>()
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                LadiesTheme(darkTheme = true) {
+                    DiscoveryGridScreen(
+                        discovery = DiscoverUiState(loading = false),
+                        search = SearchUiState(),
+                        onRefresh = {}, onLoadMore = {}, onLike = {}, onProfile = {},
+                        chrome = {
+                            DiscoveryChrome("Lokaler Bestand", AvailabilityMode.All, true, "fixture",
+                                DiscoverMode.Grid, { actions.add(it) }, {})
+                            Text("Suchstatus", Modifier.heightIn(min = 80.dp))
+                        },
+                        modifier = Modifier.width(360.dp).height(150.dp).testTag("short-grid"),
+                    )
+                }
+            }
+        }
+        val grid = rule.onNodeWithTag("short-grid")
+        grid.performScrollToIndex(2)
+        rule.onNodeWithText("Keine Treffer.").assertIsDisplayed()
+        grid.performScrollToIndex(0)
+        rule.onNodeWithText(DiscoverMode.Swipe.title).performClick()
+        rule.runOnIdle { assertEquals(listOf(DiscoverMode.Swipe), actions) }
     }
 }
