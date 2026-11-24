@@ -74,6 +74,7 @@ internal fun mapSelectedProfile(points: List<MapProfile>, listingId: Long?, owne
 @Composable
 internal fun MapScreen(
     state: MapUiState,
+    searchStatus: @Composable () -> Unit,
     onRefresh: (MapControlAction) -> Unit,
     onResolve: (MapControlAction) -> Unit,
     onCancel: (MapControlAction) -> Unit,
@@ -128,6 +129,7 @@ internal fun MapScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             DiscoverModeSwitcher(DiscoverMode.Map, onMode, Modifier)
+            searchStatus()
             Surface(
                 modifier = Modifier.fillMaxWidth()
                     .then(if (compact) Modifier.height(280.dp) else Modifier.weight(1f)),
