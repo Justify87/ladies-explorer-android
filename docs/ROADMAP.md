@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-Nächster Schritt: [M06.2](#m062--minimale-manuelle-angebotspreise). M06 begonnen; M07 erst nach gesondertem Implementierungsauftrag beginnen; L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
+Nächster Schritt: [M06.4](#m064--gezielte-integration-und-abschluss-g06). M06.1a/b und M06.2 abgeschlossen; M07 erst nach gesondertem Implementierungsauftrag beginnen; L01 unabhängig davon klären. Nach G07 bedarfsorientierte Wartung statt vorsorglicher weiterer Meilensteine.
 
 ## Geplante Meilensteine
 
@@ -22,25 +22,9 @@ Nächster Schritt: [M06.2](#m062--minimale-manuelle-angebotspreise). M06 begonne
 
 **Abgrenzung (Nutzerentscheidung 24.11.2026):** M06.3 entfällt ersatzlos (globale Statistik, globaler Verlauf, eigenständiges Medienarchiv, pauschale Karten-/Geocoding-Erweiterungen). Nicht nach M07 verschieben; nur bei neuem konkretem Bedarf und ausdrücklichem Auftrag neu bewerten. Bestehende Karte, SavedSearch, WhatsApp, Medienarchivierung und Quellhistorie erhalten.
 
-#### M06.2 — Minimale manuelle Angebotspreise
-
-**Status:** REVIEW · **Abhängigkeit:** M06.1a/b abgeschlossen. · [PR #89](https://github.com/Justify87/ladies-explorer-android/pull/89).
-
-**Umfang:** Personenbezogene manuelle Preislisten mit Datum, Preispositionen und optionaler Dauer/Bezeichnung. Native Read-/Create-/Update-/Delete-API und Profilintegration in einem vertikalen Schritt: ein gemeinsamer kleiner Editor sowie bedarfsorientierte aktuelle/historische Anzeige. Bestehende Tabellen nutzen; kein Preis-Dashboard, kein automatisches Extrahieren oder Kopieren aus Begegnungen.
-
-**Akzeptanz:**
-- Neue Liste als eigener historischer Eintrag; Bearbeiten ist ausdrückliche Korrektur, Löschen erfordert Bestätigung.
-- Neueste erfasste Liste und frühere Listen nach Datum/ID eindeutig unterscheiden; keine Aussage über tatsächlich aktuell gültige Angebote.
-- Beträge in EUR-Cent und nichtnegativ, angegebene Dauer positiv. Person/Inserat und Kindzeilen transaktional validieren; Merge erhält Listen und Positionen.
-- Letzten bekannten bezahlten Gesamtbetrag aus Begegnungen ableiten und als solchen kennzeichnen, nicht als Angebotspreis übernehmen. Kein zweiter fachlicher Store oder doppelte Preisprojektion.
-
-**Prüfung:** Rust-CRUD-/Historien-/Owner-/Merge-Regression, JVM-Editor-/Kontext-/Fehlerregression; beide Profilkontexte gezielt prüfen.
-
-**Beleg:** Vollständiges [CI-Gate](https://github.com/Justify87/ladies-explorer-android/actions/runs/45453523710) erfolgreich auf [`5b7e931`](https://github.com/Justify87/ladies-explorer-android/commit/5b7e931e9b3c4422f2d01a231242a313bde6f4b9). Instrumentierungs-APK gebaut, tatsächliche Geräteausführung nicht belegt; Merge-Regel gilt. Architektur-/Designvertrag angepasst. Nächster Schritt: Nutzerfreigabe und Merge von #89; M06.4 erst danach.
-
 #### M06.4 — Gezielte Integration und Abschluss (G06)
 
-**Status:** PLANNED · **Abhängigkeit:** M06.1a/b und M06.2 abgeschlossen.
+**Status:** READY · **Abhängigkeit:** M06.1a/b und M06.2 abgeschlossen.
 
 **Umfang:** Betroffene Rust-/UniFFI-/Kotlin-/Compose-Aufrufer, Datenprojektionen, Tests und Verträge auf Korrektheit, Redundanz und abgelöste Pfade prüfen. Keine Wiedereröffnung von M05 oder Vorwegnahme der M07-Gesamtintegration.
 
@@ -105,6 +89,7 @@ Alle Einträge dieses Abschnitts sind DONE; Geräteprüfungen gemäß Merge-Rege
 | M05.11 / G11 | Qualitätskonsolidierung nach G10; T11.1–T11.4 | [#83](https://github.com/Justify87/ladies-explorer-android/pull/83), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45425545751) |
 | M06.1a | Begegnungsbasis: native personengebundene CRUD mit Owner-/Editor-CAS, gemeinsamer bedarfsgesteuerter Profilabschnitt und Editor für Swipe/Standalone, Entwurfs- und Commit-/Readfehler-Schutz; Rust-/JVM-Regressionen und Instrumentierungs-APK validiert | [#87](https://github.com/Justify87/ladies-explorer-android/pull/87), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45443347192), [geprüfter Commit](https://github.com/Justify87/ladies-explorer-android/commit/88f53965226683079a8eb57ddb59b9d4180b429d) |
 | M06.1b | Optionaler Grundpreis und persönliche Leistungszeilen im gemeinsamen Begegnungseditor; atomare CRUD, vollständiger Editor-CAS, Rollback, Cascade und Merge-Erhalt; unbekannte Beträge getrennt vom Gesamtpreis; Rust-/JVM-Regressionen und Instrumentierungs-APK validiert | [#88](https://github.com/Justify87/ladies-explorer-android/pull/88), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45450763583), [geprüfter Commit](https://github.com/Justify87/ladies-explorer-android/commit/f574ea0cbe0a8d91561059a45fc1b4fbf630407f) |
+| M06.2 | Manuelle personenbezogene EUR-Preislisten mit Datum und Positionen, historische Anzeige, atomare native CRUD mit Owner-/Editor-CAS und Merge-Erhalt, gemeinsamer Editor für beide Profilkontexte, separat abgeleiteter letzter bekannter bezahlter Gesamtbetrag; Rust-/JVM-Regressionen und Instrumentierungs-APK validiert | [#89](https://github.com/Justify87/ladies-explorer-android/pull/89), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/45454318406), [Merge](https://github.com/Justify87/ladies-explorer-android/commit/10f850e263e6a64e5995b56aa5a1b191b29bc447) |
 | DC01 | Obsolete Produktionspfade/UniFFI-Exporte entfernt, Testgrenzen korrigiert | [#49](https://github.com/Justify87/ladies-explorer-android/pull/49) |
 | DC02 | Altimport vor weiterer Featurearbeit entfernt, native synthetische v2-Fixtures; Nutzerentscheidung 20.11.2026: Web-App obsolet, keine Nutzerdatenmigration, native Schemaentwicklung und Android-Nutzerdaten erhalten | [#52](https://github.com/Justify87/ladies-explorer-android/pull/52), [CI](https://github.com/Justify87/ladies-explorer-android/actions/runs/44828090537), [Produktsoll](PRODUCT.md#produktziel-und-grenzen) |
 
