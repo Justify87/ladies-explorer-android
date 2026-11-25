@@ -54,7 +54,7 @@ internal fun ProfileShell(
     content: @Composable (ProfileShellPresentation) -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        val width = maxWidth.coerceAtMost(600.dp)
+        val width = maxWidth.coerceAtMost(ShellMetrics.maxProfileWidth)
         val height = maxHeight
         val fontScale = LocalDensity.current.fontScale
         val budget = profileShellBudget(width.value, height.value, rootHeight.value, fontScale,
