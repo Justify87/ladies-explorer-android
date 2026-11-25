@@ -133,8 +133,8 @@ internal fun MapScreen(
                     savedCamera = camera,
                     onCameraChanged = { camera = it },
                     onCameraReader = { cameraReader = it },
-                    onSelect = { id ->
-                        latestPoints.firstOrNull { it.listingId == id }?.let { profile ->
+                    onSelect = { id, ownerId ->
+                        mapSelectedProfile(latestPoints, id, ownerId)?.let { profile ->
                             selectedListingId = profile.listingId
                             selectedOwnerId = profile.personId
                             focusRequest = null
@@ -222,75 +222,75 @@ internal fun MapDetails(
     if (active == null && state.error == null && !state.resolving && !state.loading &&
         tileState != MapTileState.Failed && overview == null) return
     Surface(modifier, shape = MaterialTheme.shapes.medium, color = scheme.surfaceContainerHigh) {
-    Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (state.resolving || state.loading) {
-            Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CircularProgressIndicator(Modifier.size(24.dp))
-                Text(when {
-                    state.cancelling -> "Standortaufbereitung wird beendet …"
-                    state.resolving -> "Ortslagen werden lokal aufbereitet …"
-                    else -> "Kartenbestand wird geladen …"
-                }, style = MaterialTheme.typography.bodySmall)
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (state.resolving || state.loading) {
+                Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                    Text(when {
+                        state.cancelling -> "Standortaufbereitung wird beendet …"
+                        state.resolving -> "Ortslagen werden lokal aufbereitet …"
+                        else -> "Kartenbestand wird geladen …"
+                    }, style = MaterialTheme.typography.bodySmall)
+                }
             }
-        }
-        state.error?.let {
-            Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = scheme.error)
-        }
-        if (tileState == MapTileState.Failed) {
-            Text("Karte konnte nicht geladen werden. Gespeicherte Profildaten bleiben verfügbar.",
-                color = scheme.error, style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(onClick = onRetryTiles, modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
-                Text("Karte erneut laden")
+            state.error?.let {
+                Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = scheme.error)
             }
-        }
-        if (state.resolving) {
-            TextButton(onClick = onCancel, enabled = !state.cancelling,
-                modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
-                Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen")
+            if (tileState == MapTileState.Failed) {
+                Text("Karte konnte nicht geladen werden. Gespeicherte Profildaten bleiben verfügbar.",
+                    color = scheme.error, style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = onRetryTiles, modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
+                    Text("Karte erneut laden")
+                }
             }
-        }
-        if (overview != null && overview.profiles.isEmpty() && !state.loading) {
-            Text(
-                if (overview.pendingLocations > 0u) "Standortaufbereitung noch nicht vollständig."
-                else "Keine verlässlich zuordenbaren Ortslagen in der aktuellen Ergebnismenge.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-        if (active != null) {
-            Surface(shape = MaterialTheme.shapes.medium, color = scheme.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Only the selected profile uses the existing image adapter, never every marker.
-                        ProfileImage(active.thumbnailUrl, null,
-                            Modifier.size(56.dp).clip(MaterialTheme.shapes.small),
-                            description = "Profilbild von ${active.name}")
-                        Column(Modifier.weight(1f)) {
-                            Text(active.name.ifBlank { "Profil" }, style = MaterialTheme.typography.titleMedium)
-                            Text(mapLocationLabel(active), style = MaterialTheme.typography.bodySmall)
+            if (state.resolving) {
+                TextButton(onClick = onCancel, enabled = !state.cancelling,
+                    modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
+                    Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen")
+                }
+            }
+            if (overview != null && overview.profiles.isEmpty() && !state.loading) {
+                Text(
+                    if (overview.pendingLocations > 0u) "Standortaufbereitung noch nicht vollständig."
+                    else "Keine verlässlich zuordenbaren Ortslagen in der aktuellen Ergebnismenge.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            if (active != null) {
+                Surface(shape = MaterialTheme.shapes.medium, color = scheme.surfaceContainerHigh,
+                    modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Only the selected profile uses the existing image adapter, never every marker.
+                            ProfileImage(active.thumbnailUrl, null,
+                                Modifier.size(56.dp).clip(MaterialTheme.shapes.small),
+                                description = "Profilbild von ${active.name}")
+                            Column(Modifier.weight(1f)) {
+                                Text(active.name.ifBlank { "Profil" }, style = MaterialTheme.typography.titleMedium)
+                                Text(mapLocationLabel(active), style = MaterialTheme.typography.bodySmall)
+                            }
+                            ShellIconButton(onClick = onClear) {
+                                Icon(Icons.Default.Close, contentDescription = "Auswahl lösen")
+                            }
                         }
-                        ShellIconButton(onClick = onClear) {
-                            Icon(Icons.Default.Close, contentDescription = "Auswahl lösen")
+                        if (selectionCount > 1) {
+                            TextButton(onClick = onPickLocation, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()) {
+                                Text("$selectionCount Profile am ungefähren Ort")
+                            }
                         }
+                        Button(onClick = { onOpen(active) }, enabled = profileEnabled,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()) { Text("Profil öffnen") }
                     }
-                    if (selectionCount > 1) {
-                        TextButton(onClick = onPickLocation, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()) {
-                            Text("$selectionCount Profile am ungefähren Ort")
-                        }
-                    }
-                    Button(onClick = { onOpen(active) }, enabled = profileEnabled,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()) { Text("Profil öffnen") }
+                }
+            }
+            if (!overview?.profiles.isNullOrEmpty()) {
+                TextButton(onClick = onPickAll, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()) {
+                    Text("Kartierte Profile auswählen")
                 }
             }
         }
-        if (!overview?.profiles.isNullOrEmpty()) {
-            TextButton(onClick = onPickAll, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()) {
-                Text("Kartierte Profile auswählen")
-            }
-        }
-    }
     }
 }
 
@@ -330,6 +330,7 @@ internal fun asFeatures(points: List<MapProfile>, selectedListingId: Long?): Fea
     val features = points.map { item ->
         val properties = JsonObject().apply {
             addProperty("listing_id", item.listingId)
+            addProperty("owner_id", item.personId)
             addProperty("selected", item.listingId in selected)
             addProperty("precision", item.precision)
         }
@@ -345,7 +346,7 @@ private fun NativeProfileMap(
     savedCamera: CameraPosition?,
     onCameraChanged: (CameraPosition) -> Unit,
     onCameraReader: (() -> CameraPosition?) -> Unit,
-    onSelect: (Long) -> Unit,
+    onSelect: (Long, Long) -> Unit,
     focusRequest: Long?,
     onFocusConsumed: () -> Unit,
     marker: Int,
@@ -365,6 +366,7 @@ private fun NativeProfileMap(
     val publishTileState by rememberUpdatedState(onTileState)
     val consumeFocus by rememberUpdatedState(onFocusConsumed)
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
+    var nativeView by remember { mutableStateOf<LifecycleMapView?>(null) }
     var loadError by remember { mutableStateOf(false) }
     var positioned by remember { mutableStateOf(savedCamera != null) }
 
@@ -373,6 +375,7 @@ private fun NativeProfileMap(
             factory = { context ->
                 MapLibre.getInstance(context)
                 val mapView = LifecycleMapView(context, owner.lifecycle)
+                nativeView = mapView
                 publishTileState(MapTileState.Loading)
                 mapView.addOnDidFailLoadingMapListener {
                     if (!mapView.released) {
@@ -436,14 +439,20 @@ private fun NativeProfileMap(
                                     if (mapView.released) false else {
                                         val screen = ready.projection.toScreenLocation(location)
                                         val single = ready.queryRenderedFeatures(screen, MAP_SINGLE).firstOrNull()
-                                        if (single != null && single.hasProperty("listing_id")) {
-                                            currentSelect(single.getNumberProperty("listing_id").toLong())
+                                        if (single != null && single.hasProperty("listing_id") && single.hasProperty("owner_id")) {
+                                            currentSelect(single.getNumberProperty("listing_id").toLong(),
+                                                single.getNumberProperty("owner_id").toLong())
                                             true
-                                        } else if (ready.queryRenderedFeatures(screen, MAP_CLUSTERS).isNotEmpty()) {
-                                            ready.animateCamera(CameraUpdateFactory.newLatLngZoom(
-                                                location, (ready.cameraPosition.zoom + 2.0).coerceAtMost(16.0)))
-                                            true
-                                        } else false
+                                        } else {
+                                            val cluster = ready.queryRenderedFeatures(screen, MAP_CLUSTERS).firstOrNull()
+                                            val center = cluster?.geometry() as? Point
+                                            if (center != null) {
+                                                ready.animateCamera(CameraUpdateFactory.newLatLngZoom(
+                                                    LatLng(center.latitude(), center.longitude()),
+                                                    (ready.cameraPosition.zoom + 2.0).coerceAtMost(16.0)))
+                                                true
+                                            } else false
+                                        }
                                     }
                                 }
                                 loadError = false
@@ -459,6 +468,8 @@ private fun NativeProfileMap(
             onRelease = { view ->
                 if (!view.released && positioned) map?.cameraPosition?.let(saveCamera)
                 publishCameraReader { null }
+                map = null
+                nativeView = null
                 view.releaseMap()
             },
         )
@@ -474,7 +485,7 @@ private fun NativeProfileMap(
     LaunchedEffect(points, selectedListingId, map) {
         val ready = map ?: return@LaunchedEffect
         ready.getStyle { style ->
-            if (map === ready) {
+            if (map === ready && nativeView?.released == false) {
                 (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(currentPoints, currentSelection))
                 if (!positioned && currentPoints.isNotEmpty()) {
                     val locations = currentPoints.map { LatLng(it.latitude, it.longitude) }.distinct()
@@ -488,7 +499,7 @@ private fun NativeProfileMap(
         }
     }
     LaunchedEffect(map, focusRequest, points) {
-        val ready = map ?: return@LaunchedEffect
+        val ready = map?.takeIf { nativeView?.released == false } ?: return@LaunchedEffect
         val id = focusRequest ?: return@LaunchedEffect
         points.firstOrNull { it.listingId == id }?.let {
             ready.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude),
