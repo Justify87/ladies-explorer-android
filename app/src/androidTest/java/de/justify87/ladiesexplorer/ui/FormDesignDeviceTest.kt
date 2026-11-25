@@ -266,7 +266,8 @@ class FormDesignDeviceTest {
                 Column {
                     AppHeader(route.settingsPane.title, onBack = if (route.settingsPane == SettingsPane.Main) null
                         else ({ route = route.back() }))
-                    SettingsScreen(
+                    androidx.compose.runtime.key(route.settingsPane) {
+                        SettingsScreen(
                     pane = route.settingsPane, onOpenPane = { route = route.openSettings(it) },
                     globalVisibility = visibility, visibilityEnabled = true, onGlobalVisibility = { visibility = it },
                     state = HomeUiState(loading = false),
@@ -275,7 +276,8 @@ class FormDesignDeviceTest {
                     onDebugLogging = {}, onCaptureMode = { capture.add(it) }, onClearHar = {},
                     onSaveHar = { exports++ }, onShareHar = { exports++ },
                     modifier = Modifier.width(320.dp).height(480.dp),
-                    )
+                        )
+                    }
                 }
             }
         }

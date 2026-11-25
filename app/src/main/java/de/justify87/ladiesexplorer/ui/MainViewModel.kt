@@ -114,6 +114,8 @@ data class SearchUiState(
     val defaultSaving: Boolean = false,
     val defaultStatus: String? = null,
     val activeCards: List<DiscoveryCard> = emptyList(),
+    val activeProjectionPending: Boolean = false,
+    val activeProjectionError: String? = null,
     val loading: Boolean = false,
     val searchCancelling: Boolean = false,
     val searchAttemptId: Long = 0L,
@@ -933,6 +935,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             action.expected == value) return
         invalidateSwipeActions(clearMergeNotice = false)
         core.setGlobalResultVisibility(value)
+        // Old results must not become actionable under the newly confirmed policy.
+        if (_searchUiState.value.response != null) {
+            _searchUiState.update { it.copy(activeProjectionPending = true, activeProjectionError = null) }
+        }
         _discoverState.update { it.copy(globalVisibility = value, actionGeneration = it.actionGeneration + 1) }
         refreshDiscovery()
     }

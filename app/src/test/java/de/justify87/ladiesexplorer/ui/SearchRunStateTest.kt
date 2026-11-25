@@ -100,6 +100,23 @@ class SearchRunStateTest {
         assertEquals(listOf(restored, neutral), session.queue(listOf(neutral, restored), true))
     }
 
+    @Test fun visibilityReprojectionWithholdsStaleMembershipAndUnknownCountUntilConfirmed() {
+        val run = response(1)
+        val row = card(1)
+        val before = SearchUiState().acceptRun(run, listOf(row))
+        val draft = SearchDraft.from(run.query, run.local)
+        val discovery = DiscoverUiState(activeRunId = 1L, loading = true)
+        val pending = before.copy(activeProjectionPending = true)
+        assertTrue(gridCards(discovery, pending).isEmpty())
+        assertEquals(null, currentMapMembership(discovery, pending))
+        assertEquals("Lokale Treffer werden aktualisiert", searchCountLabel(pending, draft, false))
+        val error = pending.copy(activeCards = emptyList(), activeProjectionPending = false, activeProjectionError = "Fixture")
+        assertEquals("Lokale Treffer unbekannt", searchCountLabel(error, draft, false))
+        val confirmed = error.acceptRun(run, emptyList())
+        assertEquals("0 zuletzt lokal", searchCountLabel(confirmed, draft, false))
+        assertEquals(emptyList<de.justify87.ladiesexplorer.core.DiscoveryCard>(), currentMapMembership(discovery, confirmed)?.cards)
+    }
+
     @Test fun draftChangesAndCancellationKeepExecutedResult() {
         val old = SearchUiState().acceptRun(response(1), listOf(card(1)))
         val changed = old.applyDraftChange(old.copy(city = "Dresden", radiusKm = 50u))

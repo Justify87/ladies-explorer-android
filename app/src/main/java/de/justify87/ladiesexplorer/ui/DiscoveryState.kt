@@ -62,7 +62,7 @@ data class MapMembership(val runId: Long?, val cards: List<DiscoveryCard>) {
 }
 
 internal fun currentMapMembership(discovery: DiscoverUiState, search: SearchUiState): MapMembership? =
-    if (discovery.activeRunId == search.response?.searchRunId)
+    if (!search.activeProjectionPending && discovery.activeRunId == search.response?.searchRunId)
         MapMembership(discovery.activeRunId, discoveryMembership(discovery, search))
     else null
 
@@ -142,7 +142,8 @@ internal fun gridPageMatches(discovery: DiscoverUiState, search: SearchUiState, 
 
 /** Traversal never owns result membership. */
 internal fun discoveryMembership(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
-    if (search.response != null) search.activeCards else discovery.localCards
+    if (search.activeProjectionPending) emptyList()
+    else if (search.response != null) search.activeCards else discovery.localCards
 
 internal fun gridCards(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
     discoveryMembership(discovery, search)
@@ -272,7 +273,8 @@ internal class DiscoveryProjectionPublisher(
     private fun publishDiscovery(epoch: Long, projection: DiscoveryProjection) {
         if (epoch != currentEpoch() || projection.runId != _searchUiState.value.response?.searchRunId) return
         if (projection.runId == null) onLocalWindow(projection.page.cards.size)
-        _searchUiState.update { it.copy(activeCards = projection.visible) }
+        _searchUiState.update { it.copy(activeCards = projection.visible,
+            activeProjectionPending = false, activeProjectionError = null) }
         val next = swipeSession.queue(projection.page.cards, active = projection.runId != null)
         // Validate or discard the receipt after a successful read, outside the retryable StateFlow update.
         val restore = swipeSession.restoredPresentation(next.firstOrNull())
@@ -303,7 +305,8 @@ internal class DiscoveryProjectionPublisher(
             if (epoch == currentEpoch()) result.fold(
                 onSuccess = { publishDiscovery(epoch, it) },
                 onFailure = { failure ->
-                    _searchUiState.update { it.copy(activeCards = emptyList()) }
+                    _searchUiState.update { it.copy(activeCards = emptyList(), activeProjectionPending = false,
+                        activeProjectionError = if (it.response != null) failure.message ?: "Lokale Ergebnisse konnten nicht geladen werden." else null) }
                     _discoverState.update { it.copy(cards = emptyList(), localCards = emptyList(), nextCursor = null,
                         activeVisibleCount = 0, actionGeneration = it.actionGeneration + 1,
                         error = failure.message ?: "Entdecken fehlgeschlagen") }
