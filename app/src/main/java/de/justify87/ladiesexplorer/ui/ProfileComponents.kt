@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -89,9 +90,9 @@ internal fun openExternal(context: Context, link: String, dial: Boolean = false)
 internal fun heroImageRequest(context: Context, model: Any, size: IntSize): ImageRequest =
     ImageRequest.Builder(context).data(model).size(size.width, size.height).scale(Scale.FIT).build()
 
-internal data class HeroVisual(val media: ProfileMediaItem, val geometry: HeroMediaGeometry)
+internal data class HeroVisual(val media: ProfileMediaItem, val geometry: HeroMediaGeometry, val painter: Painter)
 
-private data class ImageFeedback(val loading: Boolean = false, val failed: Boolean = false, val retry: (() -> Unit)? = null)
+private data class ImageFeedback(val loading: Boolean, val failed: Boolean, val painter: Painter?, val retry: (() -> Unit)?)
 
 @Composable
 private fun ProfileImageSurface(
@@ -107,7 +108,7 @@ private fun ProfileImageSurface(
         val models = remember { mediaModels(localPath, url) }
         var retry by remember { mutableIntStateOf(0) }
         var attempt by remember(retry) { mutableIntStateOf(0) }
-        var loading by remember(retry, attempt, decodeSize) { mutableStateOf(true) }
+        var painter by remember(retry, attempt, decodeSize) { mutableStateOf<Painter?>(null) }
         val context = LocalContext.current
         Box(modifier.background(background), contentAlignment = Alignment.Center) {
             if (attempt < models.size && (decodeSize == null || decodeSize.width > 0 && decodeSize.height > 0)) {
@@ -121,8 +122,8 @@ private fun ProfileImageSurface(
                     AsyncImage(model = model, contentDescription = description, contentScale = scale,
                         onSuccess = {
                             if (attempt == requested) {
-                                loading = false
                                 onDecodedSize(IntSize(it.result.image.width, it.result.image.height))
+                                painter = it.painter
                             }
                         },
                         onError = {
@@ -134,7 +135,8 @@ private fun ProfileImageSurface(
                         modifier = Modifier.fillMaxSize().then(imageModifier))
                 }
             }
-            content(ImageFeedback(loading = attempt < models.size && loading, failed = attempt >= models.size,
+            content(ImageFeedback(loading = attempt < models.size && painter == null, failed = attempt >= models.size,
+                painter = painter,
                 retry = if (allowRetry && models.isNotEmpty()) ({ onDecodedSize(IntSize.Zero); retry++ }) else null))
         }
     }
@@ -145,7 +147,7 @@ private fun ImageFeedbackContent(feedback: ImageFeedback) {
     if (feedback.failed) Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Kein Bild verfügbar", style = MaterialTheme.typography.bodySmall, maxLines = 2,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        feedback.retry?.let { retry -> TextButton(onClick = retry, modifier = Modifier.heightIn(min = 48.dp)) {
+        feedback.retry?.let { retry -> TextButton(onClick = retry, modifier = Modifier.heightIn(min = ShellMetrics.touch)) {
             Text("Erneut laden")
         } }
     } else if (feedback.loading) CircularProgressIndicator(Modifier.size(28.dp))
@@ -155,11 +157,8 @@ private fun ImageFeedbackContent(feedback: ImageFeedback) {
 internal fun ProfileImage(
     url: String?, localPath: String?, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop,
     description: String = "Profilbild", allowRetry: Boolean = false,
-    decodeSize: IntSize? = null,
 ) {
-    ProfileImageSurface(url, localPath, modifier, scale, description, allowRetry,
-        decodeSize = decodeSize, background = if (decodeSize == null) MaterialTheme.colorScheme.surfaceVariant
-        else MaterialTheme.colorScheme.surface) { feedback ->
+    ProfileImageSurface(url, localPath, modifier, scale, description, allowRetry) { feedback ->
         ImageFeedbackContent(feedback)
     }
 }
@@ -218,12 +217,8 @@ internal fun ProfileMediaHero(
                 rotationZ = if (viewport.width > 0) (offset / viewport.width * 12f).coerceIn(-12f, 12f) else 0f
             }
             val favoriteOrigin = with(density) {
-                geometry.favoriteOrigin(48.dp.roundToPx(), 6.dp.roundToPx())
+                geometry.favoriteOrigin(ShellMetrics.touch.roundToPx(), 6.dp.roundToPx())
             }
-            val favoriteBounds = if (favorite != null) with(density) {
-                androidx.compose.ui.geometry.Rect(favoriteOrigin.x.toFloat(), favoriteOrigin.y.toFloat(),
-                    (favoriteOrigin.x + 48.dp.roundToPx()).toFloat(), (favoriteOrigin.y + 48.dp.roundToPx()).toFloat())
-            } else null
             when (item?.kind) {
                 "IMAGE" -> key(item) { ProfileImageSurface(item.url, item.localPath, Modifier.fillMaxSize(),
                     geometry.scale, "Profilbild ${index + 1}", true, imageModifier = imageMotion,
@@ -232,15 +227,14 @@ internal fun ProfileMediaHero(
                     SideEffect {
                         onMediaSettled(!feedback.loading)
                         // A resized request is not the settled visual until its own decode succeeds.
-                        onVisual(if (!feedback.loading && !feedback.failed && geometry.imageBounds != null)
-                            HeroVisual(item, geometry) else null)
+                        onVisual(feedback.painter?.takeIf { !feedback.failed && geometry.imageBounds != null }
+                            ?.let { HeroVisual(item, geometry, it) })
                     }
                     BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                         // Reserve the center for retry or video controls.
                         val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed || feedback.loading) else 0f
                         GalleryTargets(side, hit, gestureOwner, previous, next,
-                            { selection.select(media, index - 1) }, { selection.select(media, index + 1) },
-                            favoriteBounds = favoriteBounds)
+                            { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
                         if (feedback.failed || feedback.loading) Box(Modifier.align(Alignment.Center)
                             .fillMaxWidth(if (side < .5f) 1f - side * 2 else .5f), contentAlignment = Alignment.Center) {
                             ImageFeedbackContent(feedback)
@@ -265,8 +259,7 @@ internal fun ProfileMediaHero(
                         controlsModifier = Modifier.align(Alignment.Center),
                         onTargets = {
                             GalleryTargets(side, hit, gestureOwner, previous, next,
-                                { selection.select(media, index - 1) }, { selection.select(media, index + 1) },
-                            favoriteBounds = favoriteBounds)
+                                { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
                         })
                 }
                 else -> Box(Modifier.fillMaxSize().then(hit.photo), contentAlignment = Alignment.Center) {
@@ -279,11 +272,13 @@ internal fun ProfileMediaHero(
                 Text(if (displayedDrag > 0f) "Gefällt" else "Nein", Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     color = MaterialTheme.colorScheme.inverseOnSurface)
             }
+            // Last sibling owns the exact bookmark hit rectangle; the parent gesture resolver
+            // excludes the same measured child, not an entire strip of the gallery.
             if (favorite != null) key(actionToken) {
                 IconButton(onClick = { if (actionsEnabled && isCurrent()) onFavorite?.invoke() },
                     enabled = actionsEnabled && onFavorite != null,
                     modifier = Modifier.align(Alignment.TopStart).absoluteOffset { favoriteOrigin }
-                        .size(48.dp).then(hit.exclusive).shellFocus()) {
+                        .size(ShellMetrics.touch).then(hit.exclusive).shellFocus()) {
                     Box(Modifier.size(34.dp).background(Color.Black.copy(alpha = .78f), MaterialTheme.shapes.small),
                         contentAlignment = Alignment.Center) {
                         Icon(if (favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -298,27 +293,17 @@ internal fun ProfileMediaHero(
 
 @Composable
 private fun GalleryTargets(side: Float, hit: PhotoHitModifiers, owner: Any?,
-    previous: Boolean, next: Boolean, onPrevious: () -> Unit, onNext: () -> Unit,
-    favoriteBounds: androidx.compose.ui.geometry.Rect? = null) {
+    previous: Boolean, next: Boolean, onPrevious: () -> Unit, onNext: () -> Unit) {
     if (side <= 0f) return
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val density = LocalDensity.current
-        val widthPx = with(density) { maxWidth.toPx() }
-        val heightPx = with(density) { maxHeight.toPx() }
-        fun reservedTop(left: Float, right: Float): Dp = with(density) {
-            (favoriteBounds?.takeIf { it.left < right && it.right > left }
-                ?.bottom?.coerceIn(0f, heightPx) ?: 0f).toDp()
+    Row(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(side).fillMaxHeight()) {
+            PhotoTapTarget("Vorheriges Medium", Modifier.fillMaxSize().then(hit.previous), owner,
+                if (previous) onPrevious else null)
         }
-        Row(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(side).fillMaxHeight().padding(top = reservedTop(0f, widthPx * side))) {
-                PhotoTapTarget("Vorheriges Medium", Modifier.fillMaxSize().then(hit.previous), owner,
-                    if (previous) onPrevious else null)
-            }
-            if (side < .5f) Spacer(Modifier.weight(1f - side * 2))
-            Box(Modifier.weight(side).fillMaxHeight().padding(top = reservedTop(widthPx * (1f - side), widthPx))) {
-                PhotoTapTarget("Nächstes Medium", Modifier.fillMaxSize().then(hit.next), owner,
-                    if (next) onNext else null)
-            }
+        if (side < .5f) Spacer(Modifier.weight(1f - side * 2))
+        Box(Modifier.weight(side).fillMaxHeight()) {
+            PhotoTapTarget("Nächstes Medium", Modifier.fillMaxSize().then(hit.next), owner,
+                if (next) onNext else null)
         }
     }
 }
@@ -344,18 +329,18 @@ internal fun ProfileActionRail(
     onFavorite: (Long) -> Unit,
     onPreference: (Long, Preference) -> Unit,
 ) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
         if (person != null) {
             FilterChip(selected = person.preference == Preference.LIKE, enabled = !busy,
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = ShellMetrics.touch),
                 onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.LIKE)) },
                 label = { Text("Gefällt") }, leadingIcon = { Icon(Icons.Default.Favorite, null) })
             FilterChip(selected = person.favorite, enabled = !busy,
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = ShellMetrics.touch),
                 onClick = { onFavorite(person.personId) }, label = { Text("Favorit") },
                 leadingIcon = { Icon(if (person.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, null) })
             FilterChip(selected = person.preference == Preference.DISLIKE, enabled = !busy,
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = ShellMetrics.touch),
                 onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.DISLIKE)) },
                 label = { Text("Nein") })
         }
@@ -366,15 +351,15 @@ internal fun ProfileActionRail(
 internal fun ProfileContactActions(phone: String?, busy: Boolean, isCurrent: () -> Boolean) {
     if (phone?.let(::phoneForWhatsApp) == null) return
     val context = LocalContext.current
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Button(enabled = !busy, modifier = Modifier.heightIn(min = 48.dp).shellFocus(), onClick = {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
+        Button(enabled = !busy, modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus(), onClick = {
             profileContactTarget(phone, false, busy, isCurrent)?.let { openExternal(context, it, dial = true) }
         }) {
             Icon(Icons.Default.Phone, null, Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text("Telefon")
         }
-        Button(enabled = !busy, modifier = Modifier.heightIn(min = 48.dp).shellFocus(),
+        Button(enabled = !busy, modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary,
                 contentColor = MaterialTheme.colorScheme.onTertiary),
             onClick = {
