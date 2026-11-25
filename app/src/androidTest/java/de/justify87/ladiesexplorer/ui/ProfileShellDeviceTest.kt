@@ -28,6 +28,33 @@ import org.junit.Test
 class ProfileShellDeviceTest {
     @get:Rule val rule = createComposeRule()
 
+    @Test fun standaloneNeutralAndFavoriteRemainIndependentAndBusyBlocksWrites() {
+        var preference by mutableStateOf(Preference.LIKE)
+        var favorite by mutableStateOf(false)
+        var busy by mutableStateOf(false)
+        val decisions = mutableListOf<Preference>()
+        rule.setContent {
+            MaterialTheme {
+                ProfileActionRail(
+                    de.justify87.ladiesexplorer.core.PersonSummary(1, "Fixture", preference, favorite, 1u, ""),
+                    busy, onFavorite = { favorite = !favorite },
+                    onPreference = { _, value -> decisions.add(value); preference = value },
+                )
+            }
+        }
+        rule.onNodeWithText("Favorit").performClick()
+        rule.onNodeWithText("Neutral").performClick()
+        rule.runOnIdle {
+            assertTrue(favorite)
+            assertEquals(Preference.NONE, preference)
+            assertEquals(listOf(Preference.NONE), decisions)
+            busy = true
+        }
+        rule.onNodeWithText("Gefällt").assertIsNotEnabled()
+        rule.onNodeWithText("Nein").assertIsNotEnabled()
+        rule.onNodeWithText("Favorit").assertIsNotEnabled()
+    }
+
     @Test fun fixedHeaderAndRailLeaveARealViewportWithLongWarningsAndLargeType() {
         var actionCount = 0
         rule.setContent {
