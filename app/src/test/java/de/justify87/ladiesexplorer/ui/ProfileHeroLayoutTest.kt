@@ -130,9 +130,14 @@ class ProfileHeroLayoutTest {
         val shown = heroIdentity(profile, identity, false)
         assertEquals("Fixture, 29", shown.title)
         assertEquals("Dresden · 01067", shown.place)
-        assertEquals("Dresden · 01067 · Anzeige aktiv", shown.subtitle)
+        assertEquals("Dresden · 01067 · Quellenstatus: Anzeige aktiv", shown.subtitle)
         assertEquals("", heroIdentity(profile.copy(city = "", postalCode = null), identity, true).place)
-        assertEquals("Zuletzt bekannt: Anzeige aktiv", heroIdentity(profile, identity, true).status)
+        assertEquals("Zuletzt bekannter Quellenstatus: Anzeige aktiv", heroIdentity(profile, identity, true).status)
+        assertEquals("Quellenstatus: Status unbekannt",
+            heroIdentity(profile, identity.copy(status = "INACTIVE"), false).status)
+        assertEquals("Quellenstatus: Anzeige nicht verfügbar",
+            heroIdentity(profile, identity.copy(status = "UNAVAILABLE"), false).status)
+        assertNull(heroIdentity(profile, null, false).status)
     }
 
     @Test fun mediaZonesLeaveAnIndependentCenter() {
