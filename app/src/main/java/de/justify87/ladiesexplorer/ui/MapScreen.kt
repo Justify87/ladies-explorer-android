@@ -3,6 +3,7 @@ package de.justify87.ladiesexplorer.ui
 import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.res.Configuration
+import android.view.Gravity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -437,6 +438,7 @@ private fun NativeProfileMap(
                 mapView.getMapAsync { ready ->
                     if (!mapView.released) {
                         ready.uiSettings.isLogoEnabled = false
+                        ready.uiSettings.setAttributionGravity(Gravity.BOTTOM or Gravity.END)
                         ready.setStyle(MAP_STYLE) { style ->
                             if (!mapView.released) {
                                 installMapProfileLayers(style, asFeatures(currentPoints, currentSelection),
