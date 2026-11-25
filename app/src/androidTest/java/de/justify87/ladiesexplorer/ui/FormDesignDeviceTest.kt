@@ -106,7 +106,7 @@ class FormDesignDeviceTest {
                 )
             }
         }
-        rule.onNodeWithText("Ort").performScrollTo().performTextReplacement("Teststadt")
+        rule.onNodeWithContentDescription("Ort").performScrollTo().performTextReplacement("Teststadt")
         rule.runOnIdle { assertTrue(submitted.isEmpty()) }
         rule.onNodeWithText("Suchen").performClick()
         rule.runOnIdle {
@@ -114,6 +114,36 @@ class FormDesignDeviceTest {
             assertEquals("Teststadt", submitted.single().draft.city)
             assertEquals(12L, submitted.single().generation)
         }
+    }
+
+
+    @Test fun compactFilterInputAndChoicesKeepTouchTargetsAtLargeFont() {
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                MaterialTheme(colorScheme = ladiesLightColors) {
+                    Column(Modifier.width(320.dp)) {
+                        var text by remember { mutableStateOf("") }
+                        CompactFilterField(text, { text = it }, "Filter suchen")
+                        ProgressiveSection("Rubrik", true, {}, compact = true) {
+                            ScreenChoice(true, {}, true, { Text("Fixture", style = MaterialTheme.typography.bodySmall) })
+                        }
+                    }
+                }
+            }
+        }
+        val min = with(rule.density) { 48.dp.toPx() }
+        val field = rule.onNodeWithContentDescription("Filter suchen")
+        field.performClick().performTextInput("Test")
+        field.assertTextContains("Test")
+        val header = rule.onNodeWithText("Rubrik")
+        val choice = rule.onNodeWithText("Fixture")
+        for (node in listOf(field, header, choice)) {
+            assertTrue(node.fetchSemanticsNode().boundsInRoot.height >= min - 1f)
+        }
+        assertTrue(header.fetchSemanticsNode().boundsInRoot.top >= field.fetchSemanticsNode().boundsInRoot.bottom)
+        assertTrue(choice.fetchSemanticsNode().boundsInRoot.top >= header.fetchSemanticsNode().boundsInRoot.bottom)
+        choice.assertIsSelected()
     }
 
     @Test fun lightSettingsShowUnknownStatusAndDoNotExportOrCaptureImplicitly() {

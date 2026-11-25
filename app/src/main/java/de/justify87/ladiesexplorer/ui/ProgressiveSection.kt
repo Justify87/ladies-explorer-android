@@ -17,16 +17,16 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun ProgressiveSectionHeader(
     title: String, expanded: Boolean, onToggle: () -> Unit,
-    hint: String? = null, hintError: Boolean = false, enabled: Boolean = true,
+    hint: String? = null, hintError: Boolean = false, enabled: Boolean = true, compact: Boolean = false,
 ) {
     TextButton(onClick = onToggle, enabled = enabled, shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = if (compact) 4.dp else 8.dp),
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus().semantics {
             stateDescription = if (expanded) "Ausgeklappt" else "Eingeklappt"
         }) {
         Column(Modifier.weight(1f)) {
-            Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
+            Text(title, Modifier.semantics { heading() }, style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleSmall)
             hint?.let { Text(it, style = MaterialTheme.typography.bodySmall,
                 color = if (hintError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
@@ -39,7 +39,7 @@ internal fun ProgressiveSectionHeader(
 // Adjacent lazy rows share the same surface without composing an entire history at once.
 @Composable
 internal fun ProgressiveSectionFrame(
-    first: Boolean, last: Boolean, header: Boolean,
+    first: Boolean, last: Boolean, header: Boolean, compact: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val top = if (first) 16.dp else 0.dp
@@ -47,21 +47,21 @@ internal fun ProgressiveSectionFrame(
     Column(Modifier.fillMaxWidth()
         .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(
             topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom))
-        .padding(horizontal = if (header) 0.dp else 12.dp)
-        .padding(top = if (header) 0.dp else 4.dp, bottom = if (header) 0.dp else 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+        .padding(horizontal = if (header) 0.dp else if (compact) 8.dp else 12.dp)
+        .padding(top = if (header || compact) 0.dp else 4.dp, bottom = if (header) 0.dp else if (compact) 4.dp else 12.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp), content = content)
 }
 
 @Composable
 internal fun ProgressiveSection(
     title: String, expanded: Boolean, onToggle: () -> Unit,
-    hint: String? = null, hintError: Boolean = false, enabled: Boolean = true,
+    hint: String? = null, hintError: Boolean = false, enabled: Boolean = true, compact: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
-        ProgressiveSectionFrame(first = true, last = !expanded, header = true) {
-            ProgressiveSectionHeader(title, expanded, onToggle, hint = hint, hintError = hintError, enabled = enabled)
+        ProgressiveSectionFrame(first = true, last = !expanded, header = true, compact = compact) {
+            ProgressiveSectionHeader(title, expanded, onToggle, hint = hint, hintError = hintError, enabled = enabled, compact = compact)
         }
-        if (expanded) ProgressiveSectionFrame(first = false, last = true, header = false, content = content)
+        if (expanded) ProgressiveSectionFrame(first = false, last = true, header = false, compact = compact, content = content)
     }
 }

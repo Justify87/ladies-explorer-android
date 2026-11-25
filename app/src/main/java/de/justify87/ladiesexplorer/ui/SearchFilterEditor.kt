@@ -105,7 +105,7 @@ private fun LazyListScope.filterSection(
 ) {
     item(key = "filter/$key") {
         ProgressiveSection(title, filterSectionExpanded(key, initiallyExpanded, flipped, query),
-            { onToggle(key) }, hint = hint, enabled = query.isBlank(), content = content)
+            { onToggle(key) }, hint = hint.takeIf { query.isBlank() }, enabled = query.isBlank(), compact = true, content = content)
     }
 }
 
@@ -172,7 +172,7 @@ internal fun LazyListScope.searchFilterEditor(
                 it.endInclusive.roundToInt().toUInt().coerceIn(18u,60u)) },
             valueRange = 18f..60f, enabled = enabled)
     }
-    fun catalogGroup(group: de.justify87.ladiesexplorer.core.SourceFilterGroup, parent: String, initiallyExpanded: Boolean = false) {
+    fun catalogOptions(group: de.justify87.ladiesexplorer.core.SourceFilterGroup, parent: String): List<String> {
         val title = groupLabels[group.key] ?: group.key
         val aliases = when (group.key) {
             "figur" -> "Figurtyp"
@@ -180,10 +180,14 @@ internal fun LazyListScope.searchFilterEditor(
             "treff" -> "Treffpunkte"
             else -> title
         }
-        val options = matchingFilterOptions(query, listOf(parent, title, aliases), group.options) { it }
+        return matchingFilterOptions(query, listOf(parent, title, aliases), group.options) { it }
+    }
+    fun catalogGroup(group: de.justify87.ladiesexplorer.core.SourceFilterGroup, parent: String) {
+        val title = groupLabels[group.key] ?: group.key
+        val options = catalogOptions(group, parent)
         if (options.isEmpty()) return
         val selected = state.selectedFilters[group.key].orEmpty()
-        section("catalog/${group.key}", title, initiallyExpanded,
+        section("catalog/${group.key}", title,
             hint = selected.size.takeIf { it > 0 }?.let { "$it ausgewählt" }) {
             FilterChoices { options.forEach { option ->
                 FilterChoice(option in selected, enabled, option) { onToggleFilter(group.key, option) }
@@ -213,7 +217,11 @@ internal fun LazyListScope.searchFilterEditor(
         "Weitere Optionen" to setOf("sonstiges", "location", "zeiten"),
     )
     groupOrder.forEach { (title, keys) ->
-        groups.filter { it.key in keys }.forEach { catalogGroup(it, title) }
+        val visibleGroups = groups.filter { it.key in keys && catalogOptions(it, title).isNotEmpty() }
+        if (visibleGroups.isNotEmpty() && keys.size > 1) item(key = "heading/$title") {
+            Text(title, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+        }
+        visibleGroups.forEach { catalogGroup(it, title) }
     }
     if (matchesLocalFilterQuery(query)) section("local", LOCAL_FILTER_TITLE) {
         val all = filterTextMatches(query, LOCAL_FILTER_TITLE)
