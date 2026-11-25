@@ -16,7 +16,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M11.1 — Stabiler Galeriewechsel und bestätigte Rasterentscheidungsanimation
 
-**Status:** DOING — Branch `fix/m11-1-gallery-grid`. Implementierung und synthetische Geräte-Testproben vorbereitet; Abschlussreview und vollständiges CI-Gate noch ausstehend. Keine tatsächliche Geräte-/Frameprüfung belegt.
+**Status:** DOING — [PR #120](https://github.com/Justify87/ladies-explorer-android/pull/120), Branch `fix/m11-1-gallery-grid`. Hero- und Grid-Implementierung, Vertragskonsolidierung sowie JVM-/synthetische Geräte-Testproben vorbereitet; statischer Aufruferreview mit Korrektur der Run-/Sichtbarkeits-/Readfehlergrenzen. Nächster Schritt: vollständiges CI-Gate des finalen Head, Befunde beheben und Abschlussreview einschließlich Regressionen und noch offener Akzeptanzpunkte. Keine tatsächliche Geräte-/Frameprüfung belegt.
 
 **Abhängigkeit:** M10.4 integriert. Keine Abhängigkeit von L01.
 
