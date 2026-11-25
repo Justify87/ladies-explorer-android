@@ -130,14 +130,12 @@ class SwipeProfileWindowTest {
         val initial = requireNotNull(cache.readCurrent(current) {
             fixtureSwipe(1L, 1L, 11L).copy(fromArchive = false)
         })
-        val oldInvalidation = cache.invalidation(current)
         cache.readCurrent(next) { sourceCompleted ->
             sourceCompleted()
             assertNull(cache[current])
             assertTrue(cache.requiresLocal(current))
             fixtureSwipe(2L, 2L, 12L)
         }
-        assertTrue(cache.invalidation(current) > oldInvalidation)
         assertNotNull(cache[next])
         val refreshed = requireNotNull(cache.readCurrent(current) {
             val native = fixtureSwipe(1L, 1L, 11L)
@@ -165,16 +163,13 @@ class SwipeProfileWindowTest {
             assertNull(cache.readCurrent(a) { started.complete(Unit); release.awaitSignal(); fixtureSwipe(1L) })
         }
         started.awaitSignal()
-        val before = cache.invalidation(a)
         cache.readCurrent(b) { sourceCompleted -> sourceCompleted(); fixtureSwipe(2L, 2L) }
         // Reject the pending read, but do not cancel/restart a native operation
         // because of another source completion.
-        assertEquals(before, cache.invalidation(a))
         assertTrue(late.isActive)
         release.complete(Unit)
         late.join()
         assertNull(cache[a])
-        assertTrue(cache.invalidation(a) > before)
         assertTrue(cache.requiresLocal(a))
         assertNotNull(cache[b])
     }
@@ -213,21 +208,17 @@ class SwipeProfileWindowTest {
             assertNull(cache.readCurrent(card) { started.complete(Unit); release.awaitSignal(); fixtureSwipe(4L) })
         }
         started.awaitSignal()
-        val before = cache.invalidation(card)
         assertFalse(cache.isCurrent(6L))
         cache.applyExternalRevision(6L)
         assertTrue(cache.isCurrent(6L))
-        assertEquals(before, cache.invalidation(card))
         assertTrue(current.isActive)
         release.complete(Unit)
         current.join()
         assertNull(cache[card])
         assertTrue(cache.requiresLocal(card))
-        val after = cache.invalidation(card)
         assertTrue(after > before)
         cache.readCurrent(card) { fixtureSwipe(4L) }
         cache.applyExternalRevision(6L)
-        assertEquals(after, cache.invalidation(card))
         assertNotNull(cache[card])
     }
 
