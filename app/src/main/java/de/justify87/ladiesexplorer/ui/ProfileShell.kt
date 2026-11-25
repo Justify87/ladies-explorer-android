@@ -13,6 +13,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,6 +38,9 @@ internal data class ProfileShellPresentation(
     val heroHeight: Dp,
     val identityInHeader: Boolean,
     val photoShortcut: Boolean,
+    val reading: Boolean,
+    val readingExtraSpace: Dp,
+    val heroViewport: IntSize,
 )
 
 /** Bound fixed chrome; put full messages in a dialog rather than shrinking the scrolling body. */
@@ -48,16 +54,79 @@ internal fun ProfileShell(
     notices: List<ProfileNotice>,
     noticeOwner: Any?,
     header: @Composable (ProfileShellPresentation, ProfileNoticeIndicator?, () -> Unit) -> Unit,
-    rail: @Composable () -> Unit = {},
+    rail: @Composable (ProfileShellPresentation) -> Unit = {},
     heroLeadingHeight: Dp? = null,
+    rootNavigation: (@Composable () -> Unit)? = null,
+    heroLeadingMeasure: (@Composable () -> Unit)? = null,
+    content: @Composable (ProfileShellPresentation) -> Unit,
+) {
+    val reading by remember(listState, heroKey) {
+        derivedStateOf { listState.isProfileReading(heroKey) }
+    }
+    if (rootNavigation == null && heroLeadingMeasure == null) {
+        ProfileShellBody(modifier, listState, heroKey, rootHeight, hasRail, notices, noticeOwner,
+            header, rail, heroLeadingHeight, reading, null, content)
+    } else {
+        SubcomposeLayout(modifier.fillMaxSize()) { constraints ->
+            val root = rootNavigation?.let { navigation ->
+                subcompose("root") {
+                    Box(if (reading) Modifier.clearAndSetSemantics {} else Modifier) { navigation() }
+                }.single().measure(constraints.copy(minHeight = 0))
+            }
+            val leading = heroLeadingMeasure?.let { measure ->
+                val width = constraints.maxWidth.coerceAtMost(ShellMetrics.maxProfileWidth.roundToPx())
+                subcompose("leading") { Box { measure() } }.single().measure(
+                    constraints.copy(minWidth = width, maxWidth = width, minHeight = 0))
+            }
+            val rootPixels = root?.height ?: 0
+            val heroShellHeight = (constraints.maxHeight - rootPixels).coerceAtLeast(0)
+            val shellHeight = if (reading) constraints.maxHeight else heroShellHeight
+            val shell = subcompose("profile") {
+                ProfileShellBody(Modifier, listState, heroKey, root?.height?.toDp() ?: rootHeight,
+                    hasRail, notices, noticeOwner, header, rail, leading?.height?.toDp() ?: heroLeadingHeight,
+                    reading, heroShellHeight.toDp(), content)
+            }.single().measure(constraints.copy(minHeight = shellHeight, maxHeight = shellHeight))
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                shell.placeRelative(0, 0)
+                if (!reading) root?.placeRelative(0, shellHeight)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileShellBody(
+    modifier: Modifier,
+    listState: LazyListState,
+    heroKey: String,
+    rootHeight: Dp,
+    hasRail: Boolean,
+    notices: List<ProfileNotice>,
+    noticeOwner: Any?,
+    header: @Composable (ProfileShellPresentation, ProfileNoticeIndicator?, () -> Unit) -> Unit,
+    rail: @Composable (ProfileShellPresentation) -> Unit,
+    heroLeadingHeight: Dp?,
+    reading: Boolean,
+    heroShellHeight: Dp?,
     content: @Composable (ProfileShellPresentation) -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val width = maxWidth.coerceAtMost(ShellMetrics.maxProfileWidth)
         val height = maxHeight
-        val fontScale = LocalDensity.current.fontScale
-        val budget = profileShellBudget(width.value, height.value, rootHeight.value, fontScale, hasRail)
-        val heroHeight = profileHeroHeight(width.value, height.value + rootHeight.value, budget.body, heroLeadingHeight?.value).dp
+        val density = LocalDensity.current
+        val fontScale = density.fontScale
+        val baselineHeight = heroShellHeight ?: height
+        val baseline = profileShellBudget(width.value, baselineHeight.value, rootHeight.value, fontScale, hasRail)
+        val budget = if (reading && heroShellHeight != null) {
+            profileReadingBudget(baseline, width.value, height.value, fontScale)
+        } else baseline
+        // The gallery is sized from the Hero configuration even while the reading viewport grows.
+        val heroHeight = profileHeroHeight(width.value, baselineHeight.value + rootHeight.value,
+            baseline.body, heroLeadingHeight?.value).dp
+        val inset = shellContentInset()
+        val heroViewport = with(density) {
+            IntSize((width.roundToPx() - 2 * inset.roundToPx()).coerceAtLeast(0), heroHeight.roundToPx())
+        }
         // Read measured lazy geometry without recomposing for every scroll pixel.
         val handoff by remember(listState, heroKey) {
             derivedStateOf { listState.headerOwnsIdentity(heroKey) }
@@ -66,7 +135,8 @@ internal fun ProfileShell(
             derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 }
         }
         val measuredBudget = budget.copy(compactGallery = budget.compactGallery || heroHeight < 320.dp)
-        val presentation = ProfileShellPresentation(measuredBudget, heroHeight, handoff, scrolled)
+        val presentation = ProfileShellPresentation(measuredBudget, heroHeight, handoff, scrolled, reading,
+            (budget.body - baseline.body).coerceAtLeast(0f).dp, heroViewport)
         val summary = notices.firstOrNull { it.warning } ?: notices.firstOrNull()
         val indicator = summary?.let { ProfileNoticeIndicator(it.label, it.warning) }
         val signature = notices.map { listOf(it.label, it.message, it.action, it.enabled, it.warning) }
@@ -106,14 +176,8 @@ internal fun ProfileShell(
             ShellHeaderSurface(Modifier.fillMaxWidth().height(budget.header.dp)) {
                 header(presentation, indicator, { dialog = true })
             }
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val bodyHero = profileHeroHeight(width.value, height.value + rootHeight.value,
-                    maxHeight.value, heroLeadingHeight?.value).dp
-                content(presentation.copy(heroHeight = bodyHero,
-                    budget = budget.copy(body = maxHeight.value,
-                        compactGallery = budget.compactGallery || bodyHero < 320.dp)))
-            }
-            if (budget.rail > 0f) Box(Modifier.fillMaxWidth().height(budget.rail.dp)) { rail() }
+            Box(Modifier.weight(1f).fillMaxWidth()) { content(presentation) }
+            if (budget.rail > 0f) Box(Modifier.fillMaxWidth().height(budget.rail.dp)) { rail(presentation) }
         }
     }
 }

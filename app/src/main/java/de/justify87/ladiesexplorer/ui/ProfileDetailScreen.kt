@@ -13,7 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.justify87.ladiesexplorer.LadiesApplication
@@ -118,7 +117,7 @@ internal fun ProfileDetailScreen(
                 val shown = identity.takeIf { presentation.identityInHeader }
                 ProfileShellTitle(shown?.title ?: "Profil", shown?.compactSubtitle ?: "Profilansicht",
                     shown?.decisions.orEmpty(), presentation.budget.shortHeader, Modifier.weight(1f),
-                    onClick = if (identity == null) null else ({ info = true }))
+                    onClick = if (identity == null) null else ({ if (presentation.reading) photoRequest++ else info = true }))
                 if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
                 if (presentation.photoShortcut && profile != null) ShellIconButton(onClick = { photoRequest++ }) {
                     Icon(Icons.Default.KeyboardArrowUp, "Zum Foto")
@@ -141,6 +140,7 @@ internal fun ProfileDetailScreen(
             }
         },
     ) { presentation ->
+        SideEffect { heroSize = presentation.heroViewport }
         ProfileFlow(state = detailListState, model = displayed, filters = filters,
             token = renderedToken, actionsBusy = busy, notes = notes, noteActions = noteActions,
             isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
@@ -163,7 +163,7 @@ internal fun ProfileDetailScreen(
                 item(key = "media") {
                     Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) {
                         ProfileMediaHero(displayed?.media.orEmpty(), height = presentation.heroHeight,
-                            modifier = Modifier.onSizeChanged { heroSize = it }, selection = mediaSelection,
+                            selection = mediaSelection,
                             projectionAvailable = displayed != null,
                             preparedMedia = prepared?.media.orEmpty(), preparing = displayed == null,
                             presentationOwner = owner,

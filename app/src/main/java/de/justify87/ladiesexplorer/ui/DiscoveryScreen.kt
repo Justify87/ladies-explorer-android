@@ -4,7 +4,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.geometry.Offset
@@ -50,7 +49,7 @@ internal fun DiscoverScreen(
     notes: Map<Long, NoteEditorState>,
     noteActions: NoteEditorActions,
     search: SearchUiState,
-    rootBarHeight: Dp,
+    rootNavigation: @Composable () -> Unit,
     onSelectMode: (DiscoverMode) -> Unit,
     availabilityEnabled: Boolean,
     onAvailability: (SwipeDeckToken, AvailabilityMode) -> Unit,
@@ -93,7 +92,6 @@ internal fun DiscoverScreen(
     val visible = started && !searchLoading && !search.activeProjectionPending && !state.loading && !state.busy
     val enabled = visible
     var heroSize by remember { mutableStateOf(IntSize.Zero) }
-    var discoveryContextHeight by remember { mutableIntStateOf(0) }
     val decks = remember(state.activeRunId, state.swipeProfileRevision, started) {
         SwipeProfileWindow(mutableStateMapOf(), state.swipeExternalRevision)
     }
@@ -346,17 +344,21 @@ internal fun DiscoverScreen(
                 onChoose(it, preference, capture.read())
             }
         }
-        // Keep admission and the hero budget on the same measured-context snapshot.
-        val measuredContextHeight = discoveryContextHeight
-        ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
+        ProfileShell(modifier = modifier, listState = listState, heroKey = "hero",
             hasRail = true, notices = notices, noticeOwner = controls,
-            heroLeadingHeight = with(LocalDensity.current) { measuredContextHeight.toDp() },
+            rootNavigation = rootNavigation,
+            heroLeadingMeasure = {
+                Box(Modifier.fillMaxWidth().padding(horizontal = contentInset, bottom = ShellMetrics.inset)) {
+                    DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
+                }
+            },
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(presentation, sourceContext, controls, compactNotice,
-                    onNotice, { onAvailability(deckToken, it) })
+                    onNotice, { onAvailability(deckToken, it) }, identity, { photoRequest++ })
             },
-            rail = { SwipeDecisionControls(controls, identity?.title, undo, skip, choose) },
+            rail = { SwipeDecisionControls(controls, identity?.title, undo, skip, choose, reading = it.reading) },
         ) { presentation ->
+            SideEffect { heroSize = presentation.heroViewport }
             Box(Modifier.fillMaxSize().clipToBounds().onGloballyPositioned { bodyCoordinates = it }) {
             if (card == null) {
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = contentInset, vertical = ShellMetrics.small),
@@ -390,11 +392,12 @@ internal fun DiscoverScreen(
                     isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
                     modifier = Modifier.fillMaxSize(),
                     paddedDetails = true, photoRequest = photoRequest, onGallerySelection = { selectedMedia = it },
+                    contentPadding = PaddingValues(bottom = presentation.readingExtraSpace),
                     userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices,
                     fallbackIdentity = identity, fallbackMedia = fallback, preparedPanels = prepared?.panels,
-                    onDiscoveryContextHeight = { discoveryContextHeight = it }, afterHeading = {
+                    afterHeading = {
                     item(key = "profile-actions") {
                         Column {
                             TextButton(onClick = { photoRequest++ }) { Text("Zum Foto") }
@@ -422,16 +425,12 @@ internal fun DiscoverScreen(
                     }
                     item(key = "hero") {
                         Box(Modifier.fillMaxWidth().padding(horizontal = contentInset)) {
-                            if (awaitDiscoveryContext(measuredContextHeight, listState.firstVisibleItemIndex)) {
-                                // Do not decode against the provisional viewport on a cold start.
-                                Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
-                            } else ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
+                            ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
                             onSwipe = if (actions) ({ decision ->
                                 choose(decision)
                             }) else null,
-                            modifier = Modifier.onSizeChanged { heroSize = it }
-                                .onGloballyPositioned { heroCoordinates = it }, selection = mediaSelection,
+                            modifier = Modifier.onGloballyPositioned { heroCoordinates = it }, selection = mediaSelection,
                             heldDrag = flight?.takeIf { it.card == cardIdentity }?.offset,
                             onSwipeDrag = { liveDrag = it },
                             playbackVisible = heroVisible,
@@ -481,12 +480,21 @@ private fun SwipeShellHeader(
     presentation: ProfileShellPresentation, sourceContext: String, context: SwipeControlsContext,
     compactNotice: ProfileNoticeIndicator?, onNotice: () -> Unit,
     onAvailability: (AvailabilityMode) -> Unit,
+    identity: HeroIdentity?,
+    onHero: () -> Unit,
 ) {
     Row(Modifier.fillMaxSize().padding(horizontal = shellContentInset()), verticalAlignment = Alignment.CenterVertically) {
-        ProfileShellTitle("Entdecken", sourceContext, "", presentation.budget.shortHeader, Modifier.weight(1f),
-            titleStyle = MaterialTheme.typography.titleLarge)
+        val shown = identity.takeIf { presentation.identityInHeader }
+        ProfileShellTitle(if (presentation.reading) shown?.title ?: "Profil" else "Entdecken",
+            if (presentation.reading) shown?.compactSubtitle ?: "Zur Galerie" else sourceContext,
+            if (presentation.reading) shown?.decisions.orEmpty() else "",
+            presentation.budget.shortHeader, Modifier.weight(1f),
+            onClick = if (presentation.reading) onHero else null,
+            titleStyle = if (presentation.reading) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
         if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
-        AvailabilityQuickChoice(context.availability, context.availabilityEnabled, context.deck, onAvailability)
+        if (presentation.reading) {
+            ShellIconButton(onClick = onHero) { Icon(Icons.Default.KeyboardArrowUp, "Zum Foto") }
+        } else AvailabilityQuickChoice(context.availability, context.availabilityEnabled, context.deck, onAvailability)
     }
 }
 
@@ -504,12 +512,34 @@ private fun SwipeDeckActions(context: SwipeControlsContext, onRefresh: () -> Uni
 @Composable
 internal fun SwipeDecisionControls(context: SwipeControlsContext, profileTitle: String?, onUndo: () -> Unit,
     onSkip: () -> Unit, onChoose: (Preference) -> Unit, modifier: Modifier = Modifier.fillMaxSize(),
-    horizontalInset: Dp = shellContentInset()) {
+    horizontalInset: Dp = shellContentInset(), reading: Boolean = false) {
     BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
-        val compact = maxHeight < ShellMetrics.decisionRail || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
+        val fontScale = LocalDensity.current.fontScale
+        val compact = maxHeight < ShellMetrics.decisionRail || maxWidth < 320.dp || fontScale >= 1.3f
         val scheme = MaterialTheme.colorScheme
         val inset = if (maxWidth >= ShellMetrics.touch * 4 + horizontalInset * 2) horizontalInset else 0.dp
-        FlowRow(Modifier.fillMaxWidth().padding(horizontal = inset).semantics {
+        val columns = readingDecisionColumns(maxWidth.value, fontScale)
+        val rowHeight = readingDecisionRowHeight(fontScale).dp
+        if (reading && maxHeight >= rowHeight * (4 / columns)) {
+            FlowRow(Modifier.fillMaxWidth().padding(horizontal = inset).semantics {
+                contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen"
+            }, horizontalArrangement = Arrangement.spacedBy(ShellMetrics.gap),
+                maxItemsInEachRow = columns) {
+                val cell = Modifier.weight(1f).height(rowHeight).shellFocus()
+                TextButton(onClick = onUndo, enabled = context.deckEnabled && context.canUndo,
+                    modifier = cell, contentPadding = PaddingValues(4.dp)) { Text("Rückgängig") }
+                TextButton(onClick = { onChoose(Preference.DISLIKE) }, enabled = context.profile != null,
+                    modifier = cell, contentPadding = PaddingValues(4.dp),
+                    colors = ButtonDefaults.textButtonColors(containerColor = scheme.errorContainer,
+                        contentColor = scheme.onErrorContainer)) { Text("Nein") }
+                TextButton(onClick = onSkip, enabled = context.deckEnabled && context.card != null,
+                    modifier = cell, contentPadding = PaddingValues(4.dp)) { Text("Später") }
+                TextButton(onClick = { onChoose(Preference.LIKE) }, enabled = context.profile != null,
+                    modifier = cell, contentPadding = PaddingValues(4.dp),
+                    colors = ButtonDefaults.textButtonColors(containerColor = scheme.tertiaryContainer,
+                        contentColor = scheme.onTertiaryContainer)) { Text("Gefällt") }
+            }
+        } else FlowRow(Modifier.fillMaxWidth().padding(horizontal = inset).semantics {
             contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen"
         }, horizontalArrangement = Arrangement.Center, verticalArrangement = Arrangement.Center,
             maxItemsInEachRow = ((maxWidth - inset * 2) / ShellMetrics.touch).toInt().coerceIn(1, 4)) {

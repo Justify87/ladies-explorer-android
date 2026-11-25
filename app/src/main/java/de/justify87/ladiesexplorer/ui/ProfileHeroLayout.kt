@@ -113,11 +113,32 @@ internal fun profileShellBudget(
     return ProfileShellBudget(header, rail, body, short, width < 300f, compact)
 }
 
-/** Never repeat the inline identity while any part of its row is visible. */
+internal fun readingDecisionColumns(width: Float, fontScale: Float): Int =
+    if (width >= 320f * maxOf(1f, fontScale)) 4 else 2
+
+internal fun readingDecisionRowHeight(fontScale: Float): Float = maxOf(48f, 32f * fontScale)
+
+internal fun profileReadingBudget(hero: ProfileShellBudget, width: Float, height: Float,
+    fontScale: Float): ProfileShellBudget {
+    val desiredRail = readingDecisionRowHeight(fontScale) * (4 / readingDecisionColumns(width, fontScale))
+    val maximumRail = (height - hero.header - hero.body).coerceAtLeast(0f)
+    val rail = if (hero.rail > 0f && desiredRail <= maximumRail) desiredRail else hero.rail
+    return hero.copy(rail = rail, body = (height - hero.header - rail).coerceAtLeast(0f))
+}
+
+internal fun profileReadingPosition(firstKey: Any?, heroKey: String): Boolean =
+    firstKey != null && firstKey != heroKey && firstKey != "discover-context" && firstKey != "compact-decisions"
+
+private fun LazyListState.firstProfileKey(): Any? =
+    layoutInfo.visibleItemsInfo.firstOrNull { it.index == firstVisibleItemIndex }?.key
+
+internal fun LazyListState.isProfileReading(heroKey: String): Boolean =
+    profileReadingPosition(firstProfileKey(), heroKey)
+
+/** Identity is handed off only after its inline row has scrolled away. */
 internal fun LazyListState.headerOwnsIdentity(heroKey: String): Boolean {
-    val layout = layoutInfo
-    return layout.visibleItemsInfo.isNotEmpty() &&
-        layout.visibleItemsInfo.none { it.key == heroKey || it.key == "profile-heading" }
+    val key = firstProfileKey()
+    return profileReadingPosition(key, heroKey) && key != "profile-contact" && key != "profile-heading"
 }
 
 /** Reserve a non-clickable center for retry or video controls. */
