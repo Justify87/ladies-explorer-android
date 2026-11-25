@@ -1,10 +1,13 @@
 //! Local-only detail projections; no source requests.
 use crate::{
-    CoreError, LadiesCore,
-    source::filter::{EvidenceOption, evidence_option},
+    CoreError, LadiesCore, SearchRequest,
+    saved_search::{LocalVisibility, decode_definition, validate_local},
+    source::{filter::{EvidenceOption, canonical_category, canonicalize_request, evidence_option}, known_age},
 };
 use rusqlite::{OptionalExtension, params};
+use serde::Deserialize;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ProfileField {
@@ -27,11 +30,18 @@ pub struct FilterEvidence {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+pub struct FilterMatchGroup {
+    pub group: String,
+    pub status: EvidenceStatus,
+    pub options: Vec<FilterEvidence>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct ProfileFacts {
     pub traits: Vec<ProfileField>,
     pub services: Vec<ProfileField>,
     pub opening_times: Vec<ProfileField>,
-    pub filters: Vec<FilterEvidence>,
+    pub filters: Vec<FilterMatchGroup>,
     pub important: Vec<FilterEvidence>,
 }
 
@@ -189,33 +199,276 @@ fn project_evidence(
     }
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum MatchContext {
+    Run {
+        run_id: i64,
+        owner_id: i64,
+        local: LocalVisibility,
+    },
+    Saved {
+        saved_id: String,
+        owner_id: i64,
+    },
+}
+
+#[derive(Deserialize)]
+struct RunFilters {
+    category: String,
+    age_min: u32,
+    age_max: u32,
+    height_min: u32,
+    height_max: u32,
+    selected: BTreeMap<String, Vec<String>>,
+}
+
+struct MatchBasis {
+    query: SearchRequest,
+    local: LocalVisibility,
+    video: Option<bool>,
+    photo: Option<bool>,
+    ai: Option<bool>,
+}
+
+fn match_basis(
+    db: &rusqlite::Connection,
+    context_json: &str,
+    listing: i64,
+    owner: i64,
+) -> Result<Option<MatchBasis>, CoreError> {
+    if context_json == "{}" {
+        return Ok(None);
+    }
+    let context: MatchContext = serde_json::from_str(context_json)
+        .map_err(|e| CoreError::InvalidInput(format!("Invalid profile search context: {e}")))?;
+    match context {
+        MatchContext::Run { run_id, owner_id, local } if owner_id == owner => {
+            validate_local(&local)?;
+            let row = db.query_row(
+                "SELECT run.city,run.radius_km,run.filters_json,r.has_video,
+                        r.thumbnail_url IS NOT NULL,r.has_ai_content
+                 FROM search_runs run JOIN search_results r USING(search_run_id)
+                 WHERE run.search_run_id=?1 AND r.listing_id=?2
+                   AND run.finished_at IS NOT NULL AND run.city IS NOT NULL
+                   AND run.radius_km IS NOT NULL AND run.filters_json IS NOT NULL",
+                params![run_id, listing],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?,
+                    r.get::<_, String>(2)?, r.get::<_, bool>(3)?,
+                    r.get::<_, bool>(4)?, r.get::<_, bool>(5)?)),
+            ).optional()?;
+            let Some((city, radius_km, raw, video, photo, ai)) = row else {
+                return Ok(None);
+            };
+            let Ok(stored) = serde_json::from_str::<RunFilters>(&raw) else {
+                return Ok(None);
+            };
+            let query = SearchRequest {
+                city,
+                radius_km,
+                category: stored.category,
+                age_min: stored.age_min,
+                age_max: stored.age_max,
+                height_min: stored.height_min,
+                height_max: stored.height_max,
+                filters_json: serde_json::to_string(&stored.selected)
+                    .map_err(|e| CoreError::Storage(e.to_string()))?,
+                max_pages: 1,
+            };
+            let Ok(query) = canonicalize_request(query) else {
+                return Ok(None);
+            };
+            Ok(Some(MatchBasis { query, local, video: Some(video), photo: Some(photo), ai: Some(ai) }))
+        }
+        MatchContext::Saved { saved_id, owner_id } if owner_id == owner => {
+            let row = db.query_row(
+                "SELECT s.filters_json,r.snapshot_json
+                 FROM saved_searches s JOIN saved_search_results r USING(saved_search_id)
+                 JOIN listings l ON l.source='LADIES' AND l.external_listing_id=r.result_key
+                 WHERE s.saved_search_id=?1 AND l.listing_id=?2 AND s.last_run_at IS NOT NULL
+                   AND r.present=1 AND r.visible=1",
+                params![saved_id, listing],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            ).optional()?;
+            let Some((definition, snapshot)) = row else {
+                return Ok(None);
+            };
+            let Ok(definition) = decode_definition(&definition) else {
+                return Ok(None);
+            };
+            let snapshot: Value = serde_json::from_str(&snapshot)
+                .map_err(|e| CoreError::Storage(e.to_string()))?;
+            let photo = match snapshot.get("thumbnail_url") {
+                Some(Value::Null) => Some(false),
+                Some(Value::String(_)) => Some(true),
+                _ => None,
+            };
+            Ok(Some(MatchBasis {
+                query: definition.query,
+                local: definition.local,
+                video: snapshot.get("has_video").and_then(Value::as_bool),
+                photo,
+                ai: snapshot.get("has_ai_content").and_then(Value::as_bool),
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn status(value: Option<bool>) -> EvidenceStatus {
+    match value {
+        Some(true) => EvidenceStatus::Yes,
+        Some(false) => EvidenceStatus::No,
+        None => EvidenceStatus::Unknown,
+    }
+}
+
+fn match_group(group: String, options: Vec<FilterEvidence>) -> FilterMatchGroup {
+    // The source combines choices within one group as alternatives.
+    let status = if options.iter().any(|option| option.status == EvidenceStatus::Yes) {
+        EvidenceStatus::Yes
+    } else if options.iter().all(|option| option.status == EvidenceStatus::No) {
+        EvidenceStatus::No
+    } else {
+        EvidenceStatus::Unknown
+    };
+    FilterMatchGroup { group, status, options }
+}
+
+fn single_match(group: &str, label: String, value: Option<bool>) -> FilterMatchGroup {
+    match_group(group.into(), vec![FilterEvidence {
+        group: group.into(),
+        label,
+        status: status(value),
+    }])
+}
+
+fn known_height(traits: &[ProfileField]) -> Option<u32> {
+    let mut heights = traits.iter().filter(|field| {
+        matches!(normalize(&field.label).as_str(), "größe" | "groesse" | "körpergröße" | "koerpergroesse")
+    });
+    let field = heights.next()?;
+    if heights.next().is_some() || field.values.len() != 1 {
+        return None;
+    }
+    let raw = normalize(&field.values[0]);
+    let number = raw.strip_suffix("cm").unwrap_or(&raw).trim();
+    if number.len() == 3 && number.bytes().all(|b| b.is_ascii_digit()) {
+        return number.parse().ok();
+    }
+    let meters = raw.strip_suffix('m')?.trim();
+    let (whole, fraction) = meters.split_once([',', '.'])?;
+    if whole.len() != 1 || fraction.len() != 2
+        || !whole.bytes().chain(fraction.bytes()).all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(whole.parse::<u32>().ok()? * 100 + fraction.parse::<u32>().ok()?)
+}
+
+fn range_match(group: &str, min: u32, max: u32, unit: &str, observed: Option<u32>) -> FilterMatchGroup {
+    let mut label = format!("{min}–{max} {unit}");
+    if let Some(value) = observed {
+        label.push_str(&format!(" · belegt: {value} {unit}"));
+    }
+    single_match(group, label, observed.map(|value| (min..=max).contains(&value)))
+}
+
+fn local_matches(basis: &MatchBasis, preference: &str) -> Vec<FilterMatchGroup> {
+    let local = &basis.local;
+    let mut groups = Vec::new();
+    let mut add = |key: &str, label: &str, rule: LocalVisibility, known: bool| {
+        let result = known.then(|| rule.allows(
+            basis.video.unwrap_or(false), basis.photo.unwrap_or(false),
+            basis.ai.unwrap_or(false), preference,
+        ));
+        groups.push(single_match(key, label.into(), result));
+    };
+    if local.video_only {
+        add("local_video", "Nur mit Video", LocalVisibility { video_only: true, ..Default::default() }, basis.video.is_some());
+    }
+    if local.photos_only {
+        add("local_photo", "Nur mit Bildern", LocalVisibility { photos_only: true, ..Default::default() }, basis.photo.is_some());
+    }
+    if local.hide_likes {
+        add("local_likes", "Likes ausblenden", LocalVisibility { hide_likes: true, ..Default::default() }, true);
+    }
+    if local.hide_dislikes {
+        add("local_dislikes", "Dislikes ausblenden", LocalVisibility { hide_dislikes: true, ..Default::default() }, true);
+    }
+    if matches!(local.image_mode.as_str(), "AI" | "NATURAL") {
+        let label = if local.image_mode == "AI" { "KI-markiert" } else { "Ohne KI-Markierung" };
+        add("local_image", label, LocalVisibility { image_mode: local.image_mode.clone(), ..Default::default() }, basis.ai.is_some());
+    }
+    groups
+}
+
+fn project_matches(
+    basis: &MatchBasis,
+    raw_traits: Option<&str>,
+    traits: &[ProfileField],
+    services: &[ProfileField],
+    opening_times: &[ProfileField],
+    category: Option<&str>,
+    preference: &str,
+) -> Result<Vec<FilterMatchGroup>, CoreError> {
+    let query = &basis.query;
+    let mut groups = Vec::new();
+    // A verified search boundary is not evidence of a listing's individual distance.
+    groups.push(single_match("radius", format!("{} · bis {} km (Einzelentfernung nicht belegt)", query.city, query.radius_km), None));
+    if !query.category.is_empty() {
+        let observed = category.and_then(canonical_category);
+        groups.push(single_match("category", query.category.clone(),
+            observed.map(|value| value == query.category.as_str())));
+    }
+    if query.age_min > 18 || query.age_max < 60 {
+        let age = known_age(raw_traits).and_then(|value| value.parse().ok());
+        groups.push(range_match("age", query.age_min, query.age_max, "Jahre", age));
+    }
+    if query.height_min > 140 || query.height_max < 200 {
+        groups.push(range_match("height", query.height_min, query.height_max, "cm", known_height(traits)));
+    }
+    let selected: BTreeMap<String, Vec<String>> = serde_json::from_str(&query.filters_json)
+        .map_err(|e| CoreError::InvalidInput(format!("Invalid selected filters: {e}")))?;
+    for (group, values) in selected {
+        let options: Vec<_> = values.into_iter().map(|value| {
+            project_evidence(evidence_option(&group, &value), traits, services, opening_times)
+        }).collect();
+        if !options.is_empty() {
+            groups.push(match_group(group, options));
+        }
+    }
+    groups.extend(local_matches(basis, preference));
+    Ok(groups)
+}
+
 pub(crate) fn facts(
     core: &LadiesCore,
     snapshot_id: i64,
-    filters_json: &str,
+    context_json: &str,
 ) -> Result<ProfileFacts, CoreError> {
     let db = core.connection()?;
-    let (traits, services, times): (Option<String>, Option<String>, Option<String>) = db.query_row(
-        "SELECT traits_json,services_json,opening_times_json FROM listing_snapshots WHERE snapshot_id=?1",
-        [snapshot_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
-    )?;
-    let traits = fields(traits)?;
+    let (raw_traits, services, times, listing, owner, current, category, preference):
+        (Option<String>, Option<String>, Option<String>, i64, i64, Option<i64>, Option<String>, String) =
+        db.query_row(
+            "SELECT s.traits_json,s.services_json,s.opening_times_json,s.listing_id,
+                    l.person_id,l.current_snapshot_id,s.category,u.preference
+             FROM listing_snapshots s JOIN listings l USING(listing_id)
+             JOIN person_user_state u ON u.person_id=l.person_id WHERE s.snapshot_id=?1",
+            [snapshot_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,
+                r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?)),
+        )?;
+    let traits = fields(raw_traits.clone())?;
     let services = fields(services)?;
     let opening_times = fields(times)?;
-    let selected: std::collections::BTreeMap<String, Vec<String>> =
-        serde_json::from_str(filters_json)
-            .map_err(|e| CoreError::InvalidInput(format!("Invalid selected filters: {e}")))?;
-    let mut choices = std::collections::BTreeMap::new();
-    for (group, values) in selected {
-        for value in values {
-            let option = evidence_option(&group, &value);
-            choices.insert((option.group.clone(), option.label.clone()), option);
+    let filters = if current == Some(snapshot_id) {
+        match match_basis(&db, context_json, listing, owner)? {
+            Some(basis) => project_matches(&basis, raw_traits.as_deref(), &traits, &services,
+                &opening_times, category.as_deref(), &preference)?,
+            None => Vec::new(),
         }
-    }
-    let filters = choices
-        .into_values()
-        .map(|option| project_evidence(option, &traits, &services, &opening_times))
-        .collect();
+    } else {
+        Vec::new()
+    };
     let important = ["GV", "AV", "ZK", "Girlfriend-Sex"]
         .into_iter()
         .map(|value| {
@@ -398,16 +651,37 @@ mod tests {
             .unwrap();
             (before, after, db.last_insert_rowid())
         };
-        let projected = facts(
-            &core,
-            before,
-            r#"{"haarfarbe":["blond","schwarz"],"augenfarbe":["blau"]}"#,
-        )
-        .unwrap();
+        let run = {
+            let db = core.connection().unwrap();
+            db.execute("UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2", params![before, listing]).unwrap();
+            db.execute(
+                "INSERT INTO search_runs(city,radius_km,filters_json,finished_at)
+                 VALUES ('Fixture',20,?1,'2026-11-25T00:00:00Z')",
+                [r#"{"category":"","age_min":25,"age_max":40,"height_min":150,"height_max":180,"selected":{"haarfarbe":["blond","schwarz"],"augenfarbe":["blau"]}}"#],
+            ).unwrap();
+            let run = db.last_insert_rowid();
+            db.execute("INSERT INTO search_results(search_run_id,listing_id,position,has_video) VALUES (?1,?2,1,1)", params![run, listing]).unwrap();
+            run
+        };
+        let context = |run_id, owner_id| serde_json::json!({
+            "kind":"run","run_id":run_id,"owner_id":owner_id,
+            "local":LocalVisibility {video_only:true,photos_only:true,..Default::default()}
+        }).to_string();
+        let projected = facts(&core, before, &context(run, person)).unwrap();
         assert_eq!(projected.traits.len(), 2);
-        assert_eq!(projected.filters[0].status, EvidenceStatus::No);
-        assert_eq!(projected.filters[1].status, EvidenceStatus::Yes);
-        assert_eq!(projected.filters[2].status, EvidenceStatus::Unknown);
+        let group = |key| projected.filters.iter().find(|group| group.group == key).unwrap();
+        assert_eq!(group("augenfarbe").status, EvidenceStatus::No);
+        assert_eq!(group("haarfarbe").status, EvidenceStatus::Yes);
+        assert_eq!(group("haarfarbe").options[1].status, EvidenceStatus::Unknown);
+        assert_eq!(group("age").status, EvidenceStatus::Unknown);
+        assert_eq!(group("height").status, EvidenceStatus::Unknown);
+        assert_eq!(group("radius").status, EvidenceStatus::Unknown);
+        assert_eq!(group("local_video").status, EvidenceStatus::Yes);
+        assert_eq!(group("local_photo").status, EvidenceStatus::No);
+        assert!(facts(&core, before, &context(run + 1, person)).unwrap().filters.is_empty());
+        assert!(facts(&core, before, &context(run, other)).unwrap().filters.is_empty());
+        assert!(facts(&core, after, &context(run, person)).unwrap().filters.is_empty());
+        assert!(facts(&core, before, "{}").unwrap().filters.is_empty());
         assert!(facts(&core, -1, "{}").is_err());
         let details = person_detail(&core, person).unwrap();
         assert_eq!(details.listings.len(), 2);
@@ -419,6 +693,20 @@ mod tests {
         assert!(crate::history::compare(&core, other, before, after).is_err());
         assert!(crate::history::compare(&core, person, before, unrelated).is_err());
         assert!(crate::history::compare(&core, person, before, -1).is_err());
+    }
+
+    #[test]
+    fn numeric_ranges_and_alternatives_preserve_unknown_and_negative_evidence() {
+        let traits = fields(Some(r#"{"Größe":["1,70 m"],"Alter":["32 Jahre"]}"#.into())).unwrap();
+        assert_eq!(known_height(&traits), Some(170));
+        assert_eq!(range_match("height", 150, 170, "cm", known_height(&traits)).status, EvidenceStatus::Yes);
+        assert_eq!(range_match("height", 171, 180, "cm", known_height(&traits)).status, EvidenceStatus::No);
+        let conflict = fields(Some(r#"{"Größe":["170 cm","175 cm"]}"#.into())).unwrap();
+        assert_eq!(known_height(&conflict), None);
+        let negative = FilterEvidence { group: "fixture".into(), label: "A".into(), status: EvidenceStatus::No };
+        let unknown = FilterEvidence { group: "fixture".into(), label: "B".into(), status: EvidenceStatus::Unknown };
+        assert_eq!(match_group("fixture".into(), vec![negative.clone(), unknown]).status, EvidenceStatus::Unknown);
+        assert_eq!(match_group("fixture".into(), vec![negative.clone(), negative]).status, EvidenceStatus::No);
     }
 
     #[test]

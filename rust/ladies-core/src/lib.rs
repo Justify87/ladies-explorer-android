@@ -143,7 +143,7 @@ pub use media::{DisplayImage, DisplayVideo, MediaArchiveReport};
 pub use operation::RequestControl;
 pub use prices::{PaidEncounter, PriceItem, PriceList, PriceListValues, PriceOverview};
 pub use profile_detail::{
-    EvidenceStatus, FilterEvidence, PersonDetail, PersonListing, ProfileFacts, ProfileField,
+    EvidenceStatus, FilterEvidence, FilterMatchGroup, PersonDetail, PersonListing, ProfileFacts, ProfileField,
     SnapshotDifference,
 };
 pub use saved_search::{
@@ -378,9 +378,9 @@ impl LadiesCore {
     pub fn profile_facts(
         &self,
         snapshot_id: i64,
-        filters_json: String,
+        context_json: String,
     ) -> Result<ProfileFacts, CoreError> {
-        profile_detail::facts(self, snapshot_id, &filters_json)
+        profile_detail::facts(self, snapshot_id, &context_json)
     }
 
     pub fn person_detail(&self, person_id: i64) -> Result<PersonDetail, CoreError> {
