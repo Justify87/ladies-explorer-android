@@ -60,6 +60,21 @@ class ProfileHeroLayoutTest {
         assertFalse(heroMediaGeometry(IntSize.Zero, IntSize(340, 600)).cropped)
     }
 
+    @Test fun photoGeometryExistsOnlyForCurrentCompletedDecodeAndRecomputesForResize() {
+        val portrait = IntSize(320, 360)
+        val wide = IntSize(640, 360)
+        val photo = IntSize(300, 360)
+        assertNull(settledHeroPhotoGeometry(portrait, null, true))
+        assertTrue(requireNotNull(settledHeroPhotoGeometry(portrait, photo, true)).cropped)
+        assertNull(settledHeroPhotoGeometry(portrait, null, true))
+        assertFalse(requireNotNull(settledHeroPhotoGeometry(portrait, IntSize(160, 360), true)).cropped)
+        assertNull(settledHeroPhotoGeometry(wide, null, true))
+        assertFalse(requireNotNull(settledHeroPhotoGeometry(wide, photo, true)).cropped)
+        assertFalse(requireNotNull(settledHeroPhotoGeometry(portrait, IntSize.Zero, true)).cropped)
+        assertNull(settledHeroPhotoGeometry(IntSize.Zero, photo, true))
+        assertFalse(requireNotNull(settledHeroPhotoGeometry(portrait, photo, false)).cropped)
+    }
+
     @Test fun favoriteTargetFitsActualImageOrAdjacentRestAreaWithConstantPadding() {
         val viewport = IntSize(340, 600)
         val fill = heroMediaGeometry(viewport, IntSize(340, 600))
