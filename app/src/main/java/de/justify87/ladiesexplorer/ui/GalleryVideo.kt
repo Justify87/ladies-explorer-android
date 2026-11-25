@@ -22,6 +22,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
+import de.justify87.ladiesexplorer.core.CoreStore
 import dev.jdtech.mpv.MPVLib
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /** Recognize only MP4/EBML headers and select the corresponding demuxer. */
@@ -47,9 +50,81 @@ private fun localVideo(file: File): LocalGalleryVideo? {
     return LocalGalleryVideo(file.canonicalFile, demuxer)
 }
 
-private data class LocalGalleryVideo(val file: File, val demuxer: String)
+internal data class LocalGalleryVideo(val file: File, val demuxer: String)
 
-/** The visible medium owns its temporary file and player; archive files are never deleted. */
+/** Bounded, process-local reuse of validated display files; active playback leases prevent eviction. */
+internal class GalleryVideoFiles(private val core: CoreStore) {
+    private data class Entry(val video: LocalGalleryVideo, val bytes: Long, var users: Int = 0)
+    private val gate = Mutex()
+    private val files = LinkedHashMap<String, Entry>(16, 0.75f, true)
+    private val budget = 256L * 1024L * 1024L
+
+    private fun trim() {
+        var total = files.values.sumOf { it.bytes }
+        val iterator = files.entries.iterator()
+        while (total > budget && iterator.hasNext()) {
+            val entry = iterator.next().value
+            if (entry.users == 0 && entry.video.file.delete()) {
+                total -= entry.bytes
+                iterator.remove()
+            }
+        }
+    }
+
+    suspend fun warm(item: ProfileMediaItem) = withVideo(item) { Unit }
+
+    suspend fun <T> withVideo(item: ProfileMediaItem, refresh: Boolean = false,
+        use: suspend (LocalGalleryVideo) -> T): T {
+        val archived = withContext(Dispatchers.IO) {
+            item.localPath?.let { runCatching { localVideo(File(it)) }.getOrNull() }
+        }
+        if (archived != null) return use(archived)
+        check(item.url.isNotBlank()) { "No video source" }
+        var lease: Entry? = null
+        try {
+            gate.withLock {
+                val existing = withContext(Dispatchers.IO) {
+                    files[item.url]?.let { entry ->
+                        if (entry.users == 0 && (refresh || !entry.video.file.isFile)) {
+                            if (!entry.video.file.exists() || entry.video.file.delete()) files.remove(item.url)
+                        }
+                    }
+                    files[item.url]
+                }
+                if (existing != null) {
+                    existing.users++
+                    lease = existing
+                } else {
+                    val download = core.loadDisplayVideo(item.url)
+                    withContext(Dispatchers.IO) {
+                        val destination = core.createDisplayVideoFile()
+                        try {
+                            destination.writeBytes(download.bytes)
+                            val video = checkNotNull(localVideo(destination)) { "Unsupported local video" }
+                            val entry = Entry(video, destination.length(), users = 1)
+                            files[item.url] = entry
+                            lease = entry
+                            trim()
+                        } catch (failure: Exception) {
+                            destination.delete()
+                            throw failure
+                        }
+                    }
+                }
+            }
+            return use(checkNotNull(lease).video)
+        } finally {
+            if (lease != null) withContext(NonCancellable + Dispatchers.IO) {
+                gate.withLock {
+                    checkNotNull(lease).users--
+                    trim()
+                }
+            }
+        }
+    }
+}
+
+/** The visible medium owns the player and a lease on its local file. */
 @Composable
 internal fun GalleryVideo(
     item: ProfileMediaItem,
@@ -77,31 +152,16 @@ internal fun GalleryVideo(
         if (!visible) return@LaunchedEffect
         snapshotFlow { playbackAllowed }.first { it }
         // Transient action locks must not trigger another download.
-        var temporary: File? = null
         try {
-            val archived = withContext(Dispatchers.IO) {
-                item.localPath?.let { runCatching { localVideo(File(it)) }.getOrNull() }
+            val app = context.applicationContext as LadiesApplication
+            app.galleryVideoFiles.withVideo(item, refresh = retry > 0) { prepared ->
+                file = prepared
+                awaitCancellation()
             }
-            if (archived != null) {
-                file = archived
-            } else {
-                check(item.url.isNotBlank()) { "No video source" }
-                val app = context.applicationContext as LadiesApplication
-                val download = app.coreStore.loadDisplayVideo(item.url)
-                file = withContext(Dispatchers.IO) {
-                    val destination = app.coreStore.createDisplayVideoFile()
-                    temporary = destination
-                    destination.writeBytes(download.bytes)
-                    checkNotNull(localVideo(destination)) { "Unsupported local video" }
-                }
-            }
-            awaitCancellation()
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (_: Exception) {
             failure = true
-        } finally {
-            withContext(NonCancellable + Dispatchers.IO) { temporary?.delete() }
         }
     }
     val video = file
