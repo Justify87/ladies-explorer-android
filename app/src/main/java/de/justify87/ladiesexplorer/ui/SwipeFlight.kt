@@ -13,6 +13,8 @@ internal data class SwipeFlight(
     val size: IntSize,
     val top: Int,
     val media: ProfileMediaItem?,
+    val left: Int = 0,
+    val cropped: Boolean = false,
 ) {
     val destination: Float get() = direction * (size.width.coerceAtLeast(1) * 1.2f)
 }
