@@ -49,13 +49,11 @@ internal fun ProfileShell(
     modifier: Modifier,
     listState: LazyListState,
     heroKey: String,
-    rootHeight: Dp = 0.dp,
     hasRail: Boolean,
     notices: List<ProfileNotice>,
     noticeOwner: Any?,
     header: @Composable (ProfileShellPresentation, ProfileNoticeIndicator?, () -> Unit) -> Unit,
     rail: @Composable (ProfileShellPresentation) -> Unit = {},
-    heroLeadingHeight: Dp? = null,
     rootNavigation: (@Composable () -> Unit)? = null,
     heroLeadingMeasure: (@Composable () -> Unit)? = null,
     content: @Composable (ProfileShellPresentation) -> Unit,
@@ -64,8 +62,8 @@ internal fun ProfileShell(
         derivedStateOf { listState.isProfileReading(heroKey) }
     }
     if (rootNavigation == null && heroLeadingMeasure == null) {
-        ProfileShellBody(modifier, listState, heroKey, rootHeight, hasRail, notices, noticeOwner,
-            header, rail, heroLeadingHeight, reading, null, content)
+        ProfileShellBody(modifier, listState, heroKey, 0.dp, hasRail, notices, noticeOwner,
+            header, rail, null, reading, null, content)
     } else {
         SubcomposeLayout(modifier.fillMaxSize()) { constraints ->
             val root = rootNavigation?.let { navigation ->
@@ -82,8 +80,8 @@ internal fun ProfileShell(
             val heroShellHeight = (constraints.maxHeight - rootPixels).coerceAtLeast(0)
             val shellHeight = if (reading) constraints.maxHeight else heroShellHeight
             val shell = subcompose("profile") {
-                ProfileShellBody(Modifier, listState, heroKey, root?.height?.toDp() ?: rootHeight,
-                    hasRail, notices, noticeOwner, header, rail, leading?.height?.toDp() ?: heroLeadingHeight,
+                ProfileShellBody(Modifier, listState, heroKey, root?.height?.toDp() ?: 0.dp,
+                    hasRail, notices, noticeOwner, header, rail, leading?.height?.toDp(),
                     reading, heroShellHeight.toDp(), content)
             }.single().measure(constraints.copy(minHeight = shellHeight, maxHeight = shellHeight))
             layout(constraints.maxWidth, constraints.maxHeight) {

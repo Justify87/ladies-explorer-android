@@ -99,7 +99,7 @@ internal fun DiscoverScreen(
     val videoFiles = (context.applicationContext as LadiesApplication).galleryVideoFiles
     val failures = remember(decks) { mutableStateMapOf<Pair<Long, Long>, SwipeReadFailure>() }
     val localRetries = remember(decks) { mutableStateMapOf<Pair<Long, Long>, Boolean>() }
-    var refreshTarget by remember(decks) { mutableStateOf<SwipeCardToken?>(null) }
+    var refreshTarget by remember(decks) { mutableStateOf<SwipeActionToken?>(null) }
     var activeRead by remember(decks) { mutableStateOf<Pair<Pair<Long, Long>, RequestControl>?>(null) }
     var activeWork by remember(decks) { mutableStateOf<Pair<Pair<Long, Long>, Job>?>(null) }
     DisposableEffect(decks) {
@@ -115,9 +115,7 @@ internal fun DiscoverScreen(
     val cardKey = card?.let { it.listingId to it.personId }
     val prepared = preparation.displayed(cardKey)?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
     val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
-        ?.let { decks[it] }?.takeIf { model -> prepared?.model?.let { shown ->
-            shown.local == model.local && shown.fromArchive == model.fromArchive && shown.warning == model.warning
-        } == true }
+        ?.let { decks[it] }?.takeIf { model -> prepared?.model == model }
     val displayed = prepared?.model
     val readError = cardKey?.let { failures[it] }?.takeIf { it.current }?.message
     val projectedToken = state.swipeToken(current)
@@ -137,7 +135,7 @@ internal fun DiscoverScreen(
     }
     SideEffect {
         onRenderedSwipe(token)
-        if (refreshTarget != state.cardToken()) refreshTarget = null
+        if (refreshTarget != null && refreshTarget != token) refreshTarget = null
         if (!decks.isCurrent(state.swipeExternalRevision)) {
             preparation.clear()
             refreshTarget = null
@@ -157,6 +155,8 @@ internal fun DiscoverScreen(
         activeWork?.takeIf { it.first !in windowKeys }?.second?.cancel()
     }
     val latestReadState by rememberUpdatedState(state)
+    val latestIsProfileCurrent by rememberUpdatedState(isProfileCurrent)
+    val latestPublishSwipe by rememberUpdatedState(onRenderedSwipe)
     val latestWindow by rememberUpdatedState(window)
     val latestReadVisible by rememberUpdatedState(visible)
     val latestSearch by rememberUpdatedState(active)
@@ -173,7 +173,8 @@ internal fun DiscoverScreen(
                         val currentRole = sameSwipeCard(candidate, latestWindow.firstOrNull())
                         val failure = failures[key]
                         val model = decks[candidate]
-                        if (model == null) swipeReadMayRetry(failure, currentRole)
+                        if (currentRole && refreshTarget != null) true
+                        else if (model == null) swipeReadMayRetry(failure, currentRole)
                         else heroSize.width > 0 && heroSize.height > 0 &&
                             !preparation.ready(model, filtersFor(candidate), heroSize)
                     }
@@ -182,14 +183,22 @@ internal fun DiscoverScreen(
                 videoFiles.retainPins(preparation, preparation.pinnedVideos())
                 if (!latestReadVisible || latestWindow.none { sameSwipeCard(it, target) }) continue
                 val work = launch(start = CoroutineStart.LAZY) {
+                    if (!latestReadVisible || latestWindow.none { sameSwipeCard(it, target) }) return@launch
+                    val live = latestReadState
+                    val currentRole = sameSwipeCard(target, latestWindow.firstOrNull())
+                    val pending = refreshTarget.takeIf { currentRole }
+                    val explicitRefresh = pending != null && decks[target]?.let { model ->
+                        swipeRefreshMatches(live, pending, model, target) && latestIsProfileCurrent(pending)
+                    } == true
+                    if (pending != null) refreshTarget = null
+                    if (explicitRefresh) {
+                        latestPublishSwipe(null)
+                        failures.remove(key)
+                        localRetries.remove(key)
+                        decks.remove(target.listingId)
+                    }
                     val model = decks[target]
                     if (model == null) {
-                        val live = latestReadState
-                        val currentRole = sameSwipeCard(target, latestWindow.firstOrNull())
-                        val explicitRefresh = currentRole && refreshTarget?.let {
-                            it == live.cardToken() && it.listingId == target.listingId && it.ownerId == target.personId
-                        } == true
-                        if (explicitRefresh) refreshTarget = null
                         val policy = if (explicitRefresh) SwipeReadPolicy(true, true) else swipeReadPolicy(currentRole, live.activeRunId, target.listingId,
                             localOnly = localRetries[key] == true || decks.requiresLocal(target) ||
                                 target.listingId in live.localProfileStrictIds,
@@ -357,18 +366,14 @@ internal fun DiscoverScreen(
         val refreshProfile: () -> Unit = {
             val subject = token?.takeIf(isProfileCurrent)
             if (subject != null && card != null && decks[card] != null && refreshTarget == null) {
-                refreshTarget = SwipeCardToken(SwipeDeckToken(subject.runId, subject.session), subject.listingId, subject.ownerId)
-                failures.remove(subject.listingId to subject.ownerId)
-                localRetries.remove(subject.listingId to subject.ownerId)
-                onRenderedSwipe(null)
-                decks.remove(subject.listingId)
+                refreshTarget = subject
             }
         }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero",
             hasRail = true, notices = notices, noticeOwner = controls,
             rootNavigation = rootNavigation,
             heroLeadingMeasure = {
-                Box(Modifier.fillMaxWidth().padding(horizontal = contentInset, bottom = ShellMetrics.inset)) {
+                Box(Modifier.fillMaxWidth().padding(start = contentInset, end = contentInset, bottom = ShellMetrics.inset)) {
                     DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
                 }
             },
@@ -378,7 +383,7 @@ internal fun DiscoverScreen(
                     Box {
                         ShellIconButton(onClick = { profileMenu = true }) { Icon(Icons.Default.MoreVert, "Profilaktionen") }
                         DropdownMenu(expanded = profileMenu, onDismissRequest = { profileMenu = false }) {
-                            DropdownMenuItem(text = { Text("Profil aktualisieren") }, enabled = actions,
+                            DropdownMenuItem(text = { Text("Profil aktualisieren") }, enabled = actions && refreshTarget == null,
                                 onClick = { profileMenu = false; refreshProfile() })
                             selectedMedia?.takeIf { it.kind == "IMAGE" }?.let { image ->
                                 DropdownMenuItem(text = { Text("Bild groß anzeigen") }, enabled = actions,
@@ -388,6 +393,9 @@ internal fun DiscoverScreen(
                                 DropdownMenuItem(text = { Text("Originalprofil öffnen") }, enabled = actions,
                                     onClick = { profileMenu = false; if (token?.let(isProfileCurrent) == true) openExternal(context, url) })
                             }
+                            if (token != null) DropdownMenuItem(
+                                text = { Text(if (token.favorite) "Favorit entfernen" else "Als Favorit speichern") },
+                                enabled = actions, onClick = { profileMenu = false; if (isProfileCurrent(token)) onFavorite(token) })
                             if (token != null && token.preference != Preference.NONE)
                                 DropdownMenuItem(text = { Text("Präferenz zurücksetzen") }, enabled = actions,
                                     onClick = { profileMenu = false; choose(Preference.NONE) })

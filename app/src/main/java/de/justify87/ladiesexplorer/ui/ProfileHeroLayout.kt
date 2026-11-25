@@ -24,10 +24,6 @@ internal data class ProfileShellBudget(
     val railInContent get() = rail == 0f
 }
 
-// A restored hero/detail position must not wait for a lazy row outside the viewport.
-internal fun awaitDiscoveryContext(measuredHeight: Int, firstVisibleItemIndex: Int): Boolean =
-    measuredHeight <= 0 && firstVisibleItemIndex == 0
-
 // The discovery context remains a separate stable lazy row. Short windows prioritize a
 // complete scrollable hero over squeezing it into the space remaining above the inline rail.
 internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float, leadingHeight: Float? = null): Float {

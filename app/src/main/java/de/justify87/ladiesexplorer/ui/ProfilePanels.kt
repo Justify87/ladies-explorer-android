@@ -12,7 +12,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
@@ -105,7 +104,6 @@ internal fun ProfileFlow(
     prices: PriceEditor? = null,
     fallbackIdentity: HeroIdentity? = null,
     fallbackMedia: List<ProfileMediaItem> = emptyList(),
-    onDiscoveryContextHeight: ((Int) -> Unit)? = null,
     preparedPanels: PreparedPanelData? = null,
     afterHeading: ProfileFlowRows.() -> Unit = {},
     afterDetails: ProfileFlowRows.() -> Unit = {},
@@ -280,9 +278,7 @@ internal fun ProfileFlow(
             val last = section != null && rows.getOrNull(index + 1)?.section != section
             val gap = if (index == rows.lastIndex || section != null && !last) 0.dp else ShellMetrics.inset
             val horizontal = if (paddedDetails && row.key != "hero" && row.key != "media") contentInset else 0.dp
-            val measure = if (row.key == "discover-context" && onDiscoveryContextHeight != null)
-                Modifier.onSizeChanged { onDiscoveryContextHeight(it.height) } else Modifier
-            Column(Modifier.fillMaxWidth().then(measure).padding(horizontal = horizontal).padding(bottom = gap)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = horizontal).padding(bottom = gap)) {
                 if (section != null) {
                     if (first) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Column(Modifier.fillMaxWidth().padding(bottom = if (first) 0.dp else ShellMetrics.small),

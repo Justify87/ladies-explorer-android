@@ -90,7 +90,7 @@ internal fun ProfileDetailScreen(
         it.person.preference, it.person.favorite) }
     var selectedMedia by remember(state.profileSessionId, owner) { mutableStateOf<ProfileMediaItem?>(null) }
     var fullImage by remember(state.profileSessionId, owner) { mutableStateOf<ProfileMediaItem?>(null) }
-    var galleryMenu by remember(state.profileSessionId, owner, selectedMedia?.presentationKey()) { mutableStateOf(false) }
+    var galleryMenu by remember(state.profileSessionId, owner, renderedToken, selectedMedia?.presentationKey()) { mutableStateOf(false) }
     val latestSelected by rememberUpdatedState(selectedMedia)
     fullImage?.takeIf { item -> displayed?.media?.any { it.presentationKey() == item.presentationKey() } == true }
         ?.let { ProfileImageDialog(it) { fullImage = null } }

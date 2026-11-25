@@ -60,28 +60,36 @@ class DiscoveryDesignDeviceTest {
                 LadiesTheme(darkTheme = dark) {
                     pxPerDp = LocalDensity.current.density
                     list = rememberLazyListState()
-                    var measuredContext by remember { mutableIntStateOf(0) }
-                    val appliedContextHeight = measuredContext
                     val deck = SwipeDeckToken(null, 1)
                     val token = SwipeActionToken(null, 1, 4, 1, 11, model.revision, Preference.NONE, false, emptyList())
                     val controls = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1), token,
                         true, true, AvailabilityMode.All, false, true)
                     Column(Modifier.fillMaxSize()) {
-                        ProfileShell(Modifier.weight(1f), list, "hero", rootHeight = 64.dp,
+                        ProfileShell(Modifier.weight(1f), list, "hero",
                             hasRail = true, notices = emptyList(), noticeOwner = controls,
-                            heroLeadingHeight = with(LocalDensity.current) { appliedContextHeight.toDp() },
+                            rootNavigation = {
+                                Box(Modifier.fillMaxWidth().testTag("root-nav")) {
+                                    RootNavigation(RootDestination.Discover, true, false, {})
+                                }
+                            },
+                            heroLeadingMeasure = {
+                                Box(Modifier.fillMaxWidth().padding(start = shellContentInset(),
+                                    end = shellContentInset(), bottom = ShellMetrics.inset)) {
+                                    DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
+                                }
+                            },
                             header = { _, _, _ -> Row(Modifier.fillMaxSize().testTag("header")) {
                                 Text("Entdecken", Modifier.weight(1f))
                                 AvailabilityQuickChoice(AvailabilityMode.All, true, deck, {})
                             } },
-                            rail = {
+                            rail = { presentation ->
                                 Box(Modifier.fillMaxSize().testTag("rail")) {
-                                    SwipeDecisionControls(controls, "Fixture", {}, {}, {})
+                                    SwipeDecisionControls(controls, "Fixture", {}, {}, {}, reading = presentation.reading)
                                 }
                             }) { presentation ->
                             ProfileFlow(list, model, "{}", token, false, emptyMap(), notes, { true }, { _, _ -> },
                                 Modifier.fillMaxSize().testTag("profile-flow"), paddedDetails = true, panelReads = reads,
-                                onDiscoveryContextHeight = { measuredContext = it }) {
+                                contentPadding = PaddingValues(bottom = presentation.readingExtraSpace)) {
                                 item("discover-context") {
                                     Box(Modifier.testTag("context")) {
                                         DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
@@ -89,21 +97,13 @@ class DiscoveryDesignDeviceTest {
                                 }
                                 item("hero") {
                                     Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) {
-                                        if (awaitDiscoveryContext(appliedContextHeight, list.firstVisibleItemIndex))
-                                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
-                                        else ProfileMediaHero(model.media, presentation.heroHeight, Modifier.testTag("hero"),
+                                        ProfileMediaHero(model.media, presentation.heroHeight, Modifier.testTag("hero"),
                                             actionsEnabled = true, isCurrent = { true }, selection = mediaSelection,
                                             favorite = false, onFavorite = {}, actionToken = token,
-                                            compact = presentation.budget.compactGallery, onVisual = {
-                                                if (it != null) assertTrue(appliedContextHeight > 0 || list.firstVisibleItemIndex > 0)
-                                                visual = it
-                                            })
+                                            compact = presentation.budget.compactGallery, onVisual = { visual = it })
                                     }
                                 }
                             }
-                        }
-                        Box(Modifier.fillMaxWidth().testTag("root-nav")) {
-                            RootNavigation(RootDestination.Discover, true, false, {})
                         }
                     }
                 }

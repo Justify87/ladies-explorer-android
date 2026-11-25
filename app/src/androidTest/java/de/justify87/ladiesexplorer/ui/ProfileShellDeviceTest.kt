@@ -235,7 +235,7 @@ class ProfileShellDeviceTest {
                 val list = rememberLazyListState()
                 val scope = rememberCoroutineScope()
                 jump = { index, offset -> scope.launch { list.scrollToItem(index, offset) } }
-                ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero", rootHeight = 80.dp,
+                ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero",
                     hasRail = true, notices = emptyList(), noticeOwner = "fixture",
                     header = { presentation, _, _ ->
                         Box(Modifier.fillMaxSize().testTag("header")) {
