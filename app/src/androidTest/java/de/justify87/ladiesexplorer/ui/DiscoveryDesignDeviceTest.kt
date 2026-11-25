@@ -431,6 +431,40 @@ class DiscoveryDesignDeviceTest {
         }
     }
 
+    @Test fun gridProjectionPendingAndFailureDoNotReplaceValidScrollAnchor() {
+        val rows = (1L..24L).map { id ->
+            DiscoveryCard(id, id, "Fixture $id", "Ort", null, null, null, Preference.NONE,
+                false, false, false, false, null)
+        }
+        val run = SearchResponse(
+            query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
+            local = defaultLocalVisibility(), searchRunId = 7L, city = "Leipzig",
+            requestedRadiusKm = 20u, serverCount = 24u, totalPages = 1u, fetchedPages = 1u,
+            partial = false, radiusBoundaryStopped = false, radiusVerified = true, profiles = emptyList(),
+        )
+        var search by mutableStateOf(SearchUiState().acceptRun(run, rows))
+        val discovery = DiscoverUiState(activeRunId = 7L, loading = false)
+        rule.setContent {
+            LadiesTheme {
+                DiscoveryGridScreen(discovery, search, onLoadMore = {}, onDecision = { _, _ -> },
+                    onUndo = {}, onProfile = {}, chrome = {}, onCancelSearch = {},
+                    modifier = Modifier.width(360.dp).height(480.dp))
+            }
+        }
+        val grid = rule.onNode(hasScrollToIndexAction())
+        grid.performScrollToKey(9L)
+        val profile = rule.onNodeWithContentDescription("Fixture 9")
+        val top = profile.fetchSemanticsNode().boundsInRoot.top
+        rule.runOnIdle { search = search.copy(activeProjectionPending = true) }
+        profile.assertDoesNotExist()
+        rule.runOnIdle { search = search.copy(activeCards = emptyList(), activeProjectionPending = false,
+            activeProjectionError = "Synthetischer Lesefehler") }
+        profile.assertDoesNotExist()
+        rule.runOnIdle { search = search.acceptRun(run, rows) }
+        profile.assertIsDisplayed()
+        assertEquals(top, profile.fetchSemanticsNode().boundsInRoot.top, 2f)
+    }
+
     @Test fun gridReturnKeepsVisibleListingWhenEarlierMembersDisappear() {
         var route by mutableStateOf(ShellRoute().select(DiscoverMode.Grid))
         var rows by mutableStateOf((1L..24L).map { id ->
