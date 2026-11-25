@@ -30,7 +30,7 @@ class MapDesignDeviceTest {
                         state = MapUiState(overview = MapOverview(listOf(profile, second), 3u, 1u, 1u),
                             resolving = resolving, cancelling = cancelling),
                         tileState = MapTileState.Failed, active = profile, selectionCount = 2,
-                        profileEnabled = true, onRefresh = { actions.add("refresh") },
+                        profileEnabled = true,
                         onCancel = { actions.add("cancel"); cancelling = true },
                         onRetryTiles = { actions.add("tiles") }, onPickAll = { actions.add("all") },
                         onPickLocation = { actions.add("location") }, onClear = { actions.add("clear") },
@@ -42,7 +42,8 @@ class MapDesignDeviceTest {
         rule.onNodeWithText("Karte erneut laden").performScrollTo().performClick()
         rule.onNodeWithText("Standorte auflösen").assertDoesNotExist()
         rule.onNodeWithText("Stadtbereich · Leipzig").assertExists()
-        rule.onNodeWithText("Aktualisieren").assertIsNotEnabled()
+        rule.onNodeWithText("Aktualisieren").assertDoesNotExist()
+        rule.onNodeWithText("2 von 3 Profilen kartiert · 1 ohne Position").assertDoesNotExist()
         rule.onNodeWithText("Abbrechen").performScrollTo().performClick()
         rule.onNodeWithText("Wird abgebrochen …").assertIsNotEnabled()
         rule.onNodeWithText("2 Profile am ungefähren Ort").performScrollTo().performClick()
