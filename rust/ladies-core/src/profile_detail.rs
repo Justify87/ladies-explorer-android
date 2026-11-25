@@ -885,6 +885,92 @@ mod tests {
     }
 
     #[test]
+    fn saved_match_requires_visible_membership_and_preserves_missing_markers() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(None).unwrap();
+        let listing = core
+            .add_listing(person, None, "LADIES".into(), "11".into(), None)
+            .unwrap();
+        let mut request = SearchRequest::for_test();
+        request.age_min = 25;
+        request.age_max = 40;
+        let id = crate::saved_search::save_with_local(
+            &core,
+            "Fixture".into(),
+            request,
+            LocalVisibility {
+                video_only: true,
+                photos_only: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let snapshot = {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots (listing_id,fingerprint,traits_json)
+                 VALUES (?1,'saved',?2)",
+                params![listing, r#"{"Alter":["32 Jahre"]}"#],
+            )
+            .unwrap();
+            let snapshot = db.last_insert_rowid();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
+                params![snapshot, listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE saved_searches SET last_run_at='2000-01-01' WHERE saved_search_id=?1",
+                [&id],
+            )
+            .unwrap();
+            db.execute(
+                "INSERT INTO saved_search_results
+                 (saved_search_id,result_key,snapshot_json,position,present,visible)
+                 VALUES (?1,'11','{}',0,1,1)",
+                [&id],
+            )
+            .unwrap();
+            snapshot
+        };
+        let context = serde_json::json!({
+            "kind":"saved","saved_id":id,"owner_id":person
+        })
+        .to_string();
+        let status = |key: &str| {
+            facts(&core, snapshot, &context)
+                .unwrap()
+                .filters
+                .into_iter()
+                .find(|group| group.group == key)
+                .unwrap()
+                .status
+        };
+        assert_eq!(status("age"), EvidenceStatus::Yes);
+        assert_eq!(status("local_video"), EvidenceStatus::Unknown);
+        assert_eq!(status("local_photo"), EvidenceStatus::Unknown);
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE saved_search_results SET snapshot_json=?1 WHERE saved_search_id=?2",
+                params![r#"{"has_video":true,"thumbnail_url":null}"#, id],
+            )
+            .unwrap();
+        }
+        assert_eq!(status("local_video"), EvidenceStatus::Yes);
+        assert_eq!(status("local_photo"), EvidenceStatus::No);
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE saved_search_results SET visible=0 WHERE saved_search_id=?1",
+                [&id],
+            )
+            .unwrap();
+        }
+        assert!(facts(&core, snapshot, &context).unwrap().filters.is_empty());
+    }
+
+    #[test]
     fn numeric_ranges_and_alternatives_preserve_unknown_and_negative_evidence() {
         let traits = fields(Some(r#"{"Größe":["1,70 m"],"Alter":["32 Jahre"]}"#.into())).unwrap();
         assert_eq!(known_height(&traits), Some(170));
