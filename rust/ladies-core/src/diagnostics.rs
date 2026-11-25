@@ -157,6 +157,13 @@ impl Diagnostics {
         });
     }
 
+    pub(crate) fn warn(&self, component: &str, message: impl AsRef<str>) {
+        let message = message.as_ref();
+        tracing::dispatcher::with_default(&self.dispatch, || {
+            tracing::warn!(component = %component, message = %message);
+        });
+    }
+
     pub(crate) fn error(&self, component: &str, message: impl AsRef<str>) {
         let message = message.as_ref();
         tracing::dispatcher::with_default(&self.dispatch, || {

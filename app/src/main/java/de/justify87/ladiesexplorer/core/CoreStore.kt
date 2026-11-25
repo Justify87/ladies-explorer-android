@@ -9,6 +9,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.security.MessageDigest
+import kotlinx.coroutines.CancellationException
 
 /** Global result policy is independent of stored search definitions and replay. */
 data class GlobalResultVisibility(val hideLikes: Boolean = false, val hideDislikes: Boolean = false) {
@@ -16,6 +18,19 @@ data class GlobalResultVisibility(val hideLikes: Boolean = false, val hideDislik
         hideLikes = local.hideLikes || hideLikes,
         hideDislikes = local.hideDislikes || hideDislikes,
     )
+}
+
+/** Session correlation without exporting the source URL or local path. */
+internal fun mediaDiagnosticKey(value: String): String =
+    MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+        .take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+internal fun diagnosticFailure(failure: Throwable): String {
+    val causes = generateSequence(failure) { it.cause?.takeUnless { next -> next === it } }
+        .take(4).joinToString(">") { it.javaClass.simpleName }
+    val frames = failure.stackTrace.filter { it.className.startsWith("de.justify87.") }
+        .take(3).joinToString(",") { "${it.className.substringAfterLast('.')}. ${it.methodName}:${it.lineNumber}" }
+    return "type=$causes frames=$frames"
 }
 
 class CoreStore(context: Context) {
@@ -58,6 +73,10 @@ class CoreStore(context: Context) {
         diagnosticExports.listFiles()
             ?.filter { it.isFile && it.name.startsWith("ladies-debug-") && it.lastModified() < oldestAllowed }
             ?.forEach(File::delete)
+        logBridge.barrier()
+        val (dropped, failed) = logBridge.lossSummary()
+        if (dropped != 0L || failed != 0L) engine.recordKotlinEvent("DIAGNOSTICS",
+            "bridge_loss dropped=$dropped failed=$failed", DiagnosticLevel.WARN)
         File(engine.exportDiagnosticSnapshot(diagnosticExports.absolutePath))
     }
 
@@ -68,15 +87,26 @@ class CoreStore(context: Context) {
         engine.setDiagnosticDebugEnabled(enabled)
     }
 
-    private fun event(operation: String, durationMs: Long, failure: Exception? = null) {
-        val message = if (failure == null) {
-            "$operation completed duration_ms=$durationMs"
-        } else {
-            "$operation failed duration_ms=$durationMs type=${failure.javaClass.simpleName}"
+    internal fun diagnostic(component: String, level: DiagnosticLevel, message: String, failure: Throwable? = null) {
+        if (level == DiagnosticLevel.DEBUG && !isDebugLoggingEnabled()) return
+        val safe = if (failure == null) message else "$message ${diagnosticFailure(failure)}"
+        when (level) {
+            DiagnosticLevel.DEBUG -> logger.d { "$component $safe" }
+            DiagnosticLevel.INFO -> logger.i { "$component $safe" }
+            DiagnosticLevel.WARN -> logger.w { "$component $safe" }
+            DiagnosticLevel.ERROR -> logger.e { "$component $safe" }
         }
-        if (failure == null) logger.i { message } else logger.e(failure) { message }
-        logBridge.offer {
-            runCatching { engine.recordKotlinEvent("ANDROID", message, false) }
+        val critical = level == DiagnosticLevel.WARN || level == DiagnosticLevel.ERROR
+        if (!logBridge.offer(critical) { engine.recordKotlinEvent(component, safe, level) } && critical) {
+            logger.w { "Diagnostic bridge saturated; loss reported in export" }
+        }
+    }
+
+    private fun event(operation: String, durationMs: Long, failure: Exception? = null) {
+        when (failure) {
+            null -> diagnostic("ANDROID", DiagnosticLevel.INFO, "$operation completed duration_ms=$durationMs")
+            is CancellationException -> diagnostic("ANDROID", DiagnosticLevel.DEBUG, "$operation cancelled duration_ms=$durationMs")
+            else -> diagnostic("ANDROID", DiagnosticLevel.ERROR, "$operation failed duration_ms=$durationMs", failure)
         }
     }
 

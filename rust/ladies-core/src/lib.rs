@@ -89,6 +89,14 @@ impl Preference {
     }
 }
 
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
+pub enum DiagnosticLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct DiagnosticStatus {
     pub available: bool,
@@ -218,11 +226,12 @@ impl LadiesCore {
         }))
     }
 
-    pub fn record_kotlin_event(&self, component: String, message: String, detailed: bool) {
-        if detailed {
-            self.diagnostics.debug(&component, message);
-        } else {
-            self.diagnostics.event(&component, message);
+    pub fn record_kotlin_event(&self, component: String, message: String, level: DiagnosticLevel) {
+        match level {
+            DiagnosticLevel::Debug => self.diagnostics.debug(&component, message),
+            DiagnosticLevel::Info => self.diagnostics.event(&component, message),
+            DiagnosticLevel::Warn => self.diagnostics.warn(&component, message),
+            DiagnosticLevel::Error => self.diagnostics.error(&component, message),
         }
     }
 
@@ -1165,7 +1174,7 @@ mod tests {
             .map(|(core, label)| {
                 thread::spawn(move || {
                     for n in 0..200 {
-                        core.record_kotlin_event("TEST".into(), format!("{label}-{n}"), false);
+                        core.record_kotlin_event("TEST".into(), format!("{label}-{n}"), DiagnosticLevel::Info);
                     }
                 })
             })

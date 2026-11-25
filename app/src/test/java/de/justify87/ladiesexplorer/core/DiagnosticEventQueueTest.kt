@@ -26,6 +26,8 @@ class DiagnosticEventQueueTest {
             val secondRan = CountDownLatch(1)
             assertTrue(queue.offer { secondRan.countDown() })
             assertFalse(queue.offer { error("This event must be rejected") })
+            assertTrue(queue.offer(critical = true) { })
+            assertEquals(1L to 0L, queue.lossSummary())
 
             val barrierStarted = CountDownLatch(1)
             val barrier = awaiting.submit {
