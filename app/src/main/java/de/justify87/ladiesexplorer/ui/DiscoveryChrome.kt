@@ -8,7 +8,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -21,15 +26,22 @@ internal fun AvailabilityQuickChoice(availability: AvailabilityMode, enabled: Bo
     val latestEnabled by rememberUpdatedState(enabled)
     val latestAction by rememberUpdatedState(onAvailability)
     DisposableEffect(Unit) { onDispose { opened = false } }
+    val style = MaterialTheme.typography.labelLarge
+    val measurer = rememberTextMeasurer()
+    val labelWidth = with(LocalDensity.current) {
+        AvailabilityMode.entries.maxOf { measurer.measure(AnnotatedString(it.label + " ▾"), style).size.width }.toDp()
+    }
     Box(modifier) {
         TextButton(onClick = { opened = true }, enabled = enabled,
-            modifier = Modifier.sizeIn(minWidth = ShellMetrics.touch, minHeight = ShellMetrics.touch).shellFocus(),
+            modifier = Modifier.sizeIn(minWidth = maxOf(ShellMetrics.touch, labelWidth + ShellMetrics.small * 2),
+                minHeight = ShellMetrics.touch).shellFocus(),
             contentPadding = PaddingValues(horizontal = ShellMetrics.small)) {
-            Text(availability.label + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(availability.label + " ▾", style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         DropdownMenu(expanded = opened && enabled, onDismissRequest = { opened = false }) {
             AvailabilityMode.entries.forEach { mode ->
                 DropdownMenuItem(text = { Text(if (mode == availability) "✓ ${mode.label}" else mode.label) },
+                    modifier = Modifier.semantics { selected = mode == availability },
                     onClick = {
                         if (opened && latestEnabled && latestOwner == owner) {
                             opened = false
@@ -43,7 +55,7 @@ internal fun AvailabilityQuickChoice(availability: AvailabilityMode, enabled: Bo
 
 @Composable
 internal fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode) -> Unit,
-    modifier: Modifier = Modifier.padding(horizontal = ShellMetrics.inset)) {
+    modifier: Modifier = Modifier.padding(horizontal = shellContentInset())) {
     val scheme = MaterialTheme.colorScheme
     Surface(modifier.fillMaxWidth(), color = scheme.surfaceContainer, shape = MaterialTheme.shapes.small) {
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),

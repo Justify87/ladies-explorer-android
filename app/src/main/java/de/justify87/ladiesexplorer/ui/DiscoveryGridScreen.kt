@@ -50,6 +50,7 @@ internal fun DiscoveryGridScreen(
     modifier: Modifier = Modifier,
     touchGate: ProfileTouchGate? = null,
 ) {
+    val contentInset = shellContentInset()
     val cards = gridCards(discovery, search)
     val active = search.response != null
     val emptyState = discoveryEmptyState(discovery, search)
@@ -103,13 +104,13 @@ internal fun DiscoveryGridScreen(
             }
         }
         Column(Modifier.fillMaxSize()) {
-            if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = ShellMetrics.inset)) { chrome() }
+            if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = contentInset)) { chrome() }
             if (!inlineChrome && undoAction != null) GridUndoButton(undoAction, canUndo, onUndo)
             LazyVerticalGrid(
                 columns = profileGridCells(),
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = ShellMetrics.inset, vertical = ShellMetrics.small),
+                contentPadding = PaddingValues(horizontal = contentInset, vertical = ShellMetrics.small),
                 horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small),
                 verticalArrangement = Arrangement.spacedBy(ShellMetrics.small),
             ) {

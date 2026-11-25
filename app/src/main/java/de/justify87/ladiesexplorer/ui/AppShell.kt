@@ -18,6 +18,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,7 +34,16 @@ internal object ShellMetrics {
     val icon = 24.dp
     val decisionRail = 72.dp
     val secondaryAction = 36.dp
+
+    fun contentInset(widthDp: Int) = when {
+        widthDp >= 600 -> section
+        widthDp < 216 -> 0.dp
+        else -> inset
+    }
 }
+
+@Composable
+internal fun shellContentInset() = ShellMetrics.contentInset(LocalConfiguration.current.screenWidthDp)
 
 internal fun shellFocusColor(dark: Boolean) = if (dark) Color(0xFFFFC18D) else Color(0xFF8E350B)
 
@@ -67,12 +77,13 @@ internal fun AppHeader(
     backEnabled: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    val inset = shellContentInset()
     ShellHeaderSurface {
         Row(
             Modifier.fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .heightIn(min = ShellMetrics.header)
-                .padding(start = if (onBack == null) ShellMetrics.inset else ShellMetrics.gap, end = ShellMetrics.inset),
+                .padding(start = if (onBack == null) inset else ShellMetrics.gap, end = inset),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (onBack != null) ShellIconButton(onBack, backEnabled) {
@@ -99,7 +110,7 @@ internal fun RootNavigation(
         Row(
             Modifier.fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-                .padding(horizontal = ShellMetrics.inset)
+                .padding(horizontal = shellContentInset())
                 .height(IntrinsicSize.Min)
                 .selectableGroup(),
             verticalAlignment = Alignment.CenterVertically,

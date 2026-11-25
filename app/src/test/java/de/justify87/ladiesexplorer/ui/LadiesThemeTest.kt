@@ -34,11 +34,21 @@ class LadiesThemeTest {
             scheme.primary to scheme.surfaceContainerHighest,
             scheme.onSurfaceVariant to scheme.surfaceContainerHighest,
             scheme.onSurfaceVariant to scheme.surfaceContainer,
+            scheme.onSurfaceVariant to scheme.surfaceContainerLow,
+            scheme.primary to scheme.surfaceContainerLow,
+            scheme.onSurface to scheme.surfaceContainer,
             scheme.error to scheme.surfaceContainerHighest,
         )
         pairs.forEach { (foreground, background) ->
             assertTrue("Insufficient contrast: $foreground on $background", contrast(foreground, background) >= 4.5f)
         }
+    }
+
+    @Test fun contentInsetUsesCompactAndExpandedRaster() {
+        assertEquals(ShellMetrics.inset, ShellMetrics.contentInset(360))
+        assertEquals(ShellMetrics.inset, ShellMetrics.contentInset(599))
+        assertEquals(ShellMetrics.section, ShellMetrics.contentInset(600))
+        assertEquals(0f, ShellMetrics.contentInset(192).value, .01f)
     }
 
     @Test fun brandAndReadableRoles() {

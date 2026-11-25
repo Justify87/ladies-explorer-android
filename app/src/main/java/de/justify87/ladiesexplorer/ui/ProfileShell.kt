@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -133,7 +134,8 @@ internal fun ProfileShell(
 /** Keep header height and line budgets stable across identity modes. */
 @Composable
 internal fun ProfileShellTitle(title: String, context: String, status: String, short: Boolean,
-    modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    modifier: Modifier = Modifier, onClick: (() -> Unit)? = null,
+    titleStyle: TextStyle = MaterialTheme.typography.titleMedium) {
     val click = if (onClick == null) Modifier else Modifier.shellFocus().clickable(role = Role.Button, onClick = onClick)
     Column(modifier.then(click).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
         if (short && LocalDensity.current.fontScale >= 1.5f) {
@@ -141,7 +143,7 @@ internal fun ProfileShellTitle(title: String, context: String, status: String, s
             Text(listOf(context, title).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.labelMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         } else {
-            Text(title, style = if (short) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
+            Text(title, style = if (short) MaterialTheme.typography.labelLarge else titleStyle,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (context.isNotBlank()) Text(context, style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

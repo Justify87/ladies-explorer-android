@@ -1,5 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -8,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -99,7 +101,8 @@ class AppShellDeviceTest {
                 val fittedDensity = minOf(outer.density,
                     maxWidth.value * outer.density / widths[index],
                     maxHeight.value * outer.density / heights[index])
-                CompositionLocalProvider(LocalDensity provides Density(fittedDensity, scale)) {
+                val configuration = Configuration(LocalConfiguration.current).apply { screenWidthDp = widths[index] }
+                CompositionLocalProvider(LocalDensity provides Density(fittedDensity, scale), LocalConfiguration provides configuration) {
                     LadiesTheme(darkTheme = dark) {
                         pixelsPerDp = fittedDensity
                         Column(Modifier.size(widths[index].dp, heights[index].dp)) {
@@ -108,7 +111,7 @@ class AppShellDeviceTest {
                                     Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
                                 }
                             }
-                            DiscoverModeSwitcher(DiscoverMode.Grid, {}, Modifier)
+                            DiscoverModeSwitcher(DiscoverMode.Grid, {})
                             Spacer(Modifier.weight(1f))
                             val deck = SwipeDeckToken(null, 1)
                             val context = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1),
@@ -153,6 +156,11 @@ class AppShellDeviceTest {
                 assertEquals(left.top, right.top, 1f)
             }
             assertTrue(decisions.last().bottom <= destinations.first().top + 1f)
+            assertEquals(modes.first().left, destinations.first().left, 1f)
+            assertEquals(modes.last().right, destinations.last().right, 1f)
+            decisions.zip(destinations).forEach { (action, destination) ->
+                assertEquals(action.center.x, destination.center.x, 1.5f)
+            }
             assertTrue(visible[0].width < visible[1].width && visible[2].width < visible[3].width)
             assertEquals(visible[0].width, visible[2].width, 1f)
             assertEquals(visible[1].width, visible[3].width, 1f)

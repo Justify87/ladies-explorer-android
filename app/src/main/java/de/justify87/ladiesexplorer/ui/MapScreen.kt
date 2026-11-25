@@ -133,7 +133,7 @@ internal fun MapScreen(
         DiscoverModeSwitcher(DiscoverMode.Map, { mode ->
             cameraReader?.invoke()?.let { camera = it }
             onMode(mode)
-        }, Modifier.padding(horizontal = ShellMetrics.inset))
+        }, Modifier.padding(horizontal = shellContentInset()))
         searchStatus()
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
             val panelHeight = maxHeight * .65f

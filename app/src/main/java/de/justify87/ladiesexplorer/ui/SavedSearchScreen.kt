@@ -60,7 +60,7 @@ internal fun SavedSearchOverview(
             dismissButton = { TextButton(onClick = { controller.dismissDialog(SavedDialogAction(dialog, state.actionGeneration)) }, enabled = !state.blockingNavigation) { Text("Abbrechen") } },
         )
     }
-    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(ShellMetrics.inset),
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = shellContentInset(), vertical = ShellMetrics.inset),
         verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -125,7 +125,8 @@ internal fun SavedSearchResultsScreen(
     // Restore the saved scroll position against loaded results, not an empty grid.
     val grid = rememberLazyGridState()
     if (!result.ready || state.resultDirty) {
-        Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier.fillMaxSize().padding(horizontal = shellContentInset(), vertical = ShellMetrics.section),
+            verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
             if (state.busy || state.resultDirty) CircularProgressIndicator()
             else {
                 Text(state.error ?: "Ergebnisse konnten nicht geladen werden", color = MaterialTheme.colorScheme.error)
@@ -146,7 +147,7 @@ internal fun SavedSearchResultsScreen(
     }
     val info = state.searches.firstOrNull { it.searchId == result.id }
     LazyVerticalGrid(columns = profileGridCells(), state = grid, modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(ShellMetrics.inset), horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small),
+        contentPadding = PaddingValues(horizontal = shellContentInset(), vertical = ShellMetrics.inset), horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small),
         verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
         item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
             ScreenGroup {

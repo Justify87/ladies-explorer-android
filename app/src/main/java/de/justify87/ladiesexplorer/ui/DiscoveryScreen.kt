@@ -74,6 +74,7 @@ internal fun DiscoverScreen(
     val deckToken = state.deckToken()
     val cardToken = state.cardToken().takeIf { card != null }
     val context = LocalContext.current
+    val contentInset = shellContentInset()
     val core = (context.applicationContext as LadiesApplication).coreStore
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     val started = lifecycle.isAtLeast(Lifecycle.State.STARTED)
@@ -327,14 +328,14 @@ internal fun DiscoverScreen(
         ) { presentation ->
             Box(Modifier.fillMaxSize().clipToBounds()) {
             if (card == null) {
-                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(ShellMetrics.inset),
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = contentInset, vertical = ShellMetrics.small),
                     verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
                     item(key = "discover-context") {
                         DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode, Modifier)
                     }
                     if (presentation.budget.railInContent) item {
                         SwipeDecisionControls(controls, identity?.title, undo, skip, choose,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
+                            modifier = Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch), horizontalInset = 0.dp)
                     }
                     item {
                         val emptyState = discoveryEmptyState(state, search)
@@ -386,10 +387,10 @@ internal fun DiscoverScreen(
                     }
                     if (presentation.budget.railInContent) item(key = "compact-decisions") {
                         SwipeDecisionControls(controls, identity?.title, undo, skip, choose,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
+                            modifier = Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch), horizontalInset = 0.dp)
                     }
                     item(key = "hero") {
-                        Box(Modifier.fillMaxWidth().padding(horizontal = ShellMetrics.inset)) {
+                        Box(Modifier.fillMaxWidth().padding(horizontal = contentInset)) {
                             ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
                             onSwipe = if (actions) ({ decision ->
@@ -417,7 +418,7 @@ internal fun DiscoverScreen(
             val oldMedia = old?.media
             if (old != null && oldMedia != null && old.size.width > 0 && old.size.height > 0) {
                 val density = LocalDensity.current
-                Box(Modifier.offset { IntOffset(ShellMetrics.inset.roundToPx(), old.top) }
+                Box(Modifier.offset { IntOffset(contentInset.roundToPx(), old.top) }
                     .size(with(density) { old.size.width.toDp() }, with(density) { old.size.height.toDp() })
                     .graphicsLayer {
                         translationX = motion.value
@@ -444,8 +445,9 @@ private fun SwipeShellHeader(
     compactNotice: ProfileNoticeIndicator?, onNotice: () -> Unit,
     onAvailability: (AvailabilityMode) -> Unit,
 ) {
-    Row(Modifier.fillMaxSize().padding(horizontal = ShellMetrics.inset), verticalAlignment = Alignment.CenterVertically) {
-        ProfileShellTitle("Entdecken", sourceContext, "", presentation.budget.shortHeader, Modifier.weight(1f))
+    Row(Modifier.fillMaxSize().padding(horizontal = shellContentInset()), verticalAlignment = Alignment.CenterVertically) {
+        ProfileShellTitle("Entdecken", sourceContext, "", presentation.budget.shortHeader, Modifier.weight(1f),
+            titleStyle = MaterialTheme.typography.titleLarge)
         if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
         AvailabilityQuickChoice(context.availability, context.availabilityEnabled, context.deck, onAvailability)
     }
@@ -464,12 +466,13 @@ private fun SwipeDeckActions(context: SwipeControlsContext, onRefresh: () -> Uni
 
 @Composable
 internal fun SwipeDecisionControls(context: SwipeControlsContext, profileTitle: String?, onUndo: () -> Unit,
-    onSkip: () -> Unit, onChoose: (Preference) -> Unit, modifier: Modifier = Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface)) {
+    onSkip: () -> Unit, onChoose: (Preference) -> Unit, modifier: Modifier = Modifier.fillMaxSize(),
+    horizontalInset: Dp = shellContentInset()) {
+    BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
         val compact = maxHeight < ShellMetrics.decisionRail || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
         val scheme = MaterialTheme.colorScheme
-        val inset = if (maxWidth >= 216.dp) ShellMetrics.inset else 0.dp
-        FlowRow(Modifier.fillMaxSize().padding(horizontal = inset).semantics {
+        val inset = if (maxWidth >= ShellMetrics.touch * 4 + horizontalInset * 2) horizontalInset else 0.dp
+        FlowRow(Modifier.fillMaxWidth().padding(horizontal = inset).semantics {
             contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen"
         }, horizontalArrangement = Arrangement.Center, verticalArrangement = Arrangement.Center,
             maxItemsInEachRow = ((maxWidth - inset * 2) / ShellMetrics.touch).toInt().coerceIn(1, 4)) {
@@ -497,7 +500,7 @@ private fun DecisionAction(label: String, icon: androidx.compose.ui.graphics.vec
                 .testTag("decision-surface-$label")
                 .background(if (enabled) background else MaterialTheme.colorScheme.surfaceContainer,
                     MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = label, modifier = Modifier.size(if (primary) 24.dp else 20.dp),
+                Icon(icon, contentDescription = label, modifier = Modifier.size(if (primary) ShellMetrics.icon else 20.dp),
                     tint = if (enabled) foreground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .38f))
             }
         }

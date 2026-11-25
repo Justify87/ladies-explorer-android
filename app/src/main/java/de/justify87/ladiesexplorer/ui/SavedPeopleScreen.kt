@@ -52,7 +52,7 @@ internal fun SavedPeopleScreen(
     val controlAction = state.savedPeopleControlAction()
     val page = state.savedPage
     val recent = state.savedRecent
-    Column(modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+    Column(modifier.fillMaxSize().padding(horizontal = shellContentInset())) {
         val controls: @Composable () -> Unit = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

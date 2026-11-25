@@ -112,7 +112,7 @@ internal fun ProfileDetailScreen(
             }) {
             if (profile != null) {
                 item(key = "media") {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = ShellMetrics.inset)) {
+                    Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) {
                         ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
                             selection = mediaSelection,
                             actionToken = renderedToken, actionsEnabled = !busy,

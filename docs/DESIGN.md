@@ -48,7 +48,7 @@ Für klein gesetzten Akzenttext ist der **dunkle** Vordergrund vorgesehen (ca. 5
 | `title` / `heading` | ca. 20–22 / 19 sp, abgestuftes Gewicht | kompakter Seitentitel und Abschnittstitel ohne doppelte Dominanz |
 | `body` / `label` / `caption` | 14 / 13 / 12 sp als Startwerte | Fließtext, Aktionen, Metadaten |
 
-Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metriken und lange Beschriftungen haben Vorrang vor CSS-Pixelgleichheit. Alle gemeinsamen Komponenten nutzen diese Rollen statt eigener Spacing- oder Shape-Skalen; alte Grid-/Hero-Maße gelten nicht parallel. Gemeinsamer horizontaler Außenabstand als Richtwert 16 dp, bei kompakten Fenstern 12 dp; bewusst abweichende Vollflächen (z. B. Karte) sind zulässig.
+Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metriken und lange Beschriftungen haben Vorrang vor CSS-Pixelgleichheit. Alle gemeinsamen Komponenten nutzen diese Rollen statt eigener Spacing- oder Shape-Skalen; alte Grid-/Hero-Maße gelten nicht parallel. Gemeinsamer horizontaler Außenabstand als Richtwert 16 dp ab 600 dp Fensterbreite, sonst 12 dp; bei sehr schmalen Fenstern haben nicht überlappende Touchziele Vorrang; bewusst abweichende Vollflächen (z. B. Karte) sind zulässig.
 
 ## Komponenten und Interaktion
 
@@ -93,7 +93,7 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 - **Verbindlich:** Favoriten, Likes und Dislikes getrennt mit Counts, Sortierung und korrekter Personenzuordnung. Watchlist „Neu & geändert“ (36 h, zunächst drei Einträge, ausklappbar) und explizite Einzel-/Batchstatusprüfung samt Fortschritt, Abbruch und Teilfehlern zugänglich halten.
 - **Verbindlich:** Gespeicherte Suchen bieten Übersicht, Editor, letzten Offline-Ergebnisbestand, Delta-/Neu-Indikator, Run und **ausdrückliche** Quittierung. Öffnen, Reload, Rückkehr oder Pagination bestätigen keine Neuigkeiten. Nicht unterstützte Definitionen erkennbar eingeschränkt, nicht still verändert.
 - **Verbindlich:** Quellenstatus nur aufgrund belegter Beobachtung als aktiv/nicht verfügbar zeigen. Letzte Sichtung, Änderung und Statusprüfung begrifflich und zeitlich trennen; unbekannte bzw. historisch nicht belegte Inaktivität bleibt unbekannt. Lokales Neuladen ist keine Quellenstatusprüfung.
-- **Richtwert:** Kompakte Zeilen mit Thumbnail, Name/Alter, Ort, Status, Zeitbezug, Anzeigenanzahl, Herz/Mehr; weder Status noch Count allein durch Farbe vermitteln.
+- **Richtwert:** Kompakte Zeilen mit Thumbnail, Name/Alter, Ort, Status, Zeitbezug, Anzeigenanzahl, Lesezeichen/Mehr; weder Status noch Count allein durch Farbe vermitteln.
 
 ### Karte und Einstellungen
 

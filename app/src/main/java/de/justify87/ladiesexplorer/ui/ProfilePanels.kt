@@ -258,6 +258,7 @@ internal fun ProfileFlow(
             if (anchor != null && anchor.key in keys) scroll.observe(anchor.key, anchor.offset)
         }
     }
+    val contentInset = shellContentInset()
     LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
         userScrollEnabled = userScrollEnabled) {
         itemsIndexed(rows, key = { _, row -> row.key }) { index, row ->
@@ -265,7 +266,7 @@ internal fun ProfileFlow(
             val first = section != null && rows.getOrNull(index - 1)?.section != section
             val last = section != null && rows.getOrNull(index + 1)?.section != section
             val gap = if (index == rows.lastIndex || section != null && !last) 0.dp else ShellMetrics.inset
-            val horizontal = if (paddedDetails && row.key != "hero" && row.key != "media") ShellMetrics.inset else 0.dp
+            val horizontal = if (paddedDetails && row.key != "hero" && row.key != "media") contentInset else 0.dp
             Column(Modifier.fillMaxWidth().padding(horizontal = horizontal).padding(bottom = gap)) {
                 if (section != null) ProgressiveSectionFrame(first, last, header = first) { row.content() }
                 else row.content()
