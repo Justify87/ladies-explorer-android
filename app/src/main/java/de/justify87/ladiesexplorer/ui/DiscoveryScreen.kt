@@ -374,7 +374,7 @@ internal fun DiscoverScreen(
                     userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices,
-                    fallbackIdentity = identity,
+                    fallbackIdentity = identity, fallbackMedia = fallback,
                     onDiscoveryContextHeight = { discoveryContextHeight = it }, afterHeading = {
                     item(key = "profile-actions") {
                         Column {

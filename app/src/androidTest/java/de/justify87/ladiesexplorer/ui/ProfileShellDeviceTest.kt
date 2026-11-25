@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,8 +45,21 @@ class ProfileShellDeviceTest {
                                 if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
                             }
                         }, rail = { Box(Modifier.fillMaxSize().testTag("rail")) },
-                    ) { _ ->
-                        Box(Modifier.fillMaxSize().testTag("body")) { BasicText("Profilinhalt") }
+                    ) { presentation ->
+                        LazyColumn(Modifier.fillMaxSize().testTag("body")) {
+                            item(key = "inline-rail") {
+                                check(presentation.budget.railInContent)
+                                TextButton(onClick = { actionCount++ }, Modifier.heightIn(min = 48.dp)) {
+                                    Text("Inline-Aktion")
+                                }
+                            }
+                            item(key = "hero") {
+                                ProfileMediaHero(emptyList(), presentation.heroHeight,
+                                    actionsEnabled = false, isCurrent = { false },
+                                    selection = remember { ProfileMediaSelection() }, actionToken = null, compact = true)
+                            }
+                            item(key = "detail") { BasicText("Profilinhalt", Modifier.height(80.dp)) }
+                        }
                     }
                 }
             }
@@ -55,11 +69,16 @@ class ProfileShellDeviceTest {
         assertTrue(body.height > 0f)
         assertTrue(body.top >= header.bottom - 1f)
         rule.onNodeWithTag("rail").assertDoesNotExist()
+        rule.onNodeWithText("Inline-Aktion").assertIsDisplayed()
+        rule.onNodeWithTag("body").performScrollToKey("detail")
+        rule.onNodeWithText("Profilinhalt").assertIsDisplayed()
+        rule.onNodeWithTag("body").performScrollToKey("inline-rail")
+        rule.onNodeWithText("Inline-Aktion").performClick()
         rule.onNodeWithContentDescription("Status und Hinweise: Fehler").performClick()
         rule.onNodeWithText("Status und Hinweise").assertExists()
         // The long warning is scrollable; a dialog action need not fit its first viewport.
         rule.onNodeWithText("Erneut laden").performScrollTo().performClick()
-        rule.runOnIdle { assertEquals(1, actionCount) }
+        rule.runOnIdle { assertEquals(2, actionCount) }
     }
 
     @Test fun inlineIdentityHandoffDoesNotResizeHeaderOrRail() {

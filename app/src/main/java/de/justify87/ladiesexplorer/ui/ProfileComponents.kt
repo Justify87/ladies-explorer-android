@@ -212,7 +212,7 @@ internal fun ProfileMediaHero(
             .semantics { if (media.size > 1) stateDescription = "Medium ${index + 1} von ${media.size}" }) {
             val density = LocalDensity.current
             val viewport = with(density) { IntSize(maxWidth.roundToPx(), maxHeight.roundToPx()) }
-            val geometry = heroMediaGeometry(viewport, decodedSize, allowCrop = item?.kind == "IMAGE")
+            val geometry = heroMediaGeometry(viewport, decodedSize, allowCrop = projectionAvailable && item?.kind == "IMAGE")
             val imageMotion = Modifier.graphicsLayer {
                 translationX = offset
                 rotationZ = if (viewport.width > 0) (offset / viewport.width * 12f).coerceIn(-12f, 12f) else 0f
@@ -224,16 +224,17 @@ internal fun ProfileMediaHero(
                 androidx.compose.ui.geometry.Rect(favoriteOrigin.x.toFloat(), favoriteOrigin.y.toFloat(),
                     (favoriteOrigin.x + 48.dp.roundToPx()).toFloat(), (favoriteOrigin.y + 48.dp.roundToPx()).toFloat())
             } else null
-            SideEffect {
-                onVisual(item?.takeIf { it.kind == "IMAGE" && geometry.imageBounds != null }
-                    ?.let { HeroVisual(it, geometry) })
-            }
             when (item?.kind) {
                 "IMAGE" -> key(item) { ProfileImageSurface(item.url, item.localPath, Modifier.fillMaxSize(),
                     geometry.scale, "Profilbild ${index + 1}", true, imageModifier = imageMotion,
                     decodeSize = viewport, background = MaterialTheme.colorScheme.surface,
                     onDecodedSize = { decodedSize = it }) { feedback ->
-                    SideEffect { onMediaSettled(!feedback.loading) }
+                    SideEffect {
+                        onMediaSettled(!feedback.loading)
+                        // A resized request is not the settled visual until its own decode succeeds.
+                        onVisual(if (!feedback.loading && !feedback.failed && geometry.imageBounds != null)
+                            HeroVisual(item, geometry) else null)
+                    }
                     BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                         // Reserve the center for retry or video controls.
                         val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed || feedback.loading) else 0f
@@ -248,7 +249,7 @@ internal fun ProfileMediaHero(
                 } }
                 "VIDEO" -> BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                     val side = if (galleryTaps) gallerySideFraction(maxWidth.value, true) else 0f
-                    SideEffect { onMediaSettled(true) } // playback has its own stable loading surface
+                    SideEffect { onVisual(null); onMediaSettled(true) } // playback has its own stable loading surface
                     // Once the native aspect is known, the texture occupies only the fitted media
                     // area; the remaining hero is the same neutral surface as a fitted photo.
                     val videoSurface = geometry.imageBounds?.takeIf { it.width > 0f && it.height > 0f }?.let { bounds ->
@@ -269,7 +270,7 @@ internal fun ProfileMediaHero(
                         })
                 }
                 else -> Box(Modifier.fillMaxSize().then(hit.photo), contentAlignment = Alignment.Center) {
-                    SideEffect { onMediaSettled(true) }
+                    SideEffect { onVisual(null); onMediaSettled(true) }
                     Text("Keine Medien verfügbar")
                 }
             }
