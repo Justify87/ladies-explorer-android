@@ -122,6 +122,9 @@ internal fun MapScreen(
     val controls = MapControlAction(state, generation)
     val overview = state.overview.takeIf { membershipCurrent }
     val points = overview?.profiles.orEmpty()
+    val thumbnailPaths = remember(points, state.membership) {
+        mapThumbnailPaths(points, state.membership?.cards.orEmpty())
+    }
     val active = mapSelectedProfile(points, selectedListingId, selectedOwnerId)
     val selection = remember(points, active?.listingId) { mapSelection(points, active?.listingId) }
     val latestPoints by rememberUpdatedState(points)
@@ -173,6 +176,7 @@ internal fun MapScreen(
             key(mapAttempt, marker, markerInk, selectionRing, cityMarker) {
                 NativeProfileMap(
                     points = points,
+                    thumbnailPaths = thumbnailPaths,
                     fitReady = mapInitialFitReady(overview, state.resolving),
                     selectedListingId = active?.listingId,
                     savedCamera = camera,
@@ -213,6 +217,7 @@ internal fun MapScreen(
                 state = visibleState,
                 tileState = tileState,
                 active = active,
+                activeLocalPath = active?.listingId?.let(thumbnailPaths::get),
                 selectionCount = selection.size,
                 profileEnabled = membershipCurrent && profileEnabled && !state.loading,
                 onCancel = { onCancel(controls) },
@@ -333,6 +338,7 @@ internal fun MapDetails(
     onClear: () -> Unit,
     onOpen: (MapProfile) -> Unit,
     modifier: Modifier = Modifier,
+    activeLocalPath: String? = null,
 ) {
     val overview = state.overview
     val scheme = MaterialTheme.colorScheme
@@ -380,7 +386,7 @@ internal fun MapDetails(
                     Column(Modifier.padding(ShellMetrics.inset), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            ProfileImage(active.thumbnailUrl, null,
+                            ProfileImage(active.thumbnailUrl, activeLocalPath,
                                 Modifier.size(56.dp).clip(MaterialTheme.shapes.small),
                                 description = "Profilbild von ${active.name}")
                             Column(Modifier.weight(1f)) {
@@ -448,7 +454,9 @@ private data class MapMarkerGroup(
     val selected: Boolean,
 )
 
-internal fun asFeatures(points: List<MapProfile>, selectedListingId: Long?): FeatureCollection {
+internal fun asFeatures(
+    points: List<MapProfile>, selectedListingId: Long?, thumbnailPaths: Map<Long, String> = emptyMap(),
+): FeatureCollection {
     val groups = points.groupBy { it.latitude to it.longitude }.mapValues { (_, members) ->
         MapMarkerGroup(members.minOf { it.listingId }, members.size,
             members.any { it.precision != "POSTAL" }, members.any { it.listingId == selectedListingId })
@@ -466,7 +474,7 @@ internal fun asFeatures(points: List<MapProfile>, selectedListingId: Long?): Fea
             addProperty("group_precision", if (group.city) "CITY" else "POSTAL")
             addProperty("group_count", group.count)
             addProperty("group_image", MAP_COUNT_PREFIX + group.count + if (group.city) "-city" else "")
-            addProperty("photo_id", if (group.count == 1) mapThumbnailId(item) else MAP_FALLBACK_IMAGE)
+            addProperty("photo_id", if (group.count == 1) mapThumbnailId(item, thumbnailPaths[item.listingId]) else MAP_FALLBACK_IMAGE)
         }
         // Keep one native source point per listing so native point_count stays exact.
         Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude), properties)
@@ -572,6 +580,7 @@ internal fun installMapProfileLayers(
 @Composable
 private fun NativeProfileMap(
     points: List<MapProfile>,
+    thumbnailPaths: Map<Long, String>,
     fitReady: Boolean,
     selectedListingId: Long?,
     savedCamera: CameraPosition?,
@@ -590,6 +599,7 @@ private fun NativeProfileMap(
 ) {
     val owner = LocalLifecycleOwner.current
     val currentPoints by rememberUpdatedState(points)
+    val currentThumbnailPaths by rememberUpdatedState(thumbnailPaths)
     val currentSelection by rememberUpdatedState(selectedListingId)
     val currentCamera by rememberUpdatedState(savedCamera)
     val saveCamera by rememberUpdatedState(onCameraChanged)
@@ -625,11 +635,11 @@ private fun NativeProfileMap(
                         ready.uiSettings.setAttributionGravity(Gravity.BOTTOM or Gravity.END)
                         ready.setStyle(MAP_STYLE) { style ->
                             if (!mapView.released) {
-                                installMapProfileLayers(mapView, style, asFeatures(currentPoints, currentSelection),
+                                installMapProfileLayers(mapView, style, asFeatures(currentPoints, currentSelection, currentThumbnailPaths),
                                     marker, markerInk, selectionRing, cityMarker)
                                 val images = MapMarkerImages(mapView, ready, style, owner.lifecycle)
                                 markerImages = images
-                                images.update(currentPoints)
+                                images.update(currentPoints, currentThumbnailPaths)
                                 mapView.addOnDidBecomeIdleListener { images.refresh() }
                                 val initial = currentCamera
                                 if (initial != null) {
@@ -708,12 +718,12 @@ private fun NativeProfileMap(
         }
     }
 
-    LaunchedEffect(points, selectedListingId, map) {
+    LaunchedEffect(points, thumbnailPaths, selectedListingId, map) {
         val ready = map ?: return@LaunchedEffect
         ready.getStyle { style ->
             if (map === ready && nativeView?.released == false) {
-                markerImages?.update(currentPoints)
-                (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(currentPoints, currentSelection))
+                markerImages?.update(currentPoints, currentThumbnailPaths)
+                (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(currentPoints, currentSelection, currentThumbnailPaths))
             }
         }
     }
