@@ -8,6 +8,20 @@ class SwipeDeckStateTest {
     private fun card(listing: Long, person: Long = listing, preference: Preference = Preference.NONE) =
         fixtureCard(listing, person).copy(preference = preference)
 
+    @Test fun queuedRefreshRequiresExactCurrentRevisionAndDeckOwner() {
+        val current = card(4, 1)
+        val state = DiscoverUiState(cards = listOf(current, card(5)), activeRunId = 2L,
+            swipeSessionId = 8L, loading = false)
+        val model = fixtureSwipe(4L, 1L)
+        val token = requireNotNull(state.swipeToken(model))
+        assertTrue(swipeRefreshMatches(state, token, model, current))
+        assertFalse(swipeRefreshMatches(state, token, model.copy(revision = model.revision + 1), current))
+        assertFalse(swipeRefreshMatches(state.copy(swipeSessionId = 9L), token, model, current))
+        assertFalse(swipeRefreshMatches(state.copy(busy = true), token, model, current))
+        assertFalse(swipeRefreshMatches(state.copy(cards = listOf(card(4, 7))), token, model, current))
+        assertFalse(swipeRefreshMatches(state, token, model, card(5)))
+    }
+
     @Test fun activeQueuePreservesRunOrderAndDeduplicatesCanonicalPeople() {
         val rows = listOf(card(4, 1), card(5, 1), card(2, preference = Preference.LIKE),
             card(3, preference = Preference.DISLIKE))

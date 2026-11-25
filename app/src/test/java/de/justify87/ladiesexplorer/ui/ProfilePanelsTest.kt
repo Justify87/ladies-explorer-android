@@ -299,12 +299,12 @@ class ProfilePanelsTest {
         )
         assertEquals("1 von 3 belegt · 1 nicht erfüllt · 1 unbekannt", matchSummary(groups))
         val sections = ProfileSections()
-        assertTrue(sections.expanded(ProfileSection.Match))
-        sections.toggle(ProfileSection.Match)
         assertFalse(sections.expanded(ProfileSection.Match))
-        assertFalse(ProfileSections(sections.entries).expanded(ProfileSection.Match))
-        sections.restore(emptyList())
+        sections.toggle(ProfileSection.Match)
         assertTrue(sections.expanded(ProfileSection.Match))
+        assertTrue(ProfileSections(sections.entries).expanded(ProfileSection.Match))
+        sections.restore(emptyList())
+        assertFalse(sections.expanded(ProfileSection.Match))
     }
 
     @Test fun progressiveSectionsKeepStableLazyRowsAndSeparateReadDemand() {

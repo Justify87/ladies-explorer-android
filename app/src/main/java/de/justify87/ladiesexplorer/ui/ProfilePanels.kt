@@ -28,8 +28,8 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-internal enum class ProfileSection(val label: String, val defaultExpanded: Boolean = false) {
-    Match("Übereinstimmung mit deiner Suche", defaultExpanded = true),
+internal enum class ProfileSection(val label: String) {
+    Match("Übereinstimmung mit deiner Suche"),
     Description("Über das Profil"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), Prices("Preise"), History("Verlauf / verknüpfte Anzeigen")
 }
 
@@ -43,8 +43,7 @@ internal class ProfileSections(initial: List<String> = emptyList()) {
     private fun validEntries(values: List<String>) = values.distinct().filter { name ->
         name == "history-description" || ProfileSection.entries.any { it.name == name }
     }
-    // Entries store deviations from each section's default, including a collapsed Match.
-    fun expanded(section: ProfileSection) = section.defaultExpanded != (section.name in entries)
+    fun expanded(section: ProfileSection) = section.name in entries
     fun toggle(section: ProfileSection) {
         entries = if (section.name in entries) entries - section.name else entries + section.name
     }
@@ -236,7 +235,6 @@ internal fun ProfileFlow(
     }
     LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor, readFailed,
         photoRequest, swipeRestore, phase, canRestore) {
-        if (!available || (!canRestore && !terminal)) return@LaunchedEffect
         if (appliedPhotoRequest != photoRequest && keys.isNotEmpty()) {
             snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
             state.scrollToItem(0)
@@ -244,7 +242,7 @@ internal fun ProfileFlow(
             restore.complete(swipeRestore)
             appliedPhotoRequest = photoRequest
         }
-        if (waitingForAnchor) return@LaunchedEffect
+        if (!available || (!canRestore && !terminal) || waitingForAnchor) return@LaunchedEffect
         snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
         scroll.target(keys, readFailed)?.let { (index, offset) ->
             state.scrollToItem(index)

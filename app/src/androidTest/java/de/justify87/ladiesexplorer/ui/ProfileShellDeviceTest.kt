@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
@@ -31,9 +32,13 @@ class ProfileShellDeviceTest {
     @Test fun readingChromeGrowsBodyWithoutResizingHeroAndReturnsToRoot() {
         lateinit var list: androidx.compose.foundation.lazy.LazyListState
         var heroViewport = androidx.compose.ui.unit.IntSize.Zero
-        rule.setContent {
+        lateinit var scrollTo: (Int, Int) -> Unit
+        val restoration = StateRestorationTester(rule)
+        restoration.setContent {
             MaterialTheme {
                 list = rememberLazyListState()
+                val scope = rememberCoroutineScope()
+                scrollTo = { index, offset -> scope.launch { list.scrollToItem(index, offset) } }
                 ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero",
                     hasRail = true, notices = emptyList(), noticeOwner = "fixture",
                     header = { presentation, _, _ -> Text(if (presentation.reading) "Lesen" else "Hero") },
@@ -65,6 +70,16 @@ class ProfileShellDeviceTest {
         rule.runOnIdle {
             assertEquals(size, heroViewport)
             assertEquals("detail/4", list.layoutInfo.visibleItemsInfo.first().key)
+        }
+        rule.runOnIdle { scrollTo(7, 5) }
+        rule.waitForIdle()
+        val anchor = rule.runOnIdle { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
+        restoration.emulateSavedInstanceStateRestore()
+        rule.onNodeWithText("Lesen").assertIsDisplayed()
+        rule.onNodeWithTag("reading-root").assertIsNotDisplayed()
+        rule.runOnIdle {
+            assertEquals(anchor, list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset)
+            assertEquals(size, heroViewport)
         }
         body.performScrollToKey("discover-context")
         rule.onNodeWithTag("reading-root").assertIsDisplayed()
