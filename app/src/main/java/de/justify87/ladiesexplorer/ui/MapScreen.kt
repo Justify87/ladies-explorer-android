@@ -207,7 +207,6 @@ internal fun MapScreen(
                 onClear = { selectedListingId = null; selectedOwnerId = null; focusRequest = null },
                 onOpen = { person ->
                     if (overview != null) {
-                        closePanel()
                         cameraReader?.invoke()?.let { camera = it }
                         onProfile(MapProfileOpenAction(overview, person, generation))
                     }
@@ -346,7 +345,7 @@ internal fun MapDetails(
             if (state.resolving) {
                 TextButton(onClick = onCancel, enabled = !state.cancelling,
                     modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
-                    Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen")
+                    Text(if (state.cancelling) "Wird abgebrochen …" else "Standortaufbereitung abbrechen")
                 }
             }
             if (overview != null && overview.profiles.isEmpty() && !state.loading) {
