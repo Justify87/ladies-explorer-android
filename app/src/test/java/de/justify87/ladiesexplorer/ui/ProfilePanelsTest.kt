@@ -29,6 +29,22 @@ class ProfilePanelsTest {
         assertEquals(emptyList<String>(), compactProfileMetadata(HeroIdentity("Fixture", place = ""), null, " "))
     }
 
+    @Test fun identityCandidatesPreserveWeakAndStrongEvidenceWithoutInventingDistance() {
+        val weak = IdentityCandidate(2L, "CANDIDATE", false, false, 3u, 0u, 7u)
+        assertEquals(mapOf("Telefonübereinstimmung" to "Nein", "Quellprofilübereinstimmung" to "Nein",
+            "Bildtreffer" to "3", "Starke Bildtreffer" to "0", "Geringste Bildhash-Distanz" to "7"),
+            identityCandidateFields(weak).toMap())
+        val phone = IdentityCandidate(3L, "CANDIDATE", false, true, 0u, 0u, null)
+        val phoneFields = identityCandidateFields(phone).toMap()
+        assertEquals("Ja", phoneFields["Telefonübereinstimmung"])
+        assertEquals("0", phoneFields["Bildtreffer"])
+        assertFalse(phoneFields.containsKey("Geringste Bildhash-Distanz"))
+        val strong = IdentityCandidate(4L, "CANDIDATE", true, false, 5u, 2u, 0u)
+        assertEquals("Ja", identityCandidateFields(strong).toMap()["Quellprofilübereinstimmung"])
+        assertEquals("2", identityCandidateFields(strong).toMap()["Starke Bildtreffer"])
+        assertEquals("0", identityCandidateFields(strong).toMap()["Geringste Bildhash-Distanz"])
+    }
+
     @Test fun publicationUsesOnlyValidSourceDateOrTimestampWithoutInventingZone() {
         assertEquals("24.11.2026", profilePublicationLabel("2026-11-24"))
         assertEquals("24.11.2026, 23:15 +02:00", profilePublicationLabel("2026-11-24T23:15:41+02:00"))
