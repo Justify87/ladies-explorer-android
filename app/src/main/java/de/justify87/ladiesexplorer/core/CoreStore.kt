@@ -25,12 +25,22 @@ internal fun mediaDiagnosticKey(value: String): String =
     MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
         .take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
-internal fun diagnosticFailure(failure: Throwable): String {
-    val causes = generateSequence(failure) { it.cause?.takeUnless { next -> next === it } }
-        .take(4).joinToString(">") { it.javaClass.simpleName }
+private val diagnosticUrl = Regex("""(?i)\b[a-z][a-z0-9+.-]*://[^\s"'<>]+""")
+private val diagnosticPath = Regex("""(?<![A-Za-z0-9])/(?:[^\s"'<>]+)""")
+
+internal fun sanitizeMediaDiagnosticText(text: String): String =
+    if ('<' in text && '>' in text) "[structured text omitted]" else
+        text.replace(diagnosticUrl, "[url]").replace(diagnosticPath, "[path]")
+            .replace(Regex("""\s+"""), " ").trim().take(512)
+
+internal fun diagnosticFailure(failure: Throwable, includeMessage: Boolean = false): String {
+    val chain = generateSequence(failure) { it.cause?.takeUnless { next -> next === it } }.take(4).toList()
+    val causes = chain.joinToString(">") { it.javaClass.simpleName }
     val frames = failure.stackTrace.filter { it.className.startsWith("de.justify87.") }
         .take(3).joinToString(",") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
-    return "type=$causes frames=$frames"
+    val message = if (includeMessage) chain.mapNotNull { it.message }.distinct()
+        .joinToString(" | ") { sanitizeMediaDiagnosticText(it) }.take(512) else ""
+    return "type=$causes frames=$frames" + if (message.isNotBlank()) " detail=$message" else ""
 }
 
 class CoreStore(context: Context) {
@@ -95,7 +105,8 @@ class CoreStore(context: Context) {
 
     internal fun diagnostic(component: String, level: DiagnosticLevel, message: String, failure: Throwable? = null) {
         if (level == DiagnosticLevel.DEBUG && !isDebugLoggingEnabled()) return
-        val safe = if (failure == null) message else "$message ${diagnosticFailure(failure)}"
+        val mediaFailure = component in setOf("COIL", "PREPARE", "VIDEO_CACHE", "VIDEO", "MAP_MEDIA", "MPV")
+        val safe = if (failure == null) message else "$message ${diagnosticFailure(failure, mediaFailure)}"
         when (level) {
             DiagnosticLevel.DEBUG -> logger.d { "$component $safe" }
             DiagnosticLevel.INFO -> logger.i { "$component $safe" }

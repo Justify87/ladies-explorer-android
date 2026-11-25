@@ -26,6 +26,7 @@ import de.justify87.ladiesexplorer.core.ProfileMediaItem
 import de.justify87.ladiesexplorer.core.CoreStore
 import de.justify87.ladiesexplorer.core.DiagnosticLevel
 import de.justify87.ladiesexplorer.core.mediaDiagnosticKey
+import de.justify87.ladiesexplorer.core.sanitizeMediaDiagnosticText
 import dev.jdtech.mpv.MPVLib
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -57,14 +58,9 @@ internal data class LocalGalleryVideo(val file: File, val demuxer: String)
 
 internal class VideoPreparationDeferred : Exception("Video prefetch budget reached")
 
-private val nativeLogUrl = Regex("""(?i)\b[a-z][a-z0-9+.-]*://[^\s"'<>]+""")
-private val nativeLogPath = Regex("""(?<![A-Za-z0-9])/(?:[^\s"'<>]+)""")
-
 internal fun mpvDiagnosticMessage(prefix: String, text: String, mediaPath: String): String {
     val safePrefix = prefix.filter { it.isLetterOrDigit() || it in "/._:-" }.take(48)
-    val safeText = text.replace(mediaPath, "[media-file]")
-        .replace(nativeLogUrl, "[url]").replace(nativeLogPath, "[path]")
-        .replace(Regex("""\s+"""), " ").trim().take(512)
+    val safeText = sanitizeMediaDiagnosticText(text.replace(mediaPath, "[media-file]"))
     return "native prefix=$safePrefix message=$safeText"
 }
 
@@ -126,16 +122,16 @@ internal class GalleryVideoFiles(
             item.localPath?.let { path ->
                 try {
                     localVideo(File(path)).also {
-                        if (it == null) report(DiagnosticLevel.WARN, item.url, "archive_invalid")
+                        if (it == null) report(DiagnosticLevel.WARN, item.url.ifBlank { item.localPath.orEmpty() }, "archive_invalid")
                     }
                 } catch (failure: Exception) {
-                    report(DiagnosticLevel.WARN, item.url, "archive_read_failed", failure)
+                    report(DiagnosticLevel.WARN, item.url.ifBlank { item.localPath.orEmpty() }, "archive_read_failed", failure)
                     null
                 }
             }
         }
         if (archived != null) {
-            report(DiagnosticLevel.DEBUG, item.url, "hit source=archive")
+            report(DiagnosticLevel.DEBUG, item.url.ifBlank { item.localPath.orEmpty() }, "hit source=archive")
             return use(archived)
         }
         check(item.url.isNotBlank()) { "No video source" }

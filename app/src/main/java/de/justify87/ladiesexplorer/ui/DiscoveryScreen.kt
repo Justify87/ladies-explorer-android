@@ -95,7 +95,9 @@ internal fun DiscoverScreen(
     val decks = remember(state.activeRunId, state.swipeProfileRevision, started) {
         SwipeProfileWindow(mutableStateMapOf(), state.swipeExternalRevision)
     }
-    val preparation = remember(decks) { ProfilePreparationWindow() }
+    val preparation = remember(decks) {
+        ProfilePreparationWindow(diagnostic = { core.diagnostic("PREPARE", DiagnosticLevel.INFO, it) })
+    }
     val videoFiles = (context.applicationContext as LadiesApplication).galleryVideoFiles
     val failures = remember(decks) { mutableStateMapOf<Pair<Long, Long>, SwipeReadFailure>() }
     val localRetries = remember(decks) { mutableStateMapOf<Pair<Long, Long>, Boolean>() }

@@ -6,11 +6,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use tempfile::Builder;
 use sha2::{Digest, Sha256};
-use crate::operation::RequestControl;
+use tempfile::Builder;
 use tracing::Dispatch;
 use tracing_subscriber::fmt::MakeWriter;
+
+use crate::operation::RequestControl;
 
 const MAX_BYTES: usize = 1_500_000;
 const KEEP_BYTES: usize = 700_000;
@@ -207,7 +208,13 @@ impl Diagnostics {
         work: impl FnOnce() -> Result<T, E>,
     ) -> Result<T, E> {
         let digest = format!("{:x}", Sha256::digest(url.as_bytes()));
-        self.timed_with_context("MEDIA", operation, Some(&digest[..16]), || control.is_cancelled(), work)
+        self.timed_with_context(
+            "MEDIA",
+            operation,
+            Some(&digest[..16]),
+            || control.is_cancelled(),
+            work,
+        )
     }
 
     fn timed_with_context<T, E: std::fmt::Display>(
@@ -234,18 +241,21 @@ impl Diagnostics {
                     elapsed_ms,
                     "operation completed"
                 ),
-                Err(_) if cancelled() => {
-                    if self.debug_enabled() {
-                        tracing::debug!(component = %component, operation = %operation, elapsed_ms, "operation cancelled");
+                Err(error) => {
+                    if cancelled() {
+                        if self.debug_enabled() {
+                            tracing::debug!(component = %component, operation = %operation, elapsed_ms, "operation cancelled");
+                        }
+                    } else {
+                        tracing::error!(
+                            component = %component,
+                            operation = %operation,
+                            elapsed_ms,
+                            reason = %error,
+                            "operation failed"
+                        );
                     }
                 }
-                Err(error) => tracing::error!(
-                    component = %component,
-                    operation = %operation,
-                    elapsed_ms,
-                    reason = %error,
-                    "operation failed"
-                ),
             };
             result
         })
@@ -386,17 +396,32 @@ mod tests {
         log.set_debug(true);
         let control = RequestControl::default();
         let url = "https://example.invalid/synthetic.jpg";
-        let result: Result<(), &str> = log.timed_media("display_image", url, &control, || Err("synthetic failure"));
+        let result: Result<(), &str> =
+            log.timed_media("display_image", url, &control, || Err("synthetic failure"));
         assert!(result.is_err());
         control.cancel();
-        let result: Result<(), &str> = log.timed_media("display_image", url, &control, || Err("cancel marker"));
+        let result: Result<(), &str> =
+            log.timed_media("display_image", url, &control, || Err("cancel marker"));
         assert!(result.is_err());
-        let data = fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
+        let data =
+            fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
         let digest = format!("{:x}", Sha256::digest(url.as_bytes()));
-        assert!(data.lines().any(|line| line.contains("WARN") && line.contains("warn_marker")));
-        assert!(data.lines().any(|line| line.contains("ERROR") && line.contains("error_marker")));
-        assert!(data.lines().any(|line| line.contains(&digest[..16]) && line.contains("synthetic failure")));
-        assert!(data.lines().any(|line| line.contains(&digest[..16]) && line.contains("operation cancelled")));
+        assert!(
+            data.lines()
+                .any(|line| line.contains("WARN") && line.contains("warn_marker"))
+        );
+        assert!(
+            data.lines()
+                .any(|line| line.contains("ERROR") && line.contains("error_marker"))
+        );
+        assert!(
+            data.lines()
+                .any(|line| line.contains(&digest[..16]) && line.contains("synthetic failure"))
+        );
+        assert!(
+            data.lines()
+                .any(|line| line.contains(&digest[..16]) && line.contains("operation cancelled"))
+        );
         assert!(!data.contains("cancel marker"));
         assert!(!data.contains(url));
     }

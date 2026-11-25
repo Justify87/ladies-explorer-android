@@ -48,7 +48,9 @@ internal fun ProfileDetailScreen(
     val app = context.applicationContext as LadiesApplication
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     val started = lifecycle.isAtLeast(Lifecycle.State.STARTED)
-    val preparation = remember(state.profileSessionId, started) { ProfilePreparationWindow() }
+    val preparation = remember(state.profileSessionId, started) {
+        ProfilePreparationWindow(diagnostic = { app.coreStore.diagnostic("PREPARE", DiagnosticLevel.INFO, it) })
+    }
     var heroSize by remember(state.profileSessionId) { mutableStateOf(IntSize.Zero) }
     val latestRaw by rememberUpdatedState(raw)
     val latestFilters by rememberUpdatedState(filters)

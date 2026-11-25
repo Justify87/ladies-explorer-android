@@ -619,7 +619,14 @@ pub(crate) fn display_image(
     control: &RequestControl,
 ) -> Result<DisplayImage, CoreError> {
     let result = display_image_with(url, &core.media_http, control)?;
-    core.diagnostics.debug("MEDIA", format!("transport_result bytes={} mime={}", result.bytes.len(), result.mime));
+    core.diagnostics.debug(
+        "MEDIA",
+        format!(
+            "transport_result bytes={} mime={}",
+            result.bytes.len(),
+            result.mime
+        ),
+    );
     Ok(result)
 }
 
@@ -670,7 +677,14 @@ pub(crate) fn display_video(
     control: &RequestControl,
 ) -> Result<DisplayVideo, CoreError> {
     let result = display_video_with(url, &core.media_http, control)?;
-    core.diagnostics.debug("MEDIA", format!("transport_result bytes={} mime={}", result.bytes.len(), result.mime));
+    core.diagnostics.debug(
+        "MEDIA",
+        format!(
+            "transport_result bytes={} mime={}",
+            result.bytes.len(),
+            result.mime
+        ),
+    );
     Ok(result)
 }
 

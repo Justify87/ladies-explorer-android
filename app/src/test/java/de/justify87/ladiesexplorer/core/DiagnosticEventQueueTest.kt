@@ -49,6 +49,31 @@ class DiagnosticEventQueueTest {
     }
 
     @Test(timeout = 10_000)
+    fun bridgeFailureIsCountedWithoutBlockingLaterEvents() {
+        val queue = DiagnosticEventQueue()
+        try {
+            assertTrue(queue.offer { error("synthetic bridge failure") })
+            val delivered = CountDownLatch(1)
+            assertTrue(queue.offer(critical = true) { delivered.countDown() })
+            queue.barrier()
+            assertEquals(0L, delivered.count)
+            assertEquals(0L to 1L, queue.lossSummary())
+        } finally {
+            queue.shutdown()
+        }
+    }
+
+    @Test fun mediaFailureDetailsAreBoundedAndMaskSourcePaths() {
+        val failure = IllegalStateException("decode failed https://example.invalid/private /data/private", IllegalArgumentException("bad image"))
+        val result = diagnosticFailure(failure, includeMessage = true)
+        assertTrue(result.contains("IllegalStateException>IllegalArgumentException"))
+        assertTrue(result.contains("decode failed"))
+        assertTrue(result.contains("bad image"))
+        assertFalse(result.contains("example.invalid"))
+        assertFalse(result.contains("/data/private"))
+    }
+
+    @Test(timeout = 10_000)
     fun successfulEventsRunInFifoOrder() {
         val queue = DiagnosticEventQueue(maxPending = 8)
         val values = mutableListOf<Int>()

@@ -1174,7 +1174,11 @@ mod tests {
             .map(|(core, label)| {
                 thread::spawn(move || {
                     for n in 0..200 {
-                        core.record_kotlin_event("TEST".into(), format!("{label}-{n}"), DiagnosticLevel::Info);
+                        core.record_kotlin_event(
+                            "TEST".into(),
+                            format!("{label}-{n}"),
+                            DiagnosticLevel::Info,
+                        );
                     }
                 })
             })

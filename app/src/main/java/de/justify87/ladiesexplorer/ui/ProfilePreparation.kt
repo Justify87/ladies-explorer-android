@@ -36,6 +36,7 @@ internal data class PreparedProfile(
     val viewport: IntSize,
     val media: Map<String, PreparedMedium> = emptyMap(),
     val panels: PreparedPanelData? = null,
+    val publicationToken: Any = Any(),
 ) {
     // Settled work is not the same as decoded/available media.
     val complete: Boolean get() = panels != null && model.media.all { it.presentationKey() in media }
@@ -57,7 +58,10 @@ internal fun <T> nextProfileWork(window: List<T>, needsWork: (T) -> Boolean): T?
     window.firstOrNull(needsWork)
 
 /** One bounded presentation window. A completed old revision stays visible while its replacement is prepared. */
-internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 1024 * 1024) {
+internal class ProfilePreparationWindow(
+    private val imageBudget: Long = 96L * 1024 * 1024,
+    private val diagnostic: (String) -> Unit = {},
+) {
     private data class Slot(val working: PreparedProfile? = null, val published: PreparedProfile? = null)
     private val slots = mutableStateMapOf<Pair<Long, Long>, Slot>()
 
@@ -87,10 +91,11 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
         val key = expected.model.key()
         val slot = slots[key] ?: return
         val published = slot.published ?: return
-        if (!published.matches(expected.model, expected.filters, expected.viewport) ||
+        if (published.publicationToken !== expected.publicationToken ||
             published.media[mediaKey] != PreparedMedium.Unavailable) return
         slots[key] = slot.copy(published = published.copy(
             media = published.media + (mediaKey to PreparedMedium.Deferred)))
+        diagnostic("recovered listing=${published.model.profile.listingId} snapshot=${published.model.profile.snapshotId} media=${mediaDiagnosticKey(mediaKey.substringAfter(':'))}")
     }
 
     private fun remainingImageBytes(): Long {
@@ -131,6 +136,13 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
         currentCoroutineContext().ensureActive()
         if (slots[key] !== ticket || !accept()) return
         slots[key] = if (next.complete) Slot(published = next) else ticket.copy(working = next)
+        if (next.complete) {
+            val media = next.media.values
+            diagnostic("published listing=${model.profile.listingId} snapshot=${model.profile.snapshotId} " +
+                "photos=${media.count { it is PreparedMedium.Photo }} videos=${media.count { it == PreparedMedium.Video }} " +
+                "deferred=${media.count { it == PreparedMedium.Deferred }} failed=${media.count { it == PreparedMedium.Unavailable }} " +
+                "window_image_remaining_bytes=${remainingImageBytes()}")
+        }
     }
 }
 
