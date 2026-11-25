@@ -1,8 +1,12 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.MapProfile
+import de.justify87.ladiesexplorer.core.MapOverview
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.maplibre.geojson.Point
 import org.junit.Test
 
 class MapPresentationTest {
@@ -23,5 +27,37 @@ class MapPresentationTest {
         assertTrue(mapSelection(listOf(a, c), 2L).isEmpty())
         assertTrue(mapSelection(listOf(a, b, c), null).isEmpty())
         assertTrue(mapSelection(emptyList(), 1L).isEmpty())
+    }
+
+    @Test fun selectedListingCannotFollowAChangedOwner() {
+        assertEquals(a, mapSelectedProfile(listOf(a, b), a.listingId, a.personId))
+        assertNull(mapSelectedProfile(listOf(a.copy(personId = 99)), a.listingId, a.personId))
+        assertNull(mapSelectedProfile(listOf(b), a.listingId, a.personId))
+    }
+
+    @Test fun initialCameraFitWaitsForResolvedOrStoppedProjection() {
+        val partial = MapOverview(listOf(a), 3u, 2u, 2u)
+        val complete = MapOverview(listOf(a, b, c), 3u, 0u, 0u)
+        assertFalse(mapInitialFitReady(null, true))
+        assertFalse(mapInitialFitReady(partial.copy(profiles = emptyList()), false))
+        assertFalse(mapInitialFitReady(partial, true))
+        assertTrue(mapInitialFitReady(partial, false))
+        assertTrue(mapInitialFitReady(complete, true))
+    }
+
+    @Test fun featureProjectionPreservesCoordinatesPrecisionAndSamePlaceMembers() {
+        val postal = c.copy(precision = "POSTAL")
+        val features = requireNotNull(asFeatures(listOf(a, b, postal), a.listingId).features())
+        assertEquals(listOf(1L, 2L, 3L), features.map { it.getNumberProperty("listing_id").toLong() })
+        assertEquals(listOf(1L, 2L, 3L), features.map { it.getNumberProperty("owner_id").toLong() })
+        assertEquals(listOf("CITY", "CITY", "POSTAL"), features.map { it.getStringProperty("precision") })
+        assertEquals(listOf(true, true, false), features.map { it.getBooleanProperty("selected") })
+        val point = features.first().geometry() as Point
+        assertEquals(a.longitude, point.longitude(), 0.0)
+        assertEquals(a.latitude, point.latitude(), 0.0)
+        val filtered = requireNotNull(asFeatures(listOf(postal), a.listingId).features())
+        assertEquals(3L, filtered.single().getNumberProperty("listing_id").toLong())
+        assertEquals(false, filtered.single().getBooleanProperty("selected"))
+        assertTrue(requireNotNull(asFeatures(emptyList(), null).features()).isEmpty())
     }
 }

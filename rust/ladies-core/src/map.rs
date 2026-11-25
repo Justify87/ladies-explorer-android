@@ -642,6 +642,36 @@ mod tests {
     }
 
     #[test]
+    fn same_listing_projection_observes_new_snapshot_without_reusing_stale_location() {
+        let core = seed();
+        prepare(&core, &[1], None, &RequestControl::new()).unwrap();
+        let first = overview(&core, &[1], None).unwrap();
+        assert_eq!(first.profiles[0].precision, "POSTAL");
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "INSERT INTO listing_snapshots(listing_id,fingerprint,city,postal_code)
+                 VALUES (1,'updated','Berlin','10115')",
+                [],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=1",
+                [db.last_insert_rowid()],
+            )
+            .unwrap();
+            prepare_evidence(&db, 1, "Berlin", Some("10115")).unwrap();
+        }
+        let updated = overview(&core, &[1], None).unwrap();
+        assert_eq!(updated.profiles[0].listing_id, first.profiles[0].listing_id);
+        assert_eq!(updated.profiles[0].person_id, first.profiles[0].person_id);
+        assert_eq!(updated.profiles[0].location_label, "10115 Berlin");
+        assert_ne!(updated.profiles[0].latitude, first.profiles[0].latitude);
+        assert_eq!(updated.pending_locations, 0);
+        assert!(overview(&core, &[], None).unwrap().profiles.is_empty());
+    }
+
+    #[test]
     fn city_fallback_does_not_display_a_conflicting_postcode() {
         let core = seed();
         {

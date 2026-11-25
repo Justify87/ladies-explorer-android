@@ -133,48 +133,23 @@ class ProfileEntryAdmissionTest {
         assertFalse(pending.copy(resolving = true).needsLocationPreparation())
     }
 
-    @Test fun mapControlsRequireRenderedStateAndVisibleMembership() {
-        val cards = listOf(fixtureCard(1), fixtureCard(2))
-        val membership = MapMembership(null, cards)
-        val map = MapUiState(overview = MapOverview(emptyList(), 2u, 2u, 2u),
-            membership = membership, actionGeneration = 3L)
-        val discovery = DiscoverUiState(localCards = cards, loading = false,
-            actionSurface = ProfileActionSurface.MAP, actionGeneration = 9L)
-        val search = SearchUiState()
-        val action = MapControlAction(map, 9L)
-        for (control in listOf(MapControl.REFRESH)) {
-            assertTrue(mapControlMatches(map, discovery, search, action, control))
-            assertFalse(mapControlMatches(map.copy(actionGeneration = 4L), discovery, search, action, control))
-            assertFalse(mapControlMatches(map.copy(membership = MapMembership(7, cards)), discovery, search, action, control))
-            assertFalse(mapControlMatches(map.copy(overview = null), discovery, search, action, control))
-            assertFalse(mapControlMatches(map, discovery.copy(actionSurface = ProfileActionSurface.NONE), search, action, control))
-            assertFalse(mapControlMatches(map, discovery.copy(actionGeneration = 10L), search, action, control))
-            assertFalse(mapControlMatches(map, discovery, search.copy(profileOpen = true), action, control))
-            assertFalse(mapControlMatches(map, discovery, search.copy(loading = true), action, control))
-            assertFalse(mapControlMatches(map, discovery.copy(busy = true), search, action, control))
-        }
-        assertFalse(mapControlMatches(map, discovery, search, action, MapControl.CANCEL))
-        val failedRead = map.copy(overview = null, error = "read failed", actionGeneration = 4L)
-        assertTrue(mapControlMatches(failedRead, discovery, search, MapControlAction(failedRead, 9L), MapControl.REFRESH))
-    }
-
-    @Test fun mapControlsDistinguishLoadingResolvingAndCancellation() {
+    @Test fun mapCancelRequiresRenderedStateAndVisibleSurface() {
         val cards = listOf(fixtureCard(1), fixtureCard(2))
         val map = MapUiState(overview = MapOverview(emptyList(), 2u, 2u, 2u),
             membership = MapMembership(null, cards), actionGeneration = 3L)
         val discovery = DiscoverUiState(localCards = cards, loading = false,
             actionSurface = ProfileActionSurface.MAP, actionGeneration = 9L)
         val search = SearchUiState()
-        for (state in listOf(map.copy(loading = true), map.copy(resolving = true), map.copy(resolving = true, cancelling = true))) {
-            val action = MapControlAction(state, 9L)
-            assertFalse(mapControlMatches(state, discovery, search, action, MapControl.REFRESH))
-        }
+        assertFalse(mapCancelMatches(map, discovery, search, MapControlAction(map, 9L)))
         val resolving = map.copy(resolving = true, actionGeneration = 4L)
         val cancel = MapControlAction(resolving, 9L)
-        assertTrue(mapControlMatches(resolving, discovery, search, cancel, MapControl.CANCEL))
-        assertFalse(mapControlMatches(resolving.copy(cancelling = true), discovery, search, cancel, MapControl.CANCEL))
-        assertFalse(mapControlMatches(resolving.copy(actionGeneration = 5L), discovery, search, cancel, MapControl.CANCEL))
-        assertFalse(mapControlMatches(resolving, discovery.copy(actionGeneration = 10L), search, cancel, MapControl.CANCEL))
+        assertTrue(mapCancelMatches(resolving, discovery, search, cancel))
+        assertFalse(mapCancelMatches(resolving.copy(cancelling = true), discovery, search, cancel))
+        assertFalse(mapCancelMatches(resolving.copy(actionGeneration = 5L), discovery, search, cancel))
+        assertFalse(mapCancelMatches(resolving.copy(overview = null), discovery, search, cancel))
+        assertFalse(mapCancelMatches(resolving, discovery.copy(actionGeneration = 10L), search, cancel))
+        assertFalse(mapCancelMatches(resolving, discovery.copy(actionSurface = ProfileActionSurface.GRID), search, cancel))
+        assertFalse(mapCancelMatches(resolving, discovery, search.copy(profileOpen = true), cancel))
     }
 
     @Test fun mapOpenRequiresCurrentRunListingOwnerPreferenceAndRouteGeneration() {

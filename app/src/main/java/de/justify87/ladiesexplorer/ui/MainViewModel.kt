@@ -210,6 +210,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var mapEpoch = 0L
     private var mapControl: RequestControl? = null
     private var mapRefreshPending = false
+    private var mapUserCancelled = false
     private var locationPreparationActive = false
     private var savedStatusControl: RequestControl? = null
     private var savedStatusAttemptId = 0L
@@ -385,7 +386,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 epoch = { discoveryEpoch }, nextEpoch = { ++discoveryEpoch },
                 pending = { swipeInvalidation.pending }, projectDiscovery = ::projectDiscovery,
                 discovery = ::refreshDiscovery, savedSearch = savedSearch::refreshProjection,
-                map = ::ensureMap, home = ::refresh,
+                map = { refreshMap() }, home = ::refresh,
                 admitSwipe = { admittedSwipe(it) != null },
                 beginMerge = { invalidateSwipeActions() },
                 mergeCommitted = ::onIdentityMergeCommitted,
@@ -652,31 +653,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun admitsMapControl(action: MapControlAction, control: MapControl): Boolean =
-        mapControlMatches(_mapState.value, _discoverState.value, _searchUiState.value, action, control)
-
-    internal fun refreshRenderedMap(action: MapControlAction) {
-        if (!admitsMapControl(action, MapControl.REFRESH)) return
-        if (_discoverState.value.error != null) refreshDiscovery() else refreshMap()
-    }
-
     private fun mapMembership(): MapMembership? =
         currentMapMembership(_discoverState.value, _searchUiState.value)
 
     private fun ensureMap() {
         val membership = mapMembership() ?: return
         val state = _mapState.value
-        if (state.membership == membership && !state.needsLocationPreparation()) return
-        refreshMap()
+        if (_discoverState.value.error != null) {
+            refreshDiscovery()
+        } else if (state.membership != membership || state.needsLocationPreparation()) {
+            refreshMap()
+        }
     }
 
-    private fun refreshMap() {
+    private fun refreshMap(allowBackfill: Boolean = true) {
         if (!locationPreparationActive) return
         val membership = mapMembership()
         if (mapControl != null) {
             mapRefreshPending = membership != null
+            // A new local observation can change coordinates without changing membership.
+            ++mapEpoch
             if (_mapState.value.membership != membership) {
-                ++mapEpoch
                 cancelMapResolution()
                 _mapState.update { it.copy(membership = membership, overview = null, loading = false,
                     error = null, actionGeneration = it.actionGeneration + 1) }
@@ -693,30 +690,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         val control = RequestControl()
         mapControl = control
+        mapUserCancelled = false
         _mapState.update {
             val cached = it.overview.takeIf { _ -> it.membership == membership }
             it.copy(membership = membership, overview = cached, loading = cached == null,
                 resolving = true, cancelling = false, error = null, actionGeneration = it.actionGeneration + 1)
         }
         viewModelScope.launch {
-            var failureMessage: String? = null
-            try {
-                try {
-                    core.prepareMapLocations(membership.listingIds, membership.runId, control)
-                } catch (cancelled: CancellationException) {
-                    control.cancel()
-                    throw cancelled
-                } catch (failure: Exception) {
-                    if (!_mapState.value.cancelling) {
-                        failureMessage = failure.message ?: "Standortaufbereitung fehlgeschlagen"
-                    }
-                }
-                projectMapOverview(_mapState, { epoch == mapEpoch && mapMembership() == membership }, {
+            fun current() = epoch == mapEpoch && mapMembership() == membership
+            suspend fun readOverview(failureMessage: String? = null) {
+                projectMapOverview(_mapState, ::current, {
                     core.mapOverview(membership.listingIds, membership.runId).also {
                         check(membership.matches(it)) { "Kartenmitgliedschaft hat sich geändert" }
                     }
                 }) { state, overview ->
                     state.copy(overview = overview, loading = false, error = failureMessage)
+                }
+            }
+            try {
+                // Publish already prepared locations before any remaining backfill.
+                readOverview()
+                if (allowBackfill && current() && !_mapState.value.cancelling &&
+                    (_mapState.value.overview?.pendingLocations ?: 0u) > 0u) {
+                    var failureMessage: String? = null
+                    try {
+                        core.prepareMapLocations(membership.listingIds, membership.runId, control)
+                    } catch (cancelled: CancellationException) {
+                        control.cancel()
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        if (!_mapState.value.cancelling) {
+                            failureMessage = failure.message ?: "Standortaufbereitung fehlgeschlagen"
+                        }
+                    }
+                    if (current()) readOverview(failureMessage)
                 }
             } finally {
                 if (mapControl === control) {
@@ -724,16 +731,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _mapState.update { it.copy(resolving = false, cancelling = false) }
                 }
             }
-            if (mapRefreshPending || mapMembership() != membership) {
+            val nextMembership = mapMembership()
+            if (mapRefreshPending || nextMembership != membership) {
                 mapRefreshPending = false
-                refreshMap()
+                // Cancel stops backfill, not reconciliation of already committed observations.
+                refreshMap(allowBackfill = !mapUserCancelled || nextMembership != membership)
             }
         }
     }
 
     internal fun cancelRenderedMapResolution(action: MapControlAction) {
-        if (admitsMapControl(action, MapControl.CANCEL)) {
-            mapRefreshPending = false
+        if (mapCancelMatches(_mapState.value, _discoverState.value, _searchUiState.value, action)) {
+            mapUserCancelled = true
             cancelMapResolution()
         }
     }
@@ -747,7 +756,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal fun setLocationPreparationActive(active: Boolean) {
         if (locationPreparationActive == active) return
         locationPreparationActive = active
-        if (active) refreshMap() else {
+        if (active) {
+            mapUserCancelled = false
+            refreshMap()
+        } else {
+            ++mapEpoch
             mapRefreshPending = false
             cancelMapResolution()
         }
