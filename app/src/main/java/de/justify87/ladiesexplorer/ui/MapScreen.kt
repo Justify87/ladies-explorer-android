@@ -114,7 +114,7 @@ internal fun MapScreen(
 
     LaunchedEffect(overview) {
         // A temporary null overview during reload is not proof that the selection disappeared.
-        if (overview != null && active == null) {
+        if (overview != null && overview.pendingLocations == 0u && active == null) {
             selectedListingId = null
             selectedOwnerId = null
             focusRequest = null
@@ -123,7 +123,10 @@ internal fun MapScreen(
     }
 
     Column(modifier.fillMaxSize()) {
-        DiscoverModeSwitcher(DiscoverMode.Map, onMode, Modifier.padding(horizontal = 16.dp))
+        DiscoverModeSwitcher(DiscoverMode.Map, { mode ->
+            cameraReader?.invoke()?.let { camera = it }
+            onMode(mode)
+        }, Modifier.padding(horizontal = 16.dp))
         searchStatus()
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
             val panelHeight = maxHeight * .65f
@@ -184,11 +187,11 @@ internal fun MapScreen(
         }
     }
 
-    picker?.let { scope ->
+    picker?.takeIf { it == MapPickerScope.All || selection.isNotEmpty() }?.let { scope ->
         val choices = if (scope == MapPickerScope.All) points else selection
         MapProfilePicker(
             profiles = choices,
-            selectedListingId = selectedListingId,
+            selectedListingId = active?.listingId,
             title = if (scope == MapPickerScope.All) "Kartierte Profile" else "Profile am ungefähren Ort",
             onDismiss = { picker = null },
             onSelect = { person ->
@@ -440,6 +443,7 @@ private fun NativeProfileMap(
                                     marker, markerInk, selectionRing, cityMarker)
                                 val initial = currentCamera
                                 if (initial != null) {
+                                    positioned = true
                                     ready.moveCamera(CameraUpdateFactory.newCameraPosition(initial))
                                 } else {
                                     ready.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(51.0, 10.0), 5.0))
@@ -502,8 +506,9 @@ private fun NativeProfileMap(
                 (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(currentPoints, currentSelection))
                 if (!positioned && currentPoints.isNotEmpty()) {
                     val locations = currentPoints.map { LatLng(it.latitude, it.longitude) }.distinct()
+                    val padding = minOf(64, (minOf(nativeView?.width ?: 0, nativeView?.height ?: 0) / 4))
                     val update = if (locations.size == 1) CameraUpdateFactory.newLatLngZoom(locations.first(), 10.0)
-                    else CameraUpdateFactory.newLatLngBounds(LatLngBounds.Builder().includes(locations).build(), 64)
+                    else CameraUpdateFactory.newLatLngBounds(LatLngBounds.Builder().includes(locations).build(), padding)
                     positioned = true
                     ready.moveCamera(update)
                     saveCamera(ready.cameraPosition)
