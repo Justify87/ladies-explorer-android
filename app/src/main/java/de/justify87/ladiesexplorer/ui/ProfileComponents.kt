@@ -107,19 +107,19 @@ private fun ProfileImageSurface(
         val models = remember { mediaModels(localPath, url) }
         var retry by remember { mutableIntStateOf(0) }
         var attempt by remember(retry) { mutableIntStateOf(0) }
-        var painter by remember(retry, attempt) { mutableStateOf<Painter?>(null) }
+        var loaded by remember(retry, attempt) { mutableStateOf(false) }
         Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
             if (attempt < models.size) {
                 val requested = attempt
                 key(retry, requested) {
                     AsyncImage(model = models[requested], contentDescription = description, contentScale = scale,
-                        onSuccess = { if (attempt == requested) painter = it.painter },
+                        onSuccess = { if (attempt == requested) loaded = true },
                         onError = { if (attempt == requested) attempt = requested + 1 },
                         modifier = Modifier.fillMaxSize())
                 }
             }
-            content(ImageFeedback(loading = attempt < models.size && painter == null, failed = attempt >= models.size,
-                painter = painter,
+            content(ImageFeedback(loading = attempt < models.size && !loaded, failed = attempt >= models.size,
+                painter = null,
                 retry = if (allowRetry && models.isNotEmpty()) ({ retry++ }) else null))
         }
     }
@@ -146,16 +146,17 @@ private fun HeroPhotoSurface(
                     val painter = rememberAsyncImagePainter(model = request, contentScale = ContentScale.Fit)
                     val state by painter.state.collectAsState()
                     val success = state as? AsyncImagePainter.State.Success
-                    val decoded = success?.result?.image?.let { IntSize(it.width, it.height) } ?: IntSize.Zero
-                    val geometry = heroMediaGeometry(viewport, decoded, allowCrop)
+                    val decoded = success?.result?.image?.let { IntSize(it.width, it.height) }
+                    val settled = settledHeroPhotoGeometry(viewport, decoded, allowCrop)
+                    val geometry = settled ?: heroMediaGeometry(viewport, IntSize.Zero, allowCrop)
                     // Never draw the loading painter at provisional geometry. The successful
                     // request supplies the pixels and dimensions in the same composition.
-                    if (success != null) Image(painter = success.painter, contentDescription = description,
+                    if (success != null && settled != null) Image(painter = success.painter, contentDescription = description,
                         contentScale = geometry.scale, modifier = Modifier.fillMaxSize().then(imageMotion))
                     if (state is AsyncImagePainter.State.Error) LaunchedEffect(Unit) {
                         attempt = requested + 1
                     }
-                    content(ImageFeedback(success == null, false, success?.painter, retryAction), geometry)
+                    content(ImageFeedback(settled == null, false, success?.painter?.takeIf { settled != null }, retryAction), geometry)
                 }
             } else {
                 val failed = attempt >= models.size
