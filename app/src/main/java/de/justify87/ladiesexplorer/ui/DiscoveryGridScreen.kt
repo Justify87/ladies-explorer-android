@@ -95,8 +95,11 @@ internal fun DiscoveryGridScreen(
             anchorIndex = anchor.second
             anchorOffset = anchor.third
         }
-        LaunchedEffect(listState) {
-            snapshotFlow { currentAnchor() }.filterNotNull().collect { saveAnchor(it) }
+        LaunchedEffect(listState, search.activeProjectionPending, membershipUnknown) {
+            // A transient loading/error row must not replace the last valid listing anchor.
+            if (!search.activeProjectionPending && !membershipUnknown) {
+                snapshotFlow { currentAnchor() }.filterNotNull().collect { saveAnchor(it) }
+            }
         }
         LaunchedEffect(listState, pageAction, canPage, discovery.error) {
             if (pageAction != null && canPage && discovery.error == null) {
