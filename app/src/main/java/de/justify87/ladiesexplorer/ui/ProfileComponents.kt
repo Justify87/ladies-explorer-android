@@ -270,7 +270,7 @@ internal fun ProfileMediaHero(
                     }
                     BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                         // Reserve the center for retry or video controls.
-                        val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed || feedback.loading) else 0f
+                        val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed) else 0f
                         GalleryTargets(side, hit, gestureOwner, previous, next,
                             { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
                         if (feedback.failed || feedback.loading) Box(Modifier.align(Alignment.Center)
@@ -314,7 +314,6 @@ internal fun ProfileMediaHero(
                 Text(if (displayedDrag > 0f) "Gefällt" else "Nein", Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     color = MaterialTheme.colorScheme.inverseOnSurface)
             }
-
         }
     }
 }
