@@ -23,7 +23,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import coil3.request.ImageRequest
@@ -236,7 +235,7 @@ internal fun ProfileMediaHero(
                     SideEffect { onMediaSettled(!feedback.loading) }
                     BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                         // Reserve the center for retry or video controls.
-                        val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed) else 0f
+                        val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed || feedback.loading) else 0f
                         GalleryTargets(side, hit, gestureOwner, previous, next,
                             { selection.select(media, index - 1) }, { selection.select(media, index + 1) },
                             favoriteBounds = favoriteBounds)
@@ -251,6 +250,7 @@ internal fun ProfileMediaHero(
                     SideEffect { onMediaSettled(true) } // playback has its own stable loading surface
                     GalleryVideo(item, active = actionsEnabled && projectionAvailable,
                         mediaVisible = playbackVisible, canInteract = isCurrent,
+                        onVideoSize = { decodedSize = it },
                         modifier = Modifier.fillMaxSize().then(imageMotion),
                         controlsModifier = Modifier.align(Alignment.Center),
                         onTargets = {
@@ -272,7 +272,7 @@ internal fun ProfileMediaHero(
             if (favorite != null) key(actionToken) {
                 IconButton(onClick = { if (actionsEnabled && isCurrent()) onFavorite?.invoke() },
                     enabled = actionsEnabled && onFavorite != null,
-                    modifier = Modifier.align(Alignment.TopStart).offset { favoriteOrigin }
+                    modifier = Modifier.align(Alignment.TopStart).absoluteOffset { favoriteOrigin }
                         .size(48.dp).then(hit.exclusive).shellFocus()) {
                     Box(Modifier.size(34.dp).background(Color.Black.copy(alpha = .78f), MaterialTheme.shapes.small),
                         contentAlignment = Alignment.Center) {
