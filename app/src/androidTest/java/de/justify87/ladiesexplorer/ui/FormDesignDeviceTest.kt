@@ -102,7 +102,7 @@ class FormDesignDeviceTest {
                     search = search, saved = SavedSearchUiState(),
                     canStartSearch = true, canEditDraft = true,
                     onDraftChange = { change -> search = change(SearchDraft.from(search)).applyTo(search) },
-                    onReset = { true }, onPreviewStart = {}, onPreviewStop = {},
+                    onReset = { true }, onSaveDefault = {}, onPreviewStart = {}, onPreviewStop = {},
                     onSearch = { submitted.add(it) }, onCancelSearch = {},
                     onSave = {}, onName = {}, onCancelEdit = {}, generation = 12L,
                     onProfile = {}, modifier = Modifier.width(360.dp).height(560.dp),
@@ -120,6 +120,39 @@ class FormDesignDeviceTest {
     }
 
 
+    @Test fun standardActionIsExplicitAndDoesNotSubmitSearch() {
+        var savedDraft: SearchDraft? = null
+        var submitted = 0
+        rule.setContent {
+            MaterialTheme(colorScheme = ladiesLightColors) {
+                var search by remember { mutableStateOf(SearchUiState()) }
+                SearchScreen(
+                    search = search, saved = SavedSearchUiState(),
+                    canStartSearch = true, canEditDraft = true,
+                    onDraftChange = { change -> search = change(SearchDraft.from(search)).applyTo(search) },
+                    onReset = {
+                        search = (savedDraft ?: SearchDraft()).applyTo(search)
+                        true
+                    },
+                    onSaveDefault = { savedDraft = SearchDraft.from(search) },
+                    onPreviewStart = {}, onPreviewStop = {}, onSearch = { submitted++ },
+                    onCancelSearch = {}, onSave = {}, onName = {}, onCancelEdit = {},
+                    generation = 1L, onProfile = {}, modifier = Modifier.width(360.dp).height(560.dp),
+                )
+            }
+        }
+        val city = rule.onNodeWithContentDescription("Ort")
+        city.performScrollTo().performTextReplacement("Teststadt")
+        rule.onNodeWithText("Aktuelle Suche als Standard speichern").performClick()
+        city.performTextReplacement("Andere Stadt")
+        rule.onNodeWithText("Reset").performClick()
+        rule.runOnIdle {
+            assertEquals("Teststadt", savedDraft?.city)
+            assertEquals(0, submitted)
+        }
+        city.assertTextContains("Teststadt")
+    }
+
     @Test fun filteringOptionsDoesNotClearHiddenSelectionOrSubmit() {
         var search by mutableStateOf(SearchUiState(filterCatalog = SourceFilterCatalog(
             listOf(""), listOf(SourceFilterGroup("haarfarbe", listOf("Braun", "Schwarz"))))))
@@ -130,7 +163,7 @@ class FormDesignDeviceTest {
                     search = search, saved = SavedSearchUiState(),
                     canStartSearch = true, canEditDraft = true,
                     onDraftChange = { change -> search = change(SearchDraft.from(search)).applyTo(search) },
-                    onReset = { true }, onPreviewStart = {}, onPreviewStop = {},
+                    onReset = { true }, onSaveDefault = {}, onPreviewStart = {}, onPreviewStop = {},
                     onSearch = { submitted++ }, onCancelSearch = {},
                     onSave = {}, onName = {}, onCancelEdit = {}, generation = 12L,
                     onProfile = {}, modifier = Modifier.width(360.dp).height(560.dp),
@@ -162,7 +195,7 @@ class FormDesignDeviceTest {
                     SearchScreen(
                         search = SearchUiState(), saved = SavedSearchUiState(),
                         canStartSearch = true, canEditDraft = true,
-                        onDraftChange = {}, onReset = { true }, onPreviewStart = {}, onPreviewStop = {},
+                        onDraftChange = {}, onReset = { true }, onSaveDefault = {}, onPreviewStart = {}, onPreviewStop = {},
                         onSearch = {}, onCancelSearch = {}, onSave = {}, onName = {}, onCancelEdit = {},
                         generation = 1L, onProfile = {}, modifier = Modifier.width(360.dp).height(560.dp),
                     )

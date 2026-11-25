@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.7 sind abgeschlossen. Nächste abhängige Aufgabe: M09.8 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.7 sind abgeschlossen. M09.8 ist ausdrücklich freigegeben und in Arbeit; nächste abhängige Aufgabe nach Integration: M09.9 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,9 +18,9 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.8 — Suche: Aktionsleiste und automatische Pagination
 
-**Status:** PLANNED.
+**Status:** DOING — Branch `m09-8-search-pagination-default`; Nutzerfreigabe erteilt.
 
-**Abhängigkeit:** M09.7; gesonderter Nutzerauftrag.
+**Abhängigkeit:** M09.7 integriert; gesonderter Nutzerauftrag erteilt.
 
 - Schwebende Suchaktionsleiste kompakter neu gestalten; Trefferanzahl in Suchbutton integrieren und Quellvorschau, lokalen/letzten Ergebniscount und unbekannten Wert fachlich korrekt unterscheiden. „Lokale Filter werden nach der Suche angewendet“ und „Der letzte Suchlauf bleibt bis zur neuen Suche erhalten“ entfernen. Reset erhalten; „Aktuelle Suche als Standard speichern“ ergänzen, explizit aktuellen gültigen Entwurf einschließlich Filter dauerhaft als Ausgangskonfiguration speichern. Keine implizite Suche, SavedSearch-Änderung oder Quittierung; Reset-/Startverhalten und Speichern prüfen.
 - Manuelles Seitenlimit aus der normalen Suche und aus nutzerseitig gespeicherten Suchdefinitionen entfernen (auch nicht in erweiterte Einstellungen verschieben). Historischer Befund: in M03 als vorsorgliche Obergrenze eingeführt ([PR #4](https://github.com/Justify87/ladies-explorer-android/pull/4)); kein belegter Endlos-Paginationsfehler in der untersuchten Android-Historie, vorherige Web-App orientierte sich an Quellseitenzahl.
