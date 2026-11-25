@@ -92,11 +92,10 @@ internal fun swipeReadPolicy(
     )
 }
 
-internal suspend fun warmSwipeMedia(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
+internal suspend fun warmSwipeMedia(context: Context, profile: ProfileReadModel, size: IntSize) {
     if (size.width <= 0 || size.height <= 0) return
-    val media = profile?.media.orEmpty().filter { it.kind == "IMAGE" }
+    val media = profile.media.filter { it.kind == "IMAGE" }
         .map { mediaModels(it.localPath, it.url) }.filter { it.isNotEmpty() }
-        .ifEmpty { listOf(mediaModels(card.localPath, card.thumbnailUrl)) }
     val loader = SingletonImageLoader.get(context)
     for (models in media) for (model in models) {
         currentCoroutineContext().ensureActive()
@@ -104,7 +103,7 @@ internal suspend fun warmSwipeMedia(context: Context, card: DiscoveryCard, profi
         if (result is SuccessResult) break
     }
     val videos = (context.applicationContext as LadiesApplication).galleryVideoFiles
-    for (item in profile?.media.orEmpty().filter { it.kind == "VIDEO" }) {
+    for (item in profile.media.filter { it.kind == "VIDEO" }) {
         currentCoroutineContext().ensureActive()
         try {
             videos.warm(item)
