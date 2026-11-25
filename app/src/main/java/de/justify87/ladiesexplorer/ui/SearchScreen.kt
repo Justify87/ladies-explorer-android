@@ -140,7 +140,8 @@ internal fun SearchScreen(
                             }
                             if (state.response != null) TextButton(onClick = { resultsVisible = true },
                                 modifier = Modifier.heightIn(min = 48.dp)) {
-                                Text("Letzte Ergebnisse (${state.activeCards.size} lokal)", style = MaterialTheme.typography.labelMedium)
+                                Text(if (state.activeProjectionPending || state.activeProjectionError != null) "Letzte Ergebnisse"
+                                    else "Letzte Ergebnisse (${state.activeCards.size} lokal)", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                         if (!state.defaultReady) Text("Suchstandard wird geladen …", style = MaterialTheme.typography.labelSmall)
@@ -177,7 +178,13 @@ internal fun SearchScreen(
                 if (!editing && resultsVisible && state.response != null) {
                     val response = state.response
                     item {
-                        ScreenGroup("${state.activeCards.size} lokal sichtbare Treffer") {
+                        val title = when {
+                            state.activeProjectionPending -> "Lokale Treffer werden aktualisiert"
+                            state.activeProjectionError != null -> "Lokale Treffer unbekannt"
+                            else -> "${state.activeCards.size} lokal sichtbare Treffer"
+                        }
+                        ScreenGroup(title) {
+                            state.activeProjectionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                             Text("Quellzahl: ${response.serverCount?.takeIf { response.radiusVerified } ?: "unbekannt"}", style = MaterialTheme.typography.bodyMedium)
                             Text(
                                 (if (response.partial || !response.radiusVerified) "${response.fetchedPages} Seiten geladen" else "${response.fetchedPages} von ${response.totalPages} Seiten") +
@@ -195,7 +202,7 @@ internal fun SearchScreen(
                             }
                         }
                     }
-                    items(state.activeCards, key = { it.listingId }) { card ->
+                    items(state.activeCards.takeUnless { state.activeProjectionPending || state.activeProjectionError != null }.orEmpty(), key = { it.listingId }) { card ->
                         SearchResultRow(SearchResultOpenAction(card, response.searchRunId, generation), onProfile)
                     }
                 } else {

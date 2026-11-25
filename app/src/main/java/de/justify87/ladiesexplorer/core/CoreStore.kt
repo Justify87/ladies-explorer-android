@@ -10,6 +10,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 
+/** Global result policy is independent of stored search definitions and replay. */
+data class GlobalResultVisibility(val hideLikes: Boolean = false, val hideDislikes: Boolean = false) {
+    fun effective(local: LocalVisibility): LocalVisibility = local.copy(
+        hideLikes = local.hideLikes || hideLikes,
+        hideDislikes = local.hideDislikes || hideDislikes,
+    )
+}
+
 class CoreStore(context: Context) {
     private val appFiles = context.filesDir
     private val preferences = context.getSharedPreferences("diagnostics", Context.MODE_PRIVATE)
@@ -17,6 +25,18 @@ class CoreStore(context: Context) {
 
     fun replayLikes(): Boolean = explorerPreferences.getBoolean("replay_likes", true)
     fun setReplayLikes(value: Boolean) { explorerPreferences.edit().putBoolean("replay_likes", value).apply() }
+
+    fun globalResultVisibility() = GlobalResultVisibility(
+        hideLikes = explorerPreferences.getBoolean("hide_search_likes", false),
+        hideDislikes = explorerPreferences.getBoolean("hide_search_dislikes", false),
+    )
+
+    fun setGlobalResultVisibility(value: GlobalResultVisibility) {
+        explorerPreferences.edit()
+            .putBoolean("hide_search_likes", value.hideLikes)
+            .putBoolean("hide_search_dislikes", value.hideDislikes)
+            .apply()
+    }
     private val logger = Logger.withTag("LadiesExplorer")
     private val logBridge = DiagnosticEventQueue()
     private val captureControls = Mutex()

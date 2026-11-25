@@ -70,10 +70,11 @@ internal fun DiscoverScreen(
 ) {
     val searchLoading = search.loading
     val active = search.response?.takeIf { it.searchRunId == state.activeRunId }
-    val card = state.cards.firstOrNull()
-    val executedFiltersJson = executedProfileMatchContext(active, card?.personId).encode()
+    val visibleCards = state.cards.takeUnless { search.activeProjectionPending }.orEmpty()
+    val card = visibleCards.firstOrNull()
+    val executedFiltersJson = executedProfileMatchContext(active, card?.personId, state.globalVisibility).encode()
     val deckToken = state.deckToken()
-    val cardToken = state.cardToken()
+    val cardToken = state.cardToken().takeIf { card != null }
     val context = LocalContext.current
     val core = (context.applicationContext as LadiesApplication).coreStore
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
@@ -82,7 +83,7 @@ internal fun DiscoverScreen(
         onSwipeVisibility(started)
         onDispose { onSwipeVisibility(false) }
     }
-    val visible = started && !searchLoading && !state.loading && !state.busy
+    val visible = started && !searchLoading && !search.activeProjectionPending && !state.loading && !state.busy
     val enabled = visible
     var heroSize by remember { mutableStateOf(IntSize.Zero) }
     val decks = remember(state.activeRunId, state.swipeProfileRevision, started) {
@@ -110,7 +111,7 @@ internal fun DiscoverScreen(
         }
     }
     SideEffect { onRenderedSwipe(token) }
-    val upcoming = prefetchCards(state.cards)
+    val upcoming = prefetchCards(visibleCards)
     val window = listOfNotNull(card) + upcoming
     SideEffect {
         decks.retain(window)

@@ -81,4 +81,18 @@ class ShellRouteTest {
         assertEquals(BackAction.CloseProfile, search.backAction(true, true))
         assertEquals(BackAction.CloseSavedResults, search.backAction(false, true))
     }
+    @Test fun settingsSubmenusHaveOwnRestorableRouteAndBackReturnsToSettingsFirst() {
+        val settings = ShellRoute().select(DiscoverMode.Map).select(RootDestination.Settings)
+        val children = SettingsPane.entries.filter { it != SettingsPane.Main }.map(settings::openSettings)
+        assertEquals(4, (children + settings).map { it.stateKey }.toSet().size)
+        for (child in children) {
+            assertEquals(child, ShellRoute.decode(child.encode()))
+            assertEquals(BackAction.Navigate, child.backAction(false, false))
+            assertEquals(settings, child.back())
+            assertEquals(DiscoverMode.Map, child.back().back().discovery)
+            assertEquals(SettingsPane.Main, child.select(RootDestination.Search).settingsPane)
+        }
+        assertEquals(settings, ShellRoute.decode(listOf("Settings", "Map", "")))
+        assertEquals(SettingsPane.Main, ShellRoute.decode(listOf("Discover", "Map", "", "Diagnostics")).settingsPane)
+    }
 }

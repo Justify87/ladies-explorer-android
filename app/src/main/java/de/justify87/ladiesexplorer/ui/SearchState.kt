@@ -2,6 +2,7 @@ package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.LocalVisibility
+import de.justify87.ladiesexplorer.core.GlobalResultVisibility
 import de.justify87.ladiesexplorer.core.SearchResponse
 import de.justify87.ladiesexplorer.core.SearchRequest
 import de.justify87.ladiesexplorer.core.SourceFilterCatalog
@@ -126,7 +127,8 @@ internal fun searchResultOpenMatches(
 ): Boolean =
     discovery.actionSurface == ProfileActionSurface.SEARCH &&
         discovery.actionGeneration == action.generation &&
-        !discovery.busy && !search.loading && !search.actionBusy && !search.profileOpen &&
+        !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy && !search.profileOpen &&
+        !search.activeProjectionPending && search.activeProjectionError == null &&
         search.response?.searchRunId == action.runId &&
         search.activeCards.any { it == action.card }
 
@@ -136,9 +138,11 @@ sealed interface ProfileMatchContext {
     data class Saved(val savedId: String, val ownerId: Long) : ProfileMatchContext
 }
 
-internal fun executedProfileMatchContext(response: SearchResponse?, ownerId: Long?): ProfileMatchContext? =
+internal fun executedProfileMatchContext(
+    response: SearchResponse?, ownerId: Long?, global: GlobalResultVisibility = GlobalResultVisibility(),
+): ProfileMatchContext? =
     if (response == null || ownerId == null) null
-    else ProfileMatchContext.Run(response.searchRunId, ownerId, response.local)
+    else ProfileMatchContext.Run(response.searchRunId, ownerId, global.effective(response.local))
 
 internal fun profileMatchContextForOwner(context: ProfileMatchContext?, ownerId: Long?): ProfileMatchContext? =
     if (ownerId == null) null else when (context) {
@@ -258,10 +262,12 @@ internal fun SearchUiState.endRun(errorMessage: String? = null): SearchUiState =
 internal fun SearchUiState.acceptRun(
     run: SearchResponse,
     cards: List<DiscoveryCard>,
-): SearchUiState = copy(loading = false, searchCancelling = false, error = null, response = run, activeCards = cards)
+): SearchUiState = copy(loading = false, searchCancelling = false, error = null, response = run,
+    activeCards = cards, activeProjectionPending = false, activeProjectionError = null)
 
 internal fun SearchUiState.applyDraftChange(next: SearchUiState): SearchUiState =
-    next.copy(response = response, activeCards = activeCards, error = null)
+    next.copy(response = response, activeCards = activeCards, error = null,
+        activeProjectionPending = activeProjectionPending, activeProjectionError = activeProjectionError)
 
 internal data class SearchDraft(
     val city: String = "Leipzig",
@@ -317,7 +323,11 @@ internal fun searchCountLabel(
     val response = state.response
     if (allowLastRun && response != null &&
         SearchDraft.from(response.query, response.local) == draft.copy(city = draft.city.trim())) {
-        return "${state.activeCards.size} zuletzt lokal"
+        return when {
+            state.activeProjectionPending -> "Lokale Treffer werden aktualisiert"
+            state.activeProjectionError != null -> "Lokale Treffer unbekannt"
+            else -> "${state.activeCards.size} zuletzt lokal"
+        }
     }
     return if (previewMatches && state.previewLoading) "Quellzahl wird geprüft"
     else "Quellzahl unbekannt"

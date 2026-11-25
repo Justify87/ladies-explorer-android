@@ -21,6 +21,11 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.CaptureMode
+import de.justify87.ladiesexplorer.core.CoreStore
+import de.justify87.ladiesexplorer.core.GlobalResultVisibility
+import androidx.test.platform.app.InstrumentationRegistry
+import android.content.Context
+import android.content.ContextWrapper
 import de.justify87.ladiesexplorer.core.SourceFilterCatalog
 import de.justify87.ladiesexplorer.core.SourceFilterGroup
 import org.junit.Assert.assertEquals
@@ -254,19 +259,38 @@ class FormDesignDeviceTest {
         val capture = mutableListOf<CaptureMode>()
         val replay = mutableListOf<Boolean>()
         var exports = 0
+        var route by mutableStateOf(ShellRoute().select(RootDestination.Settings))
+        var visibility by mutableStateOf(GlobalResultVisibility())
         rule.setContent {
             MaterialTheme(colorScheme = ladiesLightColors) {
-                SettingsScreen(
+                Column {
+                    AppHeader(route.settingsPane.title, onBack = if (route.settingsPane == SettingsPane.Main) null
+                        else ({ route = route.back() }))
+                    androidx.compose.runtime.key(route.settingsPane) {
+                        SettingsScreen(
+                    pane = route.settingsPane, onOpenPane = { route = route.openSettings(it) },
+                    globalVisibility = visibility, visibilityEnabled = true, onGlobalVisibility = { visibility = it },
                     state = HomeUiState(loading = false),
                     replayLikes = false, replayEnabled = true, onReplayLikes = { replay.add(it) },
                     onRefresh = {}, onSaveDiagnostics = { exports++ }, onShareDiagnostics = { exports++ },
                     onDebugLogging = {}, onCaptureMode = { capture.add(it) }, onClearHar = {},
                     onSaveHar = { exports++ }, onShareHar = { exports++ },
-                )
+                    modifier = Modifier.width(320.dp).height(480.dp),
+                        )
+                    }
+                }
             }
         }
-        rule.onNodeWithText("Datenbankstatus noch nicht bekannt.").assertExists()
+        rule.onNodeWithText("Datenbankstatus noch nicht bekannt.").assertDoesNotExist()
+        rule.onNodeWithText("Suche").performClick()
+        rule.onNodeWithContentDescription("Likes ausblenden").assertIsOff().performClick().assertIsOn()
+        rule.onNodeWithContentDescription("Dislikes ausblenden").assertIsOff().performClick().assertIsOn()
+        rule.onNodeWithContentDescription("Zurück").performClick()
+        rule.onNodeWithText("Entdecken").performClick()
         rule.onNodeWithContentDescription("Likes erneut zeigen").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("Zurück").performClick()
+        rule.onNodeWithText("Diagnose und Fehlerbehebung").performClick()
+        rule.onNodeWithText("Datenbankstatus noch nicht bekannt.").assertExists()
         rule.onNodeWithText("Debug-Log speichern").performScrollTo().assertIsNotEnabled()
         rule.onNodeWithText("HAR speichern").performScrollTo().assertIsNotEnabled()
         rule.onNodeWithText("Aus").performScrollTo().assertIsSelected()
@@ -274,8 +298,32 @@ class FormDesignDeviceTest {
             assertEquals(0, exports)
             assertTrue(capture.isEmpty())
             assertEquals(listOf(true), replay)
+            assertEquals(GlobalResultVisibility(true, true), visibility)
         }
         rule.onNodeWithText("Metadaten").performScrollTo().performClick()
         rule.runOnIdle { assertEquals(listOf(CaptureMode.METADATA), capture) }
+    }
+    @Test fun globalVisibilityRoundTripsAcrossStoreInstancesWithoutTouchingReplayOrCapture() {
+        val context = InstrumentationRegistry.getInstrumentation().context
+        val fixture = object : ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int) =
+                super.getSharedPreferences("m09_9_fixture_" + name, mode)
+        }
+        val preferences = fixture.getSharedPreferences("explorer", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            val store = CoreStore(fixture)
+            assertEquals(GlobalResultVisibility(), store.globalResultVisibility())
+            store.setReplayLikes(false)
+            for (likes in listOf(false, true)) for (dislikes in listOf(false, true)) {
+                val expected = GlobalResultVisibility(likes, dislikes)
+                store.setGlobalResultVisibility(expected)
+                val recreated = CoreStore(fixture)
+                assertEquals(expected, recreated.globalResultVisibility())
+                assertTrue(!recreated.replayLikes())
+            }
+        } finally {
+            preferences.edit().clear().commit()
+        }
     }
 }

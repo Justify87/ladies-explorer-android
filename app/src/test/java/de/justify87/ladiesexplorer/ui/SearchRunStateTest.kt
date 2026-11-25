@@ -1,6 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.Preference
+import de.justify87.ladiesexplorer.core.GlobalResultVisibility
 import de.justify87.ladiesexplorer.core.SearchPreview
 import de.justify87.ladiesexplorer.core.SearchRequest
 import de.justify87.ladiesexplorer.core.SearchResponse
@@ -58,6 +59,62 @@ class SearchRunStateTest {
         assertEquals(ProfileMatchContext.Run(1L, 8L, run.local), profileMatchContextForOwner(key, 8L))
         val saved = ProfileMatchContext.Saved("fixture", 7L)
         assertEquals(ProfileMatchContext.Saved("fixture", 8L), profileMatchContextForOwner(saved, 8L))
+    }
+
+    @Test fun effectiveGlobalRulesAreUsedForMatchContextWithoutMutatingExecutedRun() {
+        val run = response(1).copy(local = defaultLocalVisibility().copy(hideDislikes = false))
+        val global = GlobalResultVisibility(hideLikes = true, hideDislikes = true)
+        val match = executedProfileMatchContext(run, 7L, global)
+        assertEquals(ProfileMatchContext.Run(1L, 7L, run.local.copy(hideLikes = true, hideDislikes = true)), match)
+        assertFalse(run.local.hideLikes)
+        assertFalse(run.local.hideDislikes)
+    }
+
+    @Test fun filteredMembershipFeedsGridMapAndSwipeWithoutReplayOrResetRestoringHiddenCards() {
+        val run = response(1)
+        val neutral = card(1)
+        val liked = card(2).copy(preference = Preference.LIKE, favorite = true)
+        val disliked = card(3).copy(preference = Preference.DISLIKE)
+        val session = SwipeSession()
+        val state = DiscoverUiState(activeRunId = 1L, loading = false)
+        // The native read has already applied the effective rules; all three modes use its result.
+        for (rows in listOf(listOf(neutral, liked, disliked), listOf(neutral, disliked),
+            listOf(neutral, liked), listOf(neutral))) {
+            val search = SearchUiState().acceptRun(run, rows)
+            assertEquals(rows, gridCards(state, search))
+            assertEquals(rows, currentMapMembership(state, search)?.cards)
+            session.replayLikes = true
+            assertEquals(rows, session.queue(discoveryMembership(state, search), true))
+            session.replayLikes = false
+            assertEquals(rows.filter { it.preference != Preference.LIKE }, session.queue(rows, true))
+            session.reset()
+            session.replayLikes = true
+            assertEquals(rows, session.queue(rows, true))
+        }
+        // Undo from the authoritative preference write can restore a newly neutral row.
+        session.visit(SwipeStep(2, 2, Preference.NONE, Preference.LIKE))
+        val step = requireNotNull(session.last)
+        assertEquals(listOf(neutral), session.queue(listOf(neutral), true))
+        session.undo(step)
+        val restored = liked.copy(preference = Preference.NONE)
+        assertEquals(listOf(restored, neutral), session.queue(listOf(neutral, restored), true))
+    }
+
+    @Test fun visibilityReprojectionWithholdsStaleMembershipAndUnknownCountUntilConfirmed() {
+        val run = response(1)
+        val row = card(1)
+        val before = SearchUiState().acceptRun(run, listOf(row))
+        val draft = SearchDraft.from(run.query, run.local)
+        val discovery = DiscoverUiState(activeRunId = 1L, loading = true)
+        val pending = before.copy(activeProjectionPending = true)
+        assertTrue(gridCards(discovery, pending).isEmpty())
+        assertEquals(null, currentMapMembership(discovery, pending))
+        assertEquals("Lokale Treffer werden aktualisiert", searchCountLabel(pending, draft, false))
+        val error = pending.copy(activeCards = emptyList(), activeProjectionPending = false, activeProjectionError = "Fixture")
+        assertEquals("Lokale Treffer unbekannt", searchCountLabel(error, draft, false))
+        val confirmed = error.acceptRun(run, emptyList())
+        assertEquals("0 zuletzt lokal", searchCountLabel(confirmed, draft, false))
+        assertEquals(emptyList<de.justify87.ladiesexplorer.core.DiscoveryCard>(), currentMapMembership(discovery, confirmed)?.cards)
     }
 
     @Test fun draftChangesAndCancellationKeepExecutedResult() {
