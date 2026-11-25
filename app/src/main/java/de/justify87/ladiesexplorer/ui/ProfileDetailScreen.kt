@@ -66,7 +66,7 @@ internal fun ProfileDetailScreen(
                 val currentFilters = latestFilters
                 preparation.step(model, currentFilters, size,
                     { app.coreStore.prepareProfilePanels(model, currentFilters) },
-                    { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation) },
+                    { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation, model, "detail") },
                     accept = { latestRaw == model && size == heroSize && currentFilters == latestFilters })
                 app.galleryVideoFiles.retainPins(preparation, preparation.pinnedVideos())
             }
@@ -170,6 +170,7 @@ internal fun ProfileDetailScreen(
                             selection = mediaSelection,
                             projectionAvailable = displayed != null,
                             preparedMedia = prepared?.media.orEmpty(), preparing = displayed == null,
+                             onMediaRecovered = { key -> prepared?.let { preparation.recovered(it, key) } },
                             presentationOwner = owner,
                             videoPlaybackEnabled = started && !state.actionBusy && !actionsBusy,
                             actionToken = renderedToken, actionsEnabled = !busy,

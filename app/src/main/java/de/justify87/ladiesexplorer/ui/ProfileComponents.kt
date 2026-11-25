@@ -130,7 +130,7 @@ private fun ProfileImageSurface(
 @Composable
 private fun HeroPhotoSurface(
     item: ProfileMediaItem, viewport: IntSize, description: String,
-    imageMotion: Modifier, prepared: PreparedMedium?,
+    imageMotion: Modifier, prepared: PreparedMedium?, onRecovered: () -> Unit,
     content: @Composable BoxScope.(ImageFeedback, HeroMediaGeometry) -> Unit,
 ) {
     // Archiving the same URL must not replace an already decoded painter. Retry can use the new local path.
@@ -147,8 +147,6 @@ private fun HeroPhotoSurface(
                 val geometry = heroMediaGeometry(viewport, IntSize(bitmap.width, bitmap.height))
                 Image(painter, description, Modifier.fillMaxSize().then(imageMotion), contentScale = geometry.scale)
                 ImageFeedback(false, false, painter, retryAction) to geometry
-            } else if (prepared == PreparedMedium.Unavailable && retry == 0) {
-                ImageFeedback(false, true, null, retryAction) to heroMediaGeometry(viewport, IntSize.Zero)
             } else if (attempt < models.size && viewport.width > 0 && viewport.height > 0) {
                 val requested = attempt
                 key(retry, requested) {
@@ -163,8 +161,11 @@ private fun HeroPhotoSurface(
                     val geometry = settled ?: heroMediaGeometry(viewport, IntSize.Zero)
                     // Never draw the loading painter at provisional geometry. The successful
                     // request supplies the pixels and dimensions in the same composition.
-                    if (success != null && settled != null) Image(painter = success.painter, contentDescription = description,
-                        contentScale = geometry.scale, modifier = Modifier.fillMaxSize().then(imageMotion))
+                    if (success != null && settled != null) {
+                        Image(painter = success.painter, contentDescription = description,
+                            contentScale = geometry.scale, modifier = Modifier.fillMaxSize().then(imageMotion))
+                        if (prepared == PreparedMedium.Unavailable) LaunchedEffect(success) { onRecovered() }
+                    }
                     if (state is AsyncImagePainter.State.Error) LaunchedEffect(Unit) {
                         attempt = requested + 1
                     }
@@ -223,6 +224,7 @@ internal fun ProfileMediaHero(
     onVisual: (HeroVisual?) -> Unit = {},
     preparedMedia: Map<String, PreparedMedium> = emptyMap(),
     preparing: Boolean = false,
+    onMediaRecovered: (String) -> Unit = {},
     videoPlaybackEnabled: Boolean = actionsEnabled,
     presentationOwner: Any? = actionToken?.let { it.listingId to it.ownerId },
 ) {
@@ -281,7 +283,8 @@ internal fun ProfileMediaHero(
             }
             when (item?.kind) {
                 "IMAGE" -> HeroPhotoSurface(item, viewport,
-                    "Profilbild ${index + 1}", imageMotion, preparedMedia[item.presentationKey()]) { feedback, geometry ->
+                    "Profilbild ${index + 1}", imageMotion, preparedMedia[item.presentationKey()],
+                    { onMediaRecovered(item.presentationKey()) }) { feedback, geometry ->
                     SideEffect {
                         // A resized request is not the settled visual until its own decode succeeds.
                         onVisual(feedback.painter?.takeIf { projectionAvailable && !feedback.failed && geometry.imageBounds != null }
@@ -314,6 +317,7 @@ internal fun ProfileMediaHero(
                     GalleryVideo(item, active = videoPlaybackEnabled && projectionAvailable,
                         mediaVisible = playbackVisible, canInteract = { videoPlaybackEnabled && projectionAvailable },
                         prepared = preparedMedia[item.presentationKey()],
+                        onRecovered = { onMediaRecovered(item.presentationKey()) },
                         onVideoSize = { videoSize = it },
                         modifier = videoSurface.then(imageMotion),
                         controlsModifier = Modifier.align(Alignment.Center),

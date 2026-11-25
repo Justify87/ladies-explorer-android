@@ -239,7 +239,8 @@ internal fun DiscoverScreen(
                         val size = heroSize
                         preparation.step(model, filters, size,
                             { core.prepareProfilePanels(model, filters) },
-                            { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation) },
+                            { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation, model,
+                                if (currentRole) "swipe_current" else "swipe_prefetch") },
                             accept = { decks[target] == model && latestWindow.any { sameSwipeCard(it, target) } &&
                                 size == heroSize && filters == filtersFor(target) })
                     }
@@ -477,6 +478,7 @@ internal fun DiscoverScreen(
                             playbackVisible = heroVisible,
                             galleryNavigationEnabled = !transitioning,
                             preparedMedia = prepared?.media.orEmpty(),
+                            onMediaRecovered = { key -> prepared?.let { preparation.recovered(it, key) } },
                             preparing = profile == null && readError == null,
                             videoPlaybackEnabled = started && !state.busy && !searchLoading && !transitioning,
                             presentationOwner = cardIdentity,

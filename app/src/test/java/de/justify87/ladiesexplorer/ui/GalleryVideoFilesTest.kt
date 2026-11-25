@@ -74,6 +74,29 @@ class GalleryVideoFilesTest {
         assertEquals(16L, folder.root.listFiles()!!.sumOf { it.length() })
     }
 
+    @Test(timeout = 15_000) fun prefetchBudgetDoesNotPreventOnDemandPlayback() = runBlocking {
+        var downloads = 0
+        val cache = cache(32L, 16L) { downloads++; bytes }
+        val owner = Any()
+        assertTrue(cache.warm(medium("a"), owner))
+        assertTrue(runCatching { cache.warm(medium("b"), owner) }.exceptionOrNull() is VideoPreparationDeferred)
+        assertEquals(1, downloads)
+        cache.withVideo(medium("b")) { assertTrue(it.file.isFile) }
+        assertEquals(2, downloads)
+    }
+
+    @Test(timeout = 15_000) fun corruptedCacheEntryIsDownloadedAgain() = runBlocking {
+        var downloads = 0
+        val cache = cache { downloads++; bytes }
+        val original = cache.withVideo(medium("a")) { it.file }
+        original.writeBytes(ByteArray(16))
+        cache.withVideo(medium("a")) {
+            assertTrue(it.file.isFile)
+            assertTrue(it.file.readBytes().contentEquals(bytes))
+        }
+        assertEquals(2, downloads)
+    }
+
     @Test(timeout = 15_000) fun rejectedVideoDoesNotLeaveUnvalidatedFile() = runBlocking {
         val cache = cache { ByteArray(16) }
         assertTrue(runCatching { cache.warm(medium("invalid"), Any()) }.isFailure)

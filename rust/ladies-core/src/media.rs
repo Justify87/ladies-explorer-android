@@ -618,7 +618,9 @@ pub(crate) fn display_image(
     url: &str,
     control: &RequestControl,
 ) -> Result<DisplayImage, CoreError> {
-    display_image_with(url, &core.media_http, control)
+    let result = display_image_with(url, &core.media_http, control)?;
+    core.diagnostics.debug("MEDIA", format!("transport_result bytes={} mime={}", result.bytes.len(), result.mime));
+    Ok(result)
 }
 
 /// Bounded display-only video; never creates archive assets or profile observations.
@@ -667,7 +669,9 @@ pub(crate) fn display_video(
     url: &str,
     control: &RequestControl,
 ) -> Result<DisplayVideo, CoreError> {
-    display_video_with(url, &core.media_http, control)
+    let result = display_video_with(url, &core.media_http, control)?;
+    core.diagnostics.debug("MEDIA", format!("transport_result bytes={} mime={}", result.bytes.len(), result.mime));
+    Ok(result)
 }
 
 pub(crate) fn archive(

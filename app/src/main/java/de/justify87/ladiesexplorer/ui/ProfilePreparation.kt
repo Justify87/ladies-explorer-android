@@ -7,6 +7,7 @@ import androidx.compose.ui.unit.IntSize
 import coil3.BitmapImage
 import coil3.SingletonImageLoader
 import coil3.request.SuccessResult
+import coil3.request.ErrorResult
 import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
@@ -18,6 +19,7 @@ internal fun ProfileMediaItem.presentationKey(): String = "$kind:${url.ifBlank {
 internal sealed interface PreparedMedium {
     data class Photo(val bitmap: Bitmap) : PreparedMedium
     data object Video : PreparedMedium
+    data object Deferred : PreparedMedium
     data object Unavailable : PreparedMedium
 }
 
@@ -35,6 +37,7 @@ internal data class PreparedProfile(
     val media: Map<String, PreparedMedium> = emptyMap(),
     val panels: PreparedPanelData? = null,
 ) {
+    // Settled work is not the same as decoded/available media.
     val complete: Boolean get() = panels != null && model.media.all { it.presentationKey() in media }
     val hasMediaFailures: Boolean get() = media.values.any { it == PreparedMedium.Unavailable }
 
@@ -73,9 +76,22 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
 
     fun pinnedVideos(): Set<String> = slots.values.flatMap { slot ->
         listOfNotNull(slot.working, slot.published).flatMap { prepared ->
-            prepared.model.media.filter { it.kind == "VIDEO" }.map { it.url }
+            prepared.model.media.filter {
+                it.kind == "VIDEO" && prepared.media[it.presentationKey()] == PreparedMedium.Video
+            }.map { it.url }
         }
     }.filter { it.isNotBlank() }.toSet()
+
+    // Resolve a failed prefetch without replacing the live painter or profile.
+    fun recovered(expected: PreparedProfile, mediaKey: String) {
+        val key = expected.model.key()
+        val slot = slots[key] ?: return
+        val published = slot.published ?: return
+        if (!published.matches(expected.model, expected.filters, expected.viewport) ||
+            published.media[mediaKey] != PreparedMedium.Unavailable) return
+        slots[key] = slot.copy(published = published.copy(
+            media = published.media + (mediaKey to PreparedMedium.Deferred)))
+    }
 
     private fun remainingImageBytes(): Long {
         val bitmaps = slots.values.flatMap { slot ->
@@ -100,7 +116,7 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
             }
             val keys = model.media.map { it.presentationKey() }.toSet()
             PreparedProfile(model, filters, viewport,
-                media = reusable?.media?.filterKeys { it in keys }.orEmpty(),
+                media = reusable?.media?.filter { (key, value) -> key in keys && value != PreparedMedium.Unavailable }.orEmpty(),
                 panels = previous?.takeIf { it.model == model && it.filters == filters }?.panels)
         }
         val ticket = if (slot.working === working) slot else slot.copy(working = working)
@@ -119,43 +135,89 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
 }
 
 internal suspend fun CoreStore.prepareProfilePanels(model: ProfileReadModel, filters: String): PreparedPanelData {
-    suspend fun <T> read(block: suspend () -> T): Pair<T?, String?> = try {
+    suspend fun <T> read(section: String, block: suspend () -> T): Pair<T?, String?> = try {
         block() to null
     } catch (cancel: CancellationException) {
         throw cancel
     } catch (failure: Exception) {
+        diagnostic("PROFILE", DiagnosticLevel.WARN, "panel_failed listing=${model.profile.listingId} section=$section", failure)
         null to (failure.message ?: "Profildaten nicht verfügbar")
     }
-    val (facts, factsError) = read { profileFacts(model.profile.snapshotId, filters) }
-    val (detail, detailError) = read { personDetail(model.identity.personId) }
+    val (facts, factsError) = read("facts") { profileFacts(model.profile.snapshotId, filters) }
+    val (detail, detailError) = read("detail") { personDetail(model.identity.personId) }
     return PreparedPanelData(facts, detail, factsError, detailError)
 }
 
 internal suspend fun prepareProfileMedium(
     context: Context, item: ProfileMediaItem, size: IntSize, remaining: Long, pinOwner: Any,
+    model: ProfileReadModel, role: String,
 ): PreparedMedium {
+    val app = context.applicationContext as LadiesApplication
+    val core = app.coreStore
+    val key = mediaDiagnosticKey(item.url.ifBlank { item.localPath.orEmpty() })
+    val label = "listing=${model.profile.listingId} snapshot=${model.profile.snapshotId} role=$role media=$key kind=${item.kind}"
+    val started = android.os.SystemClock.elapsedRealtime()
+    fun record(level: DiagnosticLevel, event: String, failure: Throwable? = null) {
+        core.diagnostic("PREPARE", level, "$event $label elapsed_ms=${android.os.SystemClock.elapsedRealtime() - started}", failure)
+    }
+    record(DiagnosticLevel.DEBUG, "start viewport=${size.width}x${size.height} remaining_bytes=$remaining")
     return try {
         when (item.kind) {
             "IMAGE" -> {
-                if (remaining <= 0 || size.width <= 0 || size.height <= 0) return PreparedMedium.Unavailable
+                if (size.width <= 0 || size.height <= 0) {
+                    record(DiagnosticLevel.DEBUG, "deferred reason=viewport")
+                    return PreparedMedium.Deferred
+                }
+                if (remaining <= 0) {
+                    record(DiagnosticLevel.DEBUG, "deferred reason=image_budget remaining_bytes=$remaining")
+                    return PreparedMedium.Deferred
+                }
                 val loader = SingletonImageLoader.get(context)
                 for (source in mediaModels(item.localPath, item.url)) {
                     currentCoroutineContext().ensureActive()
                     val result = loader.execute(heroImageRequest(context, source, size))
-                    val bitmap = ((result as? SuccessResult)?.image as? BitmapImage)?.bitmap ?: continue
-                    if (bitmap.allocationByteCount.toLong() <= remaining) return PreparedMedium.Photo(bitmap)
+                    if (result is ErrorResult) {
+                        record(DiagnosticLevel.WARN, "source_failed source=${if (source is java.io.File) "archive" else "url"}", result.throwable)
+                        continue
+                    }
+                    val bitmap = ((result as? SuccessResult)?.image as? BitmapImage)?.bitmap
+                    if (bitmap == null) {
+                        record(DiagnosticLevel.DEBUG, "deferred reason=non_bitmap")
+                        return PreparedMedium.Deferred
+                    }
+                    val bytes = bitmap.allocationByteCount.toLong()
+                    if (bytes > remaining) {
+                        record(DiagnosticLevel.DEBUG, "deferred reason=image_budget required_bytes=$bytes remaining_bytes=$remaining")
+                        return PreparedMedium.Deferred
+                    }
+                    record(DiagnosticLevel.DEBUG, "prepared bytes=$bytes width=${bitmap.width} height=${bitmap.height}")
+                    return PreparedMedium.Photo(bitmap)
                 }
+                record(DiagnosticLevel.WARN, "failed reason=no_usable_image")
                 PreparedMedium.Unavailable
             }
             "VIDEO" -> {
-                val files = (context.applicationContext as LadiesApplication).galleryVideoFiles
-                if (files.warm(item, pinOwner)) PreparedMedium.Video else PreparedMedium.Unavailable
+                if (app.galleryVideoFiles.warm(item, pinOwner)) {
+                    record(DiagnosticLevel.DEBUG, "prepared")
+                    PreparedMedium.Video
+                } else {
+                    record(DiagnosticLevel.WARN, "failed reason=video_warm")
+                    PreparedMedium.Unavailable
+                }
             }
-            else -> PreparedMedium.Unavailable
+            else -> {
+                record(DiagnosticLevel.WARN, "failed reason=unsupported_kind")
+                PreparedMedium.Unavailable
+            }
         }
     } catch (cancel: CancellationException) {
+        record(DiagnosticLevel.DEBUG, "cancelled")
         throw cancel
-    } catch (_: Exception) {
+    } catch (deferred: VideoPreparationDeferred) {
+        record(DiagnosticLevel.DEBUG, "deferred reason=video_budget")
+        PreparedMedium.Deferred
+    } catch (failure: Exception) {
+        record(DiagnosticLevel.WARN, "failed reason=exception", failure)
         PreparedMedium.Unavailable
     }
 }
