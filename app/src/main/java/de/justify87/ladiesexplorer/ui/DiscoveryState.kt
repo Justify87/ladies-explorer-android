@@ -272,7 +272,7 @@ internal class DiscoveryProjectionPublisher(
     private val discoveryPage: suspend () -> DiscoveryProjection,
     private val savedPage: suspend () -> SavedPeopleWindow,
 ) {
-    private fun publishDiscovery(epoch: Long, projection: DiscoveryProjection) {
+    private fun publishDiscovery(epoch: Long, projection: DiscoveryProjection, background: Boolean) {
         if (epoch != currentEpoch() || projection.runId != _searchUiState.value.response?.searchRunId) return
         if (projection.runId == null) onLocalWindow(projection.page.cards.size)
         _searchUiState.update { it.copy(activeCards = projection.visible,
@@ -287,6 +287,8 @@ internal class DiscoveryProjectionPublisher(
             } ?: it.mergeNotice
             it.copy(
                 cards = next, localCards = if (projection.runId == null) projection.page.cards else emptyList(),
+                swipeSessionId = it.swipeSessionId + if (background &&
+                    it.cards.map { card -> card.listingId to card.personId } != next.map { card -> card.listingId to card.personId }) 1 else 0,
                 pendingMergeListingId = null, mergeNotice = mergeNotice,
                 replayLikes = swipeSession.replayLikes,
                 canUndoSwipe = swipeSession.last != null,
@@ -300,12 +302,12 @@ internal class DiscoveryProjectionPublisher(
     }
 
     // Partial publication must not release mutation ownership.
-    suspend fun project(epoch: Long): Boolean = readIndependentProjections(
+    suspend fun project(epoch: Long, background: Boolean = false): Boolean = readIndependentProjections(
         first = discoveryPage,
         second = savedPage,
         publishFirst = { result ->
             if (epoch == currentEpoch()) result.fold(
-                onSuccess = { publishDiscovery(epoch, it) },
+                onSuccess = { publishDiscovery(epoch, it, background) },
                 onFailure = { failure ->
                     _searchUiState.update { it.copy(activeCards = emptyList(), activeProjectionPending = false,
                         activeProjectionError = if (it.response != null) failure.message ?: "Lokale Ergebnisse konnten nicht geladen werden." else null) }
