@@ -138,20 +138,23 @@ class SwipeProfileReadTest {
         val window = SwipeProfileWindow(mutableMapOf())
         window.retain(listOf(card))
         val policy = swipeReadPolicy(false, 3L, card.listingId, false, false)
-        val speculative = requireNotNull(window.prefetch(card) {
+        val speculative = requireNotNull(window.readCurrent(card) {
             readSwipeProfile(card.listingId, policy.refresh, policy.allowNetwork, it, fixture.reads)
         })
         assertFalse(speculative.fromArchive)
         assertEquals(12L, speculative.profile.snapshotId)
-        assertSame(speculative, window.prefetch(card) { error("promotion must reuse prepared profile") })
+        assertSame(speculative, window[card])
         assertEquals(1, fixture.calls.count { it.startsWith("source:") })
     }
 
-    @Test fun currentReadFailureWaitsForDemotionButSpeculativeFailureDoesNot() {
-        assertTrue(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = true))
-        assertFalse(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = false))
-        assertFalse(swipeFailureNeedsDemotion(startedCurrent = false, stillCurrent = true))
-        assertFalse(swipeFailureNeedsDemotion(startedCurrent = false, stillCurrent = false))
+    @Test fun speculativeFailureRetriesOnlyOnPromotionAndCurrentFailureWaitsForExplicitRetry() {
+        val speculative = SwipeReadFailure(false, "offline")
+        val current = SwipeReadFailure(true, "offline")
+        assertTrue(swipeReadMayRetry(null, false))
+        assertFalse(swipeReadMayRetry(speculative, false))
+        assertTrue(swipeReadMayRetry(speculative, true))
+        assertFalse(swipeReadMayRetry(current, true))
+        assertFalse(swipeReadMayRetry(current, false))
     }
 
     @Test(timeout = 15_000) fun cachedLocalOnlyPrefetchStillAvoidsSource() = runBlocking {
