@@ -22,6 +22,11 @@ import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 internal enum class ProfileSection(val label: String, val defaultExpanded: Boolean = false) {
     Match("Übereinstimmung mit deiner Suche", defaultExpanded = true),
@@ -279,11 +284,21 @@ internal fun ProfileFlow(
     }
 }
 
+internal fun profilePublicationLabel(raw: String?): String? {
+    val source = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val date = DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMAN)
+    val time = DateTimeFormatter.ofPattern("dd.MM.yyyy, HH:mm", Locale.GERMAN)
+    val offsetTime = DateTimeFormatter.ofPattern("dd.MM.yyyy, HH:mm xxx", Locale.GERMAN)
+    return runCatching { OffsetDateTime.parse(source).format(offsetTime) }.getOrNull()
+        ?: runCatching { LocalDateTime.parse(source).format(time) }.getOrNull()
+        ?: runCatching { LocalDate.parse(source).format(date) }.getOrNull()
+}
+
 internal fun compactProfileMetadata(identity: HeroIdentity, listingCount: UInt?, publishedAt: String?): List<String> =
     listOf(
         listOfNotNull(identity.place.takeIf { it.isNotBlank() }, identity.status).joinToString(" · "),
         listOfNotNull(listingCount?.let { "Anzeigen: $it" },
-            publishedAt?.trim()?.takeIf { it.isNotEmpty() }?.let { "Veröffentlicht: $it" }).joinToString(" · "),
+            profilePublicationLabel(publishedAt)?.let { "Veröffentlicht: $it" }).joinToString(" · "),
     ).filter { it.isNotBlank() }
 
 @Composable

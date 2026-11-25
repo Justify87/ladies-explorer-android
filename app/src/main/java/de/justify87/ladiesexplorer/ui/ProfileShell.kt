@@ -49,7 +49,6 @@ internal fun ProfileShell(
     noticeOwner: Any?,
     header: @Composable (ProfileShellPresentation, ProfileNoticeIndicator?, () -> Unit) -> Unit,
     rail: @Composable () -> Unit = {},
-    fixedNoticeSlot: Boolean = false,
     heroLeadingHeight: Dp? = null,
     content: @Composable (ProfileShellPresentation) -> Unit,
 ) {
@@ -57,8 +56,7 @@ internal fun ProfileShell(
         val width = maxWidth.coerceAtMost(ShellMetrics.maxProfileWidth)
         val height = maxHeight
         val fontScale = LocalDensity.current.fontScale
-        val budget = profileShellBudget(width.value, height.value, rootHeight.value, fontScale,
-            if (fixedNoticeSlot) false else notices.isNotEmpty(), hasRail)
+        val budget = profileShellBudget(width.value, height.value, rootHeight.value, fontScale, hasRail)
         val heroHeight = profileHeroHeight(width.value, height.value + rootHeight.value, budget.body, heroLeadingHeight?.value).dp
         // Read measured lazy geometry without recomposing for every scroll pixel.
         val handoff by remember(listState, heroKey) {
@@ -89,11 +87,16 @@ internal fun ProfileShell(
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(ShellMetrics.inset)) {
                         notices.forEachIndexed { index, item ->
-                            Text(item.message, color = if (item.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                            item.action?.let { label ->
-                                TextButton(onClick = { runNotice(index) }, enabled = item.enabled,
-                                    modifier = Modifier.heightIn(min = ShellMetrics.touch)) { Text(label) }
+                            Column(verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
+                                Text(item.label, style = MaterialTheme.typography.titleSmall)
+                                if (item.message != item.label) Text(item.message,
+                                    color = if (item.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                                item.action?.let { label ->
+                                    TextButton(onClick = { runNotice(index) }, enabled = item.enabled,
+                                        modifier = Modifier.heightIn(min = ShellMetrics.touch)) { Text(label) }
+                                }
                             }
+                            if (index < notices.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
                 },
@@ -101,27 +104,7 @@ internal fun ProfileShell(
         }
         Column(Modifier.width(width).fillMaxHeight()) {
             ShellHeaderSurface(Modifier.fillMaxWidth().height(budget.header.dp)) {
-                header(presentation, indicator.takeIf { budget.noticeInHeader }, { dialog = true })
-            }
-            if (budget.notice > 0f) {
-                val index = notices.indexOfFirst { it.action != null && it.enabled }
-                val item = notices.getOrNull(index)
-                Row(Modifier.fillMaxWidth().height(budget.notice.dp).padding(horizontal = ShellMetrics.gap),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { dialog = true }, modifier = Modifier.weight(1f).fillMaxHeight(),
-                        contentPadding = PaddingValues(horizontal = ShellMetrics.small)) {
-                        Text(indicator?.label.orEmpty(),
-                            color = if (notices.any { it.warning }) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (notices.size > 1) Text(" +${notices.size - 1}", style = MaterialTheme.typography.labelSmall)
-                    }
-                    if (item != null && width >= 300.dp && fontScale < 1.5f) {
-                        TextButton(onClick = { runNotice(index) }, modifier = Modifier.fillMaxHeight(),
-                            contentPadding = PaddingValues(horizontal = ShellMetrics.small)) {
-                            Text(item.action.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
+                header(presentation, indicator, { dialog = true })
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val bodyHero = profileHeroHeight(width.value, height.value + rootHeight.value,

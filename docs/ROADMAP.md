@@ -12,7 +12,7 @@ Gemeinsame Profilansicht unterhalb der Galerie in Swipe und Standalone gemäß [
 
 ### M12.1 — Gemeinsamer kompakter Profilfluss und Informationskopf
 
-**Status:** REVIEW. [PR #124](https://github.com/Justify87/ladies-explorer-android/pull/124), Branch `feat/m12-1-compact-profile`. Abschlussreview mit sechs offenen Befunden [R01–R06](https://github.com/Justify87/ladies-explorer-android/pull/124#issuecomment-7172292878). Nächster Schritt: nach Nutzerfreigabe sämtliche Befunde beheben und vollständiges CI-Gate erneut prüfen; Merge nur nach ausdrücklicher Freigabe.
+**Status:** REVIEW. [PR #124](https://github.com/Justify87/ladies-explorer-android/pull/124), Branch `feat/m12-1-compact-profile`. Korrekturen zu [R01–R06](https://github.com/Justify87/ladies-explorer-android/pull/124#issuecomment-7172292878) umgesetzt; vollständiges CI-Gate für den Korrekturcommit ausstehend. Nächster Schritt: nach Nutzerfreigabe CI prüfen, bei Erfolg Abschluss gemäß Pflege vorbereiten und PR mergen; erforderliches Gate abschließender Dokumentationsänderungen berücksichtigen.
 
 **Umfang:** Bestehende Profilprojektion, `ProfileShell`, `ProfileFlow`, `ProfilePanels` und tatsächliche Aufrufer gegen das neue Soll prüfen. Gemeinsamen flachen Profilrahmen, kompakte Identität/Kontakte und eindeutige Status-/Fehlerdarstellung einführen. Nur den strukturellen Rahmen und Identitätskopf ersetzen; verbleibende Inhaltskomponenten direkt weiterverwenden, ohne ihre spätere Darstellung vorwegzunehmen. Galerie, Navigation/Rail, lokale Editor- und fachliche Operationsverträge unverändert lassen.
 

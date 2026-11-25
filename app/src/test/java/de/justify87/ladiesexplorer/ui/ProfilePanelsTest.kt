@@ -25,8 +25,18 @@ class ProfilePanelsTest {
             fixtureIdentity(1), false)
         assertEquals(listOf("Dresden · 01067 · Quellenstatus: Anzeige aktiv",
             "Anzeigen: 2 · Veröffentlicht: 24.11.2026"),
-            compactProfileMetadata(identity, 2u, " 24.11.2026 "))
+            compactProfileMetadata(identity, 2u, " 2026-11-24 "))
         assertEquals(emptyList<String>(), compactProfileMetadata(HeroIdentity("Fixture", place = ""), null, " "))
+    }
+
+    @Test fun publicationUsesOnlyValidSourceDateOrTimestampWithoutInventingZone() {
+        assertEquals("24.11.2026", profilePublicationLabel("2026-11-24"))
+        assertEquals("24.11.2026, 23:15 +02:00", profilePublicationLabel("2026-11-24T23:15:41+02:00"))
+        assertEquals("24.11.2026, 23:15 +00:00", profilePublicationLabel("2026-11-24T23:15:41Z"))
+        assertEquals("24.11.2026, 23:15", profilePublicationLabel("2026-11-24T23:15:41"))
+        listOf(null, "", "20invalid", "2026-02-30", "2026-11-24T25:00:00Z").forEach {
+            assertNull(profilePublicationLabel(it))
+        }
     }
 
     @Test(timeout = 15_000) fun factsAndAnalysisUseIndependentLocalReadKeysAndErrors() = runBlocking {

@@ -98,7 +98,7 @@ internal fun ProfileDetailScreen(
     if (info && identity != null) IdentityInfoDialog(identity) { info = false }
     val notices = buildList {
         if (state.loading || (raw != null && displayed == null)) add(ProfileNotice("Profil wird geladen", "Profil wird vorbereitet …"))
-        if (prepared?.degraded == true) add(ProfileNotice("Medienhinweis", "Einige Profilinhalte konnten nicht vorbereitet werden.", warning = true))
+        if (prepared?.hasMediaFailures == true) add(ProfileNotice("Medienhinweis", "Einige Medien konnten nicht vorbereitet werden.", warning = true))
         state.error?.let { add(ProfileNotice("Profilfehler", it, warning = true)) }
         state.actionError?.let { add(ProfileNotice("Aktionsfehler", it, warning = true)) }
         if (state.retryProfileListingId != null) add(ProfileNotice("Profil erneut laden", "Profil konnte nicht vollständig geladen werden.",

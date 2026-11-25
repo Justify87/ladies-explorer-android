@@ -38,12 +38,18 @@ class ProfilePreparationWindowTest {
         step()
         val prepared = requireNotNull(window.displayed(key))
         assertTrue(prepared.complete)
-        assertTrue(prepared.degraded)
+        assertTrue(prepared.hasMediaFailures)
         assertTrue(window.ready(model, "{}", size))
         assertEquals(listOf("panels", "VIDEO", "IMAGE"), reads)
         assertEquals(setOf(first.url), window.pinnedVideos())
         step()
         assertEquals(3, reads.size)
+    }
+
+    @Test fun preparedPanelErrorsDoNotMasqueradeAsMediaFailures() {
+        val prepared = PreparedProfile(model(), "{}", size, panels = panelData)
+        assertFalse(prepared.hasMediaFailures)
+        assertTrue(prepared.copy(media = mapOf(first.presentationKey() to PreparedMedium.Unavailable)).hasMediaFailures)
     }
 
     @Test(timeout = 15_000) fun sameSnapshotReprojectionKeepsGalleryAndReplacesPanelsAtomically() = runBlocking {

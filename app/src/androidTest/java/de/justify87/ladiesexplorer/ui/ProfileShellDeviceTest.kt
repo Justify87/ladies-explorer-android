@@ -81,6 +81,80 @@ class ProfileShellDeviceTest {
         rule.runOnIdle { assertEquals(2, actionCount) }
     }
 
+    @Test fun statusChangesPreserveHeroViewportAndAnchorAndBindActionsToCurrentNotice() {
+        var notices by mutableStateOf(emptyList<ProfileNotice>())
+        var owner by mutableIntStateOf(1)
+        var standalone by mutableStateOf(true)
+        var retryCount = 0
+        var stopCount = 0
+        var measurements = 0
+        lateinit var list: androidx.compose.foundation.lazy.LazyListState
+        val warning = ProfileNotice("Profilfehler", "Lokaler Fehler", "Erneut laden",
+            enabled = false, invoke = { retryCount++ }, warning = true)
+        val archive = ProfileNotice("Archiv", "Archiv läuft", "Stoppen", invoke = { stopCount++ })
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, if (standalone) 1f else 2f)) {
+                LadiesTheme(darkTheme = !standalone) {
+                    list = rememberLazyListState()
+                    ProfileShell(Modifier.size(360.dp, if (standalone) 600.dp else 230.dp), list, "hero",
+                        hasRail = !standalone, notices = notices, noticeOwner = owner,
+                        header = { _, indicator, onNotice ->
+                            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Profil", Modifier.weight(1f))
+                                if (indicator != null) ProfileStatusButton(indicator, onNotice)
+                            }
+                        },
+                        rail = { Box(Modifier.fillMaxSize()) },
+                    ) { presentation ->
+                        LazyColumn(Modifier.fillMaxSize().testTag("status-body"), state = list) {
+                            item("hero") {
+                                Box(Modifier.fillMaxWidth().height(presentation.heroHeight)
+                                    .testTag("status-hero").onSizeChanged { measurements++ })
+                            }
+                            items(20, key = { "detail/$it" }) { Text("Detail $it", Modifier.height(48.dp)) }
+                        }
+                    }
+                }
+            }
+        }
+        repeat(2) {
+            val body = rule.onNodeWithTag("status-body")
+            body.performScrollToKey("hero")
+            val hero = rule.onNodeWithTag("status-hero")
+            val bounds = hero.fetchSemanticsNode().boundsInRoot
+            val viewport = body.fetchSemanticsNode().boundsInRoot
+            val beforeMeasurements = rule.runOnIdle { measurements }
+            rule.runOnIdle { notices = listOf(archive, warning) }
+            rule.onNodeWithContentDescription("Status und Hinweise: Profilfehler").assertExists()
+            assertEquals(bounds, hero.fetchSemanticsNode().boundsInRoot)
+            assertEquals(viewport, body.fetchSemanticsNode().boundsInRoot)
+            rule.runOnIdle { assertEquals(beforeMeasurements, measurements) }
+            body.performScrollToKey("detail/4")
+            val anchor = rule.runOnIdle { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
+            rule.onNodeWithContentDescription("Status und Hinweise: Profilfehler").performClick()
+            rule.onNodeWithText("Erneut laden").performScrollTo().assertIsNotEnabled()
+            rule.onNodeWithText("Stoppen").performScrollTo().assertIsEnabled()
+            rule.runOnIdle { owner++ }
+            rule.onNodeWithText("Status und Hinweise").assertDoesNotExist()
+            rule.runOnIdle { assertEquals(0, retryCount); assertEquals(it, stopCount) }
+            rule.onNodeWithContentDescription("Status und Hinweise: Profilfehler").performClick()
+            rule.onNodeWithText("Stoppen").performScrollTo().performClick()
+            rule.runOnIdle {
+                assertEquals(it + 1, stopCount)
+                assertEquals(0, retryCount)
+                notices = emptyList()
+            }
+            rule.runOnIdle {
+                assertEquals(anchor, list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset)
+            }
+            assertEquals(viewport, body.fetchSemanticsNode().boundsInRoot)
+            body.performScrollToKey("hero")
+            assertEquals(bounds, hero.fetchSemanticsNode().boundsInRoot)
+            rule.runOnIdle { standalone = false }
+        }
+    }
+
     @Test fun inlineIdentityHandoffDoesNotResizeHeaderOrRail() {
         lateinit var jump: (Int, Int) -> Unit
          rule.setContent {

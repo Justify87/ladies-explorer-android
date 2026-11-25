@@ -15,7 +15,6 @@ import de.justify87.ladiesexplorer.core.ProfileResponse
 /** Reserve non-overlapping chrome; use inline decisions in constrained windows. */
 internal data class ProfileShellBudget(
     val header: Float,
-    val notice: Float,
     val rail: Float,
     val body: Float,
     val shortHeader: Boolean,
@@ -23,7 +22,6 @@ internal data class ProfileShellBudget(
     val compactGallery: Boolean,
 ) {
     val railInContent get() = rail == 0f
-    val noticeInHeader get() = notice == 0f
 }
 
 // A restored hero/detail position must not wait for a lazy row outside the viewport.
@@ -96,7 +94,7 @@ internal fun settledHeroPhotoGeometry(viewport: IntSize, decoded: IntSize?, allo
 
 internal fun profileShellBudget(
     width: Float, availableHeight: Float, rootHeight: Float, fontScale: Float,
-    hasNotice: Boolean, hasRail: Boolean,
+    hasRail: Boolean,
 ): ProfileShellBudget {
     val available = availableHeight.coerceAtLeast(0f)
     // A real 48dp control and a scrollable body take priority over decorative chrome.
@@ -104,17 +102,15 @@ internal fun profileShellBudget(
     val preferredHeader = if (short) ShellMetrics.touch.value else ShellMetrics.header.value * maxOf(1f, fontScale)
     val header = preferredHeader.coerceAtMost(available)
     val minBody = minOf(96f, (available - header).coerceAtLeast(0f))
-    var remainder = (available - header - minBody).coerceAtLeast(0f)
+    val remainder = (available - header - minBody).coerceAtLeast(0f)
     val rail = if (hasRail && remainder >= ShellMetrics.touch.value && !short && width >= ShellMetrics.touch.value * 4) {
         if (remainder >= ShellMetrics.decisionRail.value && width >= 320f && fontScale < 1.3f)
             ShellMetrics.decisionRail.value else ShellMetrics.touch.value
     } else 0f
-    remainder -= rail
-    val notice = if (hasNotice && remainder >= 48f && !short) 48f else 0f
-    val body = (available - header - rail - notice).coerceAtLeast(0f)
+    val body = (available - header - rail).coerceAtLeast(0f)
     val compact = width < 320f || fontScale >= 1.5f ||
         profileHeroHeight(width, available + rootHeight, body) < 320f
-    return ProfileShellBudget(header, notice, rail, body, short, width < 300f, compact)
+    return ProfileShellBudget(header, rail, body, short, width < 300f, compact)
 }
 
 /** Never repeat the inline identity while any part of its row is visible. */
