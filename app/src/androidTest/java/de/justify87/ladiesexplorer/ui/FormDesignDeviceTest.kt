@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -12,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
@@ -50,6 +53,41 @@ class FormDesignDeviceTest {
         off.assertIsSelected()
         metadata.performClick().assertIsSelected()
         off.assertIsNotSelected()
+    }
+
+    @Test fun progressiveSectionHeaderAndActionsShareBoundsWithoutImplicitAction() {
+        var expanded by mutableStateOf(false)
+        var dark by mutableStateOf(false)
+        var actions = 0
+        rule.setContent {
+            MaterialTheme(colorScheme = if (dark) ladiesDarkColors else ladiesLightColors) {
+                Column(Modifier.width(320.dp).testTag("section-frame")) {
+                    ProgressiveSection("Fixture filter", expanded, { expanded = !expanded }) {
+                        Text("Fixture option")
+                        TextButton(onClick = { actions++ }) { Text("Fixture action") }
+                    }
+                }
+            }
+        }
+        repeat(2) {
+            val header = rule.onNodeWithText("Fixture filter")
+            header.assertExists()
+            assertTrue(header.fetchSemanticsNode().boundsInRoot.height >= with(rule.density) { 48.dp.toPx() } - 1f)
+            rule.onNodeWithText("Fixture option").assertDoesNotExist()
+            header.performClick()
+            val frame = rule.onNodeWithTag("section-frame").fetchSemanticsNode().boundsInRoot
+            val option = rule.onNodeWithText("Fixture option").fetchSemanticsNode().boundsInRoot
+            val action = rule.onNodeWithText("Fixture action")
+            val actionBounds = action.fetchSemanticsNode().boundsInRoot
+            assertTrue(option.top >= header.fetchSemanticsNode().boundsInRoot.bottom)
+            assertTrue(actionBounds.top >= option.bottom && actionBounds.bottom <= frame.bottom)
+            rule.runOnIdle { assertEquals(it, actions) }
+            action.performClick()
+            header.performClick()
+            rule.onNodeWithText("Fixture action").assertDoesNotExist()
+            rule.runOnIdle { dark = true }
+        }
+        rule.runOnIdle { assertEquals(2, actions) }
     }
 
     @Test fun editingSearchDraftDoesNotSubmitUntilExplicitSearch() {

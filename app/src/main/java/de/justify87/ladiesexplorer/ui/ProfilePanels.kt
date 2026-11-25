@@ -642,7 +642,6 @@ private fun ProfileFlowRows.profileContent(
             }
             if (panels.detail == null || panels.detail?.listings.orEmpty().isNotEmpty()) item(key = "profile-listings-head", read = ProfileRowRead.Detail) {
                 Text("Verknüpfte Anzeigen", style = MaterialTheme.typography.titleMedium)
-                if (panels.detail == null) DetailStatus(panels, actionsBusy, isCurrent)
             }
             items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }, read = ProfileRowRead.Detail) { listing ->
                 val context = LocalContext.current

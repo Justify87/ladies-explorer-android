@@ -99,13 +99,14 @@ class ProfileRestoreDeviceTest {
                 ProfileField("Treffpunkt", listOf("Other value"))),
             listOf(ProfileField("Montag", listOf("Fixture time"))), emptyList(), emptyList())
         var calls = 0
+        val readers = reads { calls++; source }
         lateinit var state: LazyListState
         rule.setContent {
             LadiesTheme(darkTheme = false) {
                 state = rememberLazyListState()
                 ProfileFlow(state, original, "{}", token(original), false, emptyMap(), notes,
-                    { true }, { _, _ -> }, Modifier.fillMaxSize().testTag("progressive-profile"),
-                    panelReads = reads { calls++; source }) {
+                    { true }, { _, _ -> }, Modifier.fillMaxWidth().height(220.dp).testTag("progressive-profile"),
+                    panelReads = readers) {
                     item("hero") { Text("Synthetic hero") }
                 }
             }

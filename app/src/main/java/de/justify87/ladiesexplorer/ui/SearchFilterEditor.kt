@@ -139,14 +139,14 @@ internal fun LazyListScope.searchFilterEditor(
         ProgressiveSection("Rubrik", categoryExpanded || filterQuery.isNotBlank(),
             { onCategoryExpanded(!categoryExpanded) }, hint = categoryLabels[state.category] ?: state.category,
             enabled = enabled && filterQuery.isBlank()) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    state.filterCatalog?.categories.orEmpty()
-                        .filter { "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) || (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }
-                        .forEach { category ->
-                            ScreenChoice(selected = state.category == category, enabled = enabled,
-                                onClick = { onCategory(category) }, label = { Text(categoryLabels[category] ?: category) })
-                        }
-                }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.filterCatalog?.categories.orEmpty()
+                    .filter { "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) || (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }
+                    .forEach { category ->
+                        ScreenChoice(selected = state.category == category, enabled = enabled,
+                            onClick = { onCategory(category) }, label = { Text(categoryLabels[category] ?: category) })
+                    }
+            }
         }
     }
     if (filterQuery.isBlank() || "Größe Groesse Körpergröße cm".contains(filterQuery, ignoreCase = true)) item {
@@ -253,12 +253,12 @@ private fun FilterSection(
     var expanded by rememberSaveable(group.key) { mutableStateOf(initiallyExpanded) }
     ProgressiveSection((groupLabels[group.key] ?: group.key) + if (selected.isEmpty()) "" else " (${selected.size})",
         expanded || query.isNotBlank(), { expanded = !expanded }, enabled = query.isBlank()) {
-            val all = (groupLabels[group.key] ?: group.key).contains(query, ignoreCase = true)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                group.options.filter { all || it.contains(query, ignoreCase = true) || it in selected }.forEach { option ->
-                    ScreenChoice(selected = option in selected, onClick = { onToggle(option) }, enabled = enabled,
-                        label = { Text(option) })
-                }
+        val all = (groupLabels[group.key] ?: group.key).contains(query, ignoreCase = true)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            group.options.filter { all || it.contains(query, ignoreCase = true) || it in selected }.forEach { option ->
+                ScreenChoice(selected = option in selected, onClick = { onToggle(option) }, enabled = enabled,
+                    label = { Text(option) })
             }
+        }
     }
 }
