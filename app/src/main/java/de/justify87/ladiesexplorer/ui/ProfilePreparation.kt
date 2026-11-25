@@ -66,8 +66,7 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
 
     fun pinnedVideos(): Set<String> = slots.values.flatMap { slot ->
         listOfNotNull(slot.working, slot.published).flatMap { prepared ->
-            prepared.model.media.filter { it.kind == "VIDEO" &&
-                prepared.media[it.presentationKey()] == PreparedMedium.Video }.map { it.url }
+            prepared.model.media.filter { it.kind == "VIDEO" }.map { it.url }
         }
     }.filter { it.isNotBlank() }.toSet()
 
@@ -82,6 +81,7 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
         model: ProfileReadModel, filters: String, viewport: IntSize,
         readPanels: suspend () -> PreparedPanelData,
         readMedium: suspend (ProfileMediaItem, Long) -> PreparedMedium,
+        accept: () -> Boolean = { true },
     ) {
         val key = model.key()
         val slot = slots[key] ?: return
@@ -106,7 +106,7 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
             }
         }
         currentCoroutineContext().ensureActive()
-        if (slots[key] !== ticket) return
+        if (slots[key] !== ticket || !accept()) return
         slots[key] = if (next.complete) Slot(published = next) else ticket.copy(working = next)
     }
 }
