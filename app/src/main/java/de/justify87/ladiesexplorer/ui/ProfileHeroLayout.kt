@@ -164,5 +164,8 @@ internal fun heroIdentity(profile: ProfileResponse, identity: ProfileIdentity?, 
     hasVideo: Boolean = identity?.hasVideo == true, preference: Preference? = null, favorite: Boolean? = null) =
     HeroIdentity(profile.name, identity?.age,
         listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
-        identity?.let { if (archived) "Zuletzt bekannt: ${statusLabel(it.status)}" else statusLabel(it.status) },
+        identity?.let {
+            val status = statusLabel(it.status)
+            if (archived) "Zuletzt bekannter Quellenstatus: $status" else "Quellenstatus: $status"
+        },
         hasVideo, preference, favorite)
