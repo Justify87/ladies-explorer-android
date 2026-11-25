@@ -282,7 +282,7 @@ internal fun ProfileMediaHero(
             }
             when (item?.kind) {
                 "IMAGE" -> HeroPhotoSurface(item, viewport,
-                    "Profilbild ${index + 1}", imageMotion, preparedMedia[mediaKey]) { feedback, geometry ->
+                    "Profilbild ${index + 1}", imageMotion, preparedMedia[item.presentationKey()]) { feedback, geometry ->
                     SideEffect {
                         onMediaSettled(!feedback.loading)
                         // A resized request is not the settled visual until its own decode succeeds.
@@ -315,7 +315,7 @@ internal fun ProfileMediaHero(
                     } ?: Modifier.fillMaxSize()
                     GalleryVideo(item, active = videoPlaybackEnabled && projectionAvailable,
                         mediaVisible = playbackVisible, canInteract = { videoPlaybackEnabled && projectionAvailable },
-                        prepared = preparedMedia[mediaKey],
+                        prepared = preparedMedia[item.presentationKey()],
                         onVideoSize = { videoSize = it },
                         modifier = videoSurface.then(imageMotion),
                         controlsModifier = Modifier.align(Alignment.Center),
