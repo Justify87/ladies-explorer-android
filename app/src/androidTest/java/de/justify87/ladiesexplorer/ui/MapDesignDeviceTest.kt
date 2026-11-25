@@ -107,6 +107,7 @@ class MapDesignDeviceTest {
         var style: Style? = null
         var view: LifecycleMapView? = null
         var images: MapMarkerImages? = null
+        var testLifecycle: androidx.lifecycle.Lifecycle? = null
         val decoded = mutableListOf<String>()
         val delayed = CompletableDeferred<Unit>()
         val old = b.copy(thumbnailUrl = "fixture-delayed")
@@ -120,6 +121,7 @@ class MapDesignDeviceTest {
         })
         rule.setContent {
             val lifecycle = LocalLifecycleOwner.current.lifecycle
+            testLifecycle = lifecycle
             AndroidView(
                 factory = { context ->
                     MapLibre.getInstance(context)
@@ -233,6 +235,71 @@ class MapDesignDeviceTest {
             }
             rule.waitUntil(timeoutMillis = 20_000) {
                 rule.runOnIdle { rendered(MAP_SINGLE).isEmpty() && rendered(MAP_CLUSTERS).isEmpty() }
+            }
+            // Replacing controllers and cancelling camera generations must not free a
+            // permit while a non-cooperative decode is still draining.
+            val drain = CompletableDeferred<Unit>()
+            var activeDecodes = 0
+            var peakDecodes = 0
+            var startedDecodes = 0
+            val controllers = mutableListOf<MapMarkerImages>()
+            try {
+                rule.runOnIdle {
+                    images?.close()
+                    requireNotNull(source).setGeoJson(asFeatures(listOf(fresh), null))
+                }
+                rule.waitUntil(timeoutMillis = 20_000) {
+                    rule.runOnIdle {
+                        rendered(MAP_SINGLE).any {
+                            it.getNumberProperty("owner_id").toLong() == fresh.personId
+                        }
+                    }
+                }
+                repeat(4) { index ->
+                    rule.runOnIdle {
+                        val native = requireNotNull(view)
+                        val controller = MapMarkerImages(native, requireNotNull(map),
+                            requireNotNull(style),
+                            requireNotNull(testLifecycle)) { _, _, _ ->
+                            startedDecodes++
+                            activeDecodes++
+                            peakDecodes = maxOf(peakDecodes, activeDecodes)
+                            try {
+                                withContext(NonCancellable) { drain.await() }
+                                null
+                            } finally {
+                                activeDecodes--
+                            }
+                        }
+                        controllers.add(controller)
+                        controller.update(listOf(fresh))
+                        controller.refresh()
+                    }
+                    rule.waitUntil(timeoutMillis = 10_000) {
+                        rule.runOnIdle { startedDecodes == index + 1 }
+                    }
+                    rule.runOnIdle {
+                        if (index < 3) controllers.last().close()
+                        else controllers.last().cameraMoving()
+                    }
+                }
+                rule.runOnIdle {
+                    assertEquals(4, activeDecodes)
+                    controllers.last().cameraIdle()
+                }
+                rule.waitForIdle()
+                rule.runOnIdle {
+                    assertEquals(4, startedDecodes)
+                    assertEquals(4, activeDecodes)
+                }
+                drain.complete(Unit)
+                rule.waitUntil(timeoutMillis = 10_000) {
+                    rule.runOnIdle { startedDecodes == 5 && activeDecodes == 0 }
+                }
+                rule.runOnIdle { assertEquals(4, peakDecodes) }
+            } finally {
+                drain.complete(Unit)
+                rule.runOnIdle { controllers.forEach { it.close() } }
             }
         } finally {
             delayed.complete(Unit)
