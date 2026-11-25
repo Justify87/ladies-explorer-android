@@ -121,7 +121,7 @@ internal fun PriceListRow(row: PriceList, latest: Boolean, enabled: Boolean, onE
     ProfileRecordCard {
         Text(if (latest) "Neueste erfasste Liste" else "Frühere Liste", style = MaterialTheme.typography.labelMedium)
         Text(displayPriceDate(row.values.observedAt), style = MaterialTheme.typography.titleMedium)
-        if (latest) Text("Manuell erfasst · aktuelle Gültigkeit nicht bestätigt.",
+        Text("Manuell erfasst · aktuelle Gültigkeit nicht bestätigt.",
             style = MaterialTheme.typography.bodySmall)
         row.values.items.forEach { item ->
             Text(listOfNotNull(item.label, item.durationMinutes?.let { "$it Min." }, "${euro(item.amountCents)} €").joinToString(" · "))

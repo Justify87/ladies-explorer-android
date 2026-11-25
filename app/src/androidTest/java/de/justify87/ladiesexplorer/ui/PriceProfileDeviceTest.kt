@@ -2,6 +2,7 @@ package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
@@ -57,16 +58,19 @@ class PriceProfileDeviceTest {
             editor.committed(edit)
         })
         val panelReads = ProfilePanelReads(
-            { _, _ -> ProfileFacts(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()) },
+            { _, _ -> ProfileFacts(listOf(ProfileField("Fixture trait", listOf("Fixture value"))),
+                listOf(ProfileField("Fixture service", listOf("Synthetic"))), emptyList(), emptyList(), emptyList()) },
             { PersonDetail(emptyList(), 0u, 0u, 0u, 0u) },
             { _, _, _ -> emptyList() },
         )
         val notes = NoteEditorActions({ _, _ -> }, { _, _ -> }, { _, _, _ -> }, { _, _ -> }, { _, _ -> })
         var pxPerDp = 1f
+        lateinit var listState: LazyListState
         rule.setContent {
             pxPerDp = LocalDensity.current.density
             MaterialTheme(colorScheme = if (token is SwipeActionToken) ladiesDarkColors else ladiesLightColors) {
-                ProfileFlow(rememberLazyListState(), model, "{}", token, false, emptyMap(), notes,
+                listState = rememberLazyListState()
+                ProfileFlow(listState, model, "{}", token, false, emptyMap(), notes,
                     { it == token && editor.edit == null }, { _, _ -> },
                     modifier = Modifier.fillMaxSize().testTag("price-flow"),
                     panelReads = panelReads, prices = editor) {
@@ -77,13 +81,26 @@ class PriceProfileDeviceTest {
         }
         rule.runOnIdle { assertEquals(0, reads) }
         rule.onNodeWithTag("price-flow").performScrollToKey("prices-toggle")
-        val section = rule.onNodeWithText("Manuelle Angebotspreise")
+        val flow = rule.onNodeWithTag("price-flow")
+        fun indexOf(key: String): Int {
+            flow.performScrollToKey(key)
+            return rule.runOnIdle { listState.layoutInfo.visibleItemsInfo.first { it.key == key }.index }
+        }
+        val servicesIndex = indexOf("profile-services")
+        val pricesIndex = indexOf("prices-toggle")
+        val traitsIndex = indexOf("profile-traits")
+        assertTrue(servicesIndex < pricesIndex && pricesIndex < traitsIndex)
+        flow.performScrollToKey("prices-toggle")
+        rule.runOnIdle { assertEquals(0, reads) }
+        val section = rule.onNodeWithText("Preise", substring = false)
         assertTrue(section.fetchSemanticsNode().boundsInRoot.height >= 48 * pxPerDp - 1f)
         section.performClick()
         rule.onNodeWithTag("price-flow").performScrollToKey("profile-prices-head")
-        if (paid != null)
-            rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag: 0,42 €", substring = true).assertExists()
-        else rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag", substring = true).assertDoesNotExist()
+        if (paid != null) {
+            rule.onNodeWithText("Bezahlte Beträge aus Begegnungen").assertExists()
+            rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag (Begegnungen): 0,42 €", substring = true).assertExists()
+        } else rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Manuelle Angebotspreise").assertExists()
         rule.onNodeWithText("Keine Preislisten gespeichert.", substring = true).assertDoesNotExist()
         rule.onNodeWithText("aktuelle Gültigkeit", substring = true).assertDoesNotExist()
         val add = rule.onNodeWithText("Preisliste hinzufügen")
@@ -111,6 +128,7 @@ class PriceProfileDeviceTest {
         rule.onNodeWithText("Speichern").performClick()
         rule.onNodeWithTag("price-flow").performScrollToKey("price/1")
         rule.onNodeWithText("Frühere Liste").assertExists()
+        rule.onAllNodesWithText("Manuell erfasst · aktuelle Gültigkeit nicht bestätigt.").onFirst().assertExists()
         rule.runOnIdle {
             assertEquals(2, writes)
             assertEquals(3, reads)
