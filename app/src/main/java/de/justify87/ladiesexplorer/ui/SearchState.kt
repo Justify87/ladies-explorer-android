@@ -2,6 +2,7 @@ package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.LocalVisibility
+import de.justify87.ladiesexplorer.core.GlobalResultVisibility
 import de.justify87.ladiesexplorer.core.SearchResponse
 import de.justify87.ladiesexplorer.core.SearchRequest
 import de.justify87.ladiesexplorer.core.SourceFilterCatalog
@@ -136,9 +137,11 @@ sealed interface ProfileMatchContext {
     data class Saved(val savedId: String, val ownerId: Long) : ProfileMatchContext
 }
 
-internal fun executedProfileMatchContext(response: SearchResponse?, ownerId: Long?): ProfileMatchContext? =
+internal fun executedProfileMatchContext(
+    response: SearchResponse?, ownerId: Long?, global: GlobalResultVisibility = GlobalResultVisibility(),
+): ProfileMatchContext? =
     if (response == null || ownerId == null) null
-    else ProfileMatchContext.Run(response.searchRunId, ownerId, response.local)
+    else ProfileMatchContext.Run(response.searchRunId, ownerId, global.effective(response.local))
 
 internal fun profileMatchContextForOwner(context: ProfileMatchContext?, ownerId: Long?): ProfileMatchContext? =
     if (ownerId == null) null else when (context) {

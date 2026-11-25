@@ -839,6 +839,81 @@ mod tests {
     }
 
     #[test]
+    fn active_run_visibility_matrix_is_local_and_reversible() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let mut owners = Vec::new();
+        let mut listings = Vec::new();
+        for index in 1..=3 {
+            let owner = core.create_person(Some(format!("Fixture {index}"))).unwrap();
+            let listing = core
+                .add_listing(owner, None, "LADIES".into(), index.to_string(), None)
+                .unwrap();
+            owners.push(owner);
+            listings.push(listing);
+        }
+        {
+            let db = core.connection().unwrap();
+            db.execute("INSERT INTO search_runs (search_run_id) VALUES (1)", [])
+                .unwrap();
+            for (position, listing) in listings.iter().enumerate() {
+                db.execute(
+                    "INSERT INTO search_results
+                     (search_run_id,listing_id,position,name,has_video,has_ai_content,is_premium)
+                     VALUES (1,?1,?2,'Fixture',0,0,0)",
+                    params![listing, position as i64],
+                )
+                .unwrap();
+            }
+        }
+        core.set_preference(owners[1], Preference::Like).unwrap();
+        core.set_preference(owners[2], Preference::Dislike).unwrap();
+        core.set_favorite(owners[1], true).unwrap();
+        for hide_likes in [false, true] {
+            for hide_dislikes in [false, true] {
+                let rules = crate::saved_search::LocalVisibility {
+                    hide_likes,
+                    hide_dislikes,
+                    ..Default::default()
+                };
+                let mut expected = vec![listings[0]];
+                if !hide_likes {
+                    expected.push(listings[1]);
+                }
+                if !hide_dislikes {
+                    expected.push(listings[2]);
+                }
+                let cards = active_search_cards(&core, 1, &rules).unwrap();
+                assert_eq!(
+                    cards.iter().map(|card| card.listing_id).collect::<Vec<_>>(),
+                    expected
+                );
+            }
+        }
+        let rules = crate::saved_search::LocalVisibility {
+            hide_likes: true,
+            hide_dislikes: true,
+            ..Default::default()
+        };
+        core.set_swipe_preference(
+            listings[1],
+            owners[1],
+            Some(Preference::Like),
+            Preference::None,
+        )
+        .unwrap();
+        let cards = active_search_cards(&core, 1, &rules).unwrap();
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[1].listing_id, listings[1]);
+        assert!(cards[1].favorite);
+        assert_eq!(
+            active_search_cards(&core, 1, &Default::default())
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+
+    #[test]
     fn discovery_deduplicates_people_and_preserves_favorites() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let first = core.create_person(Some("Anna".into())).unwrap();

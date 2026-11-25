@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import de.justify87.ladiesexplorer.core.CaptureMode
+import de.justify87.ladiesexplorer.core.GlobalResultVisibility
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -113,7 +114,7 @@ fun LadiesApp(
         else -> ProfileActionSurface.NONE
     }
     val currentActionSurface by rememberUpdatedState(actionSurface)
-    LaunchedEffect(actionSurface, lifecycle) {
+    LaunchedEffect(actionSurface, route.settingsPane, lifecycle) {
         viewModel.setProfileActionSurface(
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) actionSurface
             else ProfileActionSurface.NONE
@@ -177,8 +178,9 @@ fun LadiesApp(
         if (destination == RootDestination.Settings) viewModel.refresh()
     }
 
-    LaunchedEffect(route.root, home.httpCaptureMode, search.profileOpen) {
-        if (route.root == RootDestination.Settings && !search.profileOpen && home.httpCaptureMode != CaptureMode.OFF) {
+    LaunchedEffect(route, home.httpCaptureMode, search.profileOpen) {
+        if (route.root == RootDestination.Settings && route.settingsPane == SettingsPane.Diagnostics &&
+            !search.profileOpen && home.httpCaptureMode != CaptureMode.OFF) {
             while (true) {
                 delay(2_000)
                 viewModel.refreshCaptureStatus()
@@ -248,13 +250,15 @@ fun LadiesApp(
         } else Modifier,
         topBar = {
             if (!search.profileOpen && !swipeShell) {
-                val nested = savedResultsOpen || savedEditorOpen || savedOverviewOpen
+                val settingsNested = route.root == RootDestination.Settings && route.settingsPane != SettingsPane.Main
+                val nested = savedResultsOpen || savedEditorOpen || savedOverviewOpen || settingsNested
                 AppHeader(
                     title = when {
                         savedResultsOpen -> saved.searches.firstOrNull { it.searchId == saved.result?.id }?.name
                             ?: "Gespeicherte Ergebnisse"
                         savedEditorOpen -> "Suche bearbeiten"
                         savedOverviewOpen -> "Gespeicherte Suchen"
+                        settingsNested -> route.settingsPane.title
                         route.root == RootDestination.Discover -> "Entdecken"
                         else -> "Ladies"
                     },
@@ -490,7 +494,19 @@ fun LadiesApp(
                     )
                     RootDestination.Settings -> {
                         val replayAction = discovery.settingsReplayAction()
+                        val visibilityAction = discovery.settingsVisibilityAction()
                         SettingsScreen(
+                            pane = route.settingsPane,
+                            onOpenPane = { pane ->
+                                if (route == renderedRoute && route.settingsPane == SettingsPane.Main) {
+                                    viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                                    route = route.openSettings(pane)
+                                    if (pane == SettingsPane.Diagnostics) viewModel.refresh()
+                                }
+                            },
+                            globalVisibility = visibilityAction.expected,
+                            visibilityEnabled = !home.loading && settingsVisibilityMatches(discovery, search, visibilityAction),
+                            onGlobalVisibility = { viewModel.setSettingsGlobalVisibility(visibilityAction, it) },
                             state=home,
                             replayLikes = replayAction.expected,
                             replayEnabled = !home.loading && settingsReplayMatches(discovery, search, replayAction),
@@ -514,6 +530,11 @@ fun LadiesApp(
 
 @Composable
 internal fun SettingsScreen(
+    pane: SettingsPane,
+    onOpenPane: (SettingsPane) -> Unit,
+    globalVisibility: GlobalResultVisibility,
+    visibilityEnabled: Boolean,
+    onGlobalVisibility: (GlobalResultVisibility) -> Unit,
     state: HomeUiState,
     replayLikes: Boolean,
     replayEnabled: Boolean,
@@ -532,77 +553,111 @@ internal fun SettingsScreen(
         modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        ScreenGroup("Lokale Datenbasis") {
-            Text("Personen, Inserate und Historie liegen in der Rust-eigenen SQLite-Datenbank.",
-                style = MaterialTheme.typography.bodySmall)
-            if (state.loading) CircularProgressIndicator()
-            state.error?.let { Text("Fehler: $it", color = MaterialTheme.colorScheme.error) }
-            val schema = state.schemaVersion
-            if (schema == null) Text("Datenbankstatus noch nicht bekannt.")
-            else {
-                Text("Datenbankschema: v$schema", style = MaterialTheme.typography.titleSmall)
-                Text("Personen: ${state.personCount} · Quellenprofile: ${state.sourceProfileCount} · Inserate: ${state.listingCount}")
-            }
-            OutlinedButton(onClick = onRefresh, enabled = !state.loading,
-                modifier = Modifier.heightIn(min = 48.dp)) { Text("Datenbankstatus aktualisieren") }
-        }
-        ScreenGroup("Entdecken") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Likes erneut zeigen")
-                    Text("Bereits gelikte Profile im Swipe-Deck", style = MaterialTheme.typography.bodySmall)
+        when (pane) {
+            SettingsPane.Main -> {
+                for (destination in listOf(SettingsPane.Search, SettingsPane.Discovery, SettingsPane.Diagnostics)) {
+                    OutlinedButton(
+                        onClick = { onOpenPane(destination) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text(destination.title) }
                 }
-                Switch(checked = replayLikes, onCheckedChange = onReplayLikes, enabled = replayEnabled,
-                    modifier = Modifier.semantics { contentDescription = "Likes erneut zeigen" })
             }
-        }
-        ScreenGroup("Diagnose") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Debug-Details")
-                    Text(if (state.debugLoggingEnabled) "DEBUG" else "INFO", style = MaterialTheme.typography.bodySmall)
+            SettingsPane.Search -> ScreenGroup("Ergebnissichtbarkeit") {
+                SettingsToggle("Likes ausblenden", "In allen Entdecken-Ansichten", globalVisibility.hideLikes, visibilityEnabled) {
+                    onGlobalVisibility(globalVisibility.copy(hideLikes = it))
                 }
-                Switch(checked = state.debugLoggingEnabled, onCheckedChange = onDebugLogging,
-                    modifier = Modifier.semantics { contentDescription = "Debug-Details" })
+                SettingsToggle("Dislikes ausblenden", "In allen Entdecken-Ansichten", globalVisibility.hideDislikes, visibilityEnabled) {
+                    onGlobalVisibility(globalVisibility.copy(hideDislikes = it))
+                }
+                Text("Wirkt zusätzlich zu den Filtern der ausgeführten Suche. Gespeicherte Personen und Suchdefinitionen bleiben unverändert.",
+                    style = MaterialTheme.typography.bodySmall)
             }
-            Text("Debug-Protokolle können persönliche Inhalte enthalten. Teile sie nur bewusst.",
-                style = MaterialTheme.typography.bodySmall)
-            state.diagnosticLastError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Text(if (state.diagnosticAvailable) "Log-Datei: ${state.diagnosticSizeBytes} Bytes"
-                else "Noch keine Log-Datei vorhanden.", style = MaterialTheme.typography.bodySmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onSaveDiagnostics, enabled = state.diagnosticAvailable,
-                    modifier = Modifier.heightIn(min = 48.dp)) { Text("Debug-Log speichern") }
-                TextButton(onClick = onShareDiagnostics, enabled = state.diagnosticAvailable,
-                    modifier = Modifier.heightIn(min = 48.dp)) { Text("Debug-Log teilen") }
+            SettingsPane.Discovery -> ScreenGroup("Swipe") {
+                SettingsToggle("Likes erneut zeigen", "Bereits gelikte Profile im Swipe-Deck, sofern nicht ausgeblendet",
+                    replayLikes, replayEnabled, onReplayLikes)
             }
-        }
-        ScreenGroup("HTTP-Aufzeichnung") {
-            Text("Standardmäßig aus – auch nach jedem Neustart. HTML/JSON können personenbezogene Daten enthalten. HAR-Dateien nur bewusst exportieren und teilen.",
-                style = MaterialTheme.typography.bodySmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(CaptureMode.OFF to "Aus", CaptureMode.METADATA to "Metadaten", CaptureMode.TEXT to "Mit Textantworten")
-                    .forEach { (mode, label) ->
-                        ScreenChoice(selected = state.httpCaptureMode == mode, enabled = true,
-                            onClick = { onCaptureMode(mode) }, label = { Text(label) })
+            SettingsPane.Diagnostics -> {
+                ScreenGroup("Lokale Datenbasis") {
+                    Text("Personen, Inserate und Historie liegen in der Rust-eigenen SQLite-Datenbank.",
+                        style = MaterialTheme.typography.bodySmall)
+                    if (state.loading) CircularProgressIndicator()
+                    state.error?.let { Text("Fehler: $it", color = MaterialTheme.colorScheme.error) }
+                    val schema = state.schemaVersion
+                    if (schema == null) Text("Datenbankstatus noch nicht bekannt.")
+                    else {
+                        Text("Datenbankschema: v$schema", style = MaterialTheme.typography.titleSmall)
+                        Text("Personen: ${state.personCount} · Quellenprofile: ${state.sourceProfileCount} · Inserate: ${state.listingCount}")
                     }
-            }
-            Text("Aufzeichnung: ${state.httpCaptureEntries} Requests · ${state.httpCaptureBytes} Bytes / 25 MiB",
-                style = MaterialTheme.typography.bodySmall)
-            if (state.httpCaptureStopped) Text("Sitzungslimit erreicht. Export weiter möglich; zum Neustart Aufzeichnung löschen.",
-                color = MaterialTheme.colorScheme.error)
-            state.httpCaptureError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onSaveHar, enabled = state.httpCaptureEntries > 0u,
-                    modifier = Modifier.heightIn(min = 48.dp)) { Text("HAR speichern") }
-                TextButton(onClick = onShareHar, enabled = state.httpCaptureEntries > 0u,
-                    modifier = Modifier.heightIn(min = 48.dp)) { Text("HAR teilen") }
-            }
-            TextButton(onClick = onClearHar, enabled = state.httpCaptureEntries > 0u || state.httpCaptureStopped,
-                modifier = Modifier.heightIn(min = 48.dp),
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-                Text("Aufzeichnung löschen")
+                    OutlinedButton(onClick = onRefresh, enabled = !state.loading,
+                        modifier = Modifier.heightIn(min = 48.dp)) { Text("Datenbankstatus aktualisieren") }
+                }
+                ScreenGroup("Diagnose") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Debug-Details")
+                            Text(if (state.debugLoggingEnabled) "DEBUG" else "INFO", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked = state.debugLoggingEnabled, onCheckedChange = onDebugLogging,
+                            modifier = Modifier.semantics { contentDescription = "Debug-Details" })
+                    }
+                    Text("Debug-Protokolle können persönliche Inhalte enthalten. Teile sie nur bewusst.",
+                        style = MaterialTheme.typography.bodySmall)
+                    state.diagnosticLastError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Text(if (state.diagnosticAvailable) "Log-Datei: ${state.diagnosticSizeBytes} Bytes"
+                        else "Noch keine Log-Datei vorhanden.", style = MaterialTheme.typography.bodySmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onSaveDiagnostics, enabled = state.diagnosticAvailable,
+                            modifier = Modifier.heightIn(min = 48.dp)) { Text("Debug-Log speichern") }
+                        TextButton(onClick = onShareDiagnostics, enabled = state.diagnosticAvailable,
+                            modifier = Modifier.heightIn(min = 48.dp)) { Text("Debug-Log teilen") }
+                    }
+                }
+                ScreenGroup("HTTP-Aufzeichnung") {
+                    Text("Standardmäßig aus – auch nach jedem Neustart. HTML/JSON können personenbezogene Daten enthalten. HAR-Dateien nur bewusst exportieren und teilen.",
+                        style = MaterialTheme.typography.bodySmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(CaptureMode.OFF to "Aus", CaptureMode.METADATA to "Metadaten", CaptureMode.TEXT to "Mit Textantworten")
+                            .forEach { (mode, label) ->
+                                ScreenChoice(selected = state.httpCaptureMode == mode, enabled = true,
+                                    onClick = { onCaptureMode(mode) }, label = { Text(label) })
+                            }
+                    }
+                    Text("Aufzeichnung: ${state.httpCaptureEntries} Requests · ${state.httpCaptureBytes} Bytes / 25 MiB",
+                        style = MaterialTheme.typography.bodySmall)
+                    if (state.httpCaptureStopped) Text("Sitzungslimit erreicht. Export weiter möglich; zum Neustart Aufzeichnung löschen.",
+                        color = MaterialTheme.colorScheme.error)
+                    state.httpCaptureError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onSaveHar, enabled = state.httpCaptureEntries > 0u,
+                            modifier = Modifier.heightIn(min = 48.dp)) { Text("HAR speichern") }
+                        TextButton(onClick = onShareHar, enabled = state.httpCaptureEntries > 0u,
+                            modifier = Modifier.heightIn(min = 48.dp)) { Text("HAR teilen") }
+                    }
+                    TextButton(onClick = onClearHar, enabled = state.httpCaptureEntries > 0u || state.httpCaptureStopped,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                        Text("Aufzeichnung löschen")
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsToggle(
+    title: String,
+    description: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title)
+            Text(description, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled,
+            modifier = Modifier.semantics { contentDescription = title })
     }
 }

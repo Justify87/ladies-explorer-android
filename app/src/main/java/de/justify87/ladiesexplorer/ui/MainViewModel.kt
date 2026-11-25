@@ -67,6 +67,7 @@ data class DiscoverUiState(
     val mergeNotice: String? = null,
     val activeVisibleCount: Int = 0,
     val replayLikes: Boolean = true,
+    val globalVisibility: GlobalResultVisibility = GlobalResultVisibility(),
     val canUndoSwipe: Boolean = false,
     val gridUndo: GridUndoReceipt? = null,
     val swipeRestore: SwipePresentation? = null,
@@ -145,7 +146,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val core = (app as LadiesApplication).coreStore
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
-    private val _discoverState = MutableStateFlow(DiscoverUiState())
+    private val _discoverState = MutableStateFlow(DiscoverUiState(
+        replayLikes = core.replayLikes(), globalVisibility = core.globalResultVisibility(),
+    ))
     val discoverState: StateFlow<DiscoverUiState> = _discoverState
     private val _searchUiState = MutableStateFlow(SearchUiState(defaultReady = false))
     private var defaultSearchDraft = SearchDraft()
@@ -612,7 +615,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val result = core.search(request, local, control)
                 if (!searchOwner.accepts(ticket)) return@launch
-                val cards = core.activeSearchCards(result.searchRunId, result.local)
+                val cards = core.activeSearchCards(result.searchRunId, _discoverState.value.globalVisibility.effective(result.local))
                 if (!searchOwner.accepts(ticket)) return@launch
                 swipeSession.reset()
                 discoveryEpoch++
@@ -748,7 +751,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 core.discoveryCards(cursor = cursor)
             })
         }
-        val visible = core.activeSearchCards(active.searchRunId, active.local)
+        val visible = core.activeSearchCards(active.searchRunId, _discoverState.value.globalVisibility.effective(active.local))
         return DiscoveryProjection(active.searchRunId, visible, DiscoveryPage(visible, null))
     }
 
@@ -922,6 +925,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (hasProfileEditor || swipeVisible || _uiState.value.loading ||
             !settingsReplayMatches(_discoverState.value, _searchUiState.value, action)) return
         applyReplayLikes(replay)
+    }
+
+    internal fun setSettingsGlobalVisibility(action: SettingsVisibilityAction, value: GlobalResultVisibility) {
+        if (hasProfileEditor || swipeVisible || _uiState.value.loading ||
+            !settingsVisibilityMatches(_discoverState.value, _searchUiState.value, action) ||
+            action.expected == value) return
+        invalidateSwipeActions(clearMergeNotice = false)
+        core.setGlobalResultVisibility(value)
+        _discoverState.update { it.copy(globalVisibility = value, actionGeneration = it.actionGeneration + 1) }
+        refreshDiscovery()
     }
 
     private fun applyReplayLikes(replay: Boolean) {
@@ -1256,7 +1269,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             !searchResultOpenMatches(_searchUiState.value, _discoverState.value, action)) return
         val response = _searchUiState.value.response?.takeIf { it.searchRunId == action.runId }
         loadProfile(action.card.listingId, action.card.personId,
-            executedProfileMatchContext(response, action.card.personId))
+            executedProfileMatchContext(response, action.card.personId, _discoverState.value.globalVisibility))
     }
 
     internal fun openSavedSearchProfile(action: SavedSearchProfileOpenAction) {

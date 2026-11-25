@@ -42,7 +42,8 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 - Unterstützt: nur Fotos/Video, Likes/Dislikes ausblenden sowie ALL/AI/NATURAL **nur** auf vorhandenen Markern. AI bedeutet „KI-markiert“, die bestehende Definition NATURAL bedeutet „Ohne KI-Markierung“, nicht nachgewiesene Natürlichkeit. Ohne Marker bleibt die tatsächliche Bildherkunft unbekannt; gespeicherte Definitionen und Sichtbarkeitsregeln bleiben unverändert.
 - STUDIO/FACEAPP/Business sind ohne belastbare Daten nicht unterstützt; keine URL-Heuristik.
-- Replay-Likes und Hide-Likes unterscheiden. Normale und gespeicherte Suche verwenden identische Sichtbarkeitsregeln.
+- Normale und gespeicherte Suchdefinitionen verwenden dieselben lokalen Sichtbarkeitsregeln. Unter Einstellungen → Suche liegen zwei zusätzliche, unabhängig persistierte globale Ausblendungen für Likes und Dislikes. Sie wirken als logisches ODER mit den jeweiligen Ausblendungen des ausgeführten Entdecken-Runs auf Swipe, Grid und Karte, ohne Quelllauf; beide aktiv lassen nur unbewertete Treffer zu. Ausschalten hebt keine lokale Ausblendung auf. Standard beider globaler Optionen ist aus, damit vorhandene Suchstandards und Definitionen unverändert wirken. Der neutrale lokale Startbestand bleibt unbewertet. Gespeicherte Personen, Favoriten, gespeicherte Suchdefinitionen und deren eigenständige Ergebnis-/Delta-Verträge bleiben unverändert.
+- Replay-Likes ist eine zusätzliche Swipe-Traversierungsregel und kann keinen aus der Mitgliedschaft ausgeblendeten Treffer zurückholen. Undo, Reset und Replay ändern die globale Einstellung nicht.
 
 ## Entdecken und Entscheidungen
 
@@ -134,7 +135,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ## Einstellungen und lokale Diagnose
 
-- DB-/Core-Status, Replay-Likes und lokale Diagnose; keine Telemetrie.
+- Einstellungen: Suche (globale Ergebnissichtbarkeit), Entdecken (Replay-Likes) und Diagnose und Fehlerbehebung (DB-/Core-Status, Logging, HTTP-Aufzeichnung, Status-/Exportfunktionen) als eigenständige Untermenüs. Keine Telemetrie.
 - INFO und optional DEBUG, **kein TRACE**. Reale Operations-/Netzwerk-/Verarbeitungszeiten, sichtbare Fehler und TXT-Export.
 - HTTP-Aufzeichnung ausschließlich bewusst: **Aus** (Standard nach jedem Neustart), Metadaten oder zusätzlich geeignete Textantworten.
 - Eine begrenzte Sitzung bleibt erhalten; Löschen entfernt sie und schaltet Aufnahme aus. HAR 1.2 ist speicher-/teilbar mit realen Werten und erkennbaren Auslassungen/Fehlern, ohne erfundene Einzelzeiten.

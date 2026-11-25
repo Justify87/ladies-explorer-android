@@ -3,6 +3,7 @@ package de.justify87.ladiesexplorer.ui
 import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.DiscoveryCursor
 import de.justify87.ladiesexplorer.core.DiscoveryPage
+import de.justify87.ladiesexplorer.core.GlobalResultVisibility
 import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.SavedPeopleWindow
 import de.justify87.ladiesexplorer.core.MapOverview
@@ -24,6 +25,23 @@ internal fun settingsReplayMatches(
     discovery.actionSurface == ProfileActionSurface.SETTINGS &&
         discovery.actionGeneration == action.generation &&
         discovery.replayLikes == action.expected &&
+        !search.profileOpen && !search.actionBusy &&
+        currentSwipeDeck(discovery, search.loading, action.deck)
+
+internal data class SettingsVisibilityAction(
+    val generation: Long,
+    val deck: SwipeDeckToken,
+    val expected: GlobalResultVisibility,
+)
+
+internal fun DiscoverUiState.settingsVisibilityAction() =
+    SettingsVisibilityAction(actionGeneration, deckToken(), globalVisibility)
+
+internal fun settingsVisibilityMatches(
+    discovery: DiscoverUiState, search: SearchUiState, action: SettingsVisibilityAction,
+): Boolean =
+    discovery.actionSurface == ProfileActionSurface.SETTINGS &&
+        discovery.settingsVisibilityAction() == action &&
         !search.profileOpen && !search.actionBusy &&
         currentSwipeDeck(discovery, search.loading, action.deck)
 

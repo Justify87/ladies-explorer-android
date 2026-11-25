@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.8 sind abgeschlossen. Nächste abhängige Aufgabe: M09.9 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.8 sind abgeschlossen. M09.9 zur Review auf `feature/m09-9-settings-visibility`; nach Integration folgt M09.10 mit gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,9 +18,11 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.9 — Einstellungen: Hierarchie und globale Ergebnissichtbarkeit
 
-**Status:** PLANNED.
+**Status:** REVIEW. Branch `feature/m09-9-settings-visibility`.
 
-**Abhängigkeit:** M09.3, M09.8; gesonderter Nutzerauftrag.
+**Abhängigkeit:** M09.3, M09.8 integriert; Nutzerauftrag erteilt.
+
+**Umsetzung:** Eigenständige Settings-Untermenüs, native Back-/Restore-Route; globale Explorer-Optionen standardmäßig aus, ODER-Verknüpfung mit ausgeführter lokaler Filterdefinition vor dem bestehenden Rust-Mitgliedschaftsread. Gemeinsame lokale Reprojektion, Run-Filtermatch und Replay-/Undo-/Reset-Verträge; SavedPeople und gespeicherte Definitionen/Ergebnisverträge unverändert. Regressionen für Regelmatrix, native Präferenzprojektion, Swipe/Grid/Map, Admission, Settings-Navigation, Persistenz und Diagnose ergänzt. CI-Gate und tatsächliche Geräteausführung noch nicht als erfolgreich belegt; Abschluss nach Merge-Regel.
 
 - Einstellungs-Tab aus Nutzersicht neu strukturieren: kompakte Hauptseite mit wenigen tatsächlichen fachlichen Gruppen, echte navigierbare Untermenüs mit konsistentem Back; keine erfundenen Einstellungsoptionen. Logging, HTTP-Aufzeichnung, Diagnose, technische Status-/Exportfunktionen in eigenes Untermenü „Diagnose und Fehlerbehebung“ auslagern. Gewöhnliche Einstellungen leicht erreichbar; DB-/Core-Status, Replay-Likes, Diagnose-/Capture-/Exportverträge unverändert verfügbar. Keine automatische Aufzeichnung oder Weitergabe.
 - Unter Suche zwei unabhängige dauerhaft gespeicherte Optionen „Likes ausblenden“ und „Dislikes ausblenden“ ergänzen. Global wirksam auf vorhandene und künftige Suchergebnisse in Swipe/Grid/Map, ohne neuen Quelllauf; beide aktiv = nur unbewertete Ergebnisse. Keine Löschung oder Präferenzänderung; gespeicherte Personen-/Favoritenansichten nicht ausblenden.

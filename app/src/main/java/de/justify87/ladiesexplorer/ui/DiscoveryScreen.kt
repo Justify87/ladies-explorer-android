@@ -71,7 +71,7 @@ internal fun DiscoverScreen(
     val searchLoading = search.loading
     val active = search.response?.takeIf { it.searchRunId == state.activeRunId }
     val card = state.cards.firstOrNull()
-    val executedFiltersJson = executedProfileMatchContext(active, card?.personId).encode()
+    val executedFiltersJson = executedProfileMatchContext(active, card?.personId, state.globalVisibility).encode()
     val deckToken = state.deckToken()
     val cardToken = state.cardToken()
     val context = LocalContext.current

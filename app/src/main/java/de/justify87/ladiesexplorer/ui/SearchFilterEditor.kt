@@ -237,6 +237,10 @@ internal fun LazyListScope.searchFilterEditor(
         if (all || filterTextMatches(query, VIDEO_ONLY_LABEL)) LocalFilterRow(VIDEO_ONLY_LABEL, state.local.videoOnly, enabled) {
             onLocalVisibility(state.local.copy(videoOnly = it))
         }
+        if (all || filterTextMatches(query, HIDE_DISLIKES_LABEL) || filterTextMatches(query, HIDE_LIKES_LABEL)) {
+            Text("Suchbezogene Regeln; globale Ausblendungen gelten zusätzlich in Entdecken.",
+                style = MaterialTheme.typography.bodySmall)
+        }
         if (all || filterTextMatches(query, HIDE_DISLIKES_LABEL)) LocalFilterRow(HIDE_DISLIKES_LABEL, state.local.hideDislikes, enabled) {
             onLocalVisibility(state.local.copy(hideDislikes = it))
         }
