@@ -150,24 +150,27 @@ internal fun Modifier.admitProfileTouches(gate: ProfileTouchGate, eligible: () -
         }
     }
 
-internal data class PhotoHitGeometry(val photo: Rect, val rootOrigin: Offset, val gallery: List<Rect>) {
+internal data class PhotoHitGeometry(val photo: Rect, val rootOrigin: Offset, val gallery: List<Rect>,
+    val exclusive: Rect? = null) {
     fun galleryAt(position: Offset): Boolean = gallery.any { it.contains(position) }
 }
 
-internal data class PhotoHitModifiers(val photo: Modifier, val previous: Modifier, val next: Modifier)
+internal data class PhotoHitModifiers(val photo: Modifier, val previous: Modifier, val next: Modifier,
+    val exclusive: Modifier = Modifier)
 
 private class PhotoHitRegion {
     var host: LayoutCoordinates? = null
     var photo: LayoutCoordinates? = null
     var previous: LayoutCoordinates? = null
     var next: LayoutCoordinates? = null
+    var exclusive: LayoutCoordinates? = null
 
     fun geometry(): PhotoHitGeometry? {
         val parent = host?.takeIf { it.isAttached } ?: return null
         fun bounds(child: LayoutCoordinates?): Rect? = child?.takeIf { it.isAttached }
             ?.let { parent.localBoundingBoxOf(it, clipBounds = false) }
         return PhotoHitGeometry(bounds(photo) ?: return null, parent.localToRoot(Offset.Zero),
-            listOfNotNull(bounds(previous), bounds(next)))
+            listOfNotNull(bounds(previous), bounds(next)), bounds(exclusive))
     }
 }
 
@@ -193,7 +196,8 @@ internal fun PhotoGestureSurface(
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 val geometry = region.geometry()
                 if (down.isConsumed || geometry == null || geometry.photo.width <= 0f ||
-                    !geometry.photo.contains(down.position)) return@awaitEachGesture
+                    !geometry.photo.contains(down.position) || geometry.exclusive?.contains(down.position) == true)
+                    return@awaitEachGesture
                 val gallery = galleryEnabled && geometry.galleryAt(down.position)
                 if (!gallery && !canSwipe) return@awaitEachGesture
                 val stamp = touchGate?.capture()
@@ -255,6 +259,7 @@ internal fun PhotoGestureSurface(
             Modifier.onGloballyPositioned { region.photo = it },
             Modifier.onGloballyPositioned { region.previous = it },
             Modifier.onGloballyPositioned { region.next = it },
+            Modifier.onGloballyPositioned { region.exclusive = it },
         ))
     }
 }
