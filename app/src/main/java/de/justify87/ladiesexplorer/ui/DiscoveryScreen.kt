@@ -85,6 +85,7 @@ internal fun DiscoverScreen(
     val visible = started && !searchLoading && !search.activeProjectionPending && !state.loading && !state.busy
     val enabled = visible
     var heroSize by remember { mutableStateOf(IntSize.Zero) }
+    var discoveryContextHeight by remember { mutableIntStateOf(0) }
     val decks = remember(state.activeRunId, state.swipeProfileRevision, started) {
         SwipeProfileWindow(mutableStateMapOf(), state.swipeExternalRevision)
     }
@@ -319,7 +320,7 @@ internal fun DiscoverScreen(
         }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
             hasRail = true, notices = notices, noticeOwner = controls, fixedNoticeSlot = true,
-            heroLeadingHeight = discoveryLeadingHeight(LocalDensity.current.fontScale).dp,
+            heroLeadingHeight = with(LocalDensity.current) { discoveryContextHeight.toDp() },
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(presentation, sourceContext, controls, compactNotice,
                     onNotice, { onAvailability(deckToken, it) })
@@ -363,7 +364,8 @@ internal fun DiscoverScreen(
                     userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices,
-                    fallbackIdentity = identity, afterHeading = {
+                    fallbackIdentity = identity,
+                    onDiscoveryContextHeight = { discoveryContextHeight = it }, afterHeading = {
                     item(key = "profile-actions") {
                         Column {
                             TextButton(onClick = { photoRequest++ }) { Text("Zum Foto") }
