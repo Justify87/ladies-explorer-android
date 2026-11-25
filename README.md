@@ -12,7 +12,7 @@ Den nächsten ausführbaren Schritt dem [Arbeitsregister](docs/ROADMAP.md) entne
 
 ## Designreferenz
 
-[Design Reference v3](design-referenz/README.md) ist die offline nutzbare, synthetische HTML/CSS-Vorschau für den geplanten nativen Redesign-Meilenstein M08. Verbindliches UI-/UX-Soll: [DESIGN](docs/DESIGN.md); Implementierungsstand und Aufgaben: [ROADMAP](docs/ROADMAP.md). Die Referenz ist keine WebView-App und führt keine echten Quellenzugriffe aus.
+[Design Reference v3](design-referenz/README.md) ist die offline nutzbare, synthetische HTML/CSS-Illustration der ursprünglichen visuellen Richtung. Sie ist kein aktuelles Soll; insbesondere native Pure-Flächen, Formen und Interaktionshierarchie richten sich nach dem weiterentwickelten Designvertrag. Verbindliches UI-/UX-Soll: [DESIGN](docs/DESIGN.md); Implementierungsstand und Aufgaben: [ROADMAP](docs/ROADMAP.md). Die Referenz ist keine WebView-App und führt keine echten Quellenzugriffe aus.
 
 ## Architektur
 
