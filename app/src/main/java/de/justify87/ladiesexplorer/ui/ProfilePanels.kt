@@ -302,6 +302,8 @@ internal fun compactProfileMetadata(identity: HeroIdentity, listingCount: UInt?,
         listOfNotNull(identity.place.takeIf { it.isNotBlank() }, identity.status).joinToString(" · "),
         listOfNotNull(listingCount?.let { "Anzeigen: $it" },
             profilePublicationLabel(publishedAt)?.let { "Veröffentlicht: $it" }).joinToString(" · "),
+        listOfNotNull("Person neu im Bestand".takeIf { identity.personNew },
+            "Anzeige neu".takeIf { identity.listingNew }, "Video".takeIf { identity.hasVideo }).joinToString(" · "),
     ).filter { it.isNotBlank() }
 
 @Composable
@@ -712,8 +714,8 @@ internal fun profileAnalysisFields(imageCount: Int, data: PersonDetail?): List<P
 
 internal fun identityCandidateFields(candidate: IdentityCandidate): List<Pair<String, String>> =
     buildList {
-        add("Telefonübereinstimmung" to if (candidate.phoneMatch) "Ja" else "Nein")
-        add("Quellprofilübereinstimmung" to if (candidate.sourceProfileMatch) "Ja" else "Nein")
+        add("Telefonübereinstimmung" to if (candidate.phoneMatch) "Belegt" else "Nicht belegt")
+        add("Quellprofilübereinstimmung" to if (candidate.sourceProfileMatch) "Belegt" else "Nicht belegt")
         add("Bildtreffer" to candidate.imageMatches.toString())
         add("Starke Bildtreffer" to candidate.strongImageMatches.toString())
         candidate.bestImageDistance?.let { add("Geringste Bildhash-Distanz" to it.toString()) }
