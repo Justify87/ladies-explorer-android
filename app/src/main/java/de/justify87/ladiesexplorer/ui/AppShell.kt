@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 internal object ShellMetrics {
+    val maxProfileWidth = 600.dp
     val touch = 48.dp
     val header = 56.dp
     val navigation = 64.dp
@@ -107,52 +108,55 @@ internal fun RootNavigation(
     onSelect: (RootDestination) -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Row(
-            Modifier.fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-                .padding(horizontal = shellContentInset())
-                .height(IntrinsicSize.Min)
-                .selectableGroup(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RootDestination.entries.forEach { destination ->
-                val selected = destination == active
-                val enabled = navigationEnabled || selected
-                val scheme = MaterialTheme.colorScheme
-                val tint = if (selected) scheme.primary else scheme.onSurfaceVariant
-                Column(
-                    Modifier.weight(1f).heightIn(min = ShellMetrics.navigation).fillMaxHeight()
-                        .shellFocus()
-                        .selectable(selected = selected, enabled = enabled, role = Role.Tab,
-                            onClick = { onSelect(destination) })
-                        .padding(vertical = ShellMetrics.gap, horizontal = 2.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Surface(
-                        color = if (selected) scheme.surfaceContainerHighest else Color.Transparent,
-                        shape = MaterialTheme.shapes.medium,
+        Box(Modifier.fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
+            contentAlignment = Alignment.Center) {
+            Row(
+                Modifier.widthIn(max = ShellMetrics.maxProfileWidth).fillMaxWidth()
+                    .padding(horizontal = shellContentInset())
+                    .height(IntrinsicSize.Min)
+                    .selectableGroup(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RootDestination.entries.forEach { destination ->
+                    val selected = destination == active
+                    val enabled = navigationEnabled || selected
+                    val scheme = MaterialTheme.colorScheme
+                    val tint = if (selected) scheme.primary else scheme.onSurfaceVariant
+                    Column(
+                        Modifier.weight(1f).heightIn(min = ShellMetrics.navigation).fillMaxHeight()
+                            .shellFocus()
+                            .selectable(selected = selected, enabled = enabled, role = Role.Tab,
+                                onClick = { onSelect(destination) })
+                            .padding(vertical = ShellMetrics.gap, horizontal = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
-                        Box(Modifier.width(52.dp).height(28.dp), contentAlignment = Alignment.Center) {
-                            val icon = when (destination) {
-                                RootDestination.Discover -> Icons.Default.Explore
-                                RootDestination.Search -> Icons.Default.Search
-                                RootDestination.Saved -> Icons.Default.Bookmark
-                                RootDestination.Settings -> Icons.Default.Settings
-                            }
-                            val iconColor = tint
-                                .let { if (enabled) it else it.copy(alpha = .38f) }
-                            BadgedBox(badge = {
-                                if (destination == RootDestination.Search && unreadSearch) Badge()
-                            }) {
-                                Icon(icon, modifier = Modifier.size(ShellMetrics.icon), contentDescription = if (destination == RootDestination.Search && unreadSearch)
-                                    "Neue gespeicherte Suchergebnisse" else null, tint = iconColor)
+                        Surface(
+                            color = if (selected) scheme.surfaceContainerHighest else Color.Transparent,
+                            shape = MaterialTheme.shapes.medium,
+                        ) {
+                            Box(Modifier.width(52.dp).height(28.dp), contentAlignment = Alignment.Center) {
+                                val icon = when (destination) {
+                                    RootDestination.Discover -> Icons.Default.Explore
+                                    RootDestination.Search -> Icons.Default.Search
+                                    RootDestination.Saved -> Icons.Default.Bookmark
+                                    RootDestination.Settings -> Icons.Default.Settings
+                                }
+                                val iconColor = tint
+                                    .let { if (enabled) it else it.copy(alpha = .38f) }
+                                BadgedBox(badge = {
+                                    if (destination == RootDestination.Search && unreadSearch) Badge()
+                                }) {
+                                    Icon(icon, modifier = Modifier.size(ShellMetrics.icon), contentDescription = if (destination == RootDestination.Search && unreadSearch)
+                                        "Neue gespeicherte Suchergebnisse" else null, tint = iconColor)
+                                }
                             }
                         }
+                        Text(destination.title, textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (enabled) tint else tint.copy(alpha = .38f))
                     }
-                    Text(destination.title, textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (enabled) tint else tint.copy(alpha = .38f))
                 }
             }
         }
