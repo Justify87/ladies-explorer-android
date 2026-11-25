@@ -1,6 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -77,7 +79,9 @@ internal fun DiscoveryGridScreen(
             cards.forEach { add(gridAnchorKey(it.listingId)) }
             if (showPage) add("more")
         }
-        val listState = remember {
+        val presentationContext = Triple(search.response?.searchRunId, discovery.globalVisibility, search.activeProjectionPending)
+        val membershipUnknown = search.activeProjectionError != null || (discovery.error != null && cards.isEmpty())
+        val listState = remember(presentationContext, membershipUnknown) {
             val (index, offset) = gridRestorePosition(keys, anchorKey, anchorIndex, anchorOffset)
             LazyGridState(index, offset)
         }
@@ -91,8 +95,11 @@ internal fun DiscoveryGridScreen(
             anchorIndex = anchor.second
             anchorOffset = anchor.third
         }
-        LaunchedEffect(listState) {
-            snapshotFlow { currentAnchor() }.filterNotNull().collect { saveAnchor(it) }
+        LaunchedEffect(listState, search.activeProjectionPending, membershipUnknown) {
+            // A transient loading/error row must not replace the last valid listing anchor.
+            if (!search.activeProjectionPending && !membershipUnknown) {
+                snapshotFlow { currentAnchor() }.filterNotNull().collect { saveAnchor(it) }
+            }
         }
         LaunchedEffect(listState, pageAction, canPage, discovery.error) {
             if (pageAction != null && canPage && discovery.error == null) {
@@ -106,72 +113,77 @@ internal fun DiscoveryGridScreen(
         Column(Modifier.fillMaxSize()) {
             if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = contentInset)) { chrome() }
             if (!inlineChrome && undoAction != null) GridUndoButton(undoAction, canUndo, onUndo)
-            LazyVerticalGrid(
-                columns = profileGridCells(),
-                state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = contentInset, vertical = ShellMetrics.small),
-                horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small),
-                verticalArrangement = Arrangement.spacedBy(ShellMetrics.small),
-            ) {
-                if (inlineChrome) item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) { chrome() }
-                if (inlineChrome && undoAction != null) item(key = "grid-undo", span = { GridItemSpan(maxLineSpan) }) {
-                    GridUndoButton(undoAction, canUndo, onUndo)
-                }
-                if (showStatus) {
-                    item(key = "search-status", span = { GridItemSpan(maxLineSpan) }) {
-                        DiscoverySearchRunStatus(search, onCancelSearch)
+            // Context replacement must not retain outgoing images from an invalid membership.
+            key(presentationContext, membershipUnknown) {
+                LazyVerticalGrid(
+                    columns = profileGridCells(),
+                    state = listState,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = contentInset, vertical = ShellMetrics.small),
+                    horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small),
+                    verticalArrangement = Arrangement.spacedBy(ShellMetrics.small),
+                ) {
+                    if (inlineChrome) item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) { chrome() }
+                    if (inlineChrome && undoAction != null) item(key = "grid-undo", span = { GridItemSpan(maxLineSpan) }) {
+                        GridUndoButton(undoAction, canUndo, onUndo)
                     }
-                }
-                discovery.mutationError?.let { message ->
-                    item(key = "mutation-error", span = { GridItemSpan(maxLineSpan) }) {
-                        Text(message, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-                discovery.error?.let { message ->
-                    item(key = "error", span = { GridItemSpan(maxLineSpan) }) {
-                        Text(message, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-                if (loadingResults && cards.isEmpty()) {
-                    item(key = "loading", span = { GridItemSpan(maxLineSpan) }) {
-                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
+                    if (showStatus) {
+                        item(key = "search-status", span = { GridItemSpan(maxLineSpan) }) {
+                            DiscoverySearchRunStatus(search, onCancelSearch)
                         }
                     }
-                } else if (cards.isEmpty()) {
-                    item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                        Text(if (emptyState == DiscoveryEmptyState.Unknown) "Lokale Treffer unbekannt." else "Keine Treffer.",
-                            style = MaterialTheme.typography.bodyLarge)
+                    discovery.mutationError?.let { message ->
+                        item(key = "mutation-error", span = { GridItemSpan(maxLineSpan) }) {
+                            Text(message, color = MaterialTheme.colorScheme.error)
+                        }
                     }
-                }
-                items(cards, key = { it.listingId }) { card ->
-                    val action = GridLikeAction(card, search.response?.searchRunId, discovery.actionGeneration)
-                    ProfileGridCard(
-                        name = card.name,
-                        age = card.age,
-                        thumbnailUrl = card.thumbnailUrl,
-                        localPath = card.localPath,
-                        preference = card.preference,
-                        decisionOwner = action,
-                        touchGate = touchGate,
-                        enabled = enabled,
-                        onOpen = {
-                            currentAnchor()?.let(::saveAnchor)
-                            onProfile(action)
-                        },
-                        onDecision = { target -> onDecision(action, target) },
-                    )
-                }
-                if (showPage && pageAction != null) {
-                    item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
-                        if (discovery.loadingMore) {
-                            Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(Modifier.size(24.dp))
+                    discovery.error?.let { message ->
+                        item(key = "error", span = { GridItemSpan(maxLineSpan) }) {
+                            Text(message, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    if (loadingResults && cards.isEmpty()) {
+                        item(key = "loading", span = { GridItemSpan(maxLineSpan) }) {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
                             }
-                        } else {
-                            TextButton(onClick = { onLoadMore(pageAction) }, enabled = canPage, modifier = Modifier.fillMaxWidth()) {
-                                Text("Weitere Profile")
+                        }
+                    } else if (cards.isEmpty()) {
+                        item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                            Text(if (emptyState == DiscoveryEmptyState.Unknown) "Lokale Treffer unbekannt." else "Keine Treffer.",
+                                style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                    items(cards, key = { it.listingId }) { card ->
+                        val action = GridLikeAction(card, search.response?.searchRunId, discovery.actionGeneration)
+                        ProfileGridCard(
+                            name = card.name,
+                            age = card.age,
+                            thumbnailUrl = card.thumbnailUrl,
+                            localPath = card.localPath,
+                            preference = card.preference,
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = tween(160), placementSpec = spring(stiffness = 500f), fadeOutSpec = tween(140)),
+                            decisionOwner = action,
+                            touchGate = touchGate,
+                            enabled = enabled,
+                            onOpen = {
+                                currentAnchor()?.let(::saveAnchor)
+                                onProfile(action)
+                            },
+                            onDecision = { target -> onDecision(action, target) },
+                        )
+                    }
+                    if (showPage && pageAction != null) {
+                        item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
+                            if (discovery.loadingMore) {
+                                Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(Modifier.size(24.dp))
+                                }
+                            } else {
+                                TextButton(onClick = { onLoadMore(pageAction) }, enabled = canPage, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Weitere Profile")
+                                }
                             }
                         }
                     }
@@ -224,19 +236,18 @@ internal fun ProfileGridCard(
     PhotoGestureSurface(owner = decisionOwner, modifier = modifier.fillMaxWidth(),
         galleryEnabled = enabled, onSwipe = onDecision.takeIf { enabled }, onDrag = { drag = it },
         touchGate = touchGate) { hit ->
-        key(decisionOwner) {
-            val actions = Modifier.semantics {
-                contentDescription = name.ifBlank { "Inserat" }
-                stateDescription = gridPreferenceLabel(preference)
-                if (enabled) customActions = listOf(
-                    CustomAccessibilityAction("Gefällt") { onDecision(Preference.LIKE); true },
-                    CustomAccessibilityAction("Gefällt nicht") { onDecision(Preference.DISLIKE); true },
-                    CustomAccessibilityAction("Bewertung entfernen") { onDecision(Preference.NONE); true },
-                )
-            }
-            GridCardContent(name, age, null, thumbnailUrl, localPath, enabled, onOpen,
-                Modifier.then(hit.photo).then(hit.previous).then(actions), preference, shift, drag)
+        val actions = Modifier.semantics {
+            contentDescription = name.ifBlank { "Inserat" }
+            stateDescription = gridPreferenceLabel(preference)
+            if (enabled) customActions = listOf(
+                CustomAccessibilityAction("Gefällt") { onDecision(Preference.LIKE); true },
+                CustomAccessibilityAction("Gefällt nicht") { onDecision(Preference.DISLIKE); true },
+                CustomAccessibilityAction("Bewertung entfernen") { onDecision(Preference.NONE); true },
+            )
         }
+        GridCardContent(name, age, null, thumbnailUrl, localPath, enabled, onOpen,
+            Modifier.then(hit.photo), preference, shift, drag,
+            decisionOwner = decisionOwner, interaction = Modifier.then(hit.previous).then(actions))
     }
 }
 
@@ -245,17 +256,21 @@ private fun GridCardContent(
     name: String, age: String?, place: String?, thumbnailUrl: String?, localPath: String?,
     enabled: Boolean, onOpen: () -> Unit, modifier: Modifier, preference: Preference? = null,
     shift: Float = 0f, drag: Float = 0f,
+    decisionOwner: Any? = null, interaction: Modifier = Modifier,
 ) {
     val largeText = LocalDensity.current.fontScale >= 1.5f
     Box(
         modifier.fillMaxWidth().heightIn(min = if (largeText) 220.dp else 0.dp)
             .clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceVariant)
-            .shellFocus().clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen),
+            .then(if (preference == null) Modifier.shellFocus()
+                .clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen) else Modifier),
     ) {
         Spacer(Modifier.fillMaxWidth().aspectRatio(1.03f))
         ProfileImage(thumbnailUrl, localPath, Modifier.matchParentSize().graphicsLayer { translationX = shift },
             description = "$name – Profilbild")
         if (preference != null) {
+            if (preference == Preference.DISLIKE)
+                Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .28f)))
             age?.takeIf { it.isNotBlank() }?.let {
                 Text(it, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
                     .background(Color.Black.copy(alpha = .78f), MaterialTheme.shapes.small).padding(horizontal = 7.dp, vertical = 3.dp),
@@ -267,6 +282,11 @@ private fun GridCardContent(
                     modifier = Modifier.align(Alignment.Center)
                         .background(Color.Black.copy(alpha = .82f), MaterialTheme.shapes.small).padding(6.dp),
                     color = Color.White, style = MaterialTheme.typography.bodySmall)
+            }
+            // Revoke presses with their action snapshot without restarting the image request.
+            key(decisionOwner) {
+                Box(Modifier.matchParentSize().then(interaction).shellFocus()
+                    .clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen))
             }
         } else {
             Box(Modifier.matchParentSize().background(Brush.verticalGradient(

@@ -89,6 +89,11 @@ internal fun heroMediaGeometry(viewport: IntSize, source: IntSize, allowCrop: Bo
     return HeroMediaGeometry(viewport, Rect(left, top, left + width, top + height), false)
 }
 
+// A loading request has no drawable geometry; a successful decode with unknown dimensions may still Fit.
+internal fun settledHeroPhotoGeometry(viewport: IntSize, decoded: IntSize?, allowCrop: Boolean): HeroMediaGeometry? =
+    decoded?.takeIf { viewport.width > 0 && viewport.height > 0 }
+        ?.let { heroMediaGeometry(viewport, it, allowCrop) }
+
 internal fun profileShellBudget(
     width: Float, availableHeight: Float, rootHeight: Float, fontScale: Float,
     hasNotice: Boolean, hasRail: Boolean,
@@ -119,9 +124,9 @@ internal fun LazyListState.headerOwnsIdentity(heroKey: String): Boolean {
         layout.visibleItemsInfo.none { it.key == heroKey || it.key == "profile-heading" }
 }
 
-/** Reserve a non-clickable center for image feedback. */
-internal fun gallerySideFraction(width: Float, video: Boolean = false): Float =
-    if (width <= 0f) 0f else if (video) .33f else .5f
+/** Reserve a non-clickable center for retry or video controls. */
+internal fun gallerySideFraction(width: Float, reserveCenter: Boolean = false): Float =
+    if (width <= 0f) 0f else if (reserveCenter) .33f else .5f
 
 /** Rendered deck controls retain their original deck and profile tokens. */
 internal data class SwipeControlsContext(
