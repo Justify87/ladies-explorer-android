@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) ist durch Nutzerauftrag vom 25.11.2026 freigegeben. M10.1 ist abgeschlossen. Nächste Entwicklungsaufgabe: M10.2 (READY); danach M10.3 seriell auf integriertem Stand. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) ist durch Nutzerauftrag vom 25.11.2026 freigegeben. M10.1 ist abgeschlossen. Nächste Entwicklungsaufgabe: M10.2 (DOING auf `feat/m10-2-pure-viewport-media`); danach M10.3 seriell auf integriertem Stand. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M10 — Pure-UI-Konsolidierung
 
@@ -14,7 +14,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M10.2 — Pure-Viewport, Medienintegration und Scrollgrenzen
 
-**Status:** READY.
+**Status:** DOING — `feat/m10-2-pure-viewport-media`, Ausgangscommit `59c51f21a01810f38494c3e7fb23116a07c63b56`. Gemessener Kontext-/Viewport-Budgetpfad, proportionaler Foto-Crop/Fit, gemeinsame Decode-Größe, Favoritenposition und Flight-Geometrie in Bearbeitung. Nächster Schritt: Video-/Fallback-Geometrie, reale ProfileFlow-Proben und vollständiges Review/CI; keine Geräteausführung belegt.
 
 **Abhängigkeit:** M10.1 integriert; durch M10-Nutzerauftrag vom 25.11.2026 vorab fachlich freigegeben.
 
