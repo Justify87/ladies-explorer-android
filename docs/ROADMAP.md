@@ -4,7 +4,7 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M12.1 nach Integration der Vorbereitung. Unabhängige Freigabebedingungen siehe L01.
+M12.1. L01 ist unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M12 — Unified Profile Experience: Compact Information Architecture
 
@@ -26,9 +26,9 @@ Gemeinsame Profilansicht unterhalb der Galerie in Swipe und Standalone gemäß [
 
 **Umfang:** Dienste, übrige Merkmale, Zeitangaben und vorhandenen Preiskontext gemäß Designvertrag in direkt sichtbare, kompakte Sachinformationen überführen; tatsächliche Quellgruppen unverändert erhalten. Suchübereinstimmung verständlich verdichten, vollständige Gruppenbelege und lokale Kriterien zugänglich lassen. Keine neue Quelle, Preisextraktion, Taxonomie oder fachliche Filterlogik.
 
-**Akzeptanz:** Keine standardmäßig geschlossenen Akkordeons für reguläre strukturierte Profildaten; vollständige Werte einschließlich langer und zusätzlicher Kategorien, belegter Negativwerte und unbekannter Evidenz. Chronologische Zeiten und verlustfreie Verdichtung identischer Intervalle; abweichende/mehrteilige Zeiten, Feiertage und Freitext bleiben erreichbar. Keine geschätzten Werte, künstlichen Scores, doppelten Merkmale oder Vermischung von Quell- und lokalen Preisangaben.
+**Akzeptanz:** Keine standardmäßig geschlossenen Akkordeons für reguläre strukturierte Profildaten; vollständige Werte einschließlich langer und zusätzlicher Kategorien, belegter Negativwerte und unbekannter Evidenz. Chronologische Zeiten und verlustfreie Verdichtung identischer Intervalle; abweichende/mehrteilige Zeiten, Feiertage und Freitext bleiben erreichbar. Keine geschätzten Werte, künstlichen Scores oder doppelten Merkmale; manuelle Preislisten und bezahlte Beträge mit eindeutiger Herkunft getrennt darstellen.
 
-**Prüfung:** Synthetische vollständige und unvollständige Profile, variable Kategorien, lange Werte, unbekannte Felder, Suchgruppen/Alternativen, identische und unterschiedliche Zeitangaben einschließlich Mitternacht sowie Preis-/Quellenherkunft. JVM-Regressionen für Präsentationsableitungen, native Bounds/Umbruch in beiden Themes und bei Schriftvergrößerung; fachliche Datenvollständigkeit gegen den vorhandenen Projektionsumfang prüfen.
+**Prüfung:** Synthetische vollständige und unvollständige Profile, variable Kategorien, lange Werte, unbekannte Felder, Suchgruppen/Alternativen, identische und unterschiedliche Zeitangaben einschließlich Mitternacht sowie Herkunft und Trennung der lokalen Preisangaben. JVM-Regressionen für Präsentationsableitungen, native Bounds/Umbruch in beiden Themes und bei Schriftvergrößerung; fachliche Datenvollständigkeit gegen den vorhandenen Projektionsumfang prüfen.
 
 ### M12.3 — Lesezustand, sekundäre Details und lokale Funktionen
 
