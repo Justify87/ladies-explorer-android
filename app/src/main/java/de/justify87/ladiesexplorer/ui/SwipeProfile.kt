@@ -4,9 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import coil3.SingletonImageLoader
-import coil3.request.ImageRequest
 import coil3.request.SuccessResult
-import coil3.size.Scale
 import androidx.compose.ui.unit.IntSize
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
@@ -108,8 +106,7 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
     val loader = SingletonImageLoader.get(context)
     for (models in media) for (model in models) {
         currentCoroutineContext().ensureActive()
-        val result = loader.execute(ImageRequest.Builder(context).data(model)
-            .size(size.width, size.height).scale(Scale.FIT).build())
+        val result = loader.execute(heroImageRequest(context, model, size))
         if (result is SuccessResult) break
     }
 }
