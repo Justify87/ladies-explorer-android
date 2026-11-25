@@ -50,7 +50,7 @@ internal fun ProfileShell(
     header: @Composable (ProfileShellPresentation, ProfileNoticeIndicator?, () -> Unit) -> Unit,
     rail: @Composable () -> Unit = {},
     fixedNoticeSlot: Boolean = false,
-    heroLeadingHeight: Dp = 0.dp,
+    heroLeadingHeight: Dp? = null,
     content: @Composable (ProfileShellPresentation) -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -59,7 +59,7 @@ internal fun ProfileShell(
         val fontScale = LocalDensity.current.fontScale
         val budget = profileShellBudget(width.value, height.value, rootHeight.value, fontScale,
             if (fixedNoticeSlot) false else notices.isNotEmpty(), hasRail)
-        val heroHeight = profileHeroHeight(width.value, height.value + rootHeight.value, budget.body, heroLeadingHeight.value).dp
+        val heroHeight = profileHeroHeight(width.value, height.value + rootHeight.value, budget.body, heroLeadingHeight?.value).dp
         // Read measured lazy geometry without recomposing for every scroll pixel.
         val handoff by remember(listState, heroKey) {
             derivedStateOf { listState.headerOwnsIdentity(heroKey) }
@@ -123,8 +123,12 @@ internal fun ProfileShell(
                     }
                 }
             }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                content(presentation)
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val bodyHero = profileHeroHeight(width.value, height.value + rootHeight.value,
+                    maxHeight.value, heroLeadingHeight?.value).dp
+                content(presentation.copy(heroHeight = bodyHero,
+                    budget = budget.copy(body = maxHeight.value,
+                        compactGallery = budget.compactGallery || bodyHero < 320.dp)))
             }
             if (budget.rail > 0f) Box(Modifier.fillMaxWidth().height(budget.rail.dp)) { rail() }
         }
