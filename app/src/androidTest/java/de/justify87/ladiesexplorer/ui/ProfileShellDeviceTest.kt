@@ -295,7 +295,7 @@ class ProfileShellDeviceTest {
                 val scope = rememberCoroutineScope()
                 var empty by remember { mutableStateOf(false) }
                 clear = { empty = true }
-                jump = { scope.launch { list.scrollToItem(1) } }
+                jump = { scope.launch { list.scrollToItem(2) } }
                 val deck = SwipeDeckToken(null, 1)
                 val context = SwipeControlsContext(deck, if (empty) null else SwipeCardToken(deck, 4, 1),
                     if (empty) null else SwipeActionToken(null, 1, 4, 1, 11, 1,
@@ -304,10 +304,15 @@ class ProfileShellDeviceTest {
                 ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero", hasRail = true,
                     notices = emptyList(), noticeOwner = context,
                     header = { presentation, _, _ -> Text(if (presentation.identityInHeader) "B" else "A") },
-                    rail = { SwipeDecisionControls(context, if (empty) null else "Fixture",
-                        { actions.add("undo") }, { actions.add("skip") }, { actions.add(it.name) }) },
+                    rail = { presentation -> SwipeDecisionControls(context, if (empty) null else "Fixture",
+                        { actions.add("undo") }, { actions.add("skip") }, { actions.add(it.name) },
+                        reading = presentation.reading) },
+                    rootNavigation = { Box(Modifier.height(64.dp).fillMaxWidth().testTag("rail-root")) },
+                    heroLeadingMeasure = { Box(Modifier.height(48.dp)) },
                 ) { presentation ->
-                    LazyColumn(Modifier.fillMaxSize(), state = list) {
+                    LazyColumn(Modifier.fillMaxSize(), state = list,
+                        contentPadding = PaddingValues(bottom = presentation.readingExtraSpace)) {
+                        item(key = "discover-context") { Box(Modifier.height(48.dp)) }
                         item(key = "hero") {
                             Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
                         }
@@ -317,10 +322,21 @@ class ProfileShellDeviceTest {
             }
         }
         rule.onNodeWithText("A").assertExists()
-        rule.onNode(hasText("Gefällt") or hasContentDescription("Gefällt")).performClick()
+        rule.onNodeWithTag("rail-root").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Gefällt").performClick()
         rule.runOnIdle { jump() }
         rule.onNodeWithText("B").assertExists()
-        rule.onNode(hasText("Nein") or hasContentDescription("Nein")).performClick()
+        rule.onNodeWithTag("rail-root").assertIsNotDisplayed()
+        val density = rule.density.density
+        val buttons = listOf("Rückgängig", "Nein", "Später", "Gefällt").map {
+            rule.onNodeWithText(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        }
+        buttons.forEach { bounds ->
+            assertTrue(bounds.width >= 48f * density - 1f)
+            assertTrue(bounds.height >= 48f * density - 1f)
+        }
+        buttons.zipWithNext().forEach { (left, right) -> assertTrue(left.right <= right.left + 1f) }
+        rule.onNodeWithText("Nein").performClick()
         rule.onNode(hasText("Später") or hasContentDescription("Später")).performClick()
         rule.runOnIdle { clear() }
         rule.onNode(hasText("Nein") or hasContentDescription("Nein")).assertIsNotEnabled()
