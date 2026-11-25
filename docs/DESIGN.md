@@ -125,9 +125,9 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 | Priorität | Bereich | Sichtbarer Umfang |
 | --- | --- | --- |
 | 0 | Kontakte | Telefon und WhatsApp direkt nach der Galerie, bei gültiger Nummer farblich unterscheidbare Theme-Buttons; Originalprofil als explizite Profilaktion, Favorit getrennt |
-| 1 | Anzeigentitel und Fakten | Akzentuierter tatsächlicher Name mit belegtem Alter, Stadt/PLZ und Verfügbarkeit; kompakte wichtige Fakten und Anzeigenanzahl soweit verlässlich; Öffnungszeiten und weitere Merkmale zunächst geschlossen |
+| 1 | Anzeigentitel und Fakten | Akzentuierter tatsächlicher Name mit belegtem Alter, Stadt/PLZ und Verfügbarkeit; danach bei gültigem Suchkontext kompakter, standardmäßig geöffneter Abschnitt „Übereinstimmung mit deiner Suche“ mit Anzahl belegter, nicht erfüllter und unbekannter Kriteriengruppen, konkreten Werten und unterscheidbaren Alternativen; kompakte wichtige Fakten und Anzeigenanzahl soweit verlässlich; Öffnungszeiten und weitere Merkmale zunächst geschlossen |
 | 2 | Über das Profil | Zunächst vollständig geschlossen, ohne Vorschau; „Mehr anzeigen“ öffnet den vollständigen Originaltext, erneut schließbar |
-| 3 | Dienste und Filterbelege | Zunächst geschlossen; eine Überschrift je tatsächlicher Quellgruppe, sämtliche Werte und eindeutige Ja/Nein/Unbekannt-Belege erreichbar; keine geglättete Quellenunsicherheit |
+| 3 | Dienste | Zunächst geschlossen; eine Überschrift je tatsächlicher Quellgruppe, sämtliche Werte erreichbar; keine zweite Filterbelegliste oder geglättete Quellenunsicherheit |
 | 4 | Hinweise und Profilaktionen | Relevante Owner-, Archivfehler- und Konflikthinweise bleiben sichtbar; keine redundanten Status-Pills oder technischen Rohwerte |
 | 5 | Analyse / Identität | Kandidaten mit Evidenz, ausdrücklich bestätigte Operation, keine automatischen Merges |
 | 6 | Meine Notiz | Personennotiz, Entwurf/Fehler/Konflikt schon im Abschnittskopf; Save/Retry/Conflict ohne Datenverlust |

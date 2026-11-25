@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.5 sind abgeschlossen. Nächste abhängige Aufgabe: M09.6 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.5 sind abgeschlossen. Nächste abhängige Aufgabe: M09.6 in REVIEW; M09.7 nach Integration und gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,14 +18,14 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.6 — Profil: relevante Filterübereinstimmung
 
-**Status:** PLANNED.
+**Status:** REVIEW (`feature/m09-6-profile-match`).
 
 **Abhängigkeit:** M09.5; gesonderter Nutzerauftrag.
 
 - Bisherige „Filterbelege“ fachlich und visuell revidieren; verständliche Bezeichnung (z. B. „Übereinstimmung mit deiner Suche“). Oben im Profil nach Galerie/Kontakten, vor sekundären Detailabschnitten, unmittelbar sichtbar und standardmäßig offen; keine redundante zweite Liste weiter unten. Vollständige Dienste und Merkmale bleiben darunter geschlossen zugänglich.
 - Nur tatsächlich wirksame Filter des zum Profil gehörenden ausgeführten Runs bzw. gültigen Suchkontexts (nicht ungespeicherter Entwurf) auswerten. Relevante Eigenschaften, Dienste, Alters-/Größenbereiche, Entfernung und sonstige gewählte Kriterien zusammenführen und konkrete belegte passende Werte hervorheben. Bestehende Filterlogik und Quellbelege verwenden; Ja/Nein/Unbekannt unterscheidbar, Unbekannt nicht als Treffer behandeln.
 - Grad der Übereinstimmung schnell erfassbar machen, nur anhand fachlich korrekter Filtersemantik (einschließlich Alternativen innerhalb einer Gruppe); keine künstliche gewichtete Bewertung oder Scheingenauigkeit. Bei fehlendem gültigen Filterkontext keinen erfundenen Match anzeigen.
-- **Prüfung:** Rust-/JVM-Regressionen für kombinierte Filter, Alternativen, fehlende/negative Evidenz, Run-/Ownerwechsel und lokale Sichtbarkeit; native Darstellung des kompakten Match-Abschnitts.
+- **Prüfung:** Rust-/JVM-Regressionen für kombinierte Filter, Alternativen, fehlende/negative Evidenz, Run-/Ownerwechsel und lokale Sichtbarkeit; native Darstellung des kompakten Match-Abschnitts. Vollständiges CI-Gate für den PR-Head erforderlich; keine tatsächliche Geräteausführung behauptet.
 
 #### M09.7 — Suche: kompakter Editor, Filtertext und Abschnittszustand
 

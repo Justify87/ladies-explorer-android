@@ -41,6 +41,28 @@ class SearchRunStateTest {
 
     private fun card(id: Long) = fixtureCard(id)
 
+    @Test fun profileMatchContextUsesExecutedRunAndNotDraftOrUnrelatedProfile() {
+        val run = response(1).copy(local = defaultLocalVisibility().copy(videoOnly = true))
+        val old = SearchUiState().acceptRun(run, listOf(card(1)))
+        val changed = old.applyDraftChange(old.copy(city = "Dresden", local = old.local.copy(videoOnly = false)))
+        val key = executedProfileMatchContext(changed.response, 7L)
+        val json = org.json.JSONObject(key)
+        assertEquals(1L, json.getLong("run_id"))
+        assertEquals(7L, json.getLong("owner_id"))
+        assertTrue(json.getJSONObject("local").getBoolean("video_only"))
+        assertEquals(key, executedProfileMatchContext(old.response, 7L))
+        assertFalse(key == executedProfileMatchContext(response(2), 7L))
+        assertFalse(key == executedProfileMatchContext(old.response, 8L))
+        assertEquals("{}", executedProfileMatchContext(null, 7L))
+        assertEquals("{}", executedProfileMatchContext(run, null))
+        assertEquals("{}", profileMatchContextForOwner("{}", 7L))
+        val saved = savedProfileMatchContext("fixture", 7L)
+        val rebound = org.json.JSONObject(profileMatchContextForOwner(saved, 8L))
+        assertEquals("saved", rebound.getString("kind"))
+        assertEquals("fixture", rebound.getString("saved_id"))
+        assertEquals(8L, rebound.getLong("owner_id"))
+    }
+
     @Test fun draftChangesAndCancellationKeepExecutedResult() {
         val old = SearchUiState().acceptRun(response(1), listOf(card(1)))
         val changed = old.applyDraftChange(old.copy(city = "Dresden", radiusKm = 50u))
