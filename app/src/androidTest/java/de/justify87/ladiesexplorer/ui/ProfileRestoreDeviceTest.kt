@@ -10,6 +10,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -187,7 +191,9 @@ class ProfileRestoreDeviceTest {
                 FilterEvidence("haarfarbe", "blond", EvidenceStatus.YES),
                 FilterEvidence("haarfarbe", "schwarz", EvidenceStatus.UNKNOWN))),
                 FilterMatchGroup("radius", EvidenceStatus.UNKNOWN,
-                    listOf(FilterEvidence("radius", "20 km", EvidenceStatus.UNKNOWN)))), emptyList())
+                    listOf(FilterEvidence("radius", "20 km", EvidenceStatus.UNKNOWN))),
+                FilterMatchGroup("local_video", EvidenceStatus.NO,
+                    listOf(FilterEvidence("local_video", "Nur mit Video", EvidenceStatus.NO)))), emptyList())
         var context by mutableStateOf("run-1")
         val readers = ProfilePanelReads(
             { _, key -> if (key == "run-1") source else source.copy(filters = emptyList()) },
@@ -202,74 +208,97 @@ class ProfileRestoreDeviceTest {
             }
         }
         val list = rule.onNodeWithTag("match-profile")
-        list.performScrollToKey("profile-facts")
         rule.waitForIdle()
+        list.performScrollToKey("profile-services")
+        rule.waitForIdle()
+        list.performScrollToKey("profile-match")
         rule.onNodeWithText("Übereinstimmung mit deiner Suche").assertExists()
         rule.onNodeWithText("1 von 2 belegt · 0 nicht erfüllt · 1 unbekannt").assertExists()
+        rule.onNodeWithText("Suchkriterien").assertExists()
+        rule.onNodeWithText("Lokale Sichtbarkeitsregeln").assertExists()
+        rule.onNodeWithText("0 von 1 belegt · 1 nicht erfüllt · 0 unbekannt").assertExists()
+        list.performScrollToKey("profile-match/group/haarfarbe/option/blond")
         rule.onNodeWithText("blond · Ja").assertExists()
+        list.performScrollToKey("profile-match/group/haarfarbe/option/schwarz")
         rule.onNodeWithText("schwarz · Unbekannt").assertExists()
+        list.performScrollToKey("profile-match/group/local_video/option/Nur mit Video")
+        rule.onNodeWithText("Nur mit Video · Nein").assertExists()
+        list.performScrollToKey("profile-match")
         rule.onNodeWithText("Übereinstimmung mit deiner Suche").performClick()
         rule.onNodeWithText("blond · Ja").assertDoesNotExist()
         rule.onNodeWithText("Übereinstimmung mit deiner Suche").performClick()
-        list.performScrollToKey("profile-services")
-        rule.onNodeWithText("Dienste").performClick()
+        list.performScrollToKey("profile-services/group/7:Service/0")
+        rule.onNodeWithText("Fixture value").assertExists()
         rule.onNodeWithText("Filterbelege").assertDoesNotExist()
         rule.runOnIdle { context = "run-2" }
-        list.performScrollToKey("profile-facts")
         rule.waitForIdle()
+        list.performScrollToKey("profile-services")
         rule.onNodeWithText("Übereinstimmung mit deiner Suche").assertDoesNotExist()
     }
 
-    @Test fun progressiveProfileShowsFullSourceGroupsOnlyOnExpansion() {
+    @Test fun structuredFactsAreVisibleAndWrapInBothThemesWithoutOpeningSections() {
         val original = profile()
+        val longValue = "Langer synthetischer Wert ".repeat(8).trim()
+        val longService = "Lange synthetische Dienstangabe ".repeat(5).trim()
         val source = ProfileFacts(
-            listOf(ProfileField("Fixture trait", listOf("Trait value"))),
-            listOf(ProfileField("Service", listOf("Value 1", "Value 2")),
+            listOf(ProfileField("Größe", listOf("170 cm")), ProfileField("Fixture trait", listOf(longValue))),
+            listOf(ProfileField("Service", listOf("Value 1", "Value 2", longService)),
                 ProfileField("Treffpunkt", listOf("Other value"))),
-            listOf(ProfileField("Montag", listOf("Fixture time"))), emptyList(), emptyList())
-        var calls = 0
-        val readers = reads { calls++; source }
-        lateinit var state: LazyListState
+            listOf(ProfileField("Dienstag", listOf("Fixture time")), ProfileField("Montag", listOf("Fixture time"))),
+            emptyList(), emptyList())
+        var dark by mutableStateOf(false)
+        var scale by mutableFloatStateOf(1f)
+        val readers = reads { source }
         rule.setContent {
-            LadiesTheme(darkTheme = false) {
-                state = rememberLazyListState()
-                ProfileFlow(state, original, "{}", token(original), false, emptyMap(), notes,
-                    { true }, { _, _ -> }, Modifier.fillMaxWidth().height(220.dp).testTag("progressive-profile"),
-                    panelReads = readers) {
-                    item("hero") { Text("Synthetic hero") }
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, scale)) {
+                LadiesTheme(darkTheme = dark) {
+                    ProfileFlow(rememberLazyListState(), original, "{}", token(original), false,
+                        emptyMap(), notes, { true }, { _, _ -> },
+                        Modifier.width(300.dp).height(300.dp).testTag("structured-profile"), panelReads = readers) {
+                        item("hero") { Text("Synthetic hero") }
+                    }
                 }
             }
         }
-        val list = rule.onNodeWithTag("progressive-profile")
-        list.performScrollToKey("profile-facts")
+        val list = rule.onNodeWithTag("structured-profile")
         rule.waitForIdle()
+        repeat(2) {
+            list.performScrollToKey("profile-facts/field/Größe")
+            rule.onNodeWithText("170 cm").assertExists()
+            list.performScrollToKey("profile-services")
+            rule.onNodeWithText("Dienste").assertHasNoClickAction()
+            list.performScrollToKey("profile-services/group/7:Service/0")
+            rule.onNodeWithText("Value 1").assertExists()
+            rule.onNodeWithText("Value 2").assertExists()
+            val serviceNode = rule.onNodeWithText(longService)
+            val serviceLayouts = mutableListOf<TextLayoutResult>()
+            serviceNode.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(serviceLayouts) }
+            assertTrue(serviceLayouts.single().lineCount > 1)
+            assertFalse(serviceLayouts.single().hasVisualOverflow)
+            val serviceBounds = serviceNode.fetchSemanticsNode().boundsInRoot
+            val listBounds = list.fetchSemanticsNode().boundsInRoot
+            assertEquals(listBounds.width, serviceBounds.width, 1f)
+            list.performScrollToKey("profile-services/group/10:Treffpunkt/0")
+            rule.onNodeWithText("Other value").assertExists()
+            list.performScrollToKey("profile-traits/field/Fixture trait")
+            val viewport = list.fetchSemanticsNode().boundsInRoot
+            val value = rule.onNodeWithText(longValue).fetchSemanticsNode().boundsInRoot
+            assertTrue(value.left >= viewport.left - 1f && value.right <= viewport.right + 1f)
+            assertTrue(value.height > 0f)
+            val layouts = mutableListOf<TextLayoutResult>()
+            rule.onNodeWithText(longValue).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            assertTrue(layouts.single().lineCount > 1)
+            assertFalse(layouts.single().hasVisualOverflow)
+            list.performScrollToKey("profile-opening-times/field/Montag – Dienstag")
+            rule.onNodeWithText("Montag – Dienstag").assertExists()
+            rule.onNodeWithText("Fixture time").assertExists()
+            rule.runOnIdle { dark = true; scale = 2f }
+        }
         list.performScrollToKey("profile-description")
         rule.onNodeWithText(original.profile.description).assertDoesNotExist()
         rule.onNodeWithText("Mehr anzeigen").performClick()
         rule.onNodeWithText(original.profile.description).assertExists()
-        list.performScrollToKey("profile-description")
-        rule.onNodeWithText("Weniger anzeigen").performClick()
-        rule.onNodeWithText(original.profile.description).assertDoesNotExist()
-        list.performScrollToKey("profile-opening-times")
-        rule.onNodeWithText("Fixture time").assertDoesNotExist()
-        rule.onNodeWithText("Öffnungszeiten").performClick()
-        rule.onNodeWithText("Fixture time").assertExists()
-        list.performScrollToKey("profile-traits")
-        rule.onNodeWithText("Trait value").assertDoesNotExist()
-        rule.onNodeWithText("Merkmale").performClick()
-        rule.onNodeWithText("Trait value").assertExists()
-        list.performScrollToKey("profile-services")
-        rule.onNodeWithText("Value 1").assertDoesNotExist()
-        rule.onNodeWithText("Dienste").performClick()
-        rule.onAllNodesWithText("Service", substring = false).assertCountEquals(1)
-        rule.onNodeWithText("Value 1").assertExists()
-        rule.onNodeWithText("Value 2").assertExists()
-        rule.onNodeWithText("Treffpunkt").assertExists()
-        rule.onNodeWithText("Other value").assertExists()
-        val first = rule.runOnIdle { state.firstVisibleItemIndex }
-        rule.onNodeWithText("Dienste").performClick()
-        rule.onNodeWithText("Value 1").assertDoesNotExist()
-        rule.runOnIdle { assertEquals(first, state.firstVisibleItemIndex); assertEquals(1, calls) }
     }
 
     @Test fun lateUndoReceiptWaitsForRealRowsAndSurvivesSavedStateRecreation() {
@@ -305,7 +334,7 @@ class ProfileRestoreDeviceTest {
             }
         }
         val position = SwipePresentation(4, 1, 11, "{}", "VIDEO:https://example.invalid/fixture",
-            "profile-services", 12, listOf("Services"), runId = 3, mediaIndex = 1)
+            "profile-services/group/7:Fixture/0", 12, listOf("Services"), runId = 3, mediaIndex = 1)
         rule.runOnIdle { receipt = position }
         rule.runOnIdle { assertEquals(0, consumed); assertNull(capture.read()) }
         rule.runOnIdle { model = original }
@@ -317,10 +346,10 @@ class ProfileRestoreDeviceTest {
         rule.waitUntil(5_000) { consumed == 1 }
         rule.runOnIdle {
             val actual = requireNotNull(capture.read())
-            assertEquals("profile-services", actual.anchorKey)
+            assertEquals("profile-services/group/7:Fixture/0", actual.anchorKey)
             assertEquals(12, actual.anchorOffset)
             assertEquals(1, actual.mediaIndex)
-            assertTrue("Services" in actual.sections)
+            assertFalse("Services" in actual.sections)
         }
         rule.runOnIdle { jump() }
         rule.onNodeWithText("Medium 1").assertExists()
@@ -345,7 +374,8 @@ class ProfileRestoreDeviceTest {
         var receipt by mutableStateOf<SwipePresentation?>(null)
         var generation by mutableLongStateOf(1)
         lateinit var capture: SwipePresentationCapture
-        lateinit var services: () -> Unit
+        lateinit var services: (Int) -> Unit
+        lateinit var undoList: LazyListState
         val write: suspend (Long, Long, Preference?, Preference) -> Preference = { listing, owner, expected, target ->
             check(listing == 4L && owner == 1L && native == expected)
             val previous = native
@@ -371,10 +401,11 @@ class ProfileRestoreDeviceTest {
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             if (cardVisible) {
                                 val list = rememberLazyListState()
+                                undoList = list
                                 capture = remember { SwipePresentationCapture() }
-                                services = { scope.launch { list.scrollToItem(3, 12) } }
+                                services = { index -> scope.launch { list.scrollToItem(index, 12) } }
                                 ProfileFlow(list, model, "{}", action, action == null, emptyMap(), notes,
-                                    { true }, { _, _ -> }, Modifier.fillMaxSize(), swipeRestore = receipt,
+                                    { true }, { _, _ -> }, Modifier.fillMaxSize().testTag("undo-flow"), swipeRestore = receipt,
                                     swipeRunId = 3, swipeCapture = capture,
                                     onSwipeRestoreConsumed = { session.consumePresentation(it); receipt = null },
                                     panelReads = readers) {
@@ -422,16 +453,21 @@ class ProfileRestoreDeviceTest {
             }
         }
         rule.onNodeWithText("Nächstes Medium").performClick()
-        rule.runOnIdle { services() }
-        rule.onNodeWithText("Alle 25 Angaben anzeigen").performClick()
-        rule.runOnIdle { services() }
+        rule.waitForIdle()
+        val serviceKey = "profile-services/group/7:Fixture/0"
+        val undoFlow = rule.onNodeWithTag("undo-flow")
+        undoFlow.performScrollToKey("profile-heading")
+        rule.waitForIdle()
+        undoFlow.performScrollToKey(serviceKey)
+        val serviceIndex = rule.runOnIdle { undoList.layoutInfo.visibleItemsInfo.first { it.key == serviceKey }.index }
+        rule.runOnIdle { services(serviceIndex) }
         lateinit var saved: SwipePresentation
         rule.runOnIdle {
             saved = requireNotNull(capture.read())
-            assertEquals("profile-services", saved.anchorKey)
+            assertEquals(serviceKey, saved.anchorKey)
             assertEquals(12, saved.anchorOffset)
             assertEquals(1, saved.mediaIndex)
-            assertTrue("Services" in saved.sections)
+            assertFalse("Services" in saved.sections)
         }
         rule.onNode(hasText("Gefällt") or hasContentDescription("Gefällt")).performClick()
         rule.onNodeWithText("Deck beendet").assertExists()
@@ -470,12 +506,14 @@ class ProfileRestoreDeviceTest {
         var calls = 0
         val readers = reads { if (++calls == 1) error("Fixture read failure") else facts() }
         var receipt by mutableStateOf<SwipePresentation?>(SwipePresentation(4, 1, 11, "{}",
-            "VIDEO:https://example.invalid/fixture", "profile-services", 900, listOf("Services"), 3, 1))
+            "VIDEO:https://example.invalid/fixture", "profile-services/group/7:Fixture/0", 900, listOf("Services"), 3, 1))
         lateinit var capture: SwipePresentationCapture
+        lateinit var listState: LazyListState
         rule.setContent {
             MaterialTheme {
                 capture = remember { SwipePresentationCapture() }
-                ProfileFlow(rememberLazyListState(), original, "{}", token(original), false,
+                listState = rememberLazyListState()
+                ProfileFlow(listState, original, "{}", token(original), false,
                     emptyMap(), notes, { true }, { _, _ -> }, Modifier.size(300.dp, 180.dp),
                     swipeRestore = receipt, swipeRunId = 3, swipeCapture = capture,
                     onSwipeRestoreConsumed = { receipt = null }, panelReads = readers) {
@@ -486,11 +524,13 @@ class ProfileRestoreDeviceTest {
         rule.waitUntil(5_000) { receipt == null }
         rule.runOnIdle {
             val actual = requireNotNull(capture.read())
-            assertEquals("profile-services", actual.anchorKey)
+            assertEquals("profile-services/group/7:Fixture/0", actual.anchorKey)
+            assertEquals("profile-facts", listState.layoutInfo.visibleItemsInfo.first().key)
             assertEquals(0, actual.anchorOffset)
             assertEquals("VIDEO:https://example.invalid/fixture", actual.mediaId)
         }
         rule.onAllNodesWithText("Neu laden").onFirst().performClick()
+        rule.waitUntil(5_000) { listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key == "profile-services/group/7:Fixture/0" }
         rule.onNodeWithText("Value 1").assertExists()
         rule.onNodeWithText("Fixture read failure").assertDoesNotExist()
         rule.runOnIdle {

@@ -4,25 +4,15 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M12.2. L01 ist unabhängig vor weiterer öffentlicher Distribution zu klären.
+M12.3. L01 ist unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M12 — Unified Profile Experience: Compact Information Architecture
 
 Gemeinsame Profilansicht unterhalb der Galerie in Swipe und Standalone gemäß [DESIGN](DESIGN.md#informationshierarchie--compact-profile) vollständig neu gestalten. Das freigegebene Soll ersetzt den bisherigen Profil-Akkordeonaufbau. Fachlicher Umfang, Datenhoheit, Integrität, Medienvorbereitung und bestehende lokale Bearbeitungsfunktionen bleiben erhalten. Umsetzung seriell auf integriertem Stand. DESIGN beschreibt das gemeinsame Ziel; je Teilaufgabe gelten ihr abgegrenzter Umfang und die zugehörigen Abnahmekriterien. Bis zur vollständigen Umsetzung bleiben noch nicht umgestellte Inhalte und Interaktionen in ihren funktionierenden bestehenden Pfaden erreichbar. Keine temporären Parallelpfade oder vorgezogenen Umbauten; vollständige Designkonformität erst nach den Implementierungsaufgaben, integriert zu prüfen im Abschlussreview.
 
-### M12.2 — Strukturierte Profildaten und verlustfreie Verdichtung
-
-**Status:** READY.
-
-**Umfang:** Zentrale und weitere Merkmale, Dienste, Zeitangaben und Suchübereinstimmung gemäß DESIGN im gemeinsamen Rahmen darstellen und verlustfrei verdichten; tatsächliche Quellgruppen und vollständige Filterbelege erhalten. Den vorhandenen Preiskontext in die vorgesehene Reihenfolge einordnen und vorhandene Preisansichten weiterverwenden. Keine Änderung der Navigations-/Editorzustände, keine neue Quelle, Preisextraktion, Taxonomie oder fachliche Filterlogik.
-
-**Akzeptanz:** Keine standardmäßig geschlossenen Akkordeons für reguläre strukturierte Profildaten; vollständige Werte einschließlich langer und zusätzlicher Kategorien, belegter Negativwerte und unbekannter Evidenz. Chronologische Zeiten und verlustfreie Verdichtung identischer Intervalle; abweichende/mehrteilige Zeiten, Feiertage und Freitext bleiben erreichbar. Keine geschätzten Werte, künstlichen Scores oder doppelten Merkmale; manuelle Preislisten und bezahlte Beträge mit eindeutiger Herkunft getrennt darstellen.
-
-**Prüfung:** Synthetische vollständige und unvollständige Profile, variable Kategorien, lange Werte, unbekannte Felder, Suchgruppen/Alternativen, identische und unterschiedliche Zeitangaben einschließlich Mitternacht sowie Herkunft und Trennung der lokalen Preisangaben. JVM-Regressionen für Präsentationsableitungen, native Bounds/Umbruch in beiden Themes und bei Schriftvergrößerung; fachliche Datenvollständigkeit gegen den vorhandenen Projektionsumfang prüfen.
-
 ### M12.3 — Lesezustand, sekundäre Details und lokale Funktionen
 
-**Status:** PLANNED. Abhängig von M12.2.
+**Status:** READY.
 
 **Umfang:** Vorhandenen Identitätskopf um den Lesezustand, kontextabhängige Root-Navigation und kompakte einzelne Decision Rail ergänzen; Galerie-Rückkehr und Vollbildzugang erhalten. Zugänge zu Originalbeschreibung, vollständigen Nachweisen, Historie, verknüpften Anzeigen und privaten Funktionen einschließlich Preisbereich gemäß DESIGN neu einordnen; vorhandene strukturierte Datenkomponenten weiterverwenden. Profilaktionen und Deckverwaltung semantisch trennen. Bestehende Editoren, Read-/Commit-/Konflikt- und Merge-Verträge weiterverwenden. Scroll-Anker nur bei nachgewiesenem Bedarf, keine zweite Profilroute oder zweite Navigation für Inhaltsabschnitte.
 

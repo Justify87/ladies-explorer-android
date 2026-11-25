@@ -96,6 +96,10 @@ internal class ProfileRestoreCoordinator {
 internal data class ProfileProjectionKey(
     val listingId: Long, val ownerId: Long, val snapshotId: Long, val revision: Long, val filters: String,
 )
+internal fun isFactsRow(key: String): Boolean = factsRowRoots.any { key == it || key.startsWith("$it/") }
+
+private val factsRowRoots = listOf("profile-facts", "profile-services", "profile-traits", "profile-match", "profile-opening-times")
+
 internal class ProfileScrollMemory(
     initialAnchor: ProfileScrollAnchor? = null,
     initialRecovery: Boolean = false,
@@ -103,6 +107,8 @@ internal class ProfileScrollMemory(
     var anchor by mutableStateOf(initialAnchor)
         private set
     var recovering by mutableStateOf(initialRecovery)
+        private set
+    var parkedOnFactsError by mutableStateOf(false)
         private set
     private var projection: ProfileProjectionKey? = null
 
@@ -112,11 +118,15 @@ internal class ProfileScrollMemory(
     }
 
     fun observe(key: String, offset: Int) {
-        if (!recovering) anchor = ProfileScrollAnchor(key, offset.coerceAtLeast(0))
+        if (recovering) return
+        if (parkedOnFactsError && key == "profile-facts") return
+        parkedOnFactsError = false
+        anchor = ProfileScrollAnchor(key, offset.coerceAtLeast(0))
     }
-    fun gap() { if (anchor != null) recovering = true }
+    fun gap() { if (anchor != null) recovering = true; parkedOnFactsError = false }
     fun restore(value: ProfileScrollAnchor?) {
         anchor = value
+        parkedOnFactsError = false
         recovering = true
     }
 
@@ -134,14 +144,22 @@ internal class ProfileScrollMemory(
             saved.key.startsWith("candidate/") -> "profile-candidate-head"
             saved.key.startsWith("encounter/") -> "profile-encounters-head"
             saved.key.startsWith("price/") -> "profile-prices-head"
+            isFactsRow(saved.key) -> factsRowRoots.first { saved.key == it || saved.key.startsWith("$it/") }
             else -> "profile-facts"
         }
-        return keys.indexOf(fallback).takeIf { it >= 0 }?.let { it to 0 } ?: (0 to 0)
+        return keys.indexOf(fallback).takeIf { it >= 0 }?.let { it to 0 }
+            ?: (factsRowRoots + "profile-heading")
+                .firstNotNullOfOrNull { key -> keys.indexOf(key).takeIf { it >= 0 }?.let { it to 0 } }
+            ?: (0 to 0)
     }
-    fun restored() { recovering = false }
+    fun restored() { recovering = false; parkedOnFactsError = false }
+    fun parkFactsFailure() { recovering = false; parkedOnFactsError = true }
+    fun resumeFactsRetry() {
+        if (parkedOnFactsError) { parkedOnFactsError = false; recovering = true }
+    }
     fun returnToHero(key: String) {
         anchor = ProfileScrollAnchor(key, 0)
-        recovering = false
+        restored()
     }
 }
 
@@ -165,10 +183,11 @@ internal enum class ProfileRowRead { Facts, Detail, Note, Encounters, Prices }
 
 internal class ProfileFlowRows(val mediaSelection: ProfileMediaSelection) {
     data class Entry(val key: String, val read: ProfileRowRead?, val content: @Composable () -> Unit,
-        val section: ProfileSection? = null)
+        val section: String? = null)
     private val rows = mutableListOf<Entry>()
-    private var section: ProfileSection? = null
-    fun withSection(value: ProfileSection, block: ProfileFlowRows.() -> Unit) {
+    private var section: String? = null
+    fun withSection(value: ProfileSection, block: ProfileFlowRows.() -> Unit) = withGroup(value.name, block)
+    fun withGroup(value: String, block: ProfileFlowRows.() -> Unit) {
         check(section == null)
         section = value
         try { block() } finally { section = null }
