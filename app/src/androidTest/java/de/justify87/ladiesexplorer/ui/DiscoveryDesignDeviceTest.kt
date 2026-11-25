@@ -348,6 +348,7 @@ class DiscoveryDesignDeviceTest {
         rule.runOnIdle { assertEquals(listOf(DiscoverMode.Swipe), actions) }
     }
 
+    @OptIn(ExperimentalTestApi::class)
     @Test fun visibleDislikeDimsOnlyConfirmedPreferenceAndRestoresNeutral() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val image = File.createTempFile("synthetic-grid-", ".png", context.cacheDir)
@@ -368,11 +369,12 @@ class DiscoveryDesignDeviceTest {
                 }
             }
             val card = rule.onNodeWithTag("dim-card")
-            fun centerBlue(): Float {
+            fun centerColor(): androidx.compose.ui.graphics.Color {
                 val pixels = card.captureToImage().toPixelMap()
-                return pixels[pixels.width / 2, pixels.height / 2].blue
+                return pixels[pixels.width / 2, pixels.height / 2]
             }
-            rule.waitUntil(10_000) { centerBlue() > .95f }
+            fun centerBlue() = centerColor().blue
+            rule.waitUntil(10_000) { centerColor().let { it.blue > .95f && it.red < .05f && it.green < .05f } }
             val original = centerBlue()
             val action = rule.onNodeWithContentDescription("Fixture").fetchSemanticsNode()
                 .config[SemanticsActions.CustomActions].single { it.label == "Gefällt nicht" }
