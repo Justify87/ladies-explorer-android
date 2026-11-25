@@ -35,6 +35,7 @@ import de.justify87.ladiesexplorer.core.MapOverview
 import de.justify87.ladiesexplorer.core.MapProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
@@ -133,7 +134,7 @@ class MapDesignDeviceTest {
                                         BitmapColor.RED, BitmapColor.WHITE, BitmapColor.BLACK, BitmapColor.BLUE)
                                     style = loaded
                                     source = loaded.getSource(MAP_SOURCE) as GeoJsonSource
-                                    val controller = MapMarkerImages(native, ready, loaded, lifecycle) { _, url ->
+                                    val controller = MapMarkerImages(native, ready, loaded, lifecycle) { _, url, _ ->
                                         decoded.add(url)
                                         if (url == old.thumbnailUrl) withContext(NonCancellable) { delayed.await() }
                                         photo()
@@ -246,11 +247,12 @@ class MapDesignDeviceTest {
                 eraseColor(BitmapColor.GREEN)
             }
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            val decoded = requireNotNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(file).toString()) })
+            val decoded = requireNotNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString(), file.path) })
             assertEquals(80, decoded.width)
             assertEquals(80, decoded.height)
             assertEquals(BitmapColor.GREEN, decoded.getPixel(40, 40))
             assertEquals(BitmapColor.TRANSPARENT, decoded.getPixel(0, 0))
+            assertNotNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(file).toString(), file.path + ".missing") })
             assertNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString()) })
             assertEquals(BitmapColor.TRANSPARENT, mapFallbackBitmap().getPixel(0, 0))
         } finally {
