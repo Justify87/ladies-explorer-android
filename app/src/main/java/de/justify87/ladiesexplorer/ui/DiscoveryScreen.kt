@@ -36,8 +36,9 @@ import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.unit.IntOffset
 
 @Composable
@@ -93,16 +94,29 @@ internal fun DiscoverScreen(
     val decks = remember(state.activeRunId, state.swipeProfileRevision, started) {
         SwipeProfileWindow(mutableStateMapOf(), state.swipeExternalRevision)
     }
-    DisposableEffect(decks) { onDispose { decks.close() } }
-    var retry by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableIntStateOf(0) }
-    var readError by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf<String?>(null) }
-    var retryLocally by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf(false) }
-    val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }?.let { decks[it] }
-    val displayed = current ?: card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }?.let { decks.displayed(it) }
+    val preparation = remember(decks) { ProfilePreparationWindow() }
+    val videoFiles = (context.applicationContext as LadiesApplication).galleryVideoFiles
+    val failures = remember(decks) { mutableStateMapOf<Pair<Long, Long>, SwipeReadFailure>() }
+    val localRetries = remember(decks) { mutableStateMapOf<Pair<Long, Long>, Boolean>() }
+    var activeRead by remember(decks) { mutableStateOf<Pair<Pair<Long, Long>, RequestControl>?>(null) }
+    DisposableEffect(decks) {
+        onDispose {
+            activeRead?.second?.cancel()
+            decks.close()
+            preparation.clear()
+        }
+    }
+    val window = swipeReadWindow(visibleCards)
+    val windowKeys = window.map { it.listingId to it.personId }.toSet()
+    val cardKey = card?.let { it.listingId to it.personId }
+    val prepared = preparation.displayed(cardKey)?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
+    val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
+        ?.let { decks[it] }?.takeIf { prepared?.model == it }
+    val displayed = prepared?.model
+    val readError = cardKey?.let { failures[it] }?.takeIf { it.current }?.message
     val projectedToken = state.swipeToken(current)
     val token = projectedToken?.takeIf { visible && currentSwipeActionCard(state, searchLoading, it) != null }
-    // Reconcile stale membership before admitting callbacks; do not loop on persistent mismatches.
-    var lastMismatch by remember(state.activeRunId, card?.listingId, card?.personId) {
+    var lastMismatch by remember(state.activeRunId, cardKey) {
         mutableStateOf<Pair<Pair<Preference, Boolean>, Pair<Preference, Boolean>>?>(null)
     }
     LaunchedEffect(projectedToken, card?.preference, card?.favorite, visible) {
@@ -115,107 +129,97 @@ internal fun DiscoverScreen(
             onProjectionMismatch(projectedToken)
         }
     }
-    SideEffect { onRenderedSwipe(token) }
-    val upcoming = prefetchCards(visibleCards)
-    val window = listOfNotNull(card) + upcoming
     SideEffect {
+        onRenderedSwipe(token)
+        if (!decks.isCurrent(state.swipeExternalRevision)) {
+            preparation.clear()
+            failures.clear()
+            activeRead?.second?.cancel()
+        }
         decks.retain(window)
         decks.applyExternalRevision(state.swipeExternalRevision)
+        preparation.retain(windowKeys)
+        failures.keys.toList().filterNot { it in windowKeys }.forEach { failures.remove(it) }
+        localRetries.keys.toList().filterNot { it in windowKeys }.forEach { localRetries.remove(it) }
+        activeRead?.takeIf { it.first !in windowKeys }?.second?.cancel()
     }
-    // Promotion preserves in-flight prefetch; pruning, revision changes and navigation cancel it.
-    val readGate = remember(decks) { Mutex() }
     val latestReadState by rememberUpdatedState(state)
-    val latestReadCard by rememberUpdatedState(card)
+    val latestWindow by rememberUpdatedState(window)
     val latestReadVisible by rememberUpdatedState(visible)
-    val latestRetryLocally by rememberUpdatedState(retryLocally)
-    val markCurrentRead by rememberUpdatedState<(DiscoveryCard) -> Unit>({ target ->
-        if (sameSwipeCard(target, card)) readError = null
-    })
-    val reportCurrentRead by rememberUpdatedState<(DiscoveryCard, Exception?) -> Unit>({ target, error ->
-        if (sameSwipeCard(target, card)) {
-            readError = error?.message ?: if (error == null) null else "Profil konnte nicht geladen werden"
-            retryLocally = if (error == null) false else retryLocally || error is LocalProfileReadFailure
-            if (error == null) retry = 0
-        }
-    })
-    for (target in window) key(target.listingId, target.personId) {
-        val explicitRetry = if (sameSwipeCard(target, card)) retry else 0
-        val slotControl = remember(decks, decks.invalidation(target), explicitRetry) { RequestControl() }
-        DisposableEffect(slotControl) { onDispose { slotControl.cancel() } }
-        LaunchedEffect(slotControl) {
-            var promotionOnly = false
-            var localRecovery = false
-            fun readPolicy(currentRole: Boolean): SwipeReadPolicy {
-                val live = latestReadState
-                return swipeReadPolicy(
-                    currentRole, live.activeRunId, target.listingId,
-                    localOnly = localRecovery || decks.requiresLocal(target) ||
-                        (currentRole && latestRetryLocally) || target.listingId in live.localProfileStrictIds,
-                    preferLocal = target.listingId in live.localProfileReloadIds ||
-                        live.swipeRestore?.let { it.listingId == target.listingId &&
-                            it.ownerId == target.personId && it.runId == live.activeRunId } == true,
-                )
-            }
-            fun eligible(): Boolean {
-                val activeCard = latestReadCard
-                if (!latestReadVisible || activeCard == null) return false
-                if (sameSwipeCard(target, activeCard)) return true
-                return !promotionOnly && decks[activeCard] != null
-            }
-            while (true) {
-                snapshotFlow { eligible() }.first { it }
-                var waitForDemotion = false
-                val completed = readGate.withLock {
-                    if (!eligible()) return@withLock false
-                    val currentRole = sameSwipeCard(target, latestReadCard)
-                    val policy = readPolicy(currentRole)
-                    val cached = decks[target]
-                    if (cached != null && explicitRetry == 0) return@withLock true
-                    if (currentRole) markCurrentRead(target)
+    val latestSearch by rememberUpdatedState(active)
+    fun filtersFor(target: DiscoveryCard): String =
+        executedProfileMatchContext(latestSearch, target.personId, latestReadState.globalVisibility).encode()
+
+    // Choose again after every profile read, panel read or medium; no speculative mutex queue.
+    LaunchedEffect(decks) {
+        try {
+            while (isActive) {
+                val target = snapshotFlow {
+                    if (!latestReadVisible || decks.closed) null else nextProfileWork(latestWindow) { candidate ->
+                        val key = candidate.listingId to candidate.personId
+                        val currentRole = sameSwipeCard(candidate, latestWindow.firstOrNull())
+                        val failure = failures[key]
+                        val model = decks[candidate]
+                        if (model == null) failure == null || failure.invalidation != decks.invalidation(candidate) ||
+                            (currentRole && !failure.current)
+                        else heroSize.width > 0 && heroSize.height > 0 &&
+                            !preparation.ready(model, filtersFor(candidate), heroSize)
+                    }
+                }.first { it != null } ?: continue
+                val key = target.listingId to target.personId
+                videoFiles.retainPins(preparation, preparation.pinnedVideos())
+                val model = decks[target]
+                if (model == null) {
+                    val live = latestReadState
+                    val currentRole = sameSwipeCard(target, latestWindow.firstOrNull())
+                    val policy = swipeReadPolicy(currentRole, live.activeRunId, target.listingId,
+                        localOnly = localRetries[key] == true || decks.requiresLocal(target) ||
+                            target.listingId in live.localProfileStrictIds,
+                        preferLocal = target.listingId in live.localProfileReloadIds ||
+                            live.swipeRestore?.let { it.listingId == target.listingId &&
+                                it.ownerId == target.personId && it.runId == live.activeRunId } == true)
+                    val control = RequestControl()
+                    activeRead = key to control
                     try {
-                        decks.readCurrent(target) { invalidateOtherProfiles ->
-                            core.readSwipeProfile(target.listingId, slotControl,
+                        val loaded = decks.readCurrent(target) { invalidateOtherProfiles ->
+                            core.readSwipeProfile(target.listingId, control,
                                 refresh = policy.refresh, allowNetwork = policy.allowNetwork,
                                 onSourceRead = {
                                     invalidateOtherProfiles()
                                     onSnapshotChanged(decks.closed)
                                 })
                         }
-                        reportCurrentRead(target, null)
-                        true
+                        if (loaded != null) {
+                            failures.remove(key)
+                            localRetries.remove(key)
+                        }
                     } catch (cancel: CancellationException) {
                         throw cancel
                     } catch (failure: Exception) {
-                        promotionOnly = true
-                        localRecovery = localRecovery || failure is LocalProfileReadFailure
-                        waitForDemotion = swipeFailureNeedsDemotion(currentRole,
-                            sameSwipeCard(target, latestReadCard))
-                        if (waitForDemotion) reportCurrentRead(target, failure)
-                        false
+                        if (latestWindow.any { sameSwipeCard(it, target) }) {
+                            if (failure is LocalProfileReadFailure) localRetries[key] = true
+                            failures[key] = SwipeReadFailure(decks.invalidation(target),
+                                currentRole, failure.message ?: "Profil konnte nicht geladen werden")
+                        }
+                    } finally {
+                        activeRead = null
+                        control.cancel()
                     }
+                } else {
+                    val filters = filtersFor(target)
+                    val size = heroSize
+                    preparation.step(model, filters, size,
+                        { core.prepareProfilePanels(model, filters) },
+                        { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation) })
                 }
-                if (completed) {
-                    break
-                }
-                // A failed current read retries only explicitly or after demotion and promotion.
-                if (waitForDemotion) {
-                    snapshotFlow { !sameSwipeCard(target, latestReadCard) }.first { it }
-                }
+                videoFiles.retainPins(preparation, preparation.pinnedVideos())
             }
+        } finally {
+            withContext(NonCancellable) { videoFiles.retainPins(preparation, emptySet()) }
         }
-        val model = decks.displayed(target)
-        LaunchedEffect(decks, model?.media, heroSize, started) {
-            if (!started || model == null || heroSize.width <= 0 || heroSize.height <= 0)
-                return@LaunchedEffect
-            snapshotFlow { latestReadVisible }.first { it }
-            try {
-                warmSwipeMedia(context, model, heroSize)
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (_: Exception) {
-                // Prefetch failure must not affect deck membership.
-            }
-        }
+    }
+    LaunchedEffect(preparation, windowKeys) {
+        videoFiles.retainPins(preparation, preparation.pinnedVideos())
     }
 
     val matchingRun = search.response?.searchRunId == state.activeRunId
@@ -223,11 +227,9 @@ internal fun DiscoverScreen(
     val cardIdentity = card?.let { it.listingId to it.personId }
     var flight by remember(state.activeRunId, state.swipePresentationGeneration, started) { mutableStateOf<SwipeFlight?>(null) }
     var liveDrag by remember(cardIdentity) { mutableFloatStateOf(0f) }
-    var settledMedia by remember(cardIdentity, displayed?.media) { mutableStateOf(false) }
     val motion = remember(flight) { Animatable(flight?.offset ?: 0f) }
     val latestState by rememberUpdatedState(state)
     val latestIdentity by rememberUpdatedState(cardIdentity)
-    val latestReady by rememberUpdatedState(current != null && settledMedia || readError != null || card == null)
     LaunchedEffect(flight) {
         val outgoing = flight ?: return@LaunchedEffect
         // Bound admission; once admitted, wait for authoritative completion.
@@ -240,8 +242,6 @@ internal fun DiscoverScreen(
         if (admitted) {
             snapshotFlow { latestState.busy }.first { !it }
             if (latestIdentity != outgoing.card && latestState.mutationError == null) {
-                // Bound the visual wait for a cold image decode.
-                withTimeoutOrNull(220) { snapshotFlow { latestReady }.first { it } }
                 motion.animateTo(outgoing.destination, tween(200))
             }
         }
@@ -254,7 +254,7 @@ internal fun DiscoverScreen(
         var photoRequest by remember { mutableIntStateOf(0) }
         val profile = displayed
         var selectedMedia by remember { mutableStateOf<ProfileMediaItem?>(null) }
-        var visual by remember(profile?.media) { mutableStateOf<HeroVisual?>(null) }
+        var visual by remember(profile?.media?.map { it.presentationKey() }) { mutableStateOf<HeroVisual?>(null) }
         var heroCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         var bodyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         var fullImage by remember(token) { mutableStateOf<ProfileMediaItem?>(null) }
@@ -286,9 +286,15 @@ internal fun DiscoverScreen(
                 "Profil- und Deckzustand unterscheiden sich. Bitte Ansicht aktualisieren.", warning = true))
             readError?.let { error ->
                 add(ProfileNotice("Profilfehler", error, "Erneut laden", enabled, {
-                    card?.let { decks.remove(it.listingId); retry++ }
+                    card?.let { target ->
+                        val key = target.listingId to target.personId
+                        failures.remove(key)
+                        decks.remove(target.listingId)
+                        preparation.remove(key)
+                    }
                 }, warning = true))
             }
+            if (prepared?.degraded == true) add(ProfileNotice("Medienhinweis", "Einige Profilinhalte konnten nicht vorbereitet werden.", warning = true))
             if (card != null && profile == null && readError == null && visible)
                 add(ProfileNotice("Profil wird geladen", "Profil wird geladen …"))
             if (state.busy) add(ProfileNotice("Wird gespeichert", "Entscheidung oder Aktualisierung wird verarbeitet."))
@@ -366,7 +372,7 @@ internal fun DiscoverScreen(
                     userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices,
-                    fallbackIdentity = identity, fallbackMedia = fallback,
+                    fallbackIdentity = identity, fallbackMedia = fallback, preparedPanels = prepared?.panels,
                     onDiscoveryContextHeight = { discoveryContextHeight = it }, afterHeading = {
                     item(key = "profile-actions") {
                         Column {
@@ -409,7 +415,9 @@ internal fun DiscoverScreen(
                             onSwipeDrag = { liveDrag = it },
                             playbackVisible = heroVisible,
                             galleryNavigationEnabled = !transitioning,
-                            onMediaSettled = { settledMedia = it },
+                            preparedMedia = prepared?.media.orEmpty(),
+                            preparing = profile == null && readError == null,
+                            videoPlaybackEnabled = started && !state.busy && !searchLoading && !transitioning,
                             actionToken = token,
                             favorite = identity?.favorite, onFavorite = { token?.takeIf(isProfileCurrent)?.let(onFavorite) },
                             onVisual = { visual = it },
