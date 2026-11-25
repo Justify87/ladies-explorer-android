@@ -1,6 +1,6 @@
 # Ladies Explorer – browserbasierte Designreferenz v3
 
-**Zweck:** Offline bedienbare, stilistisch vereinheitlichte Vorschau für ein **natives** Jetpack-Compose-Redesign. Dies ist **keine WebView-App** und enthält weder echte Profile noch eine echte Datenbank, Quellzugriffe, Konto- oder Kommunikationsfunktionen.
+**Zweck:** Offline bedienbare, historische Illustration der visuellen Ausgangsrichtung für das **native** Jetpack-Compose-Redesign. Sie zeigt nicht den aktuellen Pure-Vertrag; abweichende native Shapes, Maße, Icons und Interaktionshierarchie richten sich nach DESIGN. Dies ist **keine WebView-App** und enthält weder echte Profile noch eine echte Datenbank, Quellzugriffe, Konto- oder Kommunikationsfunktionen.
 
 ## Start
 
@@ -16,9 +16,9 @@ Die Karte enthält lediglich eine schematische Illustration mit ungefähren Mark
 
 ## Übernahmegrenze
 
-Die übertragbaren Teile sind visuelle Hierarchie, Tokens, Interaktionsoberflächen, States und Komponentenzuschnitte. `.reference-stage`, `.phone`, `demo-data.js`, SVG-Demokarte, lokale Simulationsantworten und JavaScript-State **nicht nach Android portieren**. Bestehende `LadiesTheme`, `LadiesApp`, `MainViewModel`, `ProfileFlow`, `CoreStore` und die nativen Verträge sind maßgeblich.
+Visuelle Hierarchie, Tokens, Interaktionsoberflächen, States und Komponentenzuschnitte sind nur insoweit übertragbar, wie sie dem aktuellen DESIGN-Vertrag entsprechen. `.reference-stage`, `.phone`, `demo-data.js`, SVG-Demokarte, lokale Simulationsantworten und JavaScript-State **nicht nach Android portieren**. Bestehende `LadiesTheme`, `LadiesApp`, `MainViewModel`, `ProfileFlow`, `CoreStore` und die nativen Verträge sind maßgeblich.
 
-Maßgebliche UI-/UX-Regeln stehen ausschließlich in [`docs/DESIGN.md`](../docs/DESIGN.md); der Prototyp ist ein visueller und interaktiver Beleg. Aufgaben und Umsetzung: [`docs/ROADMAP.md`](../docs/ROADMAP.md). Im Repository existiert **nur eine** normative Designdatei: `docs/DESIGN.md`. Diese Referenz ist eine verlinkte visuelle Beilage und niemals zweite Fach- oder Architekturautorität.
+Maßgebliche UI-/UX-Regeln stehen ausschließlich in [`docs/DESIGN.md`](../docs/DESIGN.md); der Prototyp ist eine historische visuelle und interaktive Illustration, kein aktueller Abnahmebeleg. Aufgaben und Umsetzung: [`docs/ROADMAP.md`](../docs/ROADMAP.md). Im Repository existiert **nur eine** normative Designdatei: `docs/DESIGN.md`. Diese Referenz ist eine verlinkte visuelle Beilage und niemals zweite Fach- oder Architekturautorität.
 
 ## Dateien
 
