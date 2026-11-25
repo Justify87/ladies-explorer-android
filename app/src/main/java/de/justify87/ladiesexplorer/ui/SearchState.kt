@@ -15,7 +15,7 @@ import org.json.JSONObject
 internal data class SearchPreviewTarget(val draft: SearchDraft, val editorSession: Long?)
 
 internal fun searchPreviewTarget(search: SearchUiState, saved: SavedSearchUiState): SearchPreviewTarget? {
-    if (search.loading || search.profileOpen || saved.blockingNavigation) return null
+    if (!search.defaultReady || search.loading || search.profileOpen || saved.blockingNavigation) return null
     val editor = saved.editor
     val draft = when (saved.pane) {
         SearchPane.Filters -> SearchDraft.from(search)
@@ -23,7 +23,7 @@ internal fun searchPreviewTarget(search: SearchUiState, saved: SavedSearchUiStat
         else -> return null
     }
     return SearchPreviewTarget(
-        draft.copy(city = draft.city.trim(), maxPages = 1u, local = defaultLocalVisibility()),
+        draft.copy(city = draft.city.trim(), local = defaultLocalVisibility()),
         editor?.session,
     )
 }
@@ -53,7 +53,7 @@ internal fun searchDraftEditMatches(
     discovery.actionSurface == ProfileActionSurface.SEARCH &&
         discovery.actionGeneration == action.generation &&
         saved.pane == SearchPane.Filters && saved.actionGeneration == action.paneGeneration && !saved.busy &&
-        !search.loading && !search.actionBusy && !search.profileOpen
+        search.defaultReady && !search.defaultSaving && !search.loading && !search.actionBusy && !search.profileOpen
 
 internal fun searchDraftResetMatches(
     discovery: DiscoverUiState, search: SearchUiState, saved: SavedSearchUiState,
@@ -72,7 +72,7 @@ internal fun searchSubmitMatches(
     discovery.actionSurface == ProfileActionSurface.SEARCH &&
         discovery.actionGeneration == action.generation &&
         saved.pane == SearchPane.Filters && !saved.busy &&
-        !discovery.busy && !search.loading && !search.actionBusy && !search.profileOpen &&
+        !discovery.busy && search.defaultReady && !search.defaultSaving && !search.loading && !search.actionBusy && !search.profileOpen &&
         action.draft.city.isNotBlank() && SearchDraft.from(search) == action.draft
 
 internal data class SearchCancelAction(
@@ -271,16 +271,15 @@ internal data class SearchDraft(
     val ageMax: UInt = 60u,
     val heightMin: UInt = 140u,
     val heightMax: UInt = 200u,
-    val maxPages: UInt = 10u,
     val selectedFilters: Map<String, Set<String>> = emptyMap(),
     val local: LocalVisibility = defaultLocalVisibility(),
 ) {
     fun request() = SearchRequest(city.trim(), radiusKm, category, ageMin, ageMax,
-        heightMin, heightMax, encodeSelectedFilters(selectedFilters), maxPages)
+        heightMin, heightMax, encodeSelectedFilters(selectedFilters))
 
     fun applyTo(state: SearchUiState): SearchUiState = state.copy(
         city = city, radiusKm = radiusKm, category = category, ageMin = ageMin, ageMax = ageMax,
-        heightMin = heightMin, heightMax = heightMax, maxPages = maxPages,
+        heightMin = heightMin, heightMax = heightMax,
         selectedFilters = selectedFilters, local = local,
     )
 
@@ -299,13 +298,29 @@ internal data class SearchDraft(
 
     companion object {
         fun from(state: SearchUiState) = SearchDraft(state.city, state.radiusKm, state.category,
-            state.ageMin, state.ageMax, state.heightMin, state.heightMax, state.maxPages,
+            state.ageMin, state.ageMax, state.heightMin, state.heightMax,
             state.selectedFilters, state.local)
 
         fun from(query: SearchRequest, local: LocalVisibility) = SearchDraft(query.city, query.radiusKm,
-            query.category, query.ageMin, query.ageMax, query.heightMin, query.heightMax, query.maxPages,
+            query.category, query.ageMin, query.ageMax, query.heightMin, query.heightMax,
             decodeSelectedFilters(query.filtersJson), local)
     }
+}
+
+internal fun searchCountLabel(
+    state: SearchUiState, draft: SearchDraft, previewMatches: Boolean, allowLastRun: Boolean = true,
+): String {
+    val sourceCount = state.preview?.takeIf {
+        previewMatches && !state.previewLoading && state.previewError == null && it.radiusVerified
+    }?.serverCount
+    if (sourceCount != null) return "$sourceCount laut Quelle"
+    val response = state.response
+    if (allowLastRun && response != null &&
+        SearchDraft.from(response.query, response.local) == draft.copy(city = draft.city.trim())) {
+        return "${state.activeCards.size} zuletzt lokal"
+    }
+    return if (previewMatches && state.previewLoading) "Quellzahl wird geprüft"
+    else "Quellzahl unbekannt"
 }
 
 /** Main-thread only; cancellation revokes delivery, not native ownership before drain. */

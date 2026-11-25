@@ -160,6 +160,15 @@ class CoreStore(context: Context) {
         recorded("setPersonFavoriteIf") { engine.setPersonFavoriteIf(personId, expected, favorite) }
     }
 
+    suspend fun loadDefaultSearch(): SavedSearchDefinition? = withContext(Dispatchers.IO) {
+        recorded("loadDefaultSearch") { engine.loadDefaultSearch() }
+    }
+
+    suspend fun saveDefaultSearch(query: SearchRequest, local: LocalVisibility): SavedSearchDefinition =
+        withContext(Dispatchers.IO) {
+            recorded("saveDefaultSearch") { engine.saveDefaultSearch(query, local) }
+        }
+
     suspend fun preview(query: SearchRequest, control: RequestControl): SearchPreview =
         withContext(Dispatchers.IO) {
             recorded("preview city=${query.city} radius=${query.radiusKm}") {
