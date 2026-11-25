@@ -98,6 +98,7 @@ internal fun DiscoverScreen(
     var readError by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf<String?>(null) }
     var retryLocally by remember(card?.listingId, card?.personId, state.swipeProfileRevision) { mutableStateOf(false) }
     val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }?.let { decks[it] }
+    val displayed = current ?: card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }?.let { decks.displayed(it) }
     val projectedToken = state.swipeToken(current)
     val token = projectedToken?.takeIf { visible && currentSwipeActionCard(state, searchLoading, it) != null }
     // Reconcile stale membership before admitting callbacks; do not loop on persistent mismatches.
@@ -144,15 +145,13 @@ internal fun DiscoverScreen(
         LaunchedEffect(slotControl) {
             var promotionOnly = false
             var localRecovery = false
-            var attemptedCurrentSource = false
             fun readPolicy(currentRole: Boolean): SwipeReadPolicy {
                 val live = latestReadState
                 return swipeReadPolicy(
                     currentRole, live.activeRunId, target.listingId,
                     localOnly = localRecovery || decks.requiresLocal(target) ||
                         (currentRole && latestRetryLocally) || target.listingId in live.localProfileStrictIds,
-                    preferLocal = decks.invalidation(target) != 0L ||
-                        target.listingId in live.localProfileReloadIds ||
+                    preferLocal = target.listingId in live.localProfileReloadIds ||
                         live.swipeRestore?.let { it.listingId == target.listingId &&
                             it.ownerId == target.personId && it.runId == live.activeRunId } == true,
                 )
@@ -171,11 +170,8 @@ internal fun DiscoverScreen(
                     val currentRole = sameSwipeCard(target, latestReadCard)
                     val policy = readPolicy(currentRole)
                     val cached = decks[target]
-                    if (cached != null && explicitRetry == 0 &&
-                        !(currentRole && shouldRefreshPromotedCurrent(policy, cached, attemptedCurrentSource)))
-                        return@withLock true
+                    if (cached != null && explicitRetry == 0) return@withLock true
                     if (currentRole) markCurrentRead(target)
-                    if (currentRole && policy.refresh) attemptedCurrentSource = true
                     try {
                         decks.readCurrent(target) { invalidateOtherProfiles ->
                             core.readSwipeProfile(target.listingId, slotControl,
@@ -199,11 +195,7 @@ internal fun DiscoverScreen(
                     }
                 }
                 if (completed) {
-                    // Keep completed speculation alive until promotion, without canceling an in-flight read.
-                    snapshotFlow { sameSwipeCard(target, latestReadCard) }.first { it }
-                    if (!shouldRefreshPromotedCurrent(readPolicy(true), decks[target], attemptedCurrentSource))
-                        break
-                    continue
+                    break
                 }
                 // A failed current read retries only explicitly or after demotion and promotion.
                 if (waitForDemotion) {
@@ -211,12 +203,11 @@ internal fun DiscoverScreen(
                 }
             }
         }
-        val model = decks[target]
-        LaunchedEffect(decks, model?.revision, heroSize, started) {
-            if (!started || sameSwipeCard(target, latestReadCard) || heroSize.width <= 0 || heroSize.height <= 0)
+        val model = decks.displayed(target)
+        LaunchedEffect(decks, model?.media, heroSize, started) {
+            if (!started || model == null || heroSize.width <= 0 || heroSize.height <= 0)
                 return@LaunchedEffect
             snapshotFlow { latestReadVisible }.first { it }
-            if (sameSwipeCard(target, latestReadCard)) return@LaunchedEffect
             try {
                 warmSwipeImages(context, target, model, heroSize)
             } catch (cancel: CancellationException) {
@@ -232,7 +223,7 @@ internal fun DiscoverScreen(
     val cardIdentity = card?.let { it.listingId to it.personId }
     var flight by remember(state.activeRunId, state.swipePresentationGeneration, started) { mutableStateOf<SwipeFlight?>(null) }
     var liveDrag by remember(cardIdentity) { mutableFloatStateOf(0f) }
-    var settledMedia by remember(cardIdentity, current?.revision) { mutableStateOf(false) }
+    var settledMedia by remember(cardIdentity, displayed?.media) { mutableStateOf(false) }
     val motion = remember(flight) { Animatable(flight?.offset ?: 0f) }
     val latestState by rememberUpdatedState(state)
     val latestIdentity by rememberUpdatedState(cardIdentity)
@@ -261,9 +252,9 @@ internal fun DiscoverScreen(
         val listState = rememberLazyListState()
         val capture = remember { SwipePresentationCapture() }
         var photoRequest by remember { mutableIntStateOf(0) }
-        val profile = current
+        val profile = displayed
         var selectedMedia by remember { mutableStateOf<ProfileMediaItem?>(null) }
-        var visual by remember(current?.revision) { mutableStateOf<HeroVisual?>(null) }
+        var visual by remember(profile?.media) { mutableStateOf<HeroVisual?>(null) }
         var heroCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         var bodyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         var fullImage by remember(token) { mutableStateOf<ProfileMediaItem?>(null) }
@@ -366,8 +357,7 @@ internal fun DiscoverScreen(
                     }
                 }
             } else {
-                val fallback = listOfNotNull(card.thumbnailUrl?.let { ProfileMediaItem("IMAGE", it, card.localPath, 0u) }
-                    ?: card.localPath?.let { ProfileMediaItem("IMAGE", "", it, 0u) })
+                val fallback = emptyList<ProfileMediaItem>()
                 ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
                     token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
                     isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
