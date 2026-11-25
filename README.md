@@ -41,7 +41,7 @@ cargo install cargo-ndk --version 4.1.2 --locked
 
 ## Prüfung / CI
 
-Der [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft bei PRs, Pushes auf main und manuellen Starts. **Core and contracts** und **Android integration** prüfen unabhängig Rust fmt/test/clippy, Quellen- und APK-Architekturverträge, native synthetische Fixtures, ARM64-Rust/UniFFI, Debug- und Instrumentierungstest-APK, JVM-Tests und Lint. Gradle führt die Aufgaben gemeinsam mit `--continue` aus. Cargo.lock ist maßgeblich. Instrumentierungstests werden gebaut, nicht automatisch auf einem Gerät ausgeführt.
+Der [Android-and-Rust-Workflow](.github/workflows/android.yml) prüft PRs gegen `main` bei Prüfbereitschaft sowie bei Aktualisierung eines freigegebenen PRs. Drafts führen keine vollständige Prüfung aus. Der `main`-Push-Trigger bleibt während der Migration zum technisch erzwungenen Merge-Schutz aktiv; manuelle Starts bleiben verfügbar. **Core and contracts** und **Android integration** prüfen unabhängig Rust fmt/test/clippy, Quellen- und APK-Architekturverträge, native synthetische Fixtures, ARM64-Rust/UniFFI, Debug- und Instrumentierungstest-APK, JVM-Tests und Lint. Gradle führt die Aufgaben gemeinsam mit `--continue` aus. Cargo.lock ist maßgeblich. Instrumentierungstests werden gebaut, nicht automatisch auf einem Gerät ausgeführt.
 
 ### CI-Ausführungsmodi
 
@@ -53,11 +53,18 @@ Der [Android-and-Rust-Workflow](.github/workflows/android.yml) läuft bei PRs, P
 - `docs` erfasst auch geänderte, neue, gelöschte und umbenannte erlaubte Markdown-Dateien. Markdown in Build-Input-Verzeichnissen, gemischte Diffs und Typ-/Moduswechsel erfordern `full`.
 ### Gate und Artefakte
 
-- Scope-Job und abschließendes `build`-Gate laufen immer. Das Gate prüft alle erwarteten Job-/Step-Ergebnisse und ausdrücklich übersprungene Prüfungen.
-- Überholte PR-Läufe werden abgebrochen; `main`- und manuelle Läufe nicht pauschal.
+- `opened`, `synchronize`, `reopened`, `ready_for_review` und `converted_to_draft` sind die PR-Ereignisse. Drafts überspringen Scope, Core und Android; das stets ausgewertete `build`-Gate sperrt Drafts ausdrücklich mit einem nicht erfolgreichen Ergebnis. Nach Freigabe prüft der Scope den vollständigen Integrationsdiff; das Gate prüft alle erwarteten Job-/Step-Ergebnisse einschließlich erlaubter Übersprünge. Keine pauschalen Pfadfilter oder Skip-Commit-Nachrichten.
+- Überholte PR-Läufe werden abgebrochen, auch bei Rückkehr in Draft; `main`- und manuelle Läufe nicht pauschal. Die reguläre Arbeitsweise steht ausschließlich in [AGENTS](AGENTS.md#arbeitszyklus).
 - **Nur APKs mit grünem `build`-Gate sind vollständig CI-validiert.** Ein bereits hochgeladenes Artefakt allein beweist das nicht.
 - `ladies-explorer-android-arm64-debug` wird ausschließlich bei `workflow_dispatch` nach regulärem Gradle-Build und APK-Architekturprüfung hochgeladen (7 Tage). Automatische PR-/Main-Läufe prüfen die APK bei `full`, speichern sie aber nicht als Artefakt. `docs` erzeugt kein APK. Ein Re-run eines automatischen Laufs ändert das ursprüngliche Ereignis nicht.
 - `android-ci-reports` enthält verfügbare Gradle-Profile, JVM-/Lint-Berichte und ausgewählte Diagnose (7 Tage).
+
+### Merge-Gate und Migration
+
+- Für die Integration zählt nur ein tatsächlich erfolgreicher `pull_request`-Versuch des Workflows `Android and Rust` auf dem aktuellen Integrationskandidaten: PR gegen `main`, nicht Draft, tatsächlicher PR-HEAD, aktueller Basiscommit und geprüfter temporärer Merge-Commit mit genau diesen Eltern. Scope protokolliert diese Identität. Run, Versuch und vollständige Job-Ergebnisse einschließlich `build=success` prüfen; fehlende oder nicht eindeutig zuordenbare Belege, Draft-/abgebrochene/übersprungene Gates, manuelle oder Main-Läufe gelten nicht als PR-Freigabe. Bei docs müssen Core/Android übersprungen, bei full erfolgreich sein. Nach Änderungen oder Basiswechsel neu prüfen; keine Wiederverwendung alter CI für neue Commits.
+- Unter [Settings → Branches](https://github.com/Justify87/ladies-explorer-android/settings/branches) für `main` einen aktiven Schutz einrichten: PR erforderlich, Statuscheck `build` aus GitHub Actions erforderlich, aktueller Basisstand (strict/up-to-date), keine Administrator-/App-Umgehung, keine Force-Pushes oder Löschung; keine verpflichtenden menschlichen Approvals. Keine Merge Queue notwendig. Gleichwertiges aktives Ruleset ohne Bypass ist zulässig. PR-Gate und aktuelle Basis zusätzlich gemäß AGENTS verifizieren.
+- Der bestehende Main-Push-Trigger ist bis zur nachgewiesenen Aktivierung dieses Schutzes eine Übergangsabsicherung und wird danach in einem gezielten Änderungsschritt entfernt; nicht vorher. Die administrative Konfiguration ist nicht Teil einer Workflow-Datei. Bei fehlendem Zugriff Eigentümer auf diese Einstellung hinweisen; Schutz nicht als eingerichtet behaupten. Bei Migration bestehende offene PRs unverändert lassen; auf aktuellem `main` neu integrieren und prüfen, bevor der neue Ablauf für sie angewandt wird.
+- Nach geschütztem Merge integrierten Git-Tree mit geprüftem Kandidaten vergleichen und Roadmap-Zustand kontrollieren; keine zusätzliche CI allein für den Merge. Bei Abweichung Integration nicht als verifiziert melden und Ursache klären. Manuelle APK-Builds auf `main` bleiben auch zur Cache-Pflege verfügbar; keine automatische zusätzliche APK-Verteilung.
 
 ### Build-Caches
 
