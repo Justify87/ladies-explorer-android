@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -58,6 +59,7 @@ internal fun GalleryVideo(
     modifier: Modifier,
     controlsModifier: Modifier,
     onTargets: @Composable () -> Unit,
+    onVideoSize: (IntSize) -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
@@ -69,6 +71,8 @@ internal fun GalleryVideo(
     var file by remember(item, retry, visible) { mutableStateOf<LocalGalleryVideo?>(null) }
     var failure by remember(item, retry, visible) { mutableStateOf(false) }
     var ready by remember(item, retry, playing) { mutableStateOf(false) }
+    var videoSize by remember(item, retry) { mutableStateOf(IntSize.Zero) }
+    SideEffect { onVideoSize(if (failure) IntSize.Zero else videoSize) }
     LaunchedEffect(item, retry, visible) {
         if (!visible) return@LaunchedEffect
         snapshotFlow { playbackAllowed }.first { it }
@@ -104,7 +108,7 @@ internal fun GalleryVideo(
     if (playing && video != null && !failure) {
         key(video, retry) {
             LocalMpvPlayer(video, paused, modifier, onLoading = { ready = false },
-                onReady = { ready = true }, onFailure = { failure = true })
+                onReady = { ready = true }, onFailure = { failure = true }, onSize = { videoSize = it })
         }
     } else Box(modifier)
     onTargets()
@@ -128,11 +132,13 @@ internal fun GalleryVideo(
 private fun LocalMpvPlayer(
     video: LocalGalleryVideo, paused: Boolean, modifier: Modifier,
     onLoading: () -> Unit, onReady: () -> Unit, onFailure: () -> Unit,
+    onSize: (IntSize) -> Unit,
 ) {
     val context = LocalContext.current
     val latestLoading by rememberUpdatedState(onLoading)
     val latestReady by rememberUpdatedState(onReady)
     val latestFailure by rememberUpdatedState(onFailure)
+    val latestSize by rememberUpdatedState(onSize)
     var owner by remember(video) { mutableStateOf<MpvSurfaceOwner?>(null) }
     var surfaceGeneration by remember(video) { mutableIntStateOf(0) }
     DisposableEffect(video, surfaceGeneration) {
@@ -140,7 +146,7 @@ private fun LocalMpvPlayer(
         latestLoading()
         val instance = try {
             MpvSurfaceOwner(context.applicationContext, video, { latestReady() }, { latestFailure() },
-                onSurfaceLost = { surfaceGeneration++ })
+                onSurfaceLost = { surfaceGeneration++ }, onSize = { latestSize(it) })
         } catch (_: Exception) {
             latestFailure()
             null
@@ -172,6 +178,7 @@ private class MpvSurfaceOwner(
     private val onReady: () -> Unit,
     private val onFailure: () -> Unit,
     private val onSurfaceLost: () -> Unit,
+    private val onSize: (IntSize) -> Unit,
 ) : TextureView.SurfaceTextureListener, MPVLib.EventObserver {
     private val main = Handler(Looper.getMainLooper())
     private val player = checkNotNull(MPVLib.create(context)) { "libmpv unavailable" }
@@ -191,6 +198,7 @@ private class MpvSurfaceOwner(
                 "audio-file-auto" to "no", "loop-file" to "inf",
                 "hwdec" to "mediacodec-copy", "vo" to "gpu", "gpu-context" to "android",
                 "idle" to "yes", "force-window" to "no", "terminal" to "no",
+                "keepaspect" to "yes", "panscan" to "0",
             ).forEach { (name, value) ->
                 check(player.setOptionString(name, value) >= 0) { "libmpv option rejected: $name" }
             }
@@ -250,11 +258,35 @@ private class MpvSurfaceOwner(
         }
     }
 
+    private fun publishVideoSize() {
+        // Read the local player's actual output margins when available, not the coded pixel ratio.
+        val dimensions = runCatching {
+            val w = player.getPropertyInt("osd-dimensions/w")
+            val h = player.getPropertyInt("osd-dimensions/h")
+            val left = player.getPropertyInt("osd-dimensions/ml")
+            val right = player.getPropertyInt("osd-dimensions/mr")
+            val top = player.getPropertyInt("osd-dimensions/mt")
+            val bottom = player.getPropertyInt("osd-dimensions/mb")
+            if (w != null && h != null && left != null && right != null && top != null && bottom != null &&
+                minOf(left, right, top, bottom) >= 0 && w > left + right && h > top + bottom) {
+                IntSize(w - left - right, h - top - bottom)
+            } else {
+                val dw = player.getPropertyInt("dwidth") ?: 0
+                val dh = player.getPropertyInt("dheight") ?: 0
+                val rotation = player.getPropertyInt("video-out-params/rotate") ?: 0
+                if (dw <= 0 || dh <= 0) IntSize.Zero
+                else if (rotation % 180 != 0) IntSize(dh, dw) else IntSize(dw, dh)
+            }
+        }.getOrDefault(IntSize.Zero)
+        if (dimensions.width > 0 && dimensions.height > 0) onSize(dimensions)
+    }
+
     override fun event(eventId: Int) {
         main.post {
             if (closed || surface == null) return@post
             when (eventId) {
-                MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> onReady()
+                MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> { publishVideoSize(); onReady() }
+                MPVLib.MpvEvent.MPV_EVENT_VIDEO_RECONFIG -> publishVideoSize()
                 MPVLib.MpvEvent.MPV_EVENT_END_FILE -> onFailure()
             }
         }
