@@ -19,20 +19,16 @@ internal data class ProfileShellBudget(
     val noticeInHeader get() = notice == 0f
 }
 
-internal fun discoveryLeadingHeight(fontScale: Float): Float =
-    60f * maxOf(1f, fontScale)
-
-// Context scrolls with the hero. On short viewports allow the hero to fill the body after scrolling.
-internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float, leadingHeight: Float = 0f): Float {
+// The discovery context remains a separate stable lazy row. Short windows prioritize a
+// complete scrollable hero over squeezing it into the space remaining above the inline rail.
+internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float, leadingHeight: Float? = null): Float {
     val h = usableHeight.coerceAtLeast(0f)
     val available = viewportHeight.coerceIn(0f, h)
-    val discovery = leadingHeight > 0f
-    val desired = minOf(h * if (discovery) .76f else .63f,
-        width.coerceAtLeast(0f) * if (discovery) 1.85f else 1.55f)
-    val afterContext = (available - leadingHeight).coerceAtLeast(0f)
-    val visible = if (afterContext >= 250f) afterContext else available
-    val peek = if (visible >= 274f) 24f else 0f
-    return minOf(desired, (visible - peek).coerceAtLeast(0f))
+    if (leadingHeight != null) {
+        val afterContext = (available - leadingHeight.coerceAtLeast(0f)).coerceAtLeast(0f)
+        return if (afterContext >= 250f) afterContext else available
+    }
+    return minOf(h * .63f, width.coerceAtLeast(0f) * 1.55f, available)
 }
 
 internal fun profileShellBudget(
