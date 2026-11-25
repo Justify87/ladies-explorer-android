@@ -9,7 +9,7 @@ fn m05_native_reference_fixture() {
     let database = std::env::var("M05_REFERENCE_DB").expect("synthetic native DB path");
     let core = LadiesCore::new(database).unwrap();
     let status = core.status().unwrap();
-    assert_eq!(status.schema_version, 2);
+    assert_eq!(status.schema_version, crate::schema::VERSION);
     assert_eq!(status.person_count, 8);
     assert_eq!(status.listing_count, 9);
     assert_eq!(status.source_profile_count, 8);

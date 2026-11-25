@@ -175,7 +175,7 @@ pub struct LadiesCore {
     source_session: source::SourceSession,
     media_http: media::HttpFetcher,
     media_root: Option<std::path::PathBuf>,
-    geocoding: Mutex<map::GeocodeState>,
+    location_preparation: Mutex<()>,
 }
 
 #[uniffi::export]
@@ -214,7 +214,7 @@ impl LadiesCore {
             source_session,
             media_http,
             media_root,
-            geocoding: Mutex::new(map::GeocodeState::default()),
+            location_preparation: Mutex::new(()),
         }))
     }
 
@@ -522,15 +522,14 @@ impl LadiesCore {
         map::overview(self, &listing_ids, run_id)
     }
 
-    pub fn resolve_map_locations(
+    pub fn prepare_map_locations(
         &self,
         listing_ids: Vec<i64>,
         run_id: Option<i64>,
-        max_requests: u32,
         control: Arc<RequestControl>,
-    ) -> Result<u32, CoreError> {
-        self.diagnostics.timed("MAP", "resolve_map_locations", || {
-            map::resolve(self, &listing_ids, run_id, max_requests, &control)
+    ) -> Result<(), CoreError> {
+        self.diagnostics.timed("MAP", "prepare_map_locations", || {
+            map::prepare(self, &listing_ids, run_id, &control)
         })
     }
 

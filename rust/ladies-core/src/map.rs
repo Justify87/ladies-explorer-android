@@ -1,62 +1,14 @@
-//! Coarse German locations; never geocode a full hidden address or call providers without user initiation.
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::io::Read;
-use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+//! Local, coarse location evidence. Hidden addresses and profile data never reach a geocoder.
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, OnceLock};
 
-use reqwest::blocking::Client;
-use rusqlite::params;
-use serde::{Deserialize, Serialize};
+use rusqlite::{Connection, OptionalExtension, params};
+use serde::Deserialize;
 
-use crate::http_capture::{self, CaptureMode, HttpObservation};
 use crate::{CoreError, LadiesCore, RequestControl};
 
-const NEGATIVE_TTL_SECS: u64 = 7 * 24 * 60 * 60;
-const MAX_GEOCODE_REQUESTS: u32 = 15;
-const CITY_INTERVAL: Duration = Duration::from_millis(1100);
-
-/// Hold for the entire resolve operation to preserve fairness and provider pacing.
-#[derive(Default)]
-pub(crate) struct GeocodeState {
-    last_city_request: Option<Instant>,
-    last_attempt: HashMap<String, u64>,
-    sequence: u64,
-}
-
-impl GeocodeState {
-    fn ordered(
-        &mut self,
-        pending: BTreeMap<String, (String, bool)>,
-    ) -> Vec<(String, (String, bool))> {
-        self.last_attempt.retain(|key, _| pending.contains_key(key));
-        let mut pending: Vec<_> = pending.into_iter().collect();
-        pending.sort_by_key(|(key, (_, postal))| {
-            (self.last_attempt.get(key).copied().unwrap_or(0), !*postal)
-        });
-        pending
-    }
-
-    fn attempted(&mut self, key: &str) {
-        self.sequence += 1;
-        self.last_attempt.insert(key.to_owned(), self.sequence);
-    }
-
-    fn wait_for_city(&mut self, control: &RequestControl) -> Result<(), CoreError> {
-        if let Some(previous) = self.last_city_request {
-            while previous.elapsed() < CITY_INTERVAL {
-                control.check()?;
-                std::thread::sleep(
-                    CITY_INTERVAL
-                        .saturating_sub(previous.elapsed())
-                        .min(Duration::from_millis(50)),
-                );
-            }
-        }
-        control.check()?;
-        self.last_city_request = Some(Instant::now());
-        Ok(())
-    }
-}
+const DATA_VERSION: &str = "geonames-3a94317a6192e7e576c078538dfe665048d42edf";
+const BACKFILL_BATCH: usize = 64;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct MapProfile {
@@ -80,89 +32,351 @@ pub struct MapOverview {
     pub pending_locations: u32,
 }
 
+fn city_key(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+fn postal_code(value: &str) -> Option<String> {
+    let value = value.trim();
+    (value.len() == 5 && value.bytes().all(|ch| ch.is_ascii_digit())).then(|| value.to_owned())
+}
+
+fn split_postal(value: &str) -> (Option<String>, &str) {
+    let value = value.trim();
+    let prefix = postal_code(value).map(|code| (code, "")).or_else(|| {
+        value
+            .split_once(char::is_whitespace)
+            .and_then(|(first, rest)| postal_code(first).map(|code| (code, rest.trim())))
+    });
+    match prefix {
+        Some((code, rest)) => (Some(code), rest),
+        None => (None, value),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct Evidence {
+    city: String,
+    postal: String,
+}
+
+impl Evidence {
+    fn new(city: &str, postal: Option<&str>) -> Self {
+        let (embedded, city) = split_postal(city);
+        let postal = match (postal.and_then(postal_code), embedded) {
+            (Some(explicit), Some(embedded)) if explicit != embedded => None,
+            (explicit, embedded) => explicit.or(embedded),
+        };
+        Self {
+            city: city_key(city),
+            postal: postal.unwrap_or_default(),
+        }
+    }
+
+    fn from_observations(
+        city: &str,
+        snapshot_city: Option<&str>,
+        snapshot_postal: Option<&str>,
+    ) -> Self {
+        let card = Self::new(city, None);
+        let snapshot = Self::new(snapshot_city.unwrap_or_default(), snapshot_postal);
+        if !card.city.is_empty() && card.city == snapshot.city && card.postal.is_empty() {
+            snapshot
+        } else {
+            card
+        }
+    }
+}
+
+#[derive(Default)]
+struct Extent {
+    points: Vec<(f64, f64)>,
+    states: HashMap<String, usize>,
+}
+
+impl Extent {
+    fn add(&mut self, state: &str, latitude: f64, longitude: f64) {
+        *self.states.entry(state.to_owned()).or_default() += 1;
+        self.points.push((latitude, longitude));
+    }
+
+    fn center(&self, city: bool) -> Option<(f64, f64)> {
+        let &(first_lat, first_lon) = self.points.first()?;
+        let (mut min_lat, mut max_lat, mut min_lon, mut max_lon) =
+            (first_lat, first_lat, first_lon, first_lon);
+        let (mut lat_sum, mut lon_sum) = (0.0, 0.0);
+        for &(lat, lon) in &self.points {
+            min_lat = min_lat.min(lat);
+            max_lat = max_lat.max(lat);
+            min_lon = min_lon.min(lon);
+            max_lon = max_lon.max(lon);
+            lat_sum += lat;
+            lon_sum += lon;
+        }
+        // A border postcode can share a city label; widely separated or competing regions cannot.
+        let dominant_state = self
+            .states
+            .values()
+            .any(|&count| count * 20 >= self.points.len() * 19);
+        if city && (!dominant_state || max_lat - min_lat > 0.35 || max_lon - min_lon > 0.6) {
+            return None;
+        }
+        let count = self.points.len() as f64;
+        Some((lat_sum / count, lon_sum / count))
+    }
+}
+
+#[derive(Default)]
+struct PostalArea {
+    extent: Extent,
+    cities: HashSet<String>,
+}
+
+#[derive(Default)]
+struct Gazetteer {
+    postal: HashMap<String, PostalArea>,
+    cities: HashMap<String, Extent>,
+}
+
+fn valid_point(lat: f64, lon: f64) -> bool {
+    (47.0..=56.0).contains(&lat) && (5.0..=16.0).contains(&lon)
+}
+
+impl Gazetteer {
+    fn parse(data: &str) -> Self {
+        let mut result = Self::default();
+        for line in data.lines() {
+            let fields: Vec<_> = line.split('\t').collect();
+            let [postal, city, state, lat, lon] = fields.as_slice() else {
+                continue;
+            };
+            let (Ok(lat), Ok(lon)) = (lat.parse::<f64>(), lon.parse::<f64>()) else {
+                continue;
+            };
+            if postal_code(postal).is_none()
+                || city.is_empty()
+                || state.is_empty()
+                || !valid_point(lat, lon)
+            {
+                continue;
+            }
+            let city = city_key(city);
+            let area = result.postal.entry((*postal).to_owned()).or_default();
+            area.extent.add(state, lat, lon);
+            area.cities.insert(city.clone());
+            result.cities.entry(city).or_default().add(state, lat, lon);
+        }
+        result
+    }
+}
+
+fn gazetteer() -> &'static Gazetteer {
+    static DATA: OnceLock<Gazetteer> = OnceLock::new();
+    DATA.get_or_init(|| Gazetteer::parse(include_str!("../data/de-postal.tsv")))
+}
+
 #[derive(Debug, Clone)]
+struct Location {
+    latitude: f64,
+    longitude: f64,
+    precision: String,
+    provenance: String,
+}
+
+impl Location {
+    fn new(point: (f64, f64), precision: &str, provenance: &str) -> Self {
+        Self {
+            latitude: point.0,
+            longitude: point.1,
+            precision: precision.into(),
+            provenance: provenance.into(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct LegacyLocation {
+    status: String,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+    precision: Option<String>,
+}
+
+fn legacy_location(
+    db: &Connection,
+    key: &str,
+    precision: &str,
+    provenance: &str,
+) -> Result<Option<Location>, CoreError> {
+    let json: Option<String> = db
+        .query_row(
+            "SELECT value_json FROM app_settings WHERE key=?1",
+            [key],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(json
+        .and_then(|value| serde_json::from_str::<LegacyLocation>(&value).ok())
+        .and_then(|record| {
+            let (lat, lon) = (record.latitude?, record.longitude?);
+            (record.status == "RESOLVED"
+                && record.precision.as_deref() == Some(precision)
+                && valid_point(lat, lon))
+            .then(|| Location::new((lat, lon), precision, provenance))
+        }))
+}
+
+fn choose(
+    db: &Connection,
+    evidence: &Evidence,
+    data: &Gazetteer,
+) -> Result<Option<Location>, CoreError> {
+    if !evidence.postal.is_empty() {
+        let area = data.postal.get(&evidence.postal);
+        // Do not attach a postcode from an inconsistent source city.
+        let consistent = area.is_none_or(|area| {
+            evidence.city.is_empty()
+                || area.cities.contains(&evidence.city)
+                || !data.cities.contains_key(&evidence.city)
+        });
+        if consistent {
+            if let Some(location) = legacy_location(
+                db,
+                &format!("map:postal:DE:{}", evidence.postal),
+                "POSTAL",
+                "LEGACY_POSTAL",
+            )? {
+                return Ok(Some(location));
+            }
+            if let Some(point) = area.and_then(|area| area.extent.center(false)) {
+                return Ok(Some(Location::new(point, "POSTAL", "GEONAMES")));
+            }
+        }
+    }
+    if evidence.city.is_empty() {
+        return Ok(None);
+    }
+    let extent = data.cities.get(&evidence.city);
+    let point = extent.and_then(|extent| extent.center(true));
+    if extent.is_some() && point.is_none() {
+        return Ok(None);
+    }
+    if let Some(location) = legacy_location(
+        db,
+        &format!("map:city:DE:{}", evidence.city),
+        "CITY",
+        "LEGACY_CITY",
+    )? {
+        return Ok(Some(location));
+    }
+    Ok(point.map(|point| Location::new(point, "CITY", "GEONAMES")))
+}
+
+type Prepared = (Option<Location>, String);
+
+fn prepared(
+    db: &Connection,
+    listing_id: i64,
+    evidence: &Evidence,
+) -> Result<Option<Prepared>, CoreError> {
+    Ok(db
+        .query_row(
+            "SELECT latitude,longitude,precision,provenance,dataset_version
+             FROM listing_locations WHERE listing_id=?1 AND city_key=?2 AND postal_key=?3",
+            params![listing_id, evidence.city, evidence.postal],
+            |row| {
+                let latitude: Option<f64> = row.get(0)?;
+                let longitude: Option<f64> = row.get(1)?;
+                let precision: Option<String> = row.get(2)?;
+                let provenance: String = row.get(3)?;
+                let version: String = row.get(4)?;
+                let location = latitude
+                    .zip(longitude)
+                    .zip(precision)
+                    .filter(|((lat, lon), _)| valid_point(*lat, *lon))
+                    .map(|((latitude, longitude), precision)| Location {
+                        latitude,
+                        longitude,
+                        precision,
+                        provenance,
+                    });
+                Ok((location, version))
+            },
+        )
+        .optional()?)
+}
+
+fn prepare_one(
+    db: &Connection,
+    listing_id: i64,
+    evidence: &Evidence,
+    data: &Gazetteer,
+) -> Result<(), CoreError> {
+    if prepared(db, listing_id, evidence)?
+        .is_some_and(|(location, version)| location.is_some() || version == DATA_VERSION)
+    {
+        return Ok(());
+    }
+    let location = choose(db, evidence, data)?;
+    db.execute(
+        "INSERT INTO listing_locations
+         (listing_id,city_key,postal_key,latitude,longitude,precision,provenance,dataset_version)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+         ON CONFLICT(listing_id,city_key,postal_key) DO UPDATE SET
+         latitude=excluded.latitude,longitude=excluded.longitude,precision=excluded.precision,
+         provenance=excluded.provenance,dataset_version=excluded.dataset_version",
+        params![
+            listing_id,
+            evidence.city,
+            evidence.postal,
+            location.as_ref().map(|value| value.latitude),
+            location.as_ref().map(|value| value.longitude),
+            location.as_ref().map(|value| value.precision.as_str()),
+            location
+                .as_ref()
+                .map_or("NONE", |value| value.provenance.as_str()),
+            DATA_VERSION,
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn prepare_evidence(
+    db: &Connection,
+    listing_id: i64,
+    city: &str,
+    postal: Option<&str>,
+) -> Result<(), CoreError> {
+    prepare_one(db, listing_id, &Evidence::new(city, postal), gazetteer())
+}
+
 struct Candidate {
     listing_id: i64,
     person_id: i64,
     name: String,
     city: String,
-    postal: Option<String>,
+    evidence: Evidence,
     favorite: bool,
     thumbnail_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CachedLocation {
-    status: String,
-    latitude: Option<f64>,
-    longitude: Option<f64>,
-    precision: Option<String>,
-    updated_at: u64,
-}
-
-impl CachedLocation {
-    fn valid_point(&self) -> Option<(f64, f64)> {
-        if self.status != "RESOLVED" {
-            return None;
-        }
-        let (latitude, longitude) = (self.latitude?, self.longitude?);
-        // The source and the geocoder are explicitly restricted to Germany.
-        (latitude.is_finite()
-            && longitude.is_finite()
-            && (47.0..=56.0).contains(&latitude)
-            && (5.0..=16.0).contains(&longitude))
-        .then_some((latitude, longitude))
-    }
-
-    fn negative_fresh(&self) -> bool {
-        self.status == "NOT_FOUND" && now().saturating_sub(self.updated_at) < NEGATIVE_TTL_SECS
-    }
-}
-
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-fn postal_from(value: &str) -> Option<String> {
-    // Boundary checks prevent treating an arbitrary longer number as a German postcode.
-    value
-        .split(|ch: char| !ch.is_ascii_digit())
-        .find(|digits| digits.len() == 5)
-        .map(str::to_owned)
-}
-
-fn cache_keys(candidate: &Candidate) -> (Option<String>, Option<String>) {
-    let postal = candidate
-        .postal
-        .as_ref()
-        .map(|p| format!("map:postal:DE:{p}"));
-    let city = candidate
-        .city
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
-    let city = (!city.is_empty()).then(|| format!("map:city:DE:{city}"));
-    (postal, city)
-}
-
 fn candidates(
-    core: &LadiesCore,
+    db: &Connection,
     listing_ids: &[i64],
     run_id: Option<i64>,
 ) -> Result<Vec<Candidate>, CoreError> {
     let ids = serde_json::to_string(listing_ids).map_err(|e| CoreError::Storage(e.to_string()))?;
-    let db = core.connection()?;
     let mut statement = db.prepare(
         "SELECT l.listing_id,l.person_id,
                 CASE WHEN ?2 IS NOT NULL THEN COALESCE(r.name,'')
                      ELSE COALESCE(NULLIF(s.name,''),NULLIF(r.name,''),NULLIF(p.display_name,''),'Inserat') END,
                 CASE WHEN ?2 IS NOT NULL THEN COALESCE(r.city,'')
                      ELSE COALESCE(NULLIF(s.city,''),NULLIF(r.city,''),'') END,
-                s.postal_code,s.hidden_location,u.favorite,
+                s.city,s.postal_code,u.favorite,
                 CASE WHEN ?2 IS NOT NULL THEN r.thumbnail_url ELSE COALESCE(
                     (SELECT m.remote_url FROM snapshot_media m
                      WHERE m.snapshot_id=l.current_snapshot_id AND m.kind='IMAGE'
@@ -181,18 +395,20 @@ fn candidates(
          ORDER BY CAST(requested.key AS INTEGER)",
     )?;
     let rows = statement.query_map(params![ids, run_id], |row| {
-        let explicit_postal: Option<String> = row.get(4)?;
-        let hidden: Option<String> = row.get(5)?;
-        let postal = explicit_postal
-            .as_deref()
-            .and_then(postal_from)
-            .or_else(|| hidden.as_deref().and_then(postal_from));
+        let city: String = row.get(3)?;
+        let snapshot_city: Option<String> = row.get(4)?;
+        let snapshot_postal: Option<String> = row.get(5)?;
+        let evidence = if run_id.is_none() && city.trim().is_empty() {
+            Evidence::new(&city, snapshot_postal.as_deref())
+        } else {
+            Evidence::from_observations(&city, snapshot_city.as_deref(), snapshot_postal.as_deref())
+        };
         Ok(Candidate {
             listing_id: row.get(0)?,
             person_id: row.get(1)?,
             name: row.get(2)?,
-            city: row.get(3)?,
-            postal,
+            city,
+            evidence,
             favorite: row.get::<_, i64>(6)? != 0,
             thumbnail_url: row.get(7)?,
         })
@@ -206,109 +422,31 @@ fn candidates(
     Ok(people)
 }
 
-fn read_cache(core: &LadiesCore) -> Result<HashMap<String, CachedLocation>, CoreError> {
-    let db = core.connection()?;
-    let mut statement =
-        db.prepare("SELECT key,value_json FROM app_settings WHERE key LIKE 'map:%'")?;
-    let rows = statement.query_map([], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
-    Ok(rows
-        .collect::<rusqlite::Result<Vec<_>>>()?
-        .into_iter()
-        .filter_map(|(key, value)| {
-            serde_json::from_str::<CachedLocation>(&value)
-                .ok()
-                .map(|record| (key, record))
-        })
-        .collect())
-}
-
-fn save_cache(core: &LadiesCore, key: &str, entry: &CachedLocation) -> Result<(), CoreError> {
-    let json =
-        serde_json::to_string(entry).map_err(|error| CoreError::Storage(error.to_string()))?;
-    core.connection()?.execute(
-        "INSERT INTO app_settings(key,value_json)
-         VALUES (?1,?2)
-         ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,
-             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')",
-        params![key, json],
-    )?;
+/// Backfill old observations in small transactions; a cancelled batch is rolled back.
+pub(crate) fn prepare(
+    core: &LadiesCore,
+    listing_ids: &[i64],
+    run_id: Option<i64>,
+    control: &Arc<RequestControl>,
+) -> Result<(), CoreError> {
+    control.check()?;
+    let _lease = core
+        .location_preparation
+        .try_lock()
+        .map_err(|_| CoreError::Source("Standortaufbereitung läuft bereits".into()))?;
+    let data = gazetteer();
+    for batch in listing_ids.chunks(BACKFILL_BATCH) {
+        control.check()?;
+        let mut db = core.connection()?;
+        let tx = db.transaction()?;
+        for candidate in candidates(&tx, batch, run_id)? {
+            control.check()?;
+            prepare_one(&tx, candidate.listing_id, &candidate.evidence, data)?;
+        }
+        control.check()?;
+        tx.commit()?;
+    }
     Ok(())
-}
-
-type LocationChoice<'a> = (
-    Option<(&'a CachedLocation, String)>,
-    Option<(String, String, bool)>,
-);
-
-fn chosen_location<'a>(
-    candidate: &Candidate,
-    cache: &'a HashMap<String, CachedLocation>,
-) -> LocationChoice<'a> {
-    let (postal_key, city_key) = cache_keys(candidate);
-    let mut pending = None;
-    if let Some(key) = postal_key {
-        let cached = cache.get(&key);
-        if let Some(value) = cached.filter(|value| value.valid_point().is_some()) {
-            return (Some((value, key)), None);
-        }
-        if !cached.is_some_and(CachedLocation::negative_fresh) {
-            pending = candidate.postal.as_ref().map(|p| (key, p.clone(), true));
-        }
-    }
-    if let Some(key) = city_key {
-        let cached = cache.get(&key);
-        if let Some(value) = cached.filter(|value| value.valid_point().is_some()) {
-            // Keep the offline city marker while a finer postal fix is pending.
-            return (Some((value, key)), pending);
-        }
-        if pending.is_none() && !cached.is_some_and(CachedLocation::negative_fresh) {
-            pending = Some((key, candidate.city.clone(), false));
-        }
-    }
-    (None, pending)
-}
-
-fn build_overview(people: Vec<Candidate>, cache: &HashMap<String, CachedLocation>) -> MapOverview {
-    let total_profiles = people.len().min(u32::MAX as usize) as u32;
-    let mut profiles = Vec::new();
-    let mut pending = HashSet::new();
-    for person in people {
-        let (location, next) = chosen_location(&person, cache);
-        if let Some((cached, _key)) = location {
-            if let Some((latitude, longitude)) = cached.valid_point() {
-                let location_label = match (&person.postal, cached.precision.as_deref()) {
-                    (Some(postal), Some("POSTAL")) if !person.city.trim().is_empty() => {
-                        format!("{postal} {}", person.city)
-                    }
-                    (Some(postal), Some("POSTAL")) => postal.clone(),
-                    _ => person.city.clone(),
-                };
-                profiles.push(MapProfile {
-                    listing_id: person.listing_id,
-                    person_id: person.person_id,
-                    name: person.name,
-                    city: person.city,
-                    location_label,
-                    latitude,
-                    longitude,
-                    precision: cached.precision.clone().unwrap_or_else(|| "CITY".into()),
-                    favorite: person.favorite,
-                    thumbnail_url: person.thumbnail_url,
-                });
-            }
-        }
-        if let Some((key, _, _)) = next {
-            pending.insert(key);
-        }
-    }
-    MapOverview {
-        unlocated_profiles: total_profiles.saturating_sub(profiles.len() as u32),
-        total_profiles,
-        profiles,
-        pending_locations: pending.len() as u32,
-    }
 }
 
 pub(crate) fn overview(
@@ -316,282 +454,73 @@ pub(crate) fn overview(
     listing_ids: &[i64],
     run_id: Option<i64>,
 ) -> Result<MapOverview, CoreError> {
-    Ok(build_overview(
-        candidates(core, listing_ids, run_id)?,
-        &read_cache(core)?,
-    ))
-}
-
-#[derive(Debug, PartialEq)]
-enum Lookup {
-    Resolved(f64, f64, &'static str),
-    NotFound,
-}
-
-#[derive(Deserialize)]
-struct PostalResponse {
-    places: Vec<PostalPlace>,
-}
-
-#[derive(Deserialize)]
-struct PostalPlace {
-    latitude: String,
-    longitude: String,
-}
-
-#[derive(Deserialize)]
-struct CityPlace {
-    lat: String,
-    lon: String,
-}
-
-fn provider_error(error: impl std::fmt::Display) -> CoreError {
-    CoreError::Source(format!("Invalid geocoding response: {error}"))
-}
-
-fn checked_coordinates(lat: &str, lon: &str) -> Result<(f64, f64), CoreError> {
-    let lat: f64 = lat.parse().map_err(provider_error)?;
-    let lon: f64 = lon.parse().map_err(provider_error)?;
-    if !(47.0..=56.0).contains(&lat) || !(5.0..=16.0).contains(&lon) {
-        return Err(provider_error("coordinates outside supported region"));
-    }
-    Ok((lat, lon))
-}
-
-fn parse_geocoding(body: &str, postal: bool) -> Result<Lookup, CoreError> {
-    if postal {
-        let payload: PostalResponse = serde_json::from_str(body).map_err(provider_error)?;
-        if payload.places.is_empty() {
-            return Ok(Lookup::NotFound);
-        }
-        let mut latitude = 0.0;
-        let mut longitude = 0.0;
-        for place in &payload.places {
-            let (lat, lon) = checked_coordinates(&place.latitude, &place.longitude)?;
-            latitude += lat;
-            longitude += lon;
-        }
-        let count = payload.places.len() as f64;
-        Ok(Lookup::Resolved(
-            latitude / count,
-            longitude / count,
-            "POSTAL",
-        ))
-    } else {
-        let payload: Vec<CityPlace> = serde_json::from_str(body).map_err(provider_error)?;
-        let Some(place) = payload.first() else {
-            return Ok(Lookup::NotFound);
-        };
-        let (lat, lon) = checked_coordinates(&place.lat, &place.lon)?;
-        Ok(Lookup::Resolved(lat, lon, "CITY"))
-    }
-}
-
-fn geocode(
-    core: &LadiesCore,
-    client: &Client,
-    value: &str,
-    postal: bool,
-) -> Result<Lookup, CoreError> {
-    let request = if postal {
-        client.get(format!("https://api.zippopotam.us/DE/{value}"))
-    } else {
-        client
-            .get("https://nominatim.openstreetmap.org/search")
-            .query(&[
-                ("q", format!("{value}, Germany")),
-                ("format", "jsonv2".into()),
-                ("limit", "1".into()),
-                ("countrycodes", "de".into()),
-            ])
-    }
-    .build()
-    .map_err(|error| CoreError::Source(format!("Geocoding request failed: {error}")))?;
-
-    execute_geocoding(core, client, request, postal)
-}
-
-fn execute_geocoding(
-    core: &LadiesCore,
-    client: &Client,
-    request: reqwest::blocking::Request,
-    postal: bool,
-) -> Result<Lookup, CoreError> {
-    let started = Instant::now();
-    let (mode, epoch) = core.recorder.mode_epoch();
-    let mut observation = (mode != CaptureMode::Off).then(|| HttpObservation {
-        method: request.method().to_string(),
-        url: request.url().to_string(),
-        final_url: request.url().to_string(),
-        status: None,
-        http_version: "unknown".into(),
-        request_headers: http_capture::headers(request.headers()),
-        response_headers: Vec::new(),
-        mime: None,
-        response_size: None,
-        started_ms: http_capture::started_ms(),
-        headers_elapsed_ms: 0,
-        body_elapsed_ms: 0,
-        body: None,
-        is_media: false,
-        error: None,
-        body_omitted: None,
-    });
-    let result = (|| {
-        let sent = client.execute(request);
-        if let Some(obs) = observation.as_mut() {
-            obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
-        }
-        let mut response = sent.map_err(|error| {
-            CoreError::Source(format!("Geocoding network request failed: {error}"))
-        })?;
-        let status = response.status();
-        if let Some(obs) = observation.as_mut() {
-            obs.status = Some(status.as_u16());
-            obs.http_version = format!("{:?}", response.version());
-            obs.final_url = response.url().to_string();
-            obs.response_headers = http_capture::headers(response.headers());
-            obs.mime = response
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|header| header.to_str().ok())
-                .map(ToOwned::to_owned);
-            obs.response_size = response.content_length();
-        }
-        let body_started = Instant::now();
-        let mut bytes = Vec::new();
-        let read = response
-            .by_ref()
-            .take(http_capture::MAX_BODY_BYTES as u64 + 1)
-            .read_to_end(&mut bytes);
-        if let Some(obs) = observation.as_mut() {
-            obs.body_elapsed_ms = body_started.elapsed().as_millis() as u64;
-            obs.response_size = Some(bytes.len() as u64);
-        }
-        read.map_err(provider_error)?;
-        if bytes.len() > http_capture::MAX_BODY_BYTES {
-            if let Some(obs) = observation.as_mut() {
-                obs.body_omitted = Some("body_over_2_mib".into());
-            }
-            return Err(provider_error("response size limit exceeded"));
-        }
-        let body = String::from_utf8(bytes).map_err(provider_error)?;
-        if let Some(obs) = observation.as_mut()
-            && mode == CaptureMode::Text
-        {
-            obs.body = Some(body.clone());
-        }
-        // Postal 404 means not found; city-search 404 is an HTTP failure.
-        if postal && status == reqwest::StatusCode::NOT_FOUND {
-            return Ok(Lookup::NotFound);
-        }
-        if !status.is_success() {
-            return Err(CoreError::Source(format!(
-                "Geocoding provider returned HTTP {status}"
-            )));
-        }
-        parse_geocoding(&body, postal)
-    })();
-    if let Some(mut obs) = observation {
-        if let Err(error) = &result {
-            obs.error = Some(error.to_string());
-        }
-        core.recorder.record_for_epoch(obs, epoch);
-    }
-    result
-}
-
-/// Serialize and pace explicit geocoding; rotate failures behind untried locations.
-pub(crate) fn resolve(
-    core: &LadiesCore,
-    listing_ids: &[i64],
-    run_id: Option<i64>,
-    max_requests: u32,
-    control: &Arc<RequestControl>,
-) -> Result<u32, CoreError> {
-    if !(1..=MAX_GEOCODE_REQUESTS).contains(&max_requests) {
-        return Err(CoreError::InvalidInput(
-            "Geocode batch must contain 1–15 requests".into(),
-        ));
-    }
-    let mut scheduler = core
-        .geocoding
-        .try_lock()
-        .map_err(|_| CoreError::Source("Standortauflösung läuft bereits".into()))?;
-    control.check()?;
-    let people = candidates(core, listing_ids, run_id)?;
-    let cache = read_cache(core)?;
-    let mut pending = BTreeMap::new();
-    for person in &people {
-        let (_, candidate) = chosen_location(person, &cache);
-        if let Some((key, value, postal)) = candidate {
-            pending.entry(key).or_insert((value, postal));
-        }
-    }
-    let pending = scheduler.ordered(pending);
-    let client = Client::builder()
-        .timeout(Duration::from_secs(9))
-        .user_agent("LadiesExplorerAndroid/0.1 (github.com/Justify87/ladies-explorer-android)")
-        .build()
-        .map_err(|error| CoreError::Source(error.to_string()))?;
-    let mut failed = 0u32;
-    for (key, (value, postal)) in pending.into_iter().take(max_requests as usize) {
-        control.check()?;
-        if !postal {
-            scheduler.wait_for_city(control)?;
-        }
-        scheduler.attempted(&key);
-        let response = geocode(core, &client, &value, postal);
-        control.check()?;
-        let entry = match response {
-            Ok(Lookup::Resolved(lat, lon, precision)) => CachedLocation {
-                status: "RESOLVED".into(),
-                latitude: Some(lat),
-                longitude: Some(lon),
-                precision: Some(precision.into()),
-                updated_at: now(),
-            },
-            Ok(Lookup::NotFound) => CachedLocation {
-                status: "NOT_FOUND".into(),
-                latitude: None,
-                longitude: None,
-                precision: None,
-                updated_at: now(),
-            },
-            Err(error) => {
-                core.diagnostics.error("MAP", error.to_string());
-                failed += 1;
+    let db = core.connection()?;
+    let people = candidates(&db, listing_ids, run_id)?;
+    let total_profiles = people.len().min(u32::MAX as usize) as u32;
+    let mut profiles = Vec::new();
+    let mut pending = HashSet::new();
+    for person in people {
+        let location = match prepared(&db, person.listing_id, &person.evidence)? {
+            Some((Some(location), _)) => location,
+            Some((None, version)) if version == DATA_VERSION => continue,
+            _ => {
+                pending.insert(person.evidence);
                 continue;
             }
         };
-        save_cache(core, &key, &entry)?;
-        scheduler.last_attempt.remove(&key);
+        let (_, city_label) = split_postal(&person.city);
+        let location_label = if location.precision == "POSTAL" {
+            if city_label.is_empty() {
+                person.evidence.postal.clone()
+            } else {
+                format!("{} {city_label}", person.evidence.postal)
+            }
+        } else {
+            city_label.to_owned()
+        };
+        profiles.push(MapProfile {
+            listing_id: person.listing_id,
+            person_id: person.person_id,
+            name: person.name,
+            city: person.city,
+            location_label,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            precision: location.precision,
+            favorite: person.favorite,
+            thumbnail_url: person.thumbnail_url,
+        });
     }
-    Ok(failed)
+    Ok(MapOverview {
+        unlocated_profiles: total_profiles.saturating_sub(profiles.len() as u32),
+        total_profiles,
+        profiles,
+        pending_locations: pending.len() as u32,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn seed() -> LadiesCore {
-        let core = Arc::try_unwrap(LadiesCore::new(":memory:".into()).unwrap())
-            .ok()
-            .unwrap();
-        let first = core.create_person(Some("Ada".into())).unwrap();
-        let second = core.create_person(Some("Bea".into())).unwrap();
-        core.add_listing(first, None, "LADIES".into(), "one".into(), None)
-            .unwrap();
+    fn fixture_data() -> Gazetteer {
+        Gazetteer::parse(
+            "12345\tTeststadt\tAA\t51.0\t12.0\n12346\tTeststadt\tAA\t51.1\t12.1\n\
+             23456\tDoppelort\tAA\t51.0\t12.0\n34567\tDoppelort\tBB\t53.0\t10.0\n\
+             45678\tAndere Stadt\tBB\t53.0\t10.0\n98765\tUngültig\tAA\t0\t0\n",
+        )
+    }
+
+    fn seed() -> Arc<LadiesCore> {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let person = core.create_person(Some("Fixture".into())).unwrap();
         let listing = core
-            .add_listing(first, None, "LADIES".into(), "two".into(), None)
-            .unwrap();
-        let second_listing = core
-            .add_listing(second, None, "LADIES".into(), "three".into(), None)
+            .add_listing(person, None, "LADIES".into(), "fixture".into(), None)
             .unwrap();
         let db = core.connection().unwrap();
         db.execute(
             "INSERT INTO listing_snapshots(listing_id,fingerprint,city,postal_code,hidden_location)
-             VALUES (?1,'snap1','Leipzig','04229','Private Str. 99')",
+             VALUES (?1,'fixture','Leipzig','04229','Private Straße 99')",
             [listing],
         )
         .unwrap();
@@ -601,310 +530,178 @@ mod tests {
             params![snap, listing],
         )
         .unwrap();
-        db.execute(
-            "INSERT INTO listing_snapshots(listing_id,fingerprint,city,postal_code)
-             VALUES (?1,'snap2','Leipzig','04229')",
-            [second_listing],
-        )
-        .unwrap();
-        let snap = db.last_insert_rowid();
-        db.execute(
-            "UPDATE listings SET current_snapshot_id=?1 WHERE listing_id=?2",
-            params![snap, second_listing],
-        )
-        .unwrap();
         drop(db);
         core
     }
 
-    fn member_ids(core: &LadiesCore, favorites_only: bool) -> Vec<i64> {
-        crate::discovery::page(core, favorites_only, 100, None, &[])
+    #[test]
+    fn coarse_priority_and_ambiguous_or_unknown_city() {
+        let db = Connection::open_in_memory().unwrap();
+        let mut db = db;
+        crate::schema::migrate(&mut db).unwrap();
+        let data = fixture_data();
+        let postal = choose(&db, &Evidence::new("Teststadt", Some("12345")), &data)
             .unwrap()
-            .cards
-            .into_iter()
-            .map(|card| card.listing_id)
-            .collect()
+            .unwrap();
+        assert_eq!(postal.precision, "POSTAL");
+        assert_eq!((postal.latitude, postal.longitude), (51.0, 12.0));
+        let city = choose(&db, &Evidence::new("Teststadt", Some("45678")), &data)
+            .unwrap()
+            .unwrap();
+        assert_eq!(city.precision, "CITY");
+        assert!((city.latitude - 51.05).abs() < 0.0001);
+        for name in ["Doppelort", "Unbekannt", "Ungültig"] {
+            assert!(
+                choose(&db, &Evidence::new(name, None), &data)
+                    .unwrap()
+                    .is_none()
+            );
+        }
     }
 
     #[test]
-    fn exact_run_listing_is_mapped_without_substituting_a_person_representative() {
+    fn legacy_valid_cache_is_reused_and_negative_does_not_block_offline_data() {
         let core = seed();
+        let db = core.connection().unwrap();
+        let evidence = Evidence::new("Teststadt", Some("12345"));
+        db.execute(
+            "INSERT INTO app_settings(key,value_json) VALUES (?1,?2)",
+            params![
+                "map:postal:DE:12345",
+                r#"{"status":"RESOLVED","latitude":51.2,"longitude":12.2,"precision":"POSTAL"}"#
+            ],
+        )
+        .unwrap();
+        prepare_one(&db, 1, &evidence, &fixture_data()).unwrap();
+        let (location, _) = prepared(&db, 1, &evidence).unwrap().unwrap();
+        assert_eq!(location.unwrap().provenance, "LEGACY_POSTAL");
+        db.execute(
+            "DELETE FROM app_settings WHERE key='map:postal:DE:12345'",
+            [],
+        )
+        .unwrap();
+        prepare_one(&db, 1, &evidence, &fixture_data()).unwrap();
+        assert_eq!(
+            prepared(&db, 1, &evidence)
+                .unwrap()
+                .unwrap()
+                .0
+                .unwrap()
+                .latitude,
+            51.2
+        );
+        db.execute(
+            "INSERT INTO app_settings(key,value_json) VALUES (?1,?2)",
+            params!["map:postal:DE:12346", r#"{"status":"NOT_FOUND"}"#],
+        )
+        .unwrap();
+        let other = Evidence::new("Teststadt", Some("12346"));
+        prepare_one(&db, 1, &other, &fixture_data()).unwrap();
+        assert_eq!(
+            prepared(&db, 1, &other)
+                .unwrap()
+                .unwrap()
+                .0
+                .unwrap()
+                .provenance,
+            "GEONAMES"
+        );
+    }
+
+    #[test]
+    fn backfill_is_automatic_data_preparation_and_exact_membership_is_preserved() {
+        let core = seed();
+        assert!(overview(&core, &[1], None).unwrap().profiles.is_empty());
+        prepare(&core, &[1], None, &RequestControl::new()).unwrap();
+        let view = overview(&core, &[1], None).unwrap();
+        assert_eq!(view.profiles.len(), 1);
+        assert_eq!(view.profiles[0].precision, "POSTAL");
+        assert_eq!(view.pending_locations, 0);
+        assert!(overview(&core, &[999], None).is_err());
         {
             let db = core.connection().unwrap();
-            db.execute("INSERT INTO search_runs (search_run_id) VALUES (1),(2)", [])
+            db.execute("INSERT INTO search_runs(search_run_id) VALUES (1)", [])
                 .unwrap();
             db.execute(
-                "INSERT INTO search_results (search_run_id,listing_id,position,name,city)
-                 VALUES (1,1,1,'Run A','Leipzig'),(2,3,1,'Outside','Leipzig')",
+                "INSERT INTO search_results(search_run_id,listing_id,position,name,city)
+                 VALUES (1,1,1,'Run fixture','Berlin')",
                 [],
             )
             .unwrap();
         }
-        save_cache(
-            &core,
-            "map:city:DE:leipzig",
-            &CachedLocation {
-                status: "RESOLVED".into(),
-                latitude: Some(51.34),
-                longitude: Some(12.37),
-                precision: Some("CITY".into()),
-                updated_at: now(),
-            },
-        )
-        .unwrap();
+        prepare(&core, &[1], Some(1), &RequestControl::new()).unwrap();
         let view = overview(&core, &[1], Some(1)).unwrap();
-        assert_eq!(view.total_profiles, 1);
-        assert_eq!(view.profiles[0].listing_id, 1);
-        assert_eq!(view.profiles[0].name, "Run A");
-        assert!(overview(&core, &[3], Some(1)).is_err());
-        assert_eq!(overview(&core, &[], Some(1)).unwrap().total_profiles, 0);
-    }
-
-    #[test]
-    fn no_fake_coordinates_and_deduplicated_people() {
-        let core = seed();
-        let view = overview(&core, &member_ids(&core, false), None).unwrap();
-        assert_eq!(view.total_profiles, 2);
-        assert!(view.profiles.is_empty());
-        assert_eq!(view.pending_locations, 1);
-    }
-
-    #[test]
-    fn cached_postal_location_is_reused_by_both_people() {
-        let core = seed();
-        save_cache(
-            &core,
-            "map:postal:DE:04229",
-            &CachedLocation {
-                status: "RESOLVED".into(),
-                latitude: Some(51.325),
-                longitude: Some(12.335),
-                precision: Some("POSTAL".into()),
-                updated_at: now(),
-            },
-        )
-        .unwrap();
-        let view = overview(&core, &member_ids(&core, false), None).unwrap();
-        assert_eq!(view.profiles.len(), 2);
-        assert!(view.profiles.iter().all(|p| p.precision == "POSTAL"));
-        assert_eq!(view.pending_locations, 0);
-        assert_eq!(view.unlocated_profiles, 0);
-        core.set_favorite(1, true).unwrap();
-        let view = overview(&core, &member_ids(&core, true), None).unwrap();
-        assert_eq!(view.total_profiles, 1);
-        assert!(view.profiles[0].favorite);
-    }
-
-    #[test]
-    fn negative_postal_uses_city_fallback_and_invalid_cache_never_maps() {
-        let core = seed();
-        save_cache(
-            &core,
-            "map:postal:DE:04229",
-            &CachedLocation {
-                status: "NOT_FOUND".into(),
-                latitude: None,
-                longitude: None,
-                precision: None,
-                updated_at: now(),
-            },
-        )
-        .unwrap();
-        let view = overview(&core, &member_ids(&core, false), None).unwrap();
-        assert_eq!(view.pending_locations, 1);
-        save_cache(
-            &core,
-            "map:city:DE:leipzig",
-            &CachedLocation {
-                status: "RESOLVED".into(),
-                latitude: Some(0.0),
-                longitude: Some(0.0),
-                precision: Some("CITY".into()),
-                updated_at: now(),
-            },
-        )
-        .unwrap();
+        assert_eq!(view.profiles[0].name, "Run fixture");
+        assert_eq!(view.profiles[0].precision, "CITY");
+        assert_eq!(view.profiles[0].city, "Berlin");
         assert_eq!(
-            overview(&core, &member_ids(&core, false), None)
-                .unwrap()
-                .profiles
-                .len(),
-            0
+            overview(&core, &[1], None).unwrap().profiles[0].precision,
+            "POSTAL"
         );
-        save_cache(
-            &core,
-            "map:city:DE:leipzig",
-            &CachedLocation {
-                status: "RESOLVED".into(),
-                latitude: Some(51.34),
-                longitude: Some(12.37),
-                precision: Some("CITY".into()),
-                updated_at: now(),
-            },
-        )
-        .unwrap();
-        let view = overview(&core, &member_ids(&core, false), None).unwrap();
-        assert_eq!(view.profiles.len(), 2);
-        assert!(view.profiles.iter().all(|p| p.precision == "CITY"));
+        assert!(overview(&core, &[1], Some(2)).is_err());
     }
 
     #[test]
-    fn provider_responses_distinguish_empty_results_from_malformed_data() {
-        assert_eq!(parse_geocoding("[]", false).unwrap(), Lookup::NotFound);
-        assert_eq!(
-            parse_geocoding(r#"{"places":[]}"#, true).unwrap(),
-            Lookup::NotFound
-        );
-        for body in [
-            "{}",
-            "null",
-            r#"[{"lat":"51"}]"#,
-            r#"[{"lat":"NaN","lon":"12"}]"#,
-        ] {
-            assert!(parse_geocoding(body, false).is_err());
-        }
-        assert!(parse_geocoding(r#"{"error":"maintenance"}"#, true).is_err());
-        assert!(parse_geocoding(r#"{"places":[{"latitude":"0","longitude":"0"}]}"#, true).is_err());
-        assert_eq!(
-            parse_geocoding(r#"[{"lat":"51.3","lon":"12.3"}]"#, false).unwrap(),
-            Lookup::Resolved(51.3, 12.3, "CITY")
-        );
-    }
-
-    #[test]
-    fn fair_scheduler_moves_failed_requests_behind_untried_locations() {
-        let mut scheduler = GeocodeState::default();
-        let pending: BTreeMap<_, _> = (0..20)
-            .map(|i| (format!("postal:{i:02}"), (i.to_string(), true)))
-            .collect();
-        let first = scheduler.ordered(pending.clone());
-        for (key, _) in first.iter().take(15) {
-            scheduler.attempted(key);
-        }
-        let next = scheduler.ordered(pending);
-        assert_eq!(next[0].0, "postal:15");
-        assert_eq!(next[5].0, "postal:00");
-    }
-
-    #[test]
-    fn city_fallback_remains_visible_while_postcode_is_pending() {
+    fn city_fallback_does_not_display_a_conflicting_postcode() {
         let core = seed();
-        save_cache(
-            &core,
-            "map:city:DE:leipzig",
-            &CachedLocation {
-                status: "RESOLVED".into(),
-                latitude: Some(51.34),
-                longitude: Some(12.37),
-                precision: Some("CITY".into()),
-                updated_at: now(),
-            },
-        )
-        .unwrap();
-        let view = overview(&core, &member_ids(&core, false), None).unwrap();
-        assert_eq!(view.profiles.len(), 2);
-        assert_eq!(view.pending_locations, 1);
-        assert!(view.profiles.iter().all(|p| p.precision == "CITY"));
-    }
-
-    #[test]
-    fn overlapping_resolution_is_rejected_without_network_access() {
-        let core = seed();
-        let _lease = core.geocoding.lock().unwrap();
-        assert!(matches!(
-            resolve(
-                &core,
-                &member_ids(&core, false),
-                None,
-                15,
-                &RequestControl::new()
-            ),
-            Err(CoreError::Source(reason)) if reason == "Standortauflösung läuft bereits"
-        ));
-    }
-
-    #[test]
-    fn geocoder_records_real_http_response_in_existing_har_session() {
-        use std::io::{BufRead, BufReader, Write};
-        use std::net::TcpListener;
-
-        let root = tempfile::tempdir().unwrap();
-        let database = root.path().join("map.sqlite");
-        let core = LadiesCore::new(database.to_string_lossy().into_owned()).unwrap();
-        core.recorder.set_mode(CaptureMode::Text);
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let worker = std::thread::spawn(move || {
-            listener.set_nonblocking(true).unwrap();
-            let deadline = Instant::now() + Duration::from_secs(5);
-            let mut stream = loop {
-                match listener.accept() {
-                    Ok((stream, _)) => break stream,
-                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                        assert!(
-                            Instant::now() < deadline,
-                            "local HTTP client did not connect"
-                        );
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(error) => panic!("{error}"),
-                }
-            };
-            stream
-                .set_read_timeout(Some(Duration::from_secs(2)))
+        {
+            let db = core.connection().unwrap();
+            db.execute("INSERT INTO search_runs(search_run_id) VALUES (1)", [])
                 .unwrap();
-            let mut reader = BufReader::new(&mut stream);
-            loop {
-                let mut line = String::new();
-                if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
-                    break;
-                }
-            }
-            drop(reader);
-            stream
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]")
-                .unwrap();
-        });
-        let client = Client::builder()
-            .no_proxy()
-            .timeout(Duration::from_secs(3))
-            .build()
+            db.execute(
+                "INSERT INTO search_results(search_run_id,listing_id,position,name,city)
+                 VALUES (1,1,1,'Fixture','04229 Berlin')",
+                [],
+            )
             .unwrap();
-        let url = format!("http://{address}/search");
-        let request = client.get(&url).build().unwrap();
-        let result = execute_geocoding(&core, &client, request, false);
-        worker.join().unwrap();
-        assert_eq!(result.unwrap(), Lookup::NotFound);
-        assert_eq!(core.recorder.status().entries, 1);
-        let export = core.recorder.export(root.path()).unwrap();
-        let har: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(export).unwrap()).unwrap();
-        let entry = &har["log"]["entries"][0];
-        assert_eq!(entry["request"]["url"], url);
-        assert_eq!(entry["response"]["status"], 200);
-        assert_eq!(entry["response"]["content"]["text"], "[]");
+        }
+        prepare(&core, &[1], Some(1), &RequestControl::new()).unwrap();
+        let view = overview(&core, &[1], Some(1)).unwrap();
+        assert_eq!(view.profiles[0].precision, "CITY");
+        assert_eq!(view.profiles[0].location_label, "Berlin");
     }
 
     #[test]
-    fn cancelled_city_request_does_not_wait_or_claim_a_new_slot() {
-        let previous = Instant::now();
-        let mut state = GeocodeState {
-            last_city_request: Some(previous),
-            ..Default::default()
-        };
+    fn negative_evidence_is_not_repeated_with_the_same_dataset() {
+        let core = seed();
+        let db = core.connection().unwrap();
+        let evidence = Evidence::new("Unbekannt", None);
+        prepare_one(&db, 1, &evidence, &fixture_data()).unwrap();
+        let before: i64 = db
+            .query_row("SELECT total_changes()", [], |row| row.get(0))
+            .unwrap();
+        prepare_one(&db, 1, &evidence, &fixture_data()).unwrap();
+        let after: i64 = db
+            .query_row("SELECT total_changes()", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(before, after);
+        assert!(prepared(&db, 1, &evidence).unwrap().unwrap().0.is_none());
+    }
+
+    #[test]
+    fn cancellation_and_overlapping_lease_do_not_write() {
+        let core = seed();
         let control = RequestControl::new();
         control.cancel();
-        assert!(matches!(
-            state.wait_for_city(&control),
-            Err(CoreError::Source(reason)) if reason == "Operation cancelled"
-        ));
-        assert_eq!(state.last_city_request, Some(previous));
+        assert!(prepare(&core, &[1], None, &control).is_err());
+        let _lease = core.location_preparation.lock().unwrap();
+        assert!(prepare(&core, &[1], None, &RequestControl::new()).is_err());
+        assert_eq!(overview(&core, &[1], None).unwrap().pending_locations, 1);
     }
 
     #[test]
-    fn postal_parser_accepts_only_five_digit_tokens() {
-        assert_eq!(postal_from("in 04229 Leipzig"), Some("04229".into()));
-        assert_eq!(postal_from("123456789"), None);
-        assert_eq!(postal_from("Keine Adresse"), None);
+    fn bundled_data_has_expected_coverage_without_private_inputs() {
+        let data = gazetteer();
+        assert_eq!(data.postal.len(), 8307);
+        assert!(data.postal.contains_key("04229"));
+        assert!(data.cities.get("berlin").unwrap().center(true).is_some());
+        assert_eq!(Evidence::new("04229 Leipzig", None).postal, "04229");
+        assert_eq!(
+            Evidence::new("Leipzig", Some("Private Str. 04229")).postal,
+            ""
+        );
+        assert_eq!(Evidence::new("04229", None).postal, "04229");
+        assert_eq!(Evidence::new("04229 Leipzig", Some("10115")).postal, "");
+        assert!(data.cities.get("hamburg").unwrap().center(true).is_some());
     }
 }

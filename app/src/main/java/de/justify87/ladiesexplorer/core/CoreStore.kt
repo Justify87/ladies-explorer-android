@@ -265,9 +265,9 @@ class CoreStore(context: Context) {
         recorded("mapOverview") { engine.mapOverview(listingIds, runId) }
     }
 
-    suspend fun resolveMapLocations(listingIds: List<Long>, runId: Long?, control: RequestControl): UInt =
+    suspend fun prepareMapLocations(listingIds: List<Long>, runId: Long?, control: RequestControl) =
         withContext(Dispatchers.IO) {
-            recorded("resolveMapLocations") { engine.resolveMapLocations(listingIds, runId, 15u, control) }
+            recorded("prepareMapLocations") { engine.prepareMapLocations(listingIds, runId, control) }
         }
 
     suspend fun profileFacts(snapshotId: Long, contextJson: String): ProfileFacts =

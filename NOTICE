@@ -22,3 +22,15 @@ native sources. This is a development integration; distribution/license
 verification of the complete native artifact is a release blocker.
 The pinned upstream FFmpeg build enables GPL and version3. Consult the
 exact native source/build manifest; wrapper MIT alone is not sufficient.
+
+Local geographic reference data:
+GeoNames, German postal-code dataset (https://www.geonames.org/export/zip/),
+Creative Commons Attribution 4.0 International (https://creativecommons.org/licenses/by/4.0/).
+Source mirror: https://github.com/symerio/postal-codes-data
+Pinned commit: 3a94317a6192e7e576c078538dfe665048d42edf
+Source blob: 4e72dcb0a6806f8bc526929a6b12a90afd54532b (data/geonames/DE.txt).
+Modified for local use: selected DE rows with a five-digit postal code,
+state and valid regional coordinates; retained postal code, place name,
+state code, latitude and longitude as TSV (16,476 rows, 8,307 postcodes).
+The app computes approximate area centers; neither the dataset nor the
+result represents an exact listing address. No profile data is in the file.

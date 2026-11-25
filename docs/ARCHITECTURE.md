@@ -315,7 +315,7 @@ Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Op
 - Unvollständiges letztes Ereignis beim Neustart entfernen **und melden**. Beschädigtes mittleres Ereignis blockiert Export.
 - Neustart deaktiviert Capture; Löschen entfernt Sitzung.
 - Recorder in vorhandenen Rust-HTTP-Lesepfaden, ohne weitere Requests oder Kotlin-HTTP-Bridge.
-- Quellenredirects separat ohne Body, Medienredirects verboten; Geocoder folgt intern, sichtbar sind finale URL und aggregierte Headerzeit. MapLibre und externe Intents außerhalb.
+- Quellenredirects separat ohne Body, Medienredirects verboten. Standortaufbereitung ohne HTTP; MapLibre und externe Intents außerhalb.
 - Coil-Cachetreffer sind keine Requests; Medienbytes nicht im HAR. Statuschecks protokollieren Listing-ID, bestätigten Status und HTTP-Code.
 
 ### HAR, Maskierung und Export
@@ -331,24 +331,17 @@ Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Op
 
 - MapLibre verantwortet Karten-View und Ressourcen. AndroidView-Factory/`onRelease` und Lifecycle-Observer koordinieren **einmal** den nativen View-Lifecycle einschließlich Speicherdruck.
 - Kamera und Auswahl bleiben im `SaveableStateHolder` über Tab-/Profilwechsel erhalten.
-- Rust liefert die Kartenprojektion für die exakt übergebenen Listing-IDs und optional den ausgeführten Run, ohne unabhängige Personendefinition; Kotlin prüft die zurückgelieferte Mitgliedschaft und Owner-/Favoritenwerte. Rust hält Koordinatencache in `app_settings` (`map:postal:DE:…` / `map:city:DE:…`, ohne separate Schema-Migration), zentrale Geocoding-Lease und Nominatim-Pause über Läufe hinweg.
-- Gerenderte Kartensteuerung (Aktualisieren, Standortauflösung, Abbruch) bindet Kartenstatus, Kartengeneration und sichtbare Surface-/Lifecycle-Generation. Überholte Callbacks erreichen weder eine neue Standortauflösung noch einen fremden Abbruch. Interne Projektionsaktualisierung und interner Abbruch bleiben unabhängig von der UI-Admission.
-- Offline-Überblick und Auftragsstatus getrennt. Nach Abschluss/Abbruch liest UI **einmal** aktuellen Bestand statt doppelter Listenübertragung. Gemeinsame lokale Reprojektion aktualisiert die Kartenmitgliedschaft nach relevanten Commits; beim Eintritt kann eine gültige Kartenprojektion wiederverwendet werden. `MapMembership` und Epoch binden asynchrone Ergebnisse an den aktuellen Run und die exakten Karten; bei geändertem Scope werden alte Ergebnisse nicht übernommen und laufende Auflösungen widerrufen. Kein neuer Quelllauf beim Moduswechsel.
+- Rust liefert die Kartenprojektion für die exakt übergebenen Listing-IDs und optional den ausgeführten Run, ohne unabhängige Personendefinition; Kotlin prüft Mitgliedschaft, Owner und Favoriten. Eine Run-Stadt darf nur mit der PLZ eines übereinstimmenden aktuellen Snapshot-Orts kombiniert werden; widersprüchliche Ortsbelege bleiben getrennt. Versteckte Adressfelder sind kein Standortinput.
+- Automatische Standortaufbereitung läuft vor Kartenpublikation unabhängig von der sichtbaren Entdecken-Ansicht. Neue reguläre Suchkarten und Profilbeobachtungen werden im jeweiligen SQLite-Commit vorbereitet; bestehende Mitgliedschaften werden bedarfsgesteuert unter zentraler Lease in Transaktionen von höchstens 64 Listings nachgepflegt. Cancel vor jedem Batch, vor jedem Write und vor Commit; abgeschlossene Batches bleiben bestehen. Kein neuer Quelllauf beim Moduswechsel.
+- Kartenprojektion bleibt ein lokaler Read. `MapMembership` und Epoch binden asynchrone Ergebnisse an Run und exakte Mitgliedschaft; Scopewechsel widerruft laufende Aufbereitung und stale Resultate. `MainViewModel` drainiert die native Operation vor einer Folgeaufbereitung. `ON_STOP` cancelt; `ON_START` kann automatisch fortsetzen. Gerenderter Refresh und Cancel binden Kartenstatus, Karten-/Surface-Generation; kein manueller Standortauflösungs-Callback. Bestätigte lokale Teilergebnisse und Kartenfehler getrennt behandeln.
 - Kein eigener Prozess, WebView, Server oder Gerätestandort.
 
-### Standortauflösung und Provider
+### Standortdaten und Herkunft
 
-| Zweck | Anbieter / Bedingung |
-| --- | --- |
-| Kartenstil | `https://tiles.openfreemap.org/styles/liberty` |
-| Deutsche PLZ | `https://api.zippopotam.us/DE/<plz>` |
-| Fehlende PLZ / späterer Stadt-Fallback | `https://nominatim.openstreetmap.org/search`, DE, maximal ein Ergebnis und mindestens 1,1 s Abstand auch über mehrere Aufträge; [Provider-Policy](https://operations.osmfoundation.org/policies/nominatim/) |
-
-- Neun Sekunden HTTP-Timeout pro Standort.
-- Bestätigte Nichttreffer sieben Tage negativ cachen; Transport-, Format- oder Koordinatenfehler **nicht**.
-- Offline-Überblick über `mapOverview`; `resolveMapLocations`-Aufträge gemäß [PRODUCT](PRODUCT.md#karte).
-- GeoJSON/Cluster; keine exakten `hidden_location`-Daten an Provider. Kachel-/Stil-Attribution beachten.
-- Profilöffnung über `loadProfile` mit Offline-Fallback.
+- Schema v3 ergänzt `listing_locations` mit Listing-FK, normalisiertem Stadt-/PLZ-Evidenzschlüssel, Koordinaten, Genauigkeit, Herkunft und Datensatzversion. Migration erhält vorhandene Tabellen und `app_settings`-Cache. Standortdaten werden nie einer Personenrepräsentation oder einem anderen Listing zugeordnet; nach Ortswechsel wird nur der passende neue Evidenzschlüssel projiziert. Gültige Standortbelege werden nicht erneut aufgelöst. Negativbelege gelten für die verwendete lokale Datensatzversion.
+- Offline-Datensatz: GeoNames Deutschland, aus der fest versionierten [Mirror-Quelle](https://github.com/symerio/postal-codes-data/blob/3a94317a6192e7e576c078538dfe665048d42edf/data/geonames/DE.txt), kompakte TSV-Auswahl in `rust/ladies-core/data/de-postal.tsv`; Herkunft und Lizenz in [NOTICE](../NOTICE). Einmaliger lokaler Index im Rust-Core, zuerst belegter PLZ-Bereich, dann eindeutiger Stadtbereich. Koordinatenmittel sind ausdrücklich ungefähre Ortslagen; mehrdeutige Städtenamen und bekannte widersprüchliche PLZ-/Stadtpaare nicht als PLZ auflösen. Gültige Legacy-Koordinaten mit passender Genauigkeit aus `map:postal:DE:…` / `map:city:DE:…` übernehmen; alte Negativ-/Fehlerwerte verhindern keinen lokalen Treffer.
+- Keine externen Geocoding-Aufrufe. Die bisherigen Zippopotam-/Nominatim-Anfragen mit Timeout, serieller Provider-Pause und HTTP-Fehlern entfallen; öffentliche [Nominatim-Policy](https://operations.osmfoundation.org/policies/nominatim/) rät von regelmäßigen App-/Bulk-Anfragen ab. Lokal fehlt damit die Möglichkeit konkreter Adressauflösung; keine privaten oder versteckten Adressen, kein künstlicher Präzisionsgewinn. Die Datenquelle ist geografische Referenz, kein Nachweis einer konkreten Profilposition.
+- Kartenstil weiterhin `https://tiles.openfreemap.org/styles/liberty`. GeoJSON/Cluster und Kachel-/Stil-Attribution erhalten, GeoNames-Attribution sichtbar. Offline-Projektion über `mapOverview`, abbrechbare Aufbereitung über `prepareMapLocations`. Profilöffnung über `loadProfile` mit Offline-Fallback.
 
 ### Private Daten und Android-Grenzen
 
@@ -378,5 +371,5 @@ Datenhoheit, Gültigkeit gerenderter Aktionen/UI-Admission und tatsächliches Op
 
 **Gezielte Regression nach Betroffenheit:**
 - Profil/Projektion: 0/1/200+ Cards, 0/1/12/80 Medien, partial/unverified, Offline/Timeout, Gesten/Aktionen, Cancel/Late Write, Identitäts-/Notizkonflikte, SavedSearch-Ack und unabhängige Reprojektion. Darstellung darf keine zusätzlichen Quellrequests auslösen.
-- Karte: Identitäts-Deduplizierung, Favoriten, Offline-Cache, PLZ-/Stadt-Fallback und Cancel/Lease beim Neustart.
+- Karte: Listing-/Owner-Zuordnung, Favoriten, Offline-Daten, positive/negative Cache-Evidenz, PLZ-/Stadt-Fallback, Migration und Cancel/Lease beim Neustart.
 - Architekturvertrag enthält keine Aufgabenstände oder Abnahmechronik.

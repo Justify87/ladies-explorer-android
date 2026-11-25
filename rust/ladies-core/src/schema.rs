@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::CoreError;
 
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 const APPLICATION_ID: i32 = 0x4C44_5850; // LDXP: Ladies Explorer Android
 
 pub(crate) const VERSION_1: &str = r#"
@@ -402,6 +402,23 @@ DROP TABLE identity_events;
 ALTER TABLE identity_events_v2 RENAME TO identity_events;
 "#;
 
+const VERSION_3: &str = r#"
+CREATE TABLE listing_locations (
+    listing_id INTEGER NOT NULL REFERENCES listings(listing_id) ON DELETE CASCADE,
+    city_key TEXT NOT NULL,
+    postal_key TEXT NOT NULL,
+    latitude REAL,
+    longitude REAL,
+    precision TEXT CHECK (precision IN ('POSTAL','CITY')),
+    provenance TEXT NOT NULL CHECK (provenance IN ('NONE','GEONAMES','LEGACY_POSTAL','LEGACY_CITY')),
+    dataset_version TEXT NOT NULL,
+    CHECK ((latitude IS NULL AND longitude IS NULL AND precision IS NULL AND provenance='NONE')
+        OR (latitude IS NOT NULL AND longitude IS NOT NULL AND precision IS NOT NULL
+            AND latitude BETWEEN 47 AND 56 AND longitude BETWEEN 5 AND 16 AND provenance<>'NONE')),
+    PRIMARY KEY(listing_id,city_key,postal_key)
+);
+"#;
+
 fn schema_manifest(db: &Connection) -> Result<Vec<(String, String, String)>, CoreError> {
     let mut query = db.prepare(
         "SELECT type, name, sql FROM sqlite_master
@@ -415,8 +432,11 @@ fn schema_manifest(db: &Connection) -> Result<Vec<(String, String, String)>, Cor
 fn validate_schema(db: &Connection, version: u32) -> Result<(), CoreError> {
     let reference = Connection::open_in_memory()?;
     reference.execute_batch(VERSION_1)?;
-    if version == 2 {
+    if version >= 2 {
         reference.execute_batch(VERSION_2)?;
+    }
+    if version >= 3 {
+        reference.execute_batch(VERSION_3)?;
     }
     if schema_manifest(db)? != schema_manifest(&reference)? {
         return Err(CoreError::SchemaMismatch(format!(
@@ -474,7 +494,10 @@ pub fn migrate(db: &mut Connection) -> Result<(), CoreError> {
         tx.execute_batch("DROP TABLE IF EXISTS scaffold_notes;")?;
         tx.pragma_update(None, "application_id", APPLICATION_ID)?;
     }
-    tx.execute_batch(VERSION_2)?;
+    if version < 2 {
+        tx.execute_batch(VERSION_2)?;
+    }
+    tx.execute_batch(VERSION_3)?;
     tx.pragma_update(None, "user_version", VERSION)?;
     validate_schema(&tx, VERSION)?;
     let broken: bool = tx.prepare("PRAGMA foreign_key_check")?.exists([])?;
@@ -551,9 +574,46 @@ mod tests {
         assert_eq!(
             db.pragma_query_value::<u32, _>(None, "user_version", |r| r.get(0))
                 .unwrap(),
-            2
+            VERSION
         );
         migrate(&mut db).unwrap();
+    }
+
+    #[test]
+    fn version_two_migration_keeps_listings_and_legacy_location_cache() {
+        let mut db = Connection::open_in_memory().unwrap();
+        db.execute_batch(VERSION_1).unwrap();
+        db.execute_batch(VERSION_2).unwrap();
+        db.pragma_update(None, "application_id", APPLICATION_ID)
+            .unwrap();
+        db.pragma_update(None, "user_version", 2).unwrap();
+        db.execute_batch(
+            "INSERT INTO persons(person_id) VALUES (1);
+             INSERT INTO listings(listing_id,person_id,external_listing_id) VALUES (10,1,'fixture');
+             INSERT INTO app_settings(key,value_json) VALUES ('map:city:DE:fixture','{}');",
+        )
+        .unwrap();
+        migrate(&mut db).unwrap();
+        migrate(&mut db).unwrap();
+        let counts: (i64, i64, i64) = db
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM listings),
+                        (SELECT COUNT(*) FROM app_settings),
+                        (SELECT COUNT(*) FROM listing_locations)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(counts, (1, 1, 0));
+        assert!(
+            db.execute(
+                "INSERT INTO listing_locations
+                 (listing_id,city_key,postal_key,latitude,longitude,precision,provenance,dataset_version)
+                 VALUES (10,'fixture','',0,0,'CITY','GEONAMES','fixture')",
+                [],
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -86,7 +86,6 @@ data class MapUiState(
     val loading: Boolean = false,
     val resolving: Boolean = false,
     val cancelling: Boolean = false,
-    val failedLookups: UInt = 0u,
     val membership: MapMembership? = null,
     val error: String? = null,
     val actionGeneration: Long = 0L,
@@ -209,8 +208,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _mapState = MutableStateFlow(MapUiState())
     val mapState: StateFlow<MapUiState> = _mapState
     private var mapEpoch = 0L
-    private var mapVisible = false
     private var mapControl: RequestControl? = null
+    private var mapRefreshPending = false
+    private var locationPreparationActive = false
     private var savedStatusControl: RequestControl? = null
     private var savedStatusAttemptId = 0L
 
@@ -562,7 +562,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     internal fun runDiscoveryAvailability(action: DiscoveryAvailabilityAction, mode: AvailabilityMode) {
-        if (hasProfileEditor || (action.surface == ProfileActionSurface.MAP && _mapState.value.resolving) ||
+        if (hasProfileEditor ||
             !discoveryAvailabilityMatches(_discoverState.value, _searchUiState.value, action)) return
         runAvailability(mode)
     }
@@ -666,48 +666,76 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun ensureMap() {
         val membership = mapMembership() ?: return
         val state = _mapState.value
-        if (state.membership == membership && (state.overview != null || state.loading || state.error != null)) return
+        if (state.membership == membership && !state.needsLocationPreparation()) return
         refreshMap()
     }
 
-    private fun refreshMap() = readMap()
-
-    private fun readMap(failureMessage: String? = null, failedLookups: UInt = 0u) {
-        if (!mapVisible && _mapState.value.membership == null) return
-        val membership = mapMembership() ?: return
+    private fun refreshMap() {
+        if (!locationPreparationActive) return
+        val membership = mapMembership()
         if (mapControl != null) {
+            mapRefreshPending = membership != null
             if (_mapState.value.membership != membership) {
                 ++mapEpoch
                 cancelMapResolution()
                 _mapState.update { it.copy(membership = membership, overview = null, loading = false,
-                    error = null, failedLookups = 0u, actionGeneration = it.actionGeneration + 1) }
+                    error = null, actionGeneration = it.actionGeneration + 1) }
             }
             return
         }
+        if (membership == null) return
         val epoch = ++mapEpoch
         val discoveryError = _discoverState.value.error
         if (discoveryError != null) {
             _mapState.update { it.copy(membership = membership, overview = null, loading = false,
-                error = discoveryError, failedLookups = 0u, actionGeneration = it.actionGeneration + 1) }
+                error = discoveryError, actionGeneration = it.actionGeneration + 1) }
             return
         }
+        val control = RequestControl()
+        mapControl = control
         _mapState.update {
-            it.copy(membership = membership, overview = it.overview.takeIf { _ -> it.membership == membership },
-                loading = true, error = null, failedLookups = 0u, actionGeneration = it.actionGeneration + 1)
+            val cached = it.overview.takeIf { _ -> it.membership == membership }
+            it.copy(membership = membership, overview = cached, loading = cached == null,
+                resolving = true, cancelling = false, error = null, actionGeneration = it.actionGeneration + 1)
         }
         viewModelScope.launch {
-            projectMapOverview(_mapState, { epoch == mapEpoch && mapMembership() == membership }, {
-                core.mapOverview(membership.listingIds, membership.runId).also {
-                    check(membership.matches(it)) { "Kartenmitgliedschaft hat sich geändert" }
+            var failureMessage: String? = null
+            try {
+                try {
+                    core.prepareMapLocations(membership.listingIds, membership.runId, control)
+                } catch (cancelled: CancellationException) {
+                    control.cancel()
+                    throw cancelled
+                } catch (failure: Exception) {
+                    if (!_mapState.value.cancelling) {
+                        failureMessage = failure.message ?: "Standortaufbereitung fehlgeschlagen"
+                    }
                 }
-            }) { state, overview ->
-                state.copy(overview = overview, loading = false, failedLookups = failedLookups, error = failureMessage)
+                projectMapOverview(_mapState, { epoch == mapEpoch && mapMembership() == membership }, {
+                    core.mapOverview(membership.listingIds, membership.runId).also {
+                        check(membership.matches(it)) { "Kartenmitgliedschaft hat sich geändert" }
+                    }
+                }) { state, overview ->
+                    state.copy(overview = overview, loading = false, error = failureMessage)
+                }
+            } finally {
+                if (mapControl === control) {
+                    mapControl = null
+                    _mapState.update { it.copy(resolving = false, cancelling = false) }
+                }
+            }
+            if (mapRefreshPending || mapMembership() != membership) {
+                mapRefreshPending = false
+                refreshMap()
             }
         }
     }
 
     internal fun cancelRenderedMapResolution(action: MapControlAction) {
-        if (admitsMapControl(action, MapControl.CANCEL)) cancelMapResolution()
+        if (admitsMapControl(action, MapControl.CANCEL)) {
+            mapRefreshPending = false
+            cancelMapResolution()
+        }
     }
 
     private fun cancelMapResolution() {
@@ -716,33 +744,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _mapState.update { it.copy(cancelling = true, actionGeneration = it.actionGeneration + 1) }
     }
 
-    internal fun resolveMapLocations(action: MapControlAction) {
-        if (!admitsMapControl(action, MapControl.RESOLVE) || mapControl != null) return
-        val control = RequestControl()
-        val membership = _mapState.value.membership ?: return
-        mapControl = control
-        _mapState.update { it.copy(resolving = true, cancelling = false, error = null, failedLookups = 0u,
-            actionGeneration = it.actionGeneration + 1) }
-        viewModelScope.launch {
-            var failureMessage: String? = null
-            var failedLookups = 0u
-            try {
-                failedLookups = core.resolveMapLocations(membership.listingIds, membership.runId, control)
-            } catch (cancelled: CancellationException) {
-                control.cancel()
-                throw cancelled
-            } catch (failure: Exception) {
-                if (!_mapState.value.cancelling) {
-                    failureMessage = failure.message ?: "Standortauflösung fehlgeschlagen"
-                }
-            } finally {
-                if (mapControl === control) {
-                    mapControl = null
-                    _mapState.update { it.copy(resolving = false, cancelling = false) }
-                }
-            }
-            // A cancelled resolution may have committed cache entries, but never publish an old membership.
-            if (mapMembership() == membership) readMap(failureMessage, failedLookups) else refreshMap()
+    internal fun setLocationPreparationActive(active: Boolean) {
+        if (locationPreparationActive == active) return
+        locationPreparationActive = active
+        if (active) refreshMap() else {
+            mapRefreshPending = false
+            cancelMapResolution()
         }
     }
 
@@ -803,7 +810,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setDiscoveryProjectionVisibility(listVisible: Boolean, mapVisible: Boolean) {
-        this.mapVisible = mapVisible
         swipeInvalidation.setVisibility(listVisible, mapVisible)
     }
 

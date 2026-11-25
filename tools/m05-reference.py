@@ -35,6 +35,7 @@ def generate(out, now):
     source = SCHEMA.read_text(encoding="utf-8")
     schema_v1 = source.split('pub(crate) const VERSION_1: &str = r#"', 1)[1].split('"#;', 1)[0]
     schema_v2 = source.split('const VERSION_2: &str = r#"', 1)[1].split('"#;', 1)[0]
+    schema_v3 = source.split('const VERSION_3: &str = r#"', 1)[1].split('"#;', 1)[0]
     db_path = out / "ladies.sqlite"
     assets = {}
     profiles = []
@@ -51,8 +52,9 @@ def generate(out, now):
     with sqlite3.connect(db_path) as db:
         db.executescript(schema_v1)
         db.executescript(schema_v2)
+        db.executescript(schema_v3)
         db.execute(f"PRAGMA application_id={int('4C445850', 16)}")
-        db.execute("PRAGMA user_version=2")
+        db.execute("PRAGMA user_version=3")
         db.execute("PRAGMA foreign_keys=ON")
         for pid, pref, fav, status, hours, media in people:
             name = f"Testprofil {pid:02}"

@@ -144,9 +144,13 @@ fun LadiesApp(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_STOP) publishVisibility()
             if (event == Lifecycle.Event.ON_PAUSE) profileTouchGate.invalidate()
-            if (event == Lifecycle.Event.ON_START) viewModel.setProfilePresentationVisible(true)
+            if (event == Lifecycle.Event.ON_START) {
+                viewModel.setProfilePresentationVisible(true)
+                viewModel.setLocationPreparationActive(true)
+            }
             if (event == Lifecycle.Event.ON_STOP) {
                 viewModel.setProfilePresentationVisible(false)
+                viewModel.setLocationPreparationActive(false)
                 viewModel.cancelSavedStatus()
                 viewModel.savedSearch.cancelCheck()
             }
@@ -154,10 +158,12 @@ fun LadiesApp(
         lifecycle.addObserver(observer)
         publishVisibility()
         viewModel.setProfilePresentationVisible(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        viewModel.setLocationPreparationActive(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         onDispose {
             lifecycle.removeObserver(observer)
             profileTouchGate.invalidate()
             viewModel.setProfilePresentationVisible(false)
+            viewModel.setLocationPreparationActive(false)
             viewModel.savedSearch.setVisible(false)
             viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
         }
@@ -284,7 +290,7 @@ fun LadiesApp(
                         val availabilityAction = search.discoveryAvailabilityAction(discovery.actionGeneration, actionSurface)
                         AvailabilityQuickChoice(search.headerAvailability(),
                             discoveryAvailabilityMatches(discovery, search, availabilityAction) &&
-                                !home.loading && !saved.busy && !map.resolving,
+                                !home.loading && !saved.busy,
                             availabilityAction, { viewModel.runDiscoveryAvailability(availabilityAction, it) })
                     }
                     if (route.root == RootDestination.Search && pane == SearchPane.Filters) {
@@ -416,7 +422,6 @@ fun LadiesApp(
                                     }
                                 },
                                 onRefresh = viewModel::refreshRenderedMap,
-                                onResolve = viewModel::resolveMapLocations,
                                 onCancel = viewModel::cancelRenderedMapResolution,
                                 membershipCurrent = map.membership != null &&
                                     map.membership == currentMapMembership(discovery, search),
