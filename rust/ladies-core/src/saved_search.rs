@@ -162,7 +162,7 @@ fn require_keys(value: &serde_json::Value, allowed: &[&str]) -> Result<(), CoreE
     Ok(())
 }
 
-fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreError> {
+pub(crate) fn decode_definition(definition: &str) -> Result<SavedSearchDefinition, CoreError> {
     let legacy: serde_json::Value = serde_json::from_str(definition)
         .map_err(|_| CoreError::InvalidInput("Malformed saved-search definition".into()))?;
     const QUERY_KEYS: &[&str] = &[
@@ -676,6 +676,8 @@ fn persist_results_with_control(
             "city":card.city,
             "profile_url":card.profile_url,
             "thumbnail_url":card.thumbnail_url,
+            "has_video":card.has_video,
+            "has_ai_content":card.has_ai_content,
         })
         .to_string();
         tx.execute(

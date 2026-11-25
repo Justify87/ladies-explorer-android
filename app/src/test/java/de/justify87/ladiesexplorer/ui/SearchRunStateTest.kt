@@ -41,6 +41,24 @@ class SearchRunStateTest {
 
     private fun card(id: Long) = fixtureCard(id)
 
+    @Test fun profileMatchContextUsesExecutedRunAndNotDraftOrUnrelatedProfile() {
+        val run = response(1).copy(local = defaultLocalVisibility().copy(videoOnly = true))
+        val old = SearchUiState().acceptRun(run, listOf(card(1)))
+        val changed = old.applyDraftChange(old.copy(city = "Dresden", local = old.local.copy(videoOnly = false)))
+        val key = executedProfileMatchContext(changed.response, 7L)
+        assertEquals(ProfileMatchContext.Run(1L, 7L, run.local), key)
+        assertEquals(key, executedProfileMatchContext(old.response, 7L))
+        assertFalse(key == executedProfileMatchContext(response(2), 7L))
+        assertFalse(key == executedProfileMatchContext(old.response, 8L))
+        assertEquals(null, executedProfileMatchContext(null, 7L))
+        assertEquals(null, executedProfileMatchContext(run, null))
+        assertEquals(null, profileMatchContextForOwner(null, 7L))
+        assertEquals(null, profileMatchContextForOwner(key, null))
+        assertEquals(ProfileMatchContext.Run(1L, 8L, run.local), profileMatchContextForOwner(key, 8L))
+        val saved = ProfileMatchContext.Saved("fixture", 7L)
+        assertEquals(ProfileMatchContext.Saved("fixture", 8L), profileMatchContextForOwner(saved, 8L))
+    }
+
     @Test fun draftChangesAndCancellationKeepExecutedResult() {
         val old = SearchUiState().acceptRun(response(1), listOf(card(1)))
         val changed = old.applyDraftChange(old.copy(city = "Dresden", radiusKm = 50u))

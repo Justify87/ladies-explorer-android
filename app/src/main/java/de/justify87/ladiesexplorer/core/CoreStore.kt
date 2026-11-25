@@ -241,8 +241,8 @@ class CoreStore(context: Context) {
             recorded("resolveMapLocations") { engine.resolveMapLocations(listingIds, runId, 15u, control) }
         }
 
-    suspend fun profileFacts(snapshotId: Long, filtersJson: String): ProfileFacts =
-        withContext(Dispatchers.IO) { engine.profileFacts(snapshotId, filtersJson) }
+    suspend fun profileFacts(snapshotId: Long, contextJson: String): ProfileFacts =
+        withContext(Dispatchers.IO) { engine.profileFacts(snapshotId, contextJson) }
 
     suspend fun personDetail(personId: Long): PersonDetail =
         withContext(Dispatchers.IO) { engine.personDetail(personId) }

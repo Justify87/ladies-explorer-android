@@ -139,6 +139,15 @@ pub(crate) struct EvidenceOption {
     pub aliases: Vec<String>,
 }
 
+pub(crate) fn canonical_category(value: &str) -> Option<&'static str> {
+    let key = value.trim().to_lowercase().replace(' ', "-");
+    catalog()
+        .categories
+        .get(&key)
+        .map(String::as_str)
+        .filter(|value| !value.is_empty())
+}
+
 pub(crate) fn evidence_option(group: &str, value: &str) -> EvidenceOption {
     let catalog = catalog();
     let group = catalog.groups.get(group).map_or(group, String::as_str);

@@ -151,13 +151,13 @@ internal class StandaloneProfileOperations<C : Any>(
         requestedListingId = null
         invalidateProfileRequest()
         _searchUiState.update {
-            it.copy(profileOpen = false, profileRead = null, profileRetryFromArchive = false, profileSourceRetryAllowed = false,
+            it.copy(profileOpen = false, profileRead = null, profileMatchContext = null, profileRetryFromArchive = false, profileSourceRetryAllowed = false,
                 loading = false, archiving = false, actionBusy = false, actionError = null,
                 error = null, retryProfileListingId = null, mediaArchive = null, mediaWarning = null)
         }
     }
 
-    fun loadProfile(listingId: Long, personId: Long, beforeOpen: () -> Unit) {
+    fun loadProfile(listingId: Long, personId: Long, matchContext: ProfileMatchContext? = null, beforeOpen: () -> Unit) {
         if (!presentationVisible) return
         invalidateProfileRequest()
         requestedListingId = listingId
@@ -167,7 +167,7 @@ internal class StandaloneProfileOperations<C : Any>(
         val requestId = profileGeneration.value
         _searchUiState.update {
             it.copy(profileOpen=true,profileSessionId=requestId,loading=true,
-                profileRead=null,profileRetryFromArchive=false,profileSourceRetryAllowed=false,error=null,actionBusy=false,actionError=null,
+                profileRead=null,profileMatchContext=matchContext,profileRetryFromArchive=false,profileSourceRetryAllowed=false,error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false,retryProfileListingId=null)
         }
         scope.launch {
