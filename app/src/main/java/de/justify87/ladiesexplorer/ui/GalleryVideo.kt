@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -162,6 +163,7 @@ internal fun GalleryVideo(
     controlsModifier: Modifier,
     onTargets: @Composable () -> Unit,
     onVideoSize: (IntSize) -> Unit = {},
+    prepared: PreparedMedium? = null,
 ) {
     val context = LocalContext.current
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
@@ -172,12 +174,13 @@ internal fun GalleryVideo(
     var retry by remember(mediaKey) { mutableIntStateOf(0) }
     var paused by remember(mediaKey) { mutableStateOf(false) }
     var file by remember(mediaKey, retry, visible) { mutableStateOf<LocalGalleryVideo?>(null) }
-    var failure by remember(mediaKey, retry, visible) { mutableStateOf(false) }
+    val unavailable = prepared == PreparedMedium.Unavailable
+    var failure by remember(mediaKey, retry, visible, unavailable) { mutableStateOf(unavailable && retry == 0) }
     var ready by remember(mediaKey, retry, playing) { mutableStateOf(false) }
     var videoSize by remember(item, retry) { mutableStateOf(IntSize.Zero) }
     SideEffect { onVideoSize(if (failure) IntSize.Zero else videoSize) }
-    LaunchedEffect(mediaKey, retry, visible) {
-        if (!visible) return@LaunchedEffect
+    LaunchedEffect(mediaKey, retry, visible, unavailable) {
+        if (!visible || (unavailable && retry == 0)) return@LaunchedEffect
         snapshotFlow { playbackAllowed }.first { it }
         // Transient action locks must not trigger another download.
         try {
@@ -195,7 +198,9 @@ internal fun GalleryVideo(
     val video = file
     if (playing && video != null && !failure) {
         key(video, retry) {
-            LocalMpvPlayer(video, paused, modifier, onLoading = { ready = false },
+            LocalMpvPlayer(video, paused, modifier.graphicsLayer {
+                alpha = if (ready && videoSize.width > 0 && videoSize.height > 0) 1f else 0f
+            }, onLoading = { ready = false },
                 onReady = { ready = true }, onFailure = { failure = true }, onSize = { videoSize = it })
         }
     } else Box(modifier)
