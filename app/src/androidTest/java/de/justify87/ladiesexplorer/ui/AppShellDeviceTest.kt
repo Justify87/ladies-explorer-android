@@ -13,6 +13,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import de.justify87.ladiesexplorer.core.Preference
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -109,6 +110,12 @@ class AppShellDeviceTest {
                             }
                             DiscoverModeSwitcher(DiscoverMode.Grid, {}, Modifier)
                             Spacer(Modifier.weight(1f))
+                            val deck = SwipeDeckToken(null, 1)
+                            val context = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1),
+                                SwipeActionToken(null, 1, 4, 1, 11, 1, Preference.NONE, false, emptyList()),
+                                true, true, AvailabilityMode.All, false, true)
+                            SwipeDecisionControls(context, "Fixture", {}, {}, {},
+                                Modifier.fillMaxWidth().height(if (scale < 1.3f) ShellMetrics.decisionRail else ShellMetrics.touch))
                             RootNavigation(RootDestination.Discover, true, false, {})
                         }
                     }
@@ -136,6 +143,19 @@ class AppShellDeviceTest {
             }
             assertTrue(back.bottom <= modes.first().top + 1f)
             assertTrue(modes.first().bottom <= destinations.first().top + 1f)
+            val labels = listOf("Rückgängig", "Nein", "Später", "Gefällt")
+            val decisions = labels.map { rule.onNodeWithContentDescription(it).fetchSemanticsNode().boundsInRoot }
+            val visible = labels.map { rule.onNodeWithTag("decision-surface-$it", useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot }
+            decisions.forEach { assertTrue(it.width >= min && it.height >= min) }
+            decisions.zipWithNext().forEach { (left, right) ->
+                assertTrue(left.right <= right.left + 1f)
+                assertEquals(left.top, right.top, 1f)
+            }
+            assertTrue(decisions.last().bottom <= destinations.first().top + 1f)
+            assertTrue(visible[0].width < visible[1].width && visible[2].width < visible[3].width)
+            assertEquals(visible[0].width, visible[2].width, 1f)
+            assertEquals(visible[1].width, visible[3].width, 1f)
         }
     }
 }

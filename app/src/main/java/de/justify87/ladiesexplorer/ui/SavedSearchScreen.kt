@@ -60,8 +60,8 @@ internal fun SavedSearchOverview(
             dismissButton = { TextButton(onClick = { controller.dismissDialog(SavedDialogAction(dialog, state.actionGeneration)) }, enabled = !state.blockingNavigation) { Text("Abbrechen") } },
         )
     }
-    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(ShellMetrics.inset),
+        verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { controller.showCreateDialog(SavedSearchPaneAction(state.actionGeneration)) }, enabled = actions) { Text("Filter speichern") }
@@ -146,8 +146,8 @@ internal fun SavedSearchResultsScreen(
     }
     val info = state.searches.firstOrNull { it.searchId == result.id }
     LazyVerticalGrid(columns = profileGridCells(), state = grid, modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        contentPadding = PaddingValues(ShellMetrics.inset), horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small),
+        verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
         item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
             ScreenGroup {
                 Text(info?.let(::savedDeltaText) ?: "${result.cards.size} geladene Treffer", style = MaterialTheme.typography.titleSmall)

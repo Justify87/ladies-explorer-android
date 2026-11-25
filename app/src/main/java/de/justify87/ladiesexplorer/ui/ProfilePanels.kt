@@ -264,7 +264,7 @@ internal fun ProfileFlow(
             val section = row.section
             val first = section != null && rows.getOrNull(index - 1)?.section != section
             val last = section != null && rows.getOrNull(index + 1)?.section != section
-            val gap = if (index == rows.lastIndex || section != null && !last) 0.dp else 12.dp
+            val gap = if (index == rows.lastIndex || section != null && !last) 0.dp else ShellMetrics.inset
             val horizontal = if (paddedDetails && row.key != "hero" && row.key != "media") ShellMetrics.inset else 0.dp
             Column(Modifier.fillMaxWidth().padding(horizontal = horizontal).padding(bottom = gap)) {
                 if (section != null) ProgressiveSectionFrame(first, last, header = first) { row.content() }
@@ -307,9 +307,9 @@ private fun FieldGrid(rows: List<Pair<String, String>>) {
         val columns = if (maxWidth < 340.dp || fontScale >= 1.5f) 1 else 2
         Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainer) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.padding(ShellMetrics.inset), verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
                 rows.chunked(columns).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ShellMetrics.inset)) {
                         row.forEach { (label, value) ->
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(label, style = MaterialTheme.typography.labelMedium,
@@ -440,7 +440,7 @@ private fun NotesPanel(
                     Text("Eigenen Entwurf behalten")
                 }
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Button(modifier = Modifier.heightIn(min = 48.dp), onClick = { actions.save(listingId, owner, draft) },
                     enabled = editable && state.canSave(draft)) { Text("Speichern") }
                 TextButton(modifier = Modifier.heightIn(min = 48.dp), onClick = { actions.useStored(owner, draft) },
@@ -466,7 +466,7 @@ private fun ComparisonDialog(panels: ProfilePanels, active: Boolean) {
         onDismissRequest = { panels.dismissComparison(generation) },
         title = { Text("Snapshot-Vergleich") },
         text = {
-            androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(ShellMetrics.inset)) {
                 if (panels.comparing) item { CircularProgressIndicator() }
                 panels.comparisonError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
                 panels.comparison?.let { differences ->
@@ -531,7 +531,7 @@ private fun ProfileFlowRows.profileContent(
     onConfirm: (Long) -> Unit,
 ) {
     item(key = "profile-facts", read = ProfileRowRead.Facts) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
             val listingFields = listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() })
             if (panels.facts == null && listingFields.isNotEmpty()) FieldGrid(listingFields)
             FactsContent(panels, actionsBusy, isCurrent) { facts ->
@@ -562,7 +562,7 @@ private fun ProfileFlowRows.profileContent(
                 FactsContent(panels, actionsBusy, isCurrent) { loaded ->
                     loaded.serviceRows().forEach { field ->
                         ProfileGroup(field.label) {
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(ShellMetrics.section),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 field.values.forEach { value -> Text(value, style = MaterialTheme.typography.bodyMedium) }
                             }

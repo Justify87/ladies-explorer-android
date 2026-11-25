@@ -30,8 +30,7 @@ internal object ShellMetrics {
     val small = 8.dp
     val inset = 12.dp
     val section = 16.dp
-    val large = 24.dp
-    val extraLarge = 32.dp
+    val icon = 24.dp
     val decisionRail = 72.dp
     val secondaryAction = 36.dp
 }
@@ -135,7 +134,7 @@ internal fun RootNavigation(
                             BadgedBox(badge = {
                                 if (destination == RootDestination.Search && unreadSearch) Badge()
                             }) {
-                                Icon(icon, contentDescription = if (destination == RootDestination.Search && unreadSearch)
+                                Icon(icon, modifier = Modifier.size(ShellMetrics.icon), contentDescription = if (destination == RootDestination.Search && unreadSearch)
                                     "Neue gespeicherte Suchergebnisse" else null, tint = iconColor)
                             }
                         }

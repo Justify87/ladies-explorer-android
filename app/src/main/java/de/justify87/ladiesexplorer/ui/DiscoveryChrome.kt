@@ -23,7 +23,7 @@ internal fun AvailabilityQuickChoice(availability: AvailabilityMode, enabled: Bo
     DisposableEffect(Unit) { onDispose { opened = false } }
     Box(modifier) {
         TextButton(onClick = { opened = true }, enabled = enabled,
-            modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus(),
+            modifier = Modifier.sizeIn(minWidth = ShellMetrics.touch, minHeight = ShellMetrics.touch).shellFocus(),
             contentPadding = PaddingValues(horizontal = ShellMetrics.small)) {
             Text(availability.label + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -46,7 +46,7 @@ internal fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode)
     modifier: Modifier = Modifier.padding(horizontal = ShellMetrics.inset)) {
     val scheme = MaterialTheme.colorScheme
     Surface(modifier.fillMaxWidth(), color = scheme.surfaceContainer, shape = MaterialTheme.shapes.small) {
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(0.dp),
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),
             verticalAlignment = Alignment.CenterVertically) {
             DiscoverMode.entries.forEach { mode ->
                 val selected = mode == active
@@ -55,11 +55,13 @@ internal fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode)
                     color = Color.Transparent,
                     shape = MaterialTheme.shapes.small) {
                     Box(Modifier.fillMaxSize().padding(ShellMetrics.gap), contentAlignment = Alignment.Center) {
-                        Surface(color = if (selected) scheme.primaryContainer else Color.Transparent,
+                        Surface(Modifier.fillMaxSize(), color = if (selected) scheme.primaryContainer else Color.Transparent,
                             shape = MaterialTheme.shapes.extraSmall) {
-                            Text(mode.title, Modifier.fillMaxWidth().padding(vertical = ShellMetrics.small),
-                                textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge,
-                                color = if (selected) scheme.onPrimaryContainer else scheme.onSurface)
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(mode.title, Modifier.padding(ShellMetrics.gap),
+                                    textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge,
+                                    color = if (selected) scheme.onPrimaryContainer else scheme.onSurface)
+                            }
                         }
                     }
                 }

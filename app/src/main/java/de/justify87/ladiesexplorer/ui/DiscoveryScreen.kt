@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -388,7 +389,7 @@ internal fun DiscoverScreen(
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
                     }
                     item(key = "hero") {
-                        Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                        Box(Modifier.fillMaxWidth().padding(horizontal = ShellMetrics.inset)) {
                             ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
                             onSwipe = if (actions) ({ decision ->
@@ -416,7 +417,7 @@ internal fun DiscoverScreen(
             val oldMedia = old?.media
             if (old != null && oldMedia != null && old.size.width > 0 && old.size.height > 0) {
                 val density = LocalDensity.current
-                Box(Modifier.offset { IntOffset(12.dp.roundToPx(), old.top) }
+                Box(Modifier.offset { IntOffset(ShellMetrics.inset.roundToPx(), old.top) }
                     .size(with(density) { old.size.width.toDp() }, with(density) { old.size.height.toDp() })
                     .graphicsLayer {
                         translationX = motion.value
@@ -471,16 +472,16 @@ internal fun SwipeDecisionControls(context: SwipeControlsContext, profileTitle: 
         FlowRow(Modifier.fillMaxSize().padding(horizontal = inset).semantics {
             contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen"
         }, horizontalArrangement = Arrangement.Center, verticalArrangement = Arrangement.Center,
-            maxItemsInEachRow = 4) {
-            val actionWidth = if (maxWidth >= 192.dp) (maxWidth - inset * 2) / 4 else ShellMetrics.touch
+            maxItemsInEachRow = ((maxWidth - inset * 2) / ShellMetrics.touch).toInt().coerceIn(1, 4)) {
+            val actionCell = Modifier.weight(1f).widthIn(min = ShellMetrics.touch)
             DecisionAction("Rückgängig", Icons.Default.Undo, context.deckEnabled && context.canUndo, compact,
-                scheme.surfaceContainer, scheme.onSurfaceVariant, false, actionWidth, onUndo)
+                scheme.surfaceContainer, scheme.onSurfaceVariant, false, actionCell, onUndo)
             DecisionAction("Nein", Icons.Default.Close, context.profile != null, compact,
-                scheme.errorContainer, scheme.onErrorContainer, true, actionWidth) { onChoose(Preference.DISLIKE) }
+                scheme.errorContainer, scheme.onErrorContainer, true, actionCell) { onChoose(Preference.DISLIKE) }
             DecisionAction("Später", Icons.Default.Schedule, context.deckEnabled && context.card != null, compact,
-                scheme.surfaceContainer, scheme.onSurfaceVariant, false, actionWidth, onSkip)
+                scheme.surfaceContainer, scheme.onSurfaceVariant, false, actionCell, onSkip)
             DecisionAction("Gefällt", Icons.Default.Favorite, context.profile != null, compact,
-                scheme.tertiaryContainer, scheme.onTertiaryContainer, true, actionWidth) { onChoose(Preference.LIKE) }
+                scheme.tertiaryContainer, scheme.onTertiaryContainer, true, actionCell) { onChoose(Preference.LIKE) }
         }
     }
 }
@@ -488,11 +489,12 @@ internal fun SwipeDecisionControls(context: SwipeControlsContext, profileTitle: 
 @Composable
 private fun DecisionAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector,
     enabled: Boolean, compact: Boolean, background: Color, foreground: Color,
-    primary: Boolean, width: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
-    Column(Modifier.width(width), horizontalAlignment = Alignment.CenterHorizontally) {
+    primary: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(onClick = onClick, enabled = enabled,
             modifier = Modifier.size(ShellMetrics.touch).shellFocus()) {
             Box(Modifier.size(if (primary) ShellMetrics.touch else ShellMetrics.secondaryAction)
+                .testTag("decision-surface-$label")
                 .background(if (enabled) background else MaterialTheme.colorScheme.surfaceContainer,
                     MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = label, modifier = Modifier.size(if (primary) 24.dp else 20.dp),
