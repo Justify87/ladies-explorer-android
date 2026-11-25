@@ -14,7 +14,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M10.3 / G10-Pure — Integriertes UI-Review und Abnahme
 
-**Status:** REVIEW — [PR #117](https://github.com/Justify87/ladies-explorer-android/pull/117), Branch `fix/m10-3-pure-integration`. Integrierter Quellreview und responsive Korrekturen dokumentiert; vollständiges CI-Gate des finalen PR-Stands noch zu verifizieren. Nächster Schritt: CI-Befunde beheben, Gate und Mergefähigkeit bestätigen; Geräteprüfungen gemäß Merge-Regel, keine tatsächliche Ausführung behauptet.
+**Status:** REVIEW — [PR #117](https://github.com/Justify87/ladies-explorer-android/pull/117), Branch `fix/m10-3-pure-integration`. Integrierter Abschlussreview und responsive Korrekturen dokumentiert; [vollständiges CI-Gate #863](https://github.com/Justify87/ladies-explorer-android/actions/runs/45627705552) für den [geprüften Implementierungsstand](https://github.com/Justify87/ladies-explorer-android/commit/dc202ac379a064041fd9e89bee4388c3dbdf3215) erfolgreich. Keine weiteren konkreten mergeverhindernden In-Scope-Befunde im Quellreview. Nach diesem reinen Belegupdate das Gate des PR-Heads bestätigen; anschließend ausdrückliche Mergefreigabe. Geräteprüfungen gemäß Merge-Regel; keine tatsächliche Instrumentierungs-, TalkBack- oder Screenshot-Ausführung belegt.
 
 **Abhängigkeit:** M10.1 und M10.2 integriert. Gate-ID G10-Pure von historischem G10 (M05.10) unterscheiden.
 
