@@ -413,11 +413,8 @@ fun LadiesApp(
                             key(search.response?.searchRunId) {
                                 MapScreen(
                                     state = map,
-                                    searchStatus = {
-                                        if (hasDiscoverySearchStatus(search)) DiscoverySearchRunStatus(search) {
-                                            viewModel.cancelActiveSearch(cancelAction)
-                                        }
-                                    },
+                                    search = search,
+                                    onCancelSearch = { viewModel.cancelActiveSearch(cancelAction) },
                                     onCancel = viewModel::cancelRenderedMapResolution,
                                     membershipCurrent = map.membership != null &&
                                         map.membership == currentMapMembership(discovery, search),

@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -89,7 +90,8 @@ internal fun mapInitialFitReady(overview: MapOverview?, resolving: Boolean): Boo
 @Composable
 internal fun MapScreen(
     state: MapUiState,
-    searchStatus: @Composable () -> Unit,
+    search: SearchUiState,
+    onCancelSearch: () -> Unit,
     onCancel: (MapControlAction) -> Unit,
     membershipCurrent: Boolean,
     generation: Long,
@@ -129,14 +131,33 @@ internal fun MapScreen(
         }
     }
 
-    Column(modifier.fillMaxSize()) {
-        DiscoverModeSwitcher(DiscoverMode.Map, { mode ->
-            cameraReader?.invoke()?.let { camera = it }
-            onMode(mode)
-        }, Modifier.padding(horizontal = shellContentInset()))
-        Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) { searchStatus() }
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-            val panelHeight = maxHeight * .65f
+    val visibleState = if (membershipCurrent) state else state.copy(overview = null, loading = state.error == null)
+    val searchWarning = search.error != null || search.response?.let { it.partial || !it.radiusVerified } == true
+    val warning = searchWarning || visibleState.error != null || tileState == MapTileState.Failed
+    val summary = when {
+        search.error != null -> "Suchfehler"
+        visibleState.error != null || tileState == MapTileState.Failed -> "Kartenfehler"
+        search.response?.let { it.partial || !it.radiusVerified } == true -> "Teilergebnis / Radius"
+        search.loading -> "Suche läuft"
+        visibleState.resolving -> "Standortaufbereitung"
+        visibleState.loading -> "Kartenbestand wird geladen"
+        else -> "Profile und Status"
+    }
+    DiscoveryMapLayout(
+        modifier = modifier,
+        hasPanel = hasDiscoverySearchStatus(search) || hasMapDetails(visibleState, tileState, active),
+        statusLabel = summary,
+        warning = warning,
+        modeSwitcher = {
+            DiscoverModeSwitcher(DiscoverMode.Map, { mode ->
+                cameraReader?.invoke()?.let { camera = it }
+                onMode(mode)
+            }, Modifier)
+        },
+        searchStatus = {
+            if (hasDiscoverySearchStatus(search)) DiscoverySearchRunStatus(search, onCancelSearch)
+        },
+        mapContent = {
             key(mapAttempt, marker, markerInk, selectionRing, cityMarker) {
                 NativeProfileMap(
                     points = points,
@@ -171,16 +192,18 @@ internal fun MapScreen(
                 Text("GeoNames · CC BY 4.0", Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
             }
+        },
+        details = { panelModifier, closePanel ->
             MapDetails(
-                state = if (membershipCurrent) state else state.copy(overview = null, loading = state.error == null),
+                state = visibleState,
                 tileState = tileState,
                 active = active,
                 selectionCount = selection.size,
                 profileEnabled = membershipCurrent && profileEnabled && !state.loading,
                 onCancel = { onCancel(controls) },
                 onRetryTiles = { tileState = MapTileState.Loading; mapAttempt++ },
-                onPickAll = { picker = MapPickerScope.All },
-                onPickLocation = { picker = MapPickerScope.Location },
+                onPickAll = { closePanel(); picker = MapPickerScope.All },
+                onPickLocation = { closePanel(); picker = MapPickerScope.Location },
                 onClear = { selectedListingId = null; selectedOwnerId = null; focusRequest = null },
                 onOpen = { person ->
                     if (overview != null) {
@@ -188,12 +211,10 @@ internal fun MapScreen(
                         onProfile(MapProfileOpenAction(overview, person, generation))
                     }
                 },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(start = 8.dp, end = 8.dp, bottom = 48.dp)
-                    .widthIn(max = 420.dp).fillMaxWidth().heightIn(max = panelHeight)
-                    .verticalScroll(rememberScrollState()),
+                modifier = panelModifier,
             )
-        }
-    }
+        },
+    )
 
     picker?.takeIf { it == MapPickerScope.All || selection.isNotEmpty() }?.let { scope ->
         val choices = if (scope == MapPickerScope.All) points else selection
@@ -214,6 +235,72 @@ internal fun MapScreen(
     }
 }
 
+// Long status messages must not consume the map's viewport. In a short window,
+// the same controls remain reachable in a scrollable dialog without covering the map.
+@Composable
+internal fun DiscoveryMapLayout(
+    modifier: Modifier = Modifier,
+    hasPanel: Boolean,
+    statusLabel: String,
+    warning: Boolean,
+    modeSwitcher: @Composable () -> Unit,
+    searchStatus: @Composable () -> Unit,
+    mapContent: @Composable BoxScope.() -> Unit,
+    details: @Composable (Modifier, () -> Unit) -> Unit,
+) {
+    var panelOpen by remember { mutableStateOf(false) }
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val compact = maxHeight < 360.dp || (maxHeight < 460.dp && LocalDensity.current.fontScale > 1.3f)
+        val statusLimit = maxHeight * .25f
+        val inset = shellContentInset()
+        LaunchedEffect(compact, hasPanel) {
+            if (!compact || !hasPanel) panelOpen = false
+        }
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = inset)) { modeSwitcher() }
+            if (compact) {
+                if (hasPanel) TextButton(onClick = { panelOpen = true },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch).shellFocus()) {
+                    Text(statusLabel, color = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                }
+            } else {
+                Box(Modifier.fillMaxWidth().padding(horizontal = inset).heightIn(max = statusLimit)
+                    .verticalScroll(rememberScrollState())) { searchStatus() }
+            }
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                mapContent()
+                if (!compact) details(
+                    Modifier.align(Alignment.BottomCenter).padding(start = ShellMetrics.small,
+                        end = ShellMetrics.small, bottom = ShellMetrics.touch)
+                        .widthIn(max = 420.dp).fillMaxWidth().heightIn(max = maxHeight * .65f)
+                        .verticalScroll(rememberScrollState()),
+                    {},
+                )
+            }
+        }
+        if (compact && hasPanel && panelOpen) {
+            AlertDialog(onDismissRequest = { panelOpen = false },
+                title = { Text("Kartenstatus und Profile") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
+                        searchStatus()
+                        details(Modifier.fillMaxWidth()) { panelOpen = false }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { panelOpen = false }, modifier = Modifier.heightIn(min = ShellMetrics.touch)) {
+                        Text("Schließen")
+                    }
+                })
+        }
+    }
+}
+
+private fun hasMapDetails(state: MapUiState, tileState: MapTileState, active: MapProfile?) =
+    active != null || state.error != null || state.resolving || state.loading ||
+        tileState == MapTileState.Failed || state.overview != null
+
 @Composable
 internal fun MapDetails(
     state: MapUiState,
@@ -231,8 +318,7 @@ internal fun MapDetails(
 ) {
     val overview = state.overview
     val scheme = MaterialTheme.colorScheme
-    if (active == null && state.error == null && !state.resolving && !state.loading &&
-        tileState != MapTileState.Failed && overview == null) return
+    if (!hasMapDetails(state, tileState, active)) return
     Surface(modifier, shape = MaterialTheme.shapes.medium, color = scheme.surfaceContainerHigh) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (state.resolving || state.loading) {
@@ -259,7 +345,7 @@ internal fun MapDetails(
             if (state.resolving) {
                 TextButton(onClick = onCancel, enabled = !state.cancelling,
                     modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
-                    Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen")
+                    Text(if (state.cancelling) "Wird abgebrochen …" else "Standortaufbereitung abbrechen")
                 }
             }
             if (overview != null && overview.profiles.isEmpty() && !state.loading) {

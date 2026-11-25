@@ -1,7 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
@@ -9,6 +8,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -19,6 +22,7 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import de.justify87.ladiesexplorer.core.MapOverview
 import de.justify87.ladiesexplorer.core.MapProfile
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -52,7 +56,7 @@ class MapDesignDeviceTest {
         rule.onNodeWithText("Stadtbereich · Leipzig").assertExists()
         rule.onNodeWithText("Aktualisieren").assertDoesNotExist()
         rule.onNodeWithText("2 von 3 Profilen kartiert · 1 ohne Position").assertDoesNotExist()
-        rule.onNodeWithText("Abbrechen").performScrollTo().performClick()
+        rule.onNodeWithText("Standortaufbereitung abbrechen").performScrollTo().performClick()
         rule.onNodeWithText("Wird abgebrochen …").assertIsNotEnabled()
         rule.onNodeWithText("2 Profile am ungefähren Ort").performScrollTo().performClick()
         rule.onNodeWithText("Profil öffnen").performScrollTo().performClick()
@@ -136,5 +140,64 @@ class MapDesignDeviceTest {
                 } == true
             }
         }
+    }
+
+    @Test fun shortMapKeepsViewportAndAllStatusActionsReachable() {
+        val profile = MapProfile(1L, 1L, "Fixture", "Leipzig", "Leipzig", 51.34, 12.37, "CITY", true, null)
+        val actions = mutableListOf<String>()
+        var short by mutableStateOf(true)
+        var dark by mutableStateOf(true)
+        var pixelsPerDp = 1f
+        rule.setContent {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val outer = LocalDensity.current
+                val fitted = minOf(outer.density, maxWidth.value * outer.density / 320f,
+                    maxHeight.value * outer.density / 560f)
+                CompositionLocalProvider(LocalDensity provides Density(fitted, 2f)) {
+                    pixelsPerDp = fitted
+                    LadiesTheme(darkTheme = dark) {
+                        Box(Modifier.size(320.dp, if (short) 260.dp else 560.dp)) {
+                            DiscoveryMapLayout(hasPanel = true, statusLabel = "Suchfehler", warning = true,
+                                modeSwitcher = { DiscoverModeSwitcher(DiscoverMode.Map, {}, Modifier) },
+                                searchStatus = {
+                                    DiscoverySearchRunStatus(
+                                        SearchUiState(loading = true, error = "Lange synthetische Suchmeldung ".repeat(35)),
+                                        onCancel = { actions.add("search") }
+                                    )
+                                },
+                                mapContent = { Box(Modifier.fillMaxSize().testTag("map-viewport")) },
+                                details = { modifier, close ->
+                                    MapDetails(MapUiState(overview = MapOverview(listOf(profile), 1u, 0u, 0u), resolving = true),
+                                        MapTileState.Failed, profile, 1, true,
+                                        onCancel = { actions.add("cancel") },
+                                        onRetryTiles = { actions.add("tiles") },
+                                        onPickAll = { actions.add("all"); close() },
+                                        onPickLocation = {}, onClear = {},
+                                        onOpen = { actions.add("profile"); close() }, modifier = modifier)
+                                })
+                        }
+                    }
+                }
+            }
+        }
+        val viewport = rule.onNodeWithTag("map-viewport")
+        val openPanel = rule.onNodeWithText("Suchfehler")
+        openPanel.assertIsDisplayed()
+        assertTrue(viewport.fetchSemanticsNode().boundsInRoot.height >= rule.runOnIdle { 48f * pixelsPerDp - 1f })
+        rule.onNodeWithText("Karte").assertIsSelected()
+        rule.onNodeWithText("Profil öffnen").assertDoesNotExist()
+        openPanel.performClick()
+        rule.onNodeWithText("Abbrechen").performScrollTo().performClick()
+        rule.onNodeWithText("Karte erneut laden").performScrollTo().performClick()
+        rule.onNodeWithText("Standortaufbereitung abbrechen").performScrollTo().performClick()
+        rule.onNodeWithText("Kartierte Profile auswählen").performScrollTo().performClick()
+        rule.onNodeWithText("Kartenstatus und Profile").assertDoesNotExist()
+        openPanel.performClick()
+        rule.onNodeWithText("Profil öffnen").performScrollTo().performClick()
+        rule.runOnIdle { assertEquals(listOf("search", "tiles", "cancel", "all", "profile"), actions) }
+        rule.runOnIdle { short = false; dark = false }
+        openPanel.assertDoesNotExist()
+        assertTrue(viewport.fetchSemanticsNode().boundsInRoot.height >= rule.runOnIdle { 160f * pixelsPerDp - 1f })
+        rule.onNodeWithText("Kartierte Profile auswählen").performScrollTo().assertIsDisplayed()
     }
 }
