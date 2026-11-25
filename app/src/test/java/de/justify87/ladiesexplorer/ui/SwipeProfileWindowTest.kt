@@ -14,7 +14,7 @@ class SwipeProfileWindowTest {
         val entries = mutableMapOf<Long, ProfileReadModel>()
         val cache = SwipeProfileWindow(entries)
         val cards = (1L..250L).map { fixtureCard(it) }
-        val window = listOf(cards.first()) + prefetchCards(cards)
+        val window = swipeReadWindow(cards)
         cache.retain(window)
         cache.readCurrent(window.first()) { fixtureSwipe(1L, 1L) }
         window.drop(1).forEach { card -> cache.readCurrent(card) { fixtureSwipe(card.listingId, card.personId) } }
