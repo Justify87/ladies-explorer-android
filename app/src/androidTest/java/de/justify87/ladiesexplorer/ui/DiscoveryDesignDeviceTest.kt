@@ -87,10 +87,15 @@ class DiscoveryDesignDeviceTest {
                                 }
                                 item("hero") {
                                     Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) {
-                                        ProfileMediaHero(model.media, presentation.heroHeight, Modifier.testTag("hero"),
+                                        if (awaitDiscoveryContext(measuredContext, list.firstVisibleItemIndex))
+                                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
+                                        else ProfileMediaHero(model.media, presentation.heroHeight, Modifier.testTag("hero"),
                                             actionsEnabled = true, isCurrent = { true }, selection = mediaSelection,
                                             favorite = false, onFavorite = {}, actionToken = token,
-                                            compact = presentation.budget.compactGallery, onVisual = { visual = it })
+                                            compact = presentation.budget.compactGallery, onVisual = {
+                                                if (it != null) assertTrue(measuredContext > 0 || list.firstVisibleItemIndex > 0)
+                                                visual = it
+                                            })
                                     }
                                 }
                             }

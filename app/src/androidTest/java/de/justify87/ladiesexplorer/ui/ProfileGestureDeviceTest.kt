@@ -203,6 +203,61 @@ class ProfileGestureDeviceTest {
         }
     }
 
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun fittedPhotoKeepsSideTapsAndFlightReusesTheSuccessfulFallback() {
+        val file = File.createTempFile("synthetic-wide-", ".png", rule.activity.cacheDir)
+        val missing = File(file.parentFile, file.name + ".missing")
+        val bitmap = Bitmap.createBitmap(640, 240, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.BLUE)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        try {
+            // The alternate model is a local file URI: no real network or test server.
+            val first = ProfileMediaItem("IMAGE", android.net.Uri.fromFile(file).toString(), missing.absolutePath, 0u)
+            val second = ProfileMediaItem("IMAGE", "", file.absolutePath, 1u)
+            var visual by mutableStateOf<HeroVisual?>(null)
+            var outgoing by mutableStateOf<HeroVisual?>(null)
+            var favorites by mutableIntStateOf(0)
+            val decisions = mutableListOf<Preference>()
+            rule.setContent {
+                LadiesTheme {
+                    Box(Modifier.requiredSize(320.dp, 360.dp)) {
+                        val flight = outgoing
+                        if (flight != null) SwipeFlightImage(flight.painter, flight.geometry.cropped,
+                            Modifier.fillMaxSize().testTag("outgoing"))
+                        else ProfileMediaHero(listOf(first, second), 360.dp, Modifier.testTag("hero"),
+                            actionsEnabled = true, isCurrent = { true }, selection = remember { ProfileMediaSelection() },
+                            actionToken = null, compact = false, favorite = favorites % 2 == 1,
+                            onFavorite = { favorites++ }, onSwipe = { decisions.add(it) }, onVisual = { visual = it })
+                    }
+                }
+            }
+            rule.waitUntil(10_000) { visual?.media == first }
+            val hero = rule.onNodeWithTag("hero")
+            assertFalse(rule.runOnIdle { requireNotNull(visual).geometry.cropped })
+            // The old full-width reserved strip swallowed this tap above the fitted image.
+            hero.performTouchInput { click(Offset(width * .8f, height * .1f)) }
+            rule.waitUntil(10_000) { visual?.media == second }
+            hero.performTouchInput { click(Offset(width * .2f, height * .1f)) }
+            rule.waitUntil(10_000) { visual?.media == first }
+            rule.onNodeWithContentDescription("Als Favorit speichern").performTouchInput { click(center) }
+            rule.runOnIdle {
+                assertEquals(first, visual?.media)
+                assertEquals(1, favorites)
+                assertTrue(decisions.isEmpty())
+                assertTrue(file.delete())
+                outgoing = requireNotNull(visual)
+            }
+            val pixels = rule.onNodeWithTag("outgoing").captureToImage().toPixelMap()
+            val center = pixels[pixels.width / 2, pixels.height / 2]
+            assertEquals(1f, center.blue, .05f)
+            assertEquals(0f, center.red, .05f)
+            assertEquals(0f, center.green, .05f)
+        } finally {
+            file.delete()
+        }
+    }
+
     @Test fun realRailTargetCannotCommitFromSecondFingerInEitherOrder() {
         var decisions = 0
         var railClicks = 0

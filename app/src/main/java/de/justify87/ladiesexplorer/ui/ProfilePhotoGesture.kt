@@ -152,7 +152,7 @@ internal fun Modifier.admitProfileTouches(gate: ProfileTouchGate, eligible: () -
 
 internal data class PhotoHitGeometry(val photo: Rect, val rootOrigin: Offset, val gallery: List<Rect>,
     val exclusive: Rect? = null) {
-    fun galleryAt(position: Offset): Boolean = gallery.any { it.contains(position) }
+    fun galleryAt(position: Offset): Boolean = exclusive?.contains(position) != true && gallery.any { it.contains(position) }
 }
 
 internal data class PhotoHitModifiers(val photo: Modifier, val previous: Modifier, val next: Modifier,
