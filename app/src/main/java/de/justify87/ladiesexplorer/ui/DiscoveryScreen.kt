@@ -116,7 +116,9 @@ internal fun DiscoverScreen(
     val cardKey = card?.let { it.listingId to it.personId }
     val prepared = preparation.displayed(cardKey)?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
     val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
-        ?.let { decks[it] }?.takeIf { prepared?.model == it }
+        ?.let { decks[it] }?.takeIf { model -> prepared?.model?.let { shown ->
+            shown.local == model.local && shown.fromArchive == model.fromArchive && shown.warning == model.warning
+        } == true }
     val displayed = prepared?.model
     val readError = cardKey?.let { failures[it] }?.takeIf { it.current }?.message
     val projectedToken = state.swipeToken(current)
@@ -179,52 +181,52 @@ internal fun DiscoverScreen(
                 videoFiles.retainPins(preparation, preparation.pinnedVideos())
                 if (!latestReadVisible || latestWindow.none { sameSwipeCard(it, target) }) continue
                 val work = launch(start = CoroutineStart.LAZY) {
-                val model = decks[target]
-                if (model == null) {
-                    val live = latestReadState
-                    val currentRole = sameSwipeCard(target, latestWindow.firstOrNull())
-                    val policy = swipeReadPolicy(currentRole, live.activeRunId, target.listingId,
-                        localOnly = localRetries[key] == true || decks.requiresLocal(target) ||
-                            target.listingId in live.localProfileStrictIds,
-                        preferLocal = target.listingId in live.localProfileReloadIds ||
-                            live.swipeRestore?.let { it.listingId == target.listingId &&
-                                it.ownerId == target.personId && it.runId == live.activeRunId } == true)
-                    val control = RequestControl()
-                    activeRead = key to control
-                    try {
-                        val loaded = decks.readCurrent(target) { invalidateOtherProfiles ->
-                            core.readSwipeProfile(target.listingId, control,
-                                refresh = policy.refresh, allowNetwork = policy.allowNetwork,
-                                onSourceRead = {
-                                    invalidateOtherProfiles()
-                                    onSnapshotChanged(decks.closed)
-                                })
+                    val model = decks[target]
+                    if (model == null) {
+                        val live = latestReadState
+                        val currentRole = sameSwipeCard(target, latestWindow.firstOrNull())
+                        val policy = swipeReadPolicy(currentRole, live.activeRunId, target.listingId,
+                            localOnly = localRetries[key] == true || decks.requiresLocal(target) ||
+                                target.listingId in live.localProfileStrictIds,
+                            preferLocal = target.listingId in live.localProfileReloadIds ||
+                                live.swipeRestore?.let { it.listingId == target.listingId &&
+                                    it.ownerId == target.personId && it.runId == live.activeRunId } == true)
+                        val control = RequestControl()
+                        activeRead = key to control
+                        try {
+                            val loaded = decks.readCurrent(target) { invalidateOtherProfiles ->
+                                core.readSwipeProfile(target.listingId, control,
+                                    refresh = policy.refresh, allowNetwork = policy.allowNetwork,
+                                    onSourceRead = {
+                                        invalidateOtherProfiles()
+                                        onSnapshotChanged(decks.closed)
+                                    })
+                            }
+                            if (loaded != null) {
+                                failures.remove(key)
+                                localRetries.remove(key)
+                            }
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (failure: Exception) {
+                            if (latestWindow.any { sameSwipeCard(it, target) }) {
+                                if (failure is LocalProfileReadFailure) localRetries[key] = true
+                                failures[key] = SwipeReadFailure(currentRole && sameSwipeCard(target, latestWindow.firstOrNull()),
+                                    failure.message ?: "Profil konnte nicht geladen werden")
+                            }
+                        } finally {
+                            activeRead = null
+                            control.cancel()
                         }
-                        if (loaded != null) {
-                            failures.remove(key)
-                            localRetries.remove(key)
-                        }
-                    } catch (cancel: CancellationException) {
-                        throw cancel
-                    } catch (failure: Exception) {
-                        if (latestWindow.any { sameSwipeCard(it, target) }) {
-                            if (failure is LocalProfileReadFailure) localRetries[key] = true
-                            failures[key] = SwipeReadFailure(currentRole && sameSwipeCard(target, latestWindow.firstOrNull()),
-                                failure.message ?: "Profil konnte nicht geladen werden")
-                        }
-                    } finally {
-                        activeRead = null
-                        control.cancel()
+                    } else {
+                        val filters = filtersFor(target)
+                        val size = heroSize
+                        preparation.step(model, filters, size,
+                            { core.prepareProfilePanels(model, filters) },
+                            { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation) },
+                            accept = { decks[target] == model && latestWindow.any { sameSwipeCard(it, target) } &&
+                                size == heroSize && filters == filtersFor(target) })
                     }
-                } else {
-                    val filters = filtersFor(target)
-                    val size = heroSize
-                    preparation.step(model, filters, size,
-                        { core.prepareProfilePanels(model, filters) },
-                        { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation) },
-                        accept = { decks[target] == model && latestWindow.any { sameSwipeCard(it, target) } &&
-                            size == heroSize && filters == filtersFor(target) })
-                }
                 }
                 activeWork = key to work
                 work.start()
@@ -275,8 +277,9 @@ internal fun DiscoverScreen(
         var visual by remember(profile?.media?.map { it.presentationKey() }) { mutableStateOf<HeroVisual?>(null) }
         var heroCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         var bodyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
-        var fullImage by remember(token) { mutableStateOf<ProfileMediaItem?>(null) }
-        fullImage?.takeIf { token != null }?.let { ProfileImageDialog(it) { fullImage = null } }
+        var fullImage by remember(cardIdentity) { mutableStateOf<ProfileMediaItem?>(null) }
+        fullImage?.takeIf { item -> profile?.media?.any { it.presentationKey() == item.presentationKey() } == true }
+            ?.let { ProfileImageDialog(it) { fullImage = null } }
         val identity = profile?.let { heroIdentity(it.profile, it.identity, it.fromArchive,
             it.media.any { medium -> medium.kind == "VIDEO" } || it.identity.hasVideo,
             it.person.preference, it.person.favorite) }
