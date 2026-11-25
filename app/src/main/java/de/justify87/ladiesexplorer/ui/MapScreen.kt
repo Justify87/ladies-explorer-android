@@ -39,6 +39,7 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
@@ -56,9 +57,9 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 
 private const val MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"
-private const val MAP_SOURCE = "ladies-coarse-profiles"
-private const val MAP_CLUSTERS = "ladies-clusters"
-private const val MAP_SINGLE = "ladies-single"
+internal const val MAP_SOURCE = "ladies-coarse-profiles"
+internal const val MAP_CLUSTERS = "ladies-clusters"
+internal const val MAP_SINGLE = "ladies-single"
 
 internal enum class MapTileState { Loading, Ready, Failed }
 private enum class MapPickerScope { All, Location }
@@ -339,6 +340,53 @@ internal fun asFeatures(points: List<MapProfile>, selectedListingId: Long?): Fea
     return FeatureCollection.fromFeatures(features.toTypedArray())
 }
 
+internal fun installMapProfileLayers(
+    style: Style,
+    features: FeatureCollection,
+    marker: Int,
+    markerInk: Int,
+    selectionRing: Int,
+    cityMarker: Int,
+) {
+    val source = GeoJsonSource(
+        MAP_SOURCE,
+        features,
+        GeoJsonOptions().withCluster(true).withClusterRadius(48).withClusterMaxZoom(15),
+    )
+    style.addSource(source)
+    style.addLayer(
+        CircleLayer(MAP_CLUSTERS, MAP_SOURCE)
+            .withFilter(Expression.has("point_count"))
+            .withProperties(circleColor(marker), circleRadius(24f),
+                circleStrokeWidth(2f), circleStrokeColor(markerInk)),
+    )
+    style.addLayer(
+        SymbolLayer("ladies-cluster-count", MAP_SOURCE)
+            .withFilter(Expression.has("point_count"))
+            .withProperties(
+                textField(Expression.get("point_count_abbreviated")),
+                textColor(markerInk), textSize(14f),
+            ),
+    )
+    val selected = Expression.eq(Expression.get("selected"), Expression.literal(true))
+    style.addLayer(
+        CircleLayer(MAP_SINGLE, MAP_SOURCE)
+            .withFilter(Expression.not(Expression.has("point_count")))
+            .withProperties(
+                circleColor(Expression.switchCase(
+                    Expression.eq(Expression.get("precision"), Expression.literal("POSTAL")),
+                    Expression.color(marker), Expression.color(cityMarker))),
+                circleRadius(Expression.switchCase(
+                    Expression.eq(Expression.get("precision"), Expression.literal("POSTAL")),
+                    Expression.literal(24f), Expression.literal(28f))),
+                circleStrokeWidth(Expression.switchCase(selected,
+                    Expression.literal(5f), Expression.literal(2f))),
+                circleStrokeColor(Expression.switchCase(selected,
+                    Expression.color(selectionRing), Expression.color(markerInk))),
+            ),
+    )
+}
+
 @Composable
 private fun NativeProfileMap(
     points: List<MapProfile>,
@@ -388,43 +436,8 @@ private fun NativeProfileMap(
                         ready.uiSettings.isLogoEnabled = false
                         ready.setStyle(MAP_STYLE) { style ->
                             if (!mapView.released) {
-                                val source = GeoJsonSource(
-                                    MAP_SOURCE,
-                                    asFeatures(currentPoints, currentSelection),
-                                    GeoJsonOptions().withCluster(true).withClusterRadius(48).withClusterMaxZoom(15),
-                                )
-                                style.addSource(source)
-                                style.addLayer(
-                                    CircleLayer(MAP_CLUSTERS, MAP_SOURCE)
-                                        .withFilter(Expression.has("point_count"))
-                                        .withProperties(circleColor(marker), circleRadius(24f),
-                                            circleStrokeWidth(2f), circleStrokeColor(markerInk)),
-                                )
-                                style.addLayer(
-                                    SymbolLayer("ladies-cluster-count", MAP_SOURCE)
-                                        .withFilter(Expression.has("point_count"))
-                                        .withProperties(
-                                            textField(Expression.get("point_count_abbreviated")),
-                                            textColor(markerInk), textSize(14f),
-                                        ),
-                                )
-                                val selected = Expression.eq(Expression.get("selected"), Expression.literal(true))
-                                style.addLayer(
-                                    CircleLayer(MAP_SINGLE, MAP_SOURCE)
-                                        .withFilter(Expression.not(Expression.has("point_count")))
-                                        .withProperties(
-                                            circleColor(Expression.switchCase(
-                                                Expression.eq(Expression.get("precision"), Expression.literal("POSTAL")),
-                                                Expression.color(marker), Expression.color(cityMarker))),
-                                            circleRadius(Expression.switchCase(
-                                                Expression.eq(Expression.get("precision"), Expression.literal("POSTAL")),
-                                                Expression.literal(24f), Expression.literal(28f))),
-                                            circleStrokeWidth(Expression.switchCase(selected,
-                                                Expression.literal(5f), Expression.literal(2f))),
-                                            circleStrokeColor(Expression.switchCase(selected,
-                                                Expression.color(selectionRing), Expression.color(markerInk))),
-                                        ),
-                                )
+                                installMapProfileLayers(style, asFeatures(currentPoints, currentSelection),
+                                    marker, markerInk, selectionRing, cityMarker)
                                 val initial = currentCamera
                                 if (initial != null) {
                                     ready.moveCamera(CameraUpdateFactory.newCameraPosition(initial))
@@ -509,7 +522,7 @@ private fun NativeProfileMap(
     }
 }
 
-private class LifecycleMapView(
+internal class LifecycleMapView(
     context: Context,
     private val lifecycle: Lifecycle,
 ) : MapView(context) {
