@@ -21,6 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -128,7 +130,8 @@ private fun ProfileImageSurface(
 @Composable
 private fun HeroPhotoSurface(
     item: ProfileMediaItem, viewport: IntSize, description: String,
-    imageMotion: Modifier, content: @Composable BoxScope.(ImageFeedback, HeroMediaGeometry) -> Unit,
+    imageMotion: Modifier, prepared: PreparedMedium?,
+    content: @Composable BoxScope.(ImageFeedback, HeroMediaGeometry) -> Unit,
 ) {
     // Archiving the same URL must not replace an already decoded painter. Retry can use the new local path.
     key(item.kind, item.url, item.localPath.takeIf { item.url.isBlank() }, viewport) {
@@ -138,7 +141,15 @@ private fun HeroPhotoSurface(
         val context = LocalContext.current
         val retryAction: (() -> Unit)? = if (models.isNotEmpty()) ({ retry++ }) else null
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val (feedback, geometry) = if (attempt < models.size && viewport.width > 0 && viewport.height > 0) {
+            val bitmap = (prepared as? PreparedMedium.Photo)?.bitmap?.takeIf { retry == 0 }
+            val (feedback, geometry) = if (bitmap != null) {
+                val painter = remember(bitmap) { BitmapPainter(bitmap.asImageBitmap()) }
+                val geometry = heroMediaGeometry(viewport, IntSize(bitmap.width, bitmap.height))
+                Image(painter, description, Modifier.fillMaxSize().then(imageMotion), contentScale = geometry.scale)
+                ImageFeedback(false, false, painter, retryAction) to geometry
+            } else if (prepared == PreparedMedium.Unavailable && retry == 0) {
+                ImageFeedback(false, true, null, retryAction) to heroMediaGeometry(viewport, IntSize.Zero)
+            } else if (attempt < models.size && viewport.width > 0 && viewport.height > 0) {
                 val requested = attempt
                 key(retry, requested) {
                     val request = remember(context, models, requested, viewport) {
@@ -211,23 +222,28 @@ internal fun ProfileMediaHero(
     favorite: Boolean? = null,
     onFavorite: (() -> Unit)? = null,
     onVisual: (HeroVisual?) -> Unit = {},
+    preparedMedia: Map<String, PreparedMedium> = emptyMap(),
+    preparing: Boolean = false,
+    videoPlaybackEnabled: Boolean = actionsEnabled,
+    presentationOwner: Any? = actionToken?.let { it.listingId to it.ownerId },
 ) {
     val index = selection.resolve(media, projectionAvailable)
     LaunchedEffect(media, index, projectionAvailable) {
         if (projectionAvailable) selection.select(media, selection.resolve(media, true))
     }
     val item = media.getOrNull(index)
-    var videoSize by remember(item) { mutableStateOf(IntSize.Zero) }
+    val mediaKey = item?.presentationKey()
+    var videoSize by remember(mediaKey) { mutableStateOf(IntSize.Zero) }
     val previous = projectionAvailable && index > 0
     val next = projectionAvailable && index < media.lastIndex
-    val gestureOwner = Triple(actionToken, media, index)
+    val gestureOwner = Triple(presentationOwner, media.map { it.presentationKey() }, index)
     val decision = onSwipe?.takeIf { actionsEnabled && projectionAvailable }
     val galleryTaps = galleryNavigationEnabled && projectionAvailable && media.size > 1
     var drag by remember(gestureOwner) { mutableFloatStateOf(0f) }
     // Gesture hit geometry stays stationary; only the drawn media moves.
     val displayedDrag = heldDrag ?: drag
     // A different medium must not inherit the previous photo's spring return.
-    val offset by key(item) {
+    val offset by key(mediaKey) {
         animateFloatAsState(displayedDrag, animationSpec = if (displayedDrag == 0f) spring() else snap(),
             label = "swipe follows finger")
     }
@@ -266,7 +282,7 @@ internal fun ProfileMediaHero(
             }
             when (item?.kind) {
                 "IMAGE" -> HeroPhotoSurface(item, viewport,
-                    "Profilbild ${index + 1}", imageMotion) { feedback, geometry ->
+                    "Profilbild ${index + 1}", imageMotion, preparedMedia[mediaKey]) { feedback, geometry ->
                     SideEffect {
                         onMediaSettled(!feedback.loading)
                         // A resized request is not the settled visual until its own decode succeeds.
@@ -297,8 +313,9 @@ internal fun ProfileMediaHero(
                                 .size(bounds.width.toDp(), bounds.height.toDp())
                         }
                     } ?: Modifier.fillMaxSize()
-                    GalleryVideo(item, active = actionsEnabled && projectionAvailable,
-                        mediaVisible = playbackVisible, canInteract = isCurrent,
+                    GalleryVideo(item, active = videoPlaybackEnabled && projectionAvailable,
+                        mediaVisible = playbackVisible, canInteract = { videoPlaybackEnabled && projectionAvailable },
+                        prepared = preparedMedia[mediaKey],
                         onVideoSize = { videoSize = it },
                         modifier = videoSurface.then(imageMotion),
                         controlsModifier = Modifier.align(Alignment.Center),
@@ -310,7 +327,8 @@ internal fun ProfileMediaHero(
                 }
                 else -> Box(Modifier.fillMaxSize().then(hit.photo), contentAlignment = Alignment.Center) {
                     SideEffect { onVisual(null); onMediaSettled(true) }
-                    Text("Keine Medien verfügbar")
+                    if (preparing) CircularProgressIndicator(Modifier.size(28.dp))
+                    else Text("Keine Medien verfügbar")
                     favoriteControl(heroMediaGeometry(viewport, IntSize.Zero))
                 }
             }
