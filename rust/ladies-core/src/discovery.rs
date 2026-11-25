@@ -844,7 +844,9 @@ mod tests {
         let mut owners = Vec::new();
         let mut listings = Vec::new();
         for index in 1..=3 {
-            let owner = core.create_person(Some(format!("Fixture {index}"))).unwrap();
+            let owner = core
+                .create_person(Some(format!("Fixture {index}")))
+                .unwrap();
             let listing = core
                 .add_listing(owner, None, "LADIES".into(), index.to_string(), None)
                 .unwrap();
