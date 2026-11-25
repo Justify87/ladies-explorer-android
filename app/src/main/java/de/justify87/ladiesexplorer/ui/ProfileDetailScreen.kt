@@ -31,7 +31,7 @@ internal fun ProfileDetailScreen(
     onPreference: (ProfileIdentityToken, Preference) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
-    onCancelArchive: (Long) -> Unit,
+    onCancelArchive: (Long, Long) -> Unit,
     onRetryProfile: () -> Unit,
     onRefreshProfile: (ProfileIdentityToken) -> Unit,
     onBack: () -> Unit,
@@ -105,12 +105,12 @@ internal fun ProfileDetailScreen(
             if (state.profileSourceRetryAllowed) "Online abrufen" else "Erneut laden",
             !state.actionBusy && !actionsBusy, onRetryProfile, warning = true))
         if (state.archiving) add(ProfileNotice("Medienarchiv", "Medien werden lokal archiviert", "Stoppen", true,
-            { onCancelArchive(state.profileSessionId) }))
+            { onCancelArchive(state.profileSessionId, state.profileArchiveAttempt) }))
         state.mediaWarning?.let { add(ProfileNotice("Archivhinweis", it, warning = true)) }
         if (actionsBusy || state.actionBusy) add(ProfileNotice("Wird verarbeitet", "Profilaktion wird verarbeitet."))
     }
     ProfileShell(modifier, detailListState, "media", hasRail = false, notices = notices,
-        noticeOwner = Triple(state.profileSessionId, renderedToken, state.retryProfileListingId),
+        noticeOwner = listOf(state.profileSessionId, renderedToken, state.retryProfileListingId, state.profileArchiveAttempt),
         header = { presentation, compactNotice, onNotice ->
             Row(Modifier.fillMaxSize().padding(start = ShellMetrics.gap, end = shellContentInset()),
                 verticalAlignment = Alignment.CenterVertically) {

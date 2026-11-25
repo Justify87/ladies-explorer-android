@@ -140,8 +140,9 @@ internal class StandaloneProfileOperations<C : Any>(
         presentationVisible && profileGeneration.isCurrent(session) &&
             _searchUiState.value.let { it.profileOpen && it.profileSessionId == session }
 
-    fun cancelMediaArchive(session: Long) {
-        if (!admitsSession(session) || !_searchUiState.value.archiving) return
+    fun cancelMediaArchive(session: Long, attempt: Long) {
+        val active = _searchUiState.value
+        if (!admitsSession(session) || !active.archiving || active.profileArchiveAttempt != attempt) return
         // Cancellation signals the call; it owns the slot until drain.
         archiveCall?.cancel(io.cancelArchive)
     }
@@ -230,7 +231,8 @@ internal class StandaloneProfileOperations<C : Any>(
                 localReadReady = true
                 val local = readDetail(requestId, listingId) { value, revision ->
                     withProjection(value, revision, showingArchive, refreshError).copy(loading=false,
-                        mediaWarning=refreshError,archiving=!showingArchive)
+                        mediaWarning=refreshError, archiving=!showingArchive,
+                        profileArchiveAttempt = profileArchiveAttempt + if (showingArchive) 0L else 1L)
                 } ?: return@launch
                 if (showingArchive) return@launch
                 val profile = local.profile

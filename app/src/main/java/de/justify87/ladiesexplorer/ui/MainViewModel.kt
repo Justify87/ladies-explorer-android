@@ -131,6 +131,7 @@ data class SearchUiState(
     val profileRetryAttempt: Long = 0L,
     val mediaArchive: MediaArchiveReport? = null,
     val archiving: Boolean = false,
+    val profileArchiveAttempt: Long = 0L,
     val mediaWarning: String? = null,
     val error: String? = null,
 ) {
@@ -441,7 +442,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 
-    internal fun cancelMediaArchive(session: Long) = profileOperations.cancelMediaArchive(session)
+    internal fun cancelMediaArchive(session: Long, attempt: Long) = profileOperations.cancelMediaArchive(session, attempt)
 
     internal fun closeProfile(session: Long) {
         if (!hasProfileEditor) profileOperations.closeProfile(session)

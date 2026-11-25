@@ -482,8 +482,8 @@ class StandaloneProfileOperationsTest {
         started.awaitSignal()
         assertTrue(f.search.value.archiving)
         val session = f.search.value.profileSessionId
-        f.operations.cancelMediaArchive(session)
-        f.operations.cancelMediaArchive(session)
+        f.operations.cancelMediaArchive(session, f.search.value.profileArchiveAttempt)
+        f.operations.cancelMediaArchive(session, f.search.value.profileArchiveAttempt)
         assertEquals(1, f.controls.single().cancelled)
         assertTrue(f.search.value.archiving)
         assertTrue(coroutineContext[Job]!!.children.single().isActive)
@@ -496,6 +496,36 @@ class StandaloneProfileOperationsTest {
         assertEquals(2, f.profileChanges)
         assertNull(f.search.value.mediaArchive)
         assertFalse(f.search.value.profileOpen)
+    }
+
+    @Test(timeout = 15_000) fun staleArchiveStopCannotCancelRefreshWithinSameSession() = runBlocking {
+        val f = Fixture(this)
+        f.source = { fixtureProfile() }
+        f.operations.loadProfile(4L, 1L) {}
+        f.idle()
+        val token = requireNotNull(f.search.value.detailIdentityToken())
+        val oldAttempt = f.search.value.profileArchiveAttempt
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        f.archive = { snapshot, _ ->
+            started.complete(Unit)
+            release.awaitSignal()
+            MediaArchiveReport(snapshot, 1u, 0u, 0u, 0u)
+        }
+        try {
+            f.operations.refreshProfile(token)
+            started.awaitSignal()
+            assertEquals(token.sessionId, f.search.value.profileSessionId)
+            val currentAttempt = f.search.value.profileArchiveAttempt
+            assertNotEquals(oldAttempt, currentAttempt)
+            f.operations.cancelMediaArchive(token.sessionId, oldAttempt)
+            assertEquals(0, f.controls.last().cancelled)
+            f.operations.cancelMediaArchive(token.sessionId, currentAttempt)
+            assertEquals(1, f.controls.last().cancelled)
+        } finally {
+            release.complete(Unit)
+        }
+        f.idle()
     }
 
     @Test(timeout = 15_000) fun staleArchiveStopCannotCancelReplacementOfSameProfile() = runBlocking {
@@ -524,21 +554,21 @@ class StandaloneProfileOperationsTest {
             f.operations.loadProfile(4L, 1L) {}
             val current = f.search.value.profileSessionId
             assertNotEquals(old, current)
-            f.operations.cancelMediaArchive(current)
+            f.operations.cancelMediaArchive(current, f.search.value.profileArchiveAttempt)
             assertEquals(1, f.controls.single().cancelled)
             firstFinish.complete(Unit)
             secondStarted.awaitSignal()
             assertTrue(f.search.value.archiving)
-            f.operations.cancelMediaArchive(old)
+            f.operations.cancelMediaArchive(old, f.search.value.profileArchiveAttempt)
             assertEquals(0, f.controls.last().cancelled)
-            f.operations.cancelMediaArchive(current)
-            f.operations.cancelMediaArchive(current)
+            f.operations.cancelMediaArchive(current, f.search.value.profileArchiveAttempt)
+            f.operations.cancelMediaArchive(current, f.search.value.profileArchiveAttempt)
             assertEquals(1, f.controls.last().cancelled)
             assertTrue(f.search.value.archiving)
             secondFinish.complete(Unit)
             f.idle()
             assertFalse(f.search.value.archiving)
-            f.operations.cancelMediaArchive(current)
+            f.operations.cancelMediaArchive(current, f.search.value.profileArchiveAttempt)
             assertEquals(1, f.controls.last().cancelled)
             assertEquals(2, f.calls.count { it.startsWith("archive:") })
         } finally {
