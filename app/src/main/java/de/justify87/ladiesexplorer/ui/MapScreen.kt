@@ -21,7 +21,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -37,6 +36,7 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.style.expressions.Expression
@@ -82,7 +82,6 @@ internal fun mapLocationLabel(profile: MapProfile): String =
 internal fun MapScreen(
     state: MapUiState,
     searchStatus: @Composable () -> Unit,
-    onRefresh: (MapControlAction) -> Unit,
     onCancel: (MapControlAction) -> Unit,
     membershipCurrent: Boolean,
     generation: Long,
@@ -97,7 +96,7 @@ internal fun MapScreen(
     var cameraReader by remember { mutableStateOf<(() -> CameraPosition?)?>(null) }
     var mapAttempt by remember { mutableIntStateOf(0) }
     var tileState by remember { mutableStateOf(MapTileState.Loading) }
-    var picker by remember { mutableStateOf<MapPickerScope?>(null) }
+    var picker by rememberSaveable { mutableStateOf<MapPickerScope?>(null) }
     var focusRequest by remember { mutableStateOf<Long?>(null) }
     val controls = MapControlAction(state, generation)
     val overview = state.overview.takeIf { membershipCurrent }
@@ -105,15 +104,12 @@ internal fun MapScreen(
     val active = mapSelectedProfile(points, selectedListingId, selectedOwnerId)
     val selection = remember(points, active?.listingId) { mapSelection(points, active?.listingId) }
     val latestPoints by rememberUpdatedState(points)
-    val detailsScroll = rememberScrollState()
-    LaunchedEffect(selectedListingId, tileState == MapTileState.Failed) {
-        detailsScroll.scrollTo(0)
-    }
     val scheme = MaterialTheme.colorScheme
     val dark = scheme.surface.luminance() < .5f
     val marker = (if (dark) scheme.primaryContainer else scheme.primary).toArgb()
     val markerInk = (if (dark) scheme.onPrimaryContainer else scheme.onPrimary).toArgb()
     val selectionRing = (if (dark) Color.White else Color.Black).toArgb()
+    val cityMarker = scheme.tertiary.toArgb()
 
     LaunchedEffect(overview) {
         // A temporary null overview during reload is not proof that the selection disappeared.
@@ -125,54 +121,50 @@ internal fun MapScreen(
         }
     }
 
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        val availableHeight = maxHeight
-        val compact = availableHeight < 440.dp ||
-            (LocalDensity.current.fontScale >= 1.5f && availableHeight < 600.dp)
-        Column(
-            Modifier.fillMaxSize().then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            DiscoverModeSwitcher(DiscoverMode.Map, onMode, Modifier)
-            searchStatus()
+    Column(modifier.fillMaxSize()) {
+        DiscoverModeSwitcher(DiscoverMode.Map, onMode, Modifier.padding(horizontal = 16.dp))
+        searchStatus()
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+            val panelHeight = maxHeight * .65f
+            key(mapAttempt, marker, markerInk, selectionRing, cityMarker) {
+                NativeProfileMap(
+                    points = points,
+                    selectedListingId = active?.listingId,
+                    savedCamera = camera,
+                    onCameraChanged = { camera = it },
+                    onCameraReader = { cameraReader = it },
+                    onSelect = { id ->
+                        latestPoints.firstOrNull { it.listingId == id }?.let { profile ->
+                            selectedListingId = profile.listingId
+                            selectedOwnerId = profile.personId
+                            focusRequest = null
+                            if (mapSelection(latestPoints, id).size > 1) picker = MapPickerScope.Location
+                        }
+                    },
+                    focusRequest = focusRequest,
+                    onFocusConsumed = { focusRequest = null },
+                    marker = marker,
+                    markerInk = markerInk,
+                    selectionRing = selectionRing,
+                    cityMarker = cityMarker,
+                    onTileState = { tileState = it },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             Surface(
-                modifier = Modifier.fillMaxWidth()
-                    .then(if (compact) Modifier.height(280.dp) else Modifier.weight(1f)),
-                shape = MaterialTheme.shapes.large,
-                color = scheme.surfaceContainerHigh,
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 4.dp),
+                color = scheme.surface,
+                shape = MaterialTheme.shapes.small,
             ) {
-                key(mapAttempt, marker, markerInk, selectionRing) {
-                    NativeProfileMap(
-                        points = points,
-                        selectedListingId = active?.listingId,
-                        savedCamera = camera,
-                        onCameraChanged = { camera = it },
-                        onCameraReader = { cameraReader = it },
-                        onSelect = { id ->
-                            latestPoints.firstOrNull { it.listingId == id }?.let { profile ->
-                                selectedListingId = profile.listingId
-                                selectedOwnerId = profile.personId
-                                focusRequest = null
-                            }
-                        },
-                        focusRequest = focusRequest,
-                        onFocusConsumed = { focusRequest = null },
-                        marker = marker,
-                        markerInk = markerInk,
-                        selectionRing = selectionRing,
-                        onTileState = { tileState = it },
-                        modifier = Modifier.fillMaxSize().clip(MaterialTheme.shapes.large),
-                    )
-                }
+                Text("GeoNames · CC BY 4.0", Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
             }
             MapDetails(
-                state = if (membershipCurrent) state else state.copy(overview = null, loading = true),
+                state = if (membershipCurrent) state else state.copy(overview = null, loading = state.error == null),
                 tileState = tileState,
                 active = active,
                 selectionCount = selection.size,
                 profileEnabled = membershipCurrent && profileEnabled && !state.loading,
-                onRefresh = { onRefresh(controls) },
                 onCancel = { onCancel(controls) },
                 onRetryTiles = { tileState = MapTileState.Loading; mapAttempt++ },
                 onPickAll = { picker = MapPickerScope.All },
@@ -184,10 +176,9 @@ internal fun MapScreen(
                         onProfile(MapProfileOpenAction(overview, person, generation))
                     }
                 },
-                modifier = Modifier.fillMaxWidth().then(
-                    if (compact) Modifier else Modifier.heightIn(max = availableHeight * .48f)
-                        .verticalScroll(detailsScroll)
-                ),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(start = 8.dp, end = 8.dp, bottom = 48.dp)
+                    .widthIn(max = 420.dp).fillMaxWidth().heightIn(max = panelHeight)
+                    .verticalScroll(rememberScrollState()),
             )
         }
     }
@@ -218,7 +209,6 @@ internal fun MapDetails(
     active: MapProfile?,
     selectionCount: Int,
     profileEnabled: Boolean,
-    onRefresh: () -> Unit,
     onCancel: () -> Unit,
     onRetryTiles: () -> Unit,
     onPickAll: () -> Unit,
@@ -229,13 +219,10 @@ internal fun MapDetails(
 ) {
     val overview = state.overview
     val scheme = MaterialTheme.colorScheme
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Ungefähre Ortslagen · gemeinsame Ergebnismenge",
-            style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-        if (overview != null) {
-            Text("${overview.profiles.size} von ${overview.totalProfiles} Profilen kartiert · ${overview.unlocatedProfiles} ohne Position",
-                style = MaterialTheme.typography.bodySmall)
-        }
+    if (active == null && state.error == null && !state.resolving && !state.loading &&
+        tileState != MapTileState.Failed && overview == null) return
+    Surface(modifier, shape = MaterialTheme.shapes.medium, color = scheme.surfaceContainerHigh) {
+    Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (state.resolving || state.loading) {
             Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -258,7 +245,10 @@ internal fun MapDetails(
             }
         }
         if (state.resolving) {
-            MapActionRow(state, onRefresh, onCancel)
+            TextButton(onClick = onCancel, enabled = !state.cancelling,
+                modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
+                Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen")
+            }
         }
         if (overview != null && overview.profiles.isEmpty() && !state.loading) {
             Text(
@@ -300,30 +290,7 @@ internal fun MapDetails(
                 Text("Kartierte Profile auswählen")
             }
         }
-        if (!state.resolving) {
-            MapActionRow(state, onRefresh, onCancel)
-        }
-        Text("Ungefähre Ortslagen · GeoNames (CC BY 4.0), lokal verfügbar. Kartenkacheln sind cacheabhängig.",
-            style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
     }
-}
-
-@Composable
-private fun MapActionRow(
-    state: MapUiState,
-    onRefresh: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        OutlinedButton(onClick = onRefresh, enabled = !state.loading && !state.resolving,
-            modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) { Text("Aktualisieren") }
-        if (state.resolving) {
-            OutlinedButton(onClick = onCancel, enabled = !state.cancelling,
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) {
-                Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen")
-            }
-        }
     }
 }
 
@@ -358,12 +325,13 @@ internal fun MapProfilePicker(
     )
 }
 
-private fun asFeatures(points: List<MapProfile>, selectedListingId: Long?): FeatureCollection {
+internal fun asFeatures(points: List<MapProfile>, selectedListingId: Long?): FeatureCollection {
     val selected = mapSelection(points, selectedListingId).mapTo(HashSet()) { it.listingId }
     val features = points.map { item ->
         val properties = JsonObject().apply {
             addProperty("listing_id", item.listingId)
             addProperty("selected", item.listingId in selected)
+            addProperty("precision", item.precision)
         }
         Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude), properties)
     }
@@ -383,6 +351,7 @@ private fun NativeProfileMap(
     marker: Int,
     markerInk: Int,
     selectionRing: Int,
+    cityMarker: Int,
     onTileState: (MapTileState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -397,6 +366,7 @@ private fun NativeProfileMap(
     val consumeFocus by rememberUpdatedState(onFocusConsumed)
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var loadError by remember { mutableStateOf(false) }
+    var positioned by remember { mutableStateOf(savedCamera != null) }
 
     Box(modifier = modifier) {
         AndroidView(
@@ -412,6 +382,7 @@ private fun NativeProfileMap(
                 }
                 mapView.getMapAsync { ready ->
                     if (!mapView.released) {
+                        ready.uiSettings.isLogoEnabled = false
                         ready.setStyle(MAP_STYLE) { style ->
                             if (!mapView.released) {
                                 val source = GeoJsonSource(
@@ -439,7 +410,12 @@ private fun NativeProfileMap(
                                     CircleLayer(MAP_SINGLE, MAP_SOURCE)
                                         .withFilter(Expression.not(Expression.has("point_count")))
                                         .withProperties(
-                                            circleColor(marker), circleRadius(24f),
+                                            circleColor(Expression.switchCase(
+                                                Expression.eq(Expression.get("precision"), Expression.literal("POSTAL")),
+                                                Expression.color(marker), Expression.color(cityMarker))),
+                                            circleRadius(Expression.switchCase(
+                                                Expression.eq(Expression.get("precision"), Expression.literal("POSTAL")),
+                                                Expression.literal(24f), Expression.literal(28f))),
                                             circleStrokeWidth(Expression.switchCase(selected,
                                                 Expression.literal(5f), Expression.literal(2f))),
                                             circleStrokeColor(Expression.switchCase(selected,
@@ -450,17 +426,11 @@ private fun NativeProfileMap(
                                 if (initial != null) {
                                     ready.moveCamera(CameraUpdateFactory.newCameraPosition(initial))
                                 } else {
-                                    val first = currentPoints.firstOrNull()
-                                    ready.moveCamera(CameraUpdateFactory.newLatLngZoom(
-                                        if (first == null) LatLng(51.0, 10.0)
-                                        else LatLng(first.latitude, first.longitude),
-                                        if (first == null) 5.0 else 10.0,
-                                    ))
+                                    ready.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(51.0, 10.0), 5.0))
                                 }
-                                saveCamera(ready.cameraPosition)
-                                publishCameraReader { if (mapView.released) null else ready.cameraPosition }
+                                publishCameraReader { if (mapView.released || !positioned) null else ready.cameraPosition }
                                 ready.addOnCameraIdleListener {
-                                    if (!mapView.released) saveCamera(ready.cameraPosition)
+                                    if (!mapView.released && positioned) saveCamera(ready.cameraPosition)
                                 }
                                 ready.addOnMapClickListener { location ->
                                     if (mapView.released) false else {
@@ -487,7 +457,8 @@ private fun NativeProfileMap(
             },
             modifier = Modifier.fillMaxSize(),
             onRelease = { view ->
-                if (!view.released) map?.cameraPosition?.let(saveCamera)
+                if (!view.released && positioned) map?.cameraPosition?.let(saveCamera)
+                publishCameraReader { null }
                 view.releaseMap()
             },
         )
@@ -501,8 +472,19 @@ private fun NativeProfileMap(
     }
 
     LaunchedEffect(points, selectedListingId, map) {
-        map?.getStyle { style ->
-            (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(points, selectedListingId))
+        val ready = map ?: return@LaunchedEffect
+        ready.getStyle { style ->
+            if (map === ready) {
+                (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(currentPoints, currentSelection))
+                if (!positioned && currentPoints.isNotEmpty()) {
+                    val locations = currentPoints.map { LatLng(it.latitude, it.longitude) }.distinct()
+                    val update = if (locations.size == 1) CameraUpdateFactory.newLatLngZoom(locations.first(), 10.0)
+                    else CameraUpdateFactory.newLatLngBounds(LatLngBounds.Builder().includes(locations).build(), 64)
+                    positioned = true
+                    ready.moveCamera(update)
+                    saveCamera(ready.cameraPosition)
+                }
+            }
         }
     }
     LaunchedEffect(map, focusRequest, points) {
