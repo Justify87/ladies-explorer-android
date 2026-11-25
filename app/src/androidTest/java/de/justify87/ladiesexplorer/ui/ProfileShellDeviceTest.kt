@@ -28,6 +28,51 @@ import org.junit.Test
 class ProfileShellDeviceTest {
     @get:Rule val rule = createComposeRule()
 
+    @Test fun readingChromeGrowsBodyWithoutResizingHeroAndReturnsToRoot() {
+        lateinit var list: androidx.compose.foundation.lazy.LazyListState
+        var heroViewport = androidx.compose.ui.unit.IntSize.Zero
+        rule.setContent {
+            MaterialTheme {
+                list = rememberLazyListState()
+                ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero",
+                    hasRail = true, notices = emptyList(), noticeOwner = "fixture",
+                    header = { presentation, _, _ -> Text(if (presentation.reading) "Lesen" else "Hero") },
+                    rail = { Box(Modifier.fillMaxSize().testTag("reading-rail")) },
+                    rootNavigation = { Box(Modifier.fillMaxWidth().height(64.dp).testTag("reading-root")) },
+                    heroLeadingMeasure = { Box(Modifier.height(48.dp)) },
+                ) { presentation ->
+                    SideEffect { heroViewport = presentation.heroViewport }
+                    LazyColumn(Modifier.fillMaxSize().testTag("reading-body"), state = list,
+                        contentPadding = PaddingValues(bottom = presentation.readingExtraSpace)) {
+                        item("discover-context") { Box(Modifier.height(48.dp)) }
+                        item("hero") { Box(Modifier.fillMaxWidth().height(presentation.heroHeight).testTag("reading-hero")) }
+                        item("profile-heading") { Text("Profil", Modifier.height(64.dp)) }
+                        items(20, key = { "detail/$it" }) { Text("Detail $it", Modifier.height(60.dp)) }
+                    }
+                }
+            }
+        }
+        val body = rule.onNodeWithTag("reading-body")
+        val hero = rule.onNodeWithTag("reading-hero")
+        val initialBody = body.fetchSemanticsNode().boundsInRoot
+        val initialHero = hero.fetchSemanticsNode().boundsInRoot
+        val size = rule.runOnIdle { heroViewport }
+        rule.onNodeWithTag("reading-root").assertIsDisplayed()
+        body.performScrollToKey("detail/4")
+        rule.onNodeWithText("Lesen").assertIsDisplayed()
+        assertTrue(body.fetchSemanticsNode().boundsInRoot.height > initialBody.height)
+        rule.runOnIdle {
+            assertEquals(size, heroViewport)
+            assertEquals("detail/4", list.layoutInfo.visibleItemsInfo.first().key)
+        }
+        body.performScrollToKey("discover-context")
+        rule.onNodeWithTag("reading-root").assertIsDisplayed()
+        rule.onNodeWithText("Hero").assertIsDisplayed()
+        assertEquals(initialBody, body.fetchSemanticsNode().boundsInRoot)
+        assertEquals(initialHero, hero.fetchSemanticsNode().boundsInRoot)
+        rule.runOnIdle { assertEquals(size, heroViewport) }
+    }
+
     @Test fun standaloneNeutralAndFavoriteRemainIndependentAndBusyBlocksWrites() {
         var preference by mutableStateOf(Preference.LIKE)
         var favorite by mutableStateOf(false)
