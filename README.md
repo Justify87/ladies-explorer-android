@@ -4,7 +4,7 @@ Native, lokal genutzte Android-App mit Kotlin, Jetpack Compose / Material 3 Expr
 
 ## Produkt
 
-Entdecken, Suche, Profile, Medien, Personen, gespeicherte Suchen, Karte und lokale Diagnose. Verbindlicher Funktionsumfang und Grenzen: [PRODUCT.md](docs/PRODUCT.md). Fortschritt, offene Aufgaben und Abnahme stehen im [Arbeits- und Fortschrittsregister](docs/ROADMAP.md).
+Entdecken, Suche, Profile, Medien, Personen, gespeicherte Suchen, Karte und lokale Diagnose. Verbindlicher Funktionsumfang und Grenzen: [PRODUCT.md](docs/PRODUCT.md). Offene Aufgaben, Reihenfolge und Abnahmekriterien stehen im [Arbeitsregister](docs/ROADMAP.md); abgeschlossene Arbeiten und Prüfbelege in Git und den zugehörigen PRs.
 
 ## Aktive Weiterentwicklung
 
@@ -12,7 +12,7 @@ Den nächsten ausführbaren Schritt dem [Arbeitsregister](docs/ROADMAP.md) entne
 
 ## Designreferenz
 
-[Design Reference v3](design-referenz/README.md) ist die offline nutzbare, synthetische HTML/CSS-Illustration der ursprünglichen visuellen Richtung. Sie ist kein aktuelles Soll; insbesondere native Pure-Flächen, Formen und Interaktionshierarchie richten sich nach dem weiterentwickelten Designvertrag. Verbindliches UI-/UX-Soll: [DESIGN](docs/DESIGN.md); Implementierungsstand und Aufgaben: [ROADMAP](docs/ROADMAP.md). Die Referenz ist keine WebView-App und führt keine echten Quellenzugriffe aus.
+[Design Reference v3](design-referenz/README.md) ist die offline nutzbare, synthetische HTML/CSS-Illustration der ursprünglichen visuellen Richtung. Sie ist kein aktuelles Soll; insbesondere native Pure-Flächen, Formen und Interaktionshierarchie richten sich nach dem weiterentwickelten Designvertrag. Verbindliches UI-/UX-Soll: [DESIGN](docs/DESIGN.md); technischer Ist-Stand: [ARCHITECTURE](docs/ARCHITECTURE.md); offene Aufgaben: [ROADMAP](docs/ROADMAP.md). Die Referenz ist keine WebView-App und führt keine echten Quellenzugriffe aus.
 
 ## Architektur
 
@@ -121,7 +121,7 @@ Acht künstliche Personen, neun Inserate, 18 Snapshots, Präferenz-/Favorit-Komb
 | Dokument | Zuständigkeit |
 | --- | --- |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Native Architektur, SQLite, Identität, Historie, Medien, UI-Datenflüsse |
-| [ROADMAP.md](docs/ROADMAP.md) | Einziges Arbeits- und Fortschrittsregister |
+| [ROADMAP.md](docs/ROADMAP.md) | Einziges Register offener Aufgaben |
 | [DESIGN.md](docs/DESIGN.md) | Übergreifender UI-/UX- und Designvertrag |
 | [PRODUCT.md](docs/PRODUCT.md) | Produkt, Features, fachliches Soll und Grenzen |
 | [AGENTS.md](AGENTS.md) | Ausführungs-Harness für Agenten |
@@ -130,4 +130,4 @@ Bei fachlichen Änderungen die zuständige Dokumentation im selben PR aktualisie
 
 ## Lizenz
 
-Apache-2.0; [LICENSE](LICENSE), [NOTICE](NOTICE). Attribution und noch zu klärende native Weiterverteilungspflichten stehen in NOTICE und [ROADMAP](docs/ROADMAP.md#l01--lizenzklärung).
+Apache-2.0; [LICENSE](LICENSE), [NOTICE](NOTICE). Attribution und native Weiterverteilungspflichten siehe NOTICE; etwaige offene Lizenzklärungen stehen im [Arbeitsregister](docs/ROADMAP.md).

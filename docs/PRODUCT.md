@@ -148,8 +148,6 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ### Persönliche Begegnungen und Preise
 
-Bestätigtes fachliches Soll für M06; Umsetzung und Status ausschließlich in [ROADMAP](ROADMAP.md#abgeschlossene-arbeiten).
-
 - Begegnungen gehören einer Person; ein optionales Inserat muss ihr zugeordnet sein. Zeitpunkt, optionale Dauer, Grund-/Gesamtpreis, Gesamt-/Sympathiebewertung (1–5), Begegnungsnotiz und einfache persönliche Leistungszeilen können bewusst erfasst, korrigiert und gelöscht werden. Personennotiz, Präferenz, Favorit, Quellinformationen und Begegnungsdaten bleiben unabhängig.
 - Angebotspreise werden ausschließlich manuell als datierte Preislisten in EUR erfasst. Eine neue Liste erhält die frühere Liste; Korrekturen und bestätigtes Löschen sind möglich. Die neueste erfasste Liste ist kein Nachweis aktueller Gültigkeit. Tatsächlich bezahlte Beträge werden ausschließlich aus Begegnungen abgeleitet und getrennt bezeichnet.
 - Fehlende Angaben bleiben unbekannt und werden im Profil ohne pauschale Leertexte weggelassen; keine erfundenen Beträge, Bewertungen oder automatische Übernahme zwischen Begegnung, Preisliste und Quelle. Keine Pflicht, alle vorhandenen Schemafelder zu verwenden.
@@ -176,7 +174,7 @@ P-/X-IDs bleiben für laufende Arbeiten auffindbar, keine neue Nummerierungspfli
 | P23 P42 P43 P44 P51 | [ARCHITECTURE](ARCHITECTURE.md): Prefetch, Netzwerk, Medien, ARC, Operationsmodell |
 | P41 | [Prüfung/CI](../README.md#prüfung--ci), [Merge-Regel](ROADMAP.md#pflege) |
 | X01 X04 | [Produktziel und Grenzen](#produktziel-und-grenzen) |
-| X02 X03 X06 X07 X08 | [Weitere Produktgrenzen](#weitere-produktgrenzen), ROADMAP; keine Nutzerdatenmigration |
+| X02 X03 X06 X07 X08 | [Weitere Produktgrenzen](#weitere-produktgrenzen), [Produktziel und Grenzen](#produktziel-und-grenzen); keine Nutzerdatenmigration |
 | X05 | [Personen, Identität und Historie](#personen-identität-und-historie) |
 | X09 | [Profile, Medien und Kontakte](#profile-medien-und-kontakte) |
 | X10 | [Suche und Filter](#suche-und-filter) |
