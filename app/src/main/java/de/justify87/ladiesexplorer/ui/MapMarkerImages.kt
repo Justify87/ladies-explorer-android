@@ -18,6 +18,7 @@ import coil3.request.allowHardware
 import coil3.size.Scale
 import coil3.toBitmap
 import de.justify87.ladiesexplorer.core.MapProfile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -180,7 +181,13 @@ internal class MapMarkerImages(
                 batch.map { id ->
                     async {
                         val url = profiles[id]?.thumbnailUrl ?: return@async
-                        val bitmap = decode(view.context, url)
+                        val bitmap = try {
+                            decode(view.context, url)
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (_: Exception) {
+                            null
+                        }
                         ensureActive()
                         if (!closed && !view.released && started && !moving &&
                             id in desired && profiles[id]?.thumbnailUrl == url) {
@@ -214,7 +221,7 @@ internal class MapMarkerImages(
     }
 }
 
-private suspend fun loadMapThumbnail(context: Context, url: String): Bitmap? {
+internal suspend fun loadMapThumbnail(context: Context, url: String): Bitmap? {
     val request = ImageRequest.Builder(context).data(url)
         .size(PHOTO_PIXELS, PHOTO_PIXELS).scale(Scale.FILL).allowHardware(false).build()
     val result = SingletonImageLoader.get(context).execute(request) as? SuccessResult ?: return null
