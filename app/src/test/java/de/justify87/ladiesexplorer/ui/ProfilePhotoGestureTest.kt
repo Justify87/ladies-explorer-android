@@ -102,6 +102,18 @@ class ProfilePhotoGestureTest {
         assertNotEquals(geometry, geometry.copy(gallery = emptyList()))
     }
 
+    @Test fun bookmarkExcludesOnlyItsActualRectangleFromGallery() {
+        val photo = androidx.compose.ui.geometry.Rect(0f, 0f, 320f, 360f)
+        val right = androidx.compose.ui.geometry.Rect(160f, 0f, 320f, 360f)
+        val bookmark = androidx.compose.ui.geometry.Rect(266f, 126f, 314f, 174f)
+        val geometry = PhotoHitGeometry(photo, androidx.compose.ui.geometry.Offset.Zero, listOf(right), bookmark)
+        for ((x, y) in listOf(290f to 30f, 220f to 150f, 290f to 200f, 319f to 150f)) {
+            assertTrue(geometry.galleryAt(androidx.compose.ui.geometry.Offset(x, y)))
+        }
+        assertFalse(geometry.galleryAt(androidx.compose.ui.geometry.Offset(290f, 150f)))
+        assertFalse(geometry.galleryAt(androidx.compose.ui.geometry.Offset(100f, 150f)))
+    }
+
     @Test fun flightEndsOutsideTheMeasuredHeroInBothDirections() {
         val flight = SwipeFlight(4L to 1L, 5, 1f, 125f, IntSize(800, 1200), 0, null)
         assertTrue(flight.destination > 800f)

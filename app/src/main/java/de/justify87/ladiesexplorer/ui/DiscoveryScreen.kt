@@ -328,9 +328,11 @@ internal fun DiscoverScreen(
                 onChoose(it, preference, capture.read())
             }
         }
+        // Keep admission and the hero budget on the same measured-context snapshot.
+        val measuredContextHeight = discoveryContextHeight
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
             hasRail = true, notices = notices, noticeOwner = controls, fixedNoticeSlot = true,
-            heroLeadingHeight = with(LocalDensity.current) { discoveryContextHeight.toDp() },
+            heroLeadingHeight = with(LocalDensity.current) { measuredContextHeight.toDp() },
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(presentation, sourceContext, controls, compactNotice,
                     onNotice, { onAvailability(deckToken, it) })
@@ -403,7 +405,7 @@ internal fun DiscoverScreen(
                     }
                     item(key = "hero") {
                         Box(Modifier.fillMaxWidth().padding(horizontal = contentInset)) {
-                            if (awaitDiscoveryContext(discoveryContextHeight, listState.firstVisibleItemIndex)) {
+                            if (awaitDiscoveryContext(measuredContextHeight, listState.firstVisibleItemIndex)) {
                                 // Do not decode against the provisional viewport on a cold start.
                                 Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
                             } else ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,

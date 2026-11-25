@@ -10,7 +10,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M10.4 — Medieninteraktion, Layoutstabilität und Qualitätskonsolidierung
 
-**Status:** DOING (Branch `fix/m10-4-media-quality`).
+**Status:** REVIEW ([PR #118](https://github.com/Justify87/ladies-explorer-android/pull/118), Branch `fix/m10-4-media-quality`).
 
 **Abhängigkeit:** M10 / G10-Pure integriert (Basis `8cad94f8`); ausdrückliche Nutzerfreigabe 25.11.2026.
 
@@ -19,6 +19,8 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 - R03: Initiale Messung, Fensterwechsel, Restore und Decode-Start analysieren; nachweisbare unnötige Anforderung oder Geometriesprünge beheben, keine neue Layoutarchitektur ohne Evidenz. Risiken von Gerätebefunden unterscheiden.
 - R04: Betroffene native Regressionen, Layout/Rotation/Schrift/Fokus und reale Ausführbarkeit prüfen; vorhandenes vollständiges CI-Gate. Nicht ausgeführte Geräteprüfungen ausdrücklich ausweisen, Merge-Regel unverändert.
 - R05/R06: Betroffene Größen-/Abstandsrollen, Altpfade, Tests und DESIGN-/ARCHITECTURE-Konsistenz gezielt bereinigen, keine globale Neugestaltung.
+
+**Reviewstand:** R01: exakt priorisiertes Favoritenkind ohne gesperrten Seitenstreifen; geometrische JVM- und synthetische Touchprobe. R02: erfolgreich dekodierter Painter statt erneuter Quellenauflösung; lokale Fallback-/Dateilöschungsprobe. R03: ein Messsnapshot für Hero-Budget und initiale Decode-Admission; Restore außerhalb der Kontextzeile nicht blockiert; JVM- und ProfileFlow-Probe. R04: kein Android-Gerät/SDK/adb/Emulator verfügbar, native Ausführung, reale Rotation/TalkBack und visuelle Framezeiten nicht belegt; bestehende Merge-Regel unverändert. R05/R06: gemeinsame Rollen und Verträge im betroffenen Umfang konsolidiert. Vollständiges CI-Gate auf dem resultierenden PR-Head [prüfen](https://github.com/Justify87/ladies-explorer-android/pull/118/checks); keine grüne CI ohne tatsächlichen Lauf behaupten. Kein Merge ohne Nutzerfreigabe.
 
 **Akzeptanz:** R01–R06 einzeln abgleichen, nachgewiesene Fehler ursächlich korrigieren, verbleibende Risiken begründen. Fach-, Netzwerk-, Persistenz-, FFI-, Medien- und Owner-Verträge erhalten. Vollständiger Review und CI-Beleg; PR zur Freigabe, kein Merge.
 
