@@ -239,7 +239,7 @@ internal fun ProfileFlow(
             snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
             state.scrollToItem(0)
             scroll.returnToHero(keys.first())
-            restore.complete(swipeRestore)
+            restore.returnToHero(swipeRestore)
             appliedPhotoRequest = photoRequest
         }
         if (!available || (!canRestore && !terminal) || waitingForAnchor) return@LaunchedEffect

@@ -131,6 +131,22 @@ class ProfilePresentationTest {
         assertEquals(1 to 0, memory.target(listOf("hero", "profile-services"), readFailed = true))
     }
 
+    @Test fun userReturnDuringPendingRestoreKeepsMediaButSupersedesOldScrollAnchor() {
+        val saved = SwipePresentation(4, 1, 11, "{}", "IMAGE:b", "profile-notes", 23,
+            listOf("Notes"), mediaIndex = 1)
+        val coordinator = ProfileRestoreCoordinator()
+        val media = ProfileMediaSelection()
+        val sections = ProfileSections()
+        val scroll = ProfileScrollMemory()
+        coordinator.synchronize(saved, null, null, media, sections, scroll)
+        coordinator.returnToHero(saved)
+        assertFalse(coordinator.terminal(saved))
+        coordinator.synchronize(saved, ProfileProjectionKey(4, 1, 11, 1, "{}"), null, media, sections, scroll)
+        assertEquals("IMAGE:b", media.id)
+        assertTrue(sections.expanded(ProfileSection.Notes))
+        assertEquals(0 to 0, scroll.target(listOf("hero", "profile-notes")))
+    }
+
     @Test fun explicitReceiptWaitsForProjectionAndDoesNotConsumeBeforeActualScroll() {
         val key = ProfileProjectionKey(4, 1, 11, 1, "{}")
         val saved = SwipePresentation(4, 1, 11, "{}", "IMAGE:b", "profile-notes", 23,
