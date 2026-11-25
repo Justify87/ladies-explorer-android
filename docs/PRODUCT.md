@@ -174,7 +174,7 @@ P-/X-IDs bleiben für laufende Arbeiten auffindbar, keine neue Nummerierungspfli
 | P23 P42 P43 P44 P51 | [ARCHITECTURE](ARCHITECTURE.md): Prefetch, Netzwerk, Medien, ARC, Operationsmodell |
 | P41 | [Prüfung/CI](../README.md#prüfung--ci), [Merge-Regel](ROADMAP.md#pflege) |
 | X01 X04 | [Produktziel und Grenzen](#produktziel-und-grenzen) |
-| X02 X03 X06 X07 X08 | [Weitere Produktgrenzen](#weitere-produktgrenzen), ROADMAP; keine Nutzerdatenmigration |
+| X02 X03 X06 X07 X08 | [Weitere Produktgrenzen](#weitere-produktgrenzen), [Produktziel und Grenzen](#produktziel-und-grenzen); keine Nutzerdatenmigration |
 | X05 | [Personen, Identität und Historie](#personen-identität-und-historie) |
 | X09 | [Profile, Medien und Kontakte](#profile-medien-und-kontakte) |
 | X10 | [Suche und Filter](#suche-und-filter) |
