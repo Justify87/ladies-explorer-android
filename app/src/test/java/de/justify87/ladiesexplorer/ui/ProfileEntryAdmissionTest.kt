@@ -131,7 +131,7 @@ class ProfileEntryAdmissionTest {
             actionSurface = ProfileActionSurface.MAP, actionGeneration = 9L)
         val search = SearchUiState()
         val action = MapControlAction(map, 9L)
-        for (control in listOf(MapControl.REFRESH, MapControl.RESOLVE)) {
+        for (control in listOf(MapControl.REFRESH)) {
             assertTrue(mapControlMatches(map, discovery, search, action, control))
             assertFalse(mapControlMatches(map.copy(actionGeneration = 4L), discovery, search, action, control))
             assertFalse(mapControlMatches(map.copy(membership = MapMembership(7, cards)), discovery, search, action, control))
@@ -143,9 +143,6 @@ class ProfileEntryAdmissionTest {
             assertFalse(mapControlMatches(map, discovery.copy(busy = true), search, action, control))
         }
         assertFalse(mapControlMatches(map, discovery, search, action, MapControl.CANCEL))
-        assertFalse(mapControlMatches(map, discovery.copy(localCards = cards.drop(1)), search, action, MapControl.RESOLVE))
-        val noPending = map.copy(overview = MapOverview(emptyList(), 2u, 2u, 0u))
-        assertFalse(mapControlMatches(noPending, discovery, search, MapControlAction(noPending, 9L), MapControl.RESOLVE))
         val failedRead = map.copy(overview = null, error = "read failed", actionGeneration = 4L)
         assertTrue(mapControlMatches(failedRead, discovery, search, MapControlAction(failedRead, 9L), MapControl.REFRESH))
     }
@@ -160,7 +157,6 @@ class ProfileEntryAdmissionTest {
         for (state in listOf(map.copy(loading = true), map.copy(resolving = true), map.copy(resolving = true, cancelling = true))) {
             val action = MapControlAction(state, 9L)
             assertFalse(mapControlMatches(state, discovery, search, action, MapControl.REFRESH))
-            assertFalse(mapControlMatches(state, discovery, search, action, MapControl.RESOLVE))
         }
         val resolving = map.copy(resolving = true, actionGeneration = 4L)
         val cancel = MapControlAction(resolving, 9L)

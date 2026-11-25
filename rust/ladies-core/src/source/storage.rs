@@ -67,6 +67,7 @@ pub(super) fn save_search_with_control(
             control.check()?;
         }
         let (listing_id, person_id) = upsert_listing(&tx, card)?;
+        crate::map::prepare_evidence(&tx, listing_id, &card.city, None)?;
         tx.execute(
             "INSERT INTO search_results
              (search_run_id, listing_id, position, name, city, thumbnail_url,
@@ -654,6 +655,7 @@ pub(super) fn save_observed_profile(
         params![profile.name, person_id],
     )?;
     identity::refresh(&tx, listing_id)?;
+    crate::map::prepare_evidence(&tx, listing_id, &profile.city, profile.postal_code.as_deref())?;
     tx.execute(
         "INSERT INTO listing_observations
          (listing_id, source, status, http_status, snapshot_id, details_json)

@@ -127,11 +127,11 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 ## Karte
 
 - Kartenmarker ausschließlich für geografisch zuordenbare Listings der gemeinsamen Entdecken-Mitgliedschaft; kein separater DB-weiter Bestand oder Karten-Favoritenfilter. Öffnen eines Kartenprofils oder einer Grid-Kachel startet das exakt ausgewählte Listing im regulären Swipe-Deck; Android-Back erhält den Ursprung einschließlich gültigem Scrollanker bzw. Kamera und Auswahl. Standalone-Profile außerhalb Entdecken bleiben unverändert.
-- Ungefähre deutsche PLZ-Zentren, ansonsten Stadtzentren. Keine Ersatzkoordinaten; GPS/Gerätestandort, exakte Adressen oder andere private Profilinformationen niemals an Geocoder geben.
-- Marker sind keine Treffpunkte/Navigationsziele. Nicht auflösbare Orte bleiben ohne Marker; gleich positionierte Profile lassen sich gemeinsam auswählen.
-- Standortauflösung nur ausdrücklich, höchstens 15 unterschiedliche Schlüssel pro Lauf und keine konkurrierenden Läufe. Abbruch nach laufender Anfrage.
-- Vorübergehend fehlgeschlagene Schlüssel hinter unversuchte stellen. Teilergebnisse und Koordinaten sind offline verfügbar; Kacheln cacheabhängig.
-- Ausgeschlossen: automatisches Geocoding, manuelle Marker, Routing, Treffpunkte und Offline-Kachelpakete.
+- Standortinformationen bei regulärer Suche und Profilbeobachtung lokal aufbereiten und mit dem belegten Ort des Listings dauerhaft speichern. Bestehende Daten automatisch bedarfsgesteuert nachpflegen, auch außerhalb der Kartenoberfläche; kein manueller Auflösungsschritt.
+- Bestverfügbare belegte Genauigkeit verwenden: konkrete Position nur mit zulässiger, ausdrücklicher Quellenbasis; derzeit ausschließlich ungefähre deutsche PLZ-/Ortsbereiche oder Stadtbereiche. Keine versteckten Adressen, kein GPS/Gerätestandort, keine Ersatzkoordinaten. Keine Profilinformationen an externe Geocoder.
+- Nur verlässlich zuordenbare Orte kartieren; widersprüchliche oder mehrdeutige Ortsbelege nicht als genaue Lage darstellen. Vorhandene gültige Koordinaten und Herkunft erhalten. Nicht zuordenbare Profile bleiben ohne Marker; gleich positionierte Profile lassen sich gemeinsam auswählen.
+- Automatische Aufbereitung begrenzt, abbrechbar und ohne Netzwerkzugriff; gespeicherte Teilergebnisse bleiben offline verfügbar, Kartenkacheln sind cacheabhängig.
+- Marker sind keine Treffpunkte/Navigationsziele. Ausgeschlossen: manuelle Marker, Routing, Treffpunkte und Offline-Kachelpakete.
 
 ## Einstellungen und lokale Diagnose
 
@@ -156,7 +156,7 @@ Bestätigtes fachliches Soll für M06; Umsetzung und Status ausschließlich in [
 
 ### Nicht vorgesehene Erweiterungen
 
-Globale Statistik, globaler Verlauf, eigenständiger Medienbrowser und weitere Karten-/Geocoding-Funktionen sind nicht Teil des bestätigten Umfangs. Bestehende Medienarchivierung, Quellhistorie und Kartenfunktionen bleiben unverändert. Neue Erweiterungen erst bei konkretem Bedarf und ausdrücklichem Auftrag; keine Legacy-Parität um ihrer selbst willen.
+Globale Statistik, globaler Verlauf, eigenständiger Medienbrowser und weitere Karten-/Geocoding-Funktionen sind nicht Teil des bestätigten Umfangs. Bestehende Medienarchivierung und Quellhistorie bleiben unverändert; Kartenfunktionen gemäß dem Abschnitt [Karte](#karte). Neue Erweiterungen erst bei konkretem Bedarf und ausdrücklichem Auftrag; keine Legacy-Parität um ihrer selbst willen.
 
 ## Bestehende Regressionsreferenzen
 

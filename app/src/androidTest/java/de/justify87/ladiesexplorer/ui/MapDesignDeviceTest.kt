@@ -21,7 +21,7 @@ class MapDesignDeviceTest {
         val profile = MapProfile(1L, 1L, "Fixture", "Leipzig", "Leipzig", 51.34, 12.37, "CITY", true, null)
         val second = profile.copy(listingId = 2L, personId = 2L, name = "Fixture B")
         val actions = mutableListOf<String>()
-        var resolving by mutableStateOf(false)
+        val resolving = true
         var cancelling by mutableStateOf(false)
         rule.setContent {
             LadiesTheme {
@@ -31,7 +31,6 @@ class MapDesignDeviceTest {
                             resolving = resolving, cancelling = cancelling),
                         tileState = MapTileState.Failed, active = profile, selectionCount = 2,
                         profileEnabled = true, onRefresh = { actions.add("refresh") },
-                        onResolve = { actions.add("resolve"); resolving = true },
                         onCancel = { actions.add("cancel"); cancelling = true },
                         onRetryTiles = { actions.add("tiles") }, onPickAll = { actions.add("all") },
                         onPickLocation = { actions.add("location") }, onClear = { actions.add("clear") },
@@ -41,7 +40,8 @@ class MapDesignDeviceTest {
             }
         }
         rule.onNodeWithText("Karte erneut laden").performScrollTo().performClick()
-        rule.onNodeWithText("Standorte auflösen").performScrollTo().performClick()
+        rule.onNodeWithText("Standorte auflösen").assertDoesNotExist()
+        rule.onNodeWithText("Stadtbereich · Leipzig").assertExists()
         rule.onNodeWithText("Aktualisieren").assertIsNotEnabled()
         rule.onNodeWithText("Abbrechen").performScrollTo().performClick()
         rule.onNodeWithText("Wird abgebrochen …").assertIsNotEnabled()
@@ -49,7 +49,7 @@ class MapDesignDeviceTest {
         rule.onNodeWithText("Profil öffnen").performScrollTo().performClick()
         rule.onNodeWithText("Kartierte Profile auswählen").performScrollTo().performClick()
         rule.onNodeWithContentDescription("Auswahl lösen").performScrollTo().performClick()
-        rule.runOnIdle { assertEquals(listOf("tiles", "resolve", "cancel", "location", "Fixture", "all", "clear"), actions) }
+        rule.runOnIdle { assertEquals(listOf("tiles", "cancel", "location", "Fixture", "all", "clear"), actions) }
     }
 
     @Test fun pickerExposesSelectedStateAndChoosesExactRenderedProfile() {

@@ -71,12 +71,18 @@ internal fun mapSelection(points: List<MapProfile>, selectedListingId: Long?): L
 internal fun mapSelectedProfile(points: List<MapProfile>, listingId: Long?, ownerId: Long?): MapProfile? =
     points.firstOrNull { it.listingId == listingId && it.personId == ownerId }
 
+internal fun mapLocationLabel(profile: MapProfile): String =
+    when (profile.precision) {
+        "POSTAL" -> "PLZ-Bereich · ${profile.locationLabel}"
+        "CITY" -> "Stadtbereich · ${profile.locationLabel}"
+        else -> "Ungefähre Ortslage · ${profile.locationLabel}"
+    }
+
 @Composable
 internal fun MapScreen(
     state: MapUiState,
     searchStatus: @Composable () -> Unit,
     onRefresh: (MapControlAction) -> Unit,
-    onResolve: (MapControlAction) -> Unit,
     onCancel: (MapControlAction) -> Unit,
     membershipCurrent: Boolean,
     generation: Long,
@@ -167,7 +173,6 @@ internal fun MapScreen(
                 selectionCount = selection.size,
                 profileEnabled = membershipCurrent && profileEnabled && !state.loading,
                 onRefresh = { onRefresh(controls) },
-                onResolve = { onResolve(controls) },
                 onCancel = { onCancel(controls) },
                 onRetryTiles = { tileState = MapTileState.Loading; mapAttempt++ },
                 onPickAll = { picker = MapPickerScope.All },
@@ -214,7 +219,6 @@ internal fun MapDetails(
     selectionCount: Int,
     profileEnabled: Boolean,
     onRefresh: () -> Unit,
-    onResolve: () -> Unit,
     onCancel: () -> Unit,
     onRetryTiles: () -> Unit,
     onPickAll: () -> Unit,
@@ -237,18 +241,14 @@ internal fun MapDetails(
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(Modifier.size(24.dp))
                 Text(when {
-                    state.cancelling -> "Laufende Anfrage wird beendet …"
-                    state.resolving -> "Standorte werden ermittelt …"
+                    state.cancelling -> "Standortaufbereitung wird beendet …"
+                    state.resolving -> "Ortslagen werden lokal aufbereitet …"
                     else -> "Kartenbestand wird geladen …"
                 }, style = MaterialTheme.typography.bodySmall)
             }
         }
         state.error?.let {
             Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = scheme.error)
-        }
-        if (state.failedLookups > 0u) {
-            Text("Einige Standortabfragen sind fehlgeschlagen. Gespeicherte Teilergebnisse bleiben verfügbar.",
-                color = scheme.error, style = MaterialTheme.typography.bodySmall)
         }
         if (tileState == MapTileState.Failed) {
             Text("Karte konnte nicht geladen werden. Gespeicherte Profildaten bleiben verfügbar.",
@@ -258,12 +258,12 @@ internal fun MapDetails(
             }
         }
         if (state.resolving) {
-            MapActionRow(state, onRefresh, onResolve, onCancel)
+            MapActionRow(state, onRefresh, onCancel)
         }
         if (overview != null && overview.profiles.isEmpty() && !state.loading) {
             Text(
-                if (overview.pendingLocations > 0u) "Noch keine Koordinaten gespeichert. Standorte ausdrücklich auflösen."
-                else "Keine kartierbaren Profile in der aktuellen Ergebnismenge.",
+                if (overview.pendingLocations > 0u) "Standortaufbereitung noch nicht vollständig."
+                else "Keine verlässlich zuordenbaren Ortslagen in der aktuellen Ergebnismenge.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -279,7 +279,7 @@ internal fun MapDetails(
                             description = "Profilbild von ${active.name}")
                         Column(Modifier.weight(1f)) {
                             Text(active.name.ifBlank { "Profil" }, style = MaterialTheme.typography.titleMedium)
-                            Text(active.locationLabel, style = MaterialTheme.typography.bodySmall)
+                            Text(mapLocationLabel(active), style = MaterialTheme.typography.bodySmall)
                         }
                         ShellIconButton(onClick = onClear) {
                             Icon(Icons.Default.Close, contentDescription = "Auswahl lösen")
@@ -301,9 +301,9 @@ internal fun MapDetails(
             }
         }
         if (!state.resolving) {
-            MapActionRow(state, onRefresh, onResolve, onCancel)
+            MapActionRow(state, onRefresh, onCancel)
         }
-        Text("Nur PLZ-/Stadtzentren, keine exakten Adressen. Kartenkacheln sind cacheabhängig; Standortauflösung benötigt Internet.",
+        Text("Ungefähre Ortslagen · GeoNames (CC BY 4.0), lokal verfügbar. Kartenkacheln sind cacheabhängig.",
             style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
     }
 }
@@ -312,7 +312,6 @@ internal fun MapDetails(
 private fun MapActionRow(
     state: MapUiState,
     onRefresh: () -> Unit,
-    onResolve: () -> Unit,
     onCancel: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -324,9 +323,6 @@ private fun MapActionRow(
                 modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) {
                 Text(if (state.cancelling) "Wird abgebrochen …" else "Abbrechen")
             }
-        } else if ((state.overview?.pendingLocations ?: 0u) > 0u) {
-            Button(onClick = onResolve, enabled = !state.loading,
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).shellFocus()) { Text("Standorte auflösen") }
         }
     }
 }
@@ -352,7 +348,7 @@ internal fun MapProfilePicker(
                         .padding(8.dp)) {
                         Text(if (profile.listingId == selectedListingId) "✓ ${profile.name}" else profile.name,
                             style = MaterialTheme.typography.bodyLarge)
-                        Text(profile.locationLabel, style = MaterialTheme.typography.bodySmall)
+                        Text(mapLocationLabel(profile), style = MaterialTheme.typography.bodySmall)
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }

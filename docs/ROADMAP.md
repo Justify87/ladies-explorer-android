@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.9 sind abgeschlossen. Nächste abhängige Aufgabe: M09.10 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.9 sind abgeschlossen. M09.10 nach Nutzerfreigabe vom 25.11.2026 in Prüfung; nächste abhängige Aufgabe nach Integration: M09.11 mit gesonderter Freigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,15 +18,17 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.10 — Karte: Standortdaten und automatische Aufbereitung
 
-**Status:** PLANNED.
+**Status:** REVIEW — Branch `feature/m09-10-offline-location`.
 
-**Abhängigkeit:** M09.1; gesonderter Nutzerauftrag.
+**Abhängigkeit:** M09.1 integriert; gesonderter Nutzerauftrag vom 25.11.2026.
 
 - Lang laufenden, fehlschlagenden bisherigen „Standort auflösen“-Vorgang ursächlich untersuchen (Quelle, Cache, Provider, Fehler/Timeout, Lease und Persistenz); Befund belegen, nicht lediglich UI entfernen.
 - Standortinformationen bei regulärer Datenerfassung vorgelagert und einheitlich der jeweiligen Anzeige/ihrem belegten Standort in SQLite zuordnen. Vorhandene Koordinaten, Herkunft und Genauigkeit wiederverwenden; bestehende Datensätze bedarfsgesteuert automatisch nachpflegen, migrationssicher ohne Datenverlust. Kein erneutes Auflösen bereits gültiger Standorte, keine Kartenoberfläche als Beschaffungspflicht.
 - Abstufung nach bestverfügbarer belegter Genauigkeit: verlässlich bekannte konkrete Position/zulässig vorhandene Adresse, ansonsten PLZ-/Stadtteilbereich, ansonsten Stadt. Annäherungen und Genauigkeit persistieren und visuell von konkreter Position unterscheiden; keine erfundenen Adressen/Ersatzkoordinaten oder Präzision bei unbekanntem Ort. Ohne verlässlichen Ort kein Marker.
 - Manuelle Auflösung durch automatische, begrenzte, abbrechbare und nicht blockierende Aufbereitung ersetzen. Rust-Core als zuständige Schicht, bestehende Cache-/Negativcache-, Provider-Pausen-, Lease-/Cancel-, Fehler-/Offline-Verträge bewahren bzw. zielgerichtet anpassen. Providerbedingungen und Eignung für automatische Auflösung prüfen; kein unkontrolliertes Bulk-Geocoding. Keine privaten oder versteckten Adressen bzw. Profilinformationen an externe Geocoder, kein GPS, Routing oder versteckter Standort. Konkrete Position nur bei zulässiger, tatsächlich belegter Datengrundlage; falls dafür eine Änderung einer verbindlichen Datenschutz-/Providergrenze erforderlich wäre, diese nicht eigenmächtig vornehmen, stattdessen zulässige grobe Stufe verwenden und Blocker benennen.
 - **Prüfung:** synthetische Rust-/SQLite-Fixtures für Genauigkeit, Cache-Hit, Backfill, Quellen-/Owneränderung, Migration, Provider-/Transportfehler, Cancel/Lease/Rate-Limit und Offline; keine realen Profil-/Adressdaten in Tests, keine neuen Providerzugriffe ohne belegte Eignung.
+
+**Umsetzung und Prüfstand:** Ausgangscommit `0b1ba3e3b3315781f5d7656d4e8653fef037b8b7`. Der Altpfad führte bis zu 15 serielle HTTP-Anfragen mit je neun Sekunden Timeout aus, inklusive Nominatim-Pause; dies belegt die mögliche lange Dauer, jedoch nicht die konkrete Geräte-/Providerfehlerursache. Öffentliche Geocoding-Dienste durch fest versionierte lokale GeoNames-PLZ-/Stadtdaten ersetzt; SQLite v3, Herkunft/Genauigkeit, lokale Negativbelege, Cache-Übernahme, Ingest und automatisches Backfill, Cancel/Lease und UI-/Lifecycle-Integration. Keine konkrete Position mangels belegter zulässiger Datenbasis; keine versteckte Adressauflösung oder externen Profil-/Geocoder-Anfragen. Gezielte synthetische Rust-/JVM-/native Teständerungen; vollständiges CI-Gate und tatsächliche Geräteprüfung nicht behauptet, CI-Auswertung vor Merge erforderlich. M09.11 (Kartenlayout/Cluster-Gesamtintegration) nicht vorgezogen.
 
 #### M09.11 — Karte: reaktive Darstellung, Cluster und maximale Fläche
 
