@@ -69,19 +69,13 @@ internal fun currentMapMembership(discovery: DiscoverUiState, search: SearchUiSt
 internal fun MapUiState.needsLocationPreparation(): Boolean =
     !loading && !resolving && (overview == null || overview.pendingLocations > 0u || error != null)
 
-internal enum class MapControl { REFRESH, CANCEL }
-
-internal fun mapControlMatches(
+internal fun mapCancelMatches(
     map: MapUiState, discovery: DiscoverUiState, search: SearchUiState,
-    action: MapControlAction, control: MapControl,
-): Boolean {
-    if (discovery.actionSurface != ProfileActionSurface.MAP ||
-        discovery.actionGeneration != action.generation || search.profileOpen || map != action.rendered) return false
-    if (control == MapControl.CANCEL) return map.resolving && !map.cancelling
-    if (discovery.busy || discovery.loading || search.loading || search.actionBusy) return false
-    if (currentMapMembership(discovery, search) == null) return false
-    return control == MapControl.REFRESH && !map.loading && !map.resolving
-}
+    action: MapControlAction,
+): Boolean =
+    discovery.actionSurface == ProfileActionSurface.MAP &&
+        discovery.actionGeneration == action.generation && !search.profileOpen &&
+        map == action.rendered && map.resolving && !map.cancelling
 
 internal data class MapProfileOpenAction(
     val overview: MapOverview,
