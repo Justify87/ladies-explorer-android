@@ -111,7 +111,7 @@ internal class SwipeSession {
 }
 
 internal fun prefetchCards(cards: List<DiscoveryCard>): List<DiscoveryCard> =
-    cards.drop(1).take(2)
+    cards.drop(1).take(5)
 
 /** Non-writing traversal remains available without a detail projection. */
 internal data class SwipeDeckToken(val runId: Long?, val session: Long)
