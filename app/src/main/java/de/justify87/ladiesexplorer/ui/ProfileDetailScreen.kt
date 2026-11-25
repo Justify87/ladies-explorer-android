@@ -33,6 +33,7 @@ internal fun ProfileDetailScreen(
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
     onCancelArchive: (Long) -> Unit,
     onRetryProfile: () -> Unit,
+    onRefreshProfile: (ProfileIdentityToken) -> Unit,
     onBack: () -> Unit,
     actionsBusy: Boolean,
     touchGate: ProfileTouchGate? = null,
@@ -125,6 +126,8 @@ internal fun ProfileDetailScreen(
                 if (identity != null) Box {
                     ShellIconButton(onClick = { galleryMenu = true }) { Icon(Icons.Default.MoreVert, "Profilaktionen") }
                     DropdownMenu(expanded = galleryMenu, onDismissRequest = { galleryMenu = false }) {
+                        DropdownMenuItem(text = { Text("Profil aktualisieren") }, enabled = !busy && !state.loading && !state.archiving,
+                            onClick = { galleryMenu = false; renderedToken?.takeIf(isProfileCurrent)?.let(onRefreshProfile) })
                         DropdownMenuItem(text = { Text("Vollständige Profilinformationen") },
                             onClick = { galleryMenu = false; info = true })
                         selectedMedia?.takeIf { it.kind == "IMAGE" }?.let { item ->

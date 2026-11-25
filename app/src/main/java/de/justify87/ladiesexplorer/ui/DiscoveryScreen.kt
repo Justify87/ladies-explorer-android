@@ -99,6 +99,7 @@ internal fun DiscoverScreen(
     val videoFiles = (context.applicationContext as LadiesApplication).galleryVideoFiles
     val failures = remember(decks) { mutableStateMapOf<Pair<Long, Long>, SwipeReadFailure>() }
     val localRetries = remember(decks) { mutableStateMapOf<Pair<Long, Long>, Boolean>() }
+    var refreshTarget by remember(decks) { mutableStateOf<SwipeCardToken?>(null) }
     var activeRead by remember(decks) { mutableStateOf<Pair<Pair<Long, Long>, RequestControl>?>(null) }
     var activeWork by remember(decks) { mutableStateOf<Pair<Pair<Long, Long>, Job>?>(null) }
     DisposableEffect(decks) {
@@ -136,8 +137,10 @@ internal fun DiscoverScreen(
     }
     SideEffect {
         onRenderedSwipe(token)
+        if (refreshTarget != state.cardToken()) refreshTarget = null
         if (!decks.isCurrent(state.swipeExternalRevision)) {
             preparation.clear()
+            refreshTarget = null
             failures.clear()
             activeRead?.second?.cancel()
             activeWork?.second?.cancel()
@@ -183,7 +186,11 @@ internal fun DiscoverScreen(
                     if (model == null) {
                         val live = latestReadState
                         val currentRole = sameSwipeCard(target, latestWindow.firstOrNull())
-                        val policy = swipeReadPolicy(currentRole, live.activeRunId, target.listingId,
+                        val explicitRefresh = currentRole && refreshTarget?.let {
+                            it == live.cardToken() && it.listingId == target.listingId && it.ownerId == target.personId
+                        } == true
+                        if (explicitRefresh) refreshTarget = null
+                        val policy = if (explicitRefresh) SwipeReadPolicy(true, true) else swipeReadPolicy(currentRole, live.activeRunId, target.listingId,
                             localOnly = localRetries[key] == true || decks.requiresLocal(target) ||
                                 target.listingId in live.localProfileStrictIds,
                             preferLocal = target.listingId in live.localProfileReloadIds ||
@@ -272,6 +279,8 @@ internal fun DiscoverScreen(
         var photoRequest by remember { mutableIntStateOf(0) }
         val profile = displayed
         var selectedMedia by remember { mutableStateOf<ProfileMediaItem?>(null) }
+        var profileMenu by remember(token, selectedMedia?.presentationKey()) { mutableStateOf(false) }
+        val latestSelected by rememberUpdatedState(selectedMedia)
         var visual by remember(profile?.media?.map { it.presentationKey() }) { mutableStateOf<HeroVisual?>(null) }
         var heroCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         var bodyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -301,6 +310,7 @@ internal fun DiscoverScreen(
             state.mutationError?.let { add(ProfileNotice("Entscheidungsfehler", it, warning = true)) }
             state.error?.let { add(ProfileNotice("Deckfehler", it, warning = true)) }
             profile?.warning?.let { add(ProfileNotice("Profilhinweis", it, warning = true)) }
+            if (visible && profile != null && current == null && readError == null) add(ProfileNotice("Profil wird aktualisiert", "Profil wird vorbereitet …"))
             if (visible && projectedToken != null && token == null) add(ProfileNotice("Profilzustand",
                 "Profil- und Deckzustand unterscheiden sich. Bitte Ansicht aktualisieren.", warning = true))
             readError?.let { error ->
@@ -344,6 +354,15 @@ internal fun DiscoverScreen(
                 onChoose(it, preference, capture.read())
             }
         }
+        val refreshProfile: () -> Unit = {
+            val subject = token?.takeIf(isProfileCurrent)
+            if (subject != null && card != null && decks[card] != null && refreshTarget == null) {
+                refreshTarget = SwipeCardToken(SwipeDeckToken(subject.runId, subject.session), subject.listingId, subject.ownerId)
+                failures.remove(subject.listingId to subject.ownerId)
+                localRetries.remove(subject.listingId to subject.ownerId)
+                decks.remove(subject.listingId)
+            }
+        }
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero",
             hasRail = true, notices = notices, noticeOwner = controls,
             rootNavigation = rootNavigation,
@@ -354,7 +373,26 @@ internal fun DiscoverScreen(
             },
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(presentation, sourceContext, controls, compactNotice,
-                    onNotice, { onAvailability(deckToken, it) }, identity, { photoRequest++ })
+                    onNotice, { onAvailability(deckToken, it) }, identity, { photoRequest++ }) {
+                    Box {
+                        ShellIconButton(onClick = { profileMenu = true }) { Icon(Icons.Default.MoreVert, "Profilaktionen") }
+                        DropdownMenu(expanded = profileMenu, onDismissRequest = { profileMenu = false }) {
+                            DropdownMenuItem(text = { Text("Profil aktualisieren") }, enabled = actions,
+                                onClick = { profileMenu = false; refreshProfile() })
+                            selectedMedia?.takeIf { it.kind == "IMAGE" }?.let { image ->
+                                DropdownMenuItem(text = { Text("Bild groß anzeigen") }, enabled = actions,
+                                    onClick = { profileMenu = false; if (token?.let(isProfileCurrent) == true && latestSelected == image) fullImage = image })
+                            }
+                            profile?.identity?.profileUrl?.let { url ->
+                                DropdownMenuItem(text = { Text("Originalprofil öffnen") }, enabled = actions,
+                                    onClick = { profileMenu = false; if (token?.let(isProfileCurrent) == true) openExternal(context, url) })
+                            }
+                            if (token != null && token.preference != Preference.NONE)
+                                DropdownMenuItem(text = { Text("Präferenz zurücksetzen") }, enabled = actions,
+                                    onClick = { profileMenu = false; choose(Preference.NONE) })
+                        }
+                    }
+                }
             },
             rail = { SwipeDecisionControls(controls, identity?.title, undo, skip, choose, reading = it.reading) },
         ) { presentation ->
@@ -398,20 +436,6 @@ internal fun DiscoverScreen(
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices,
                     fallbackIdentity = identity, fallbackMedia = fallback, preparedPanels = prepared?.panels,
                     afterHeading = {
-                    item(key = "profile-actions") {
-                        Column {
-                            TextButton(onClick = { photoRequest++ }) { Text("Zum Foto") }
-                            val image = selectedMedia?.takeIf { it.kind == "IMAGE" }
-                            if (image != null) TextButton(enabled = actions, onClick = {
-                                if (token?.let(isProfileCurrent) == true && selectedMedia == image) fullImage = image
-                            }) { Text("Bild groß anzeigen") }
-                            profile?.identity?.profileUrl?.let { url -> TextButton(enabled = actions, onClick = {
-                                if (token?.let(isProfileCurrent) == true) openExternal(context, url)
-                            }) { Text("Originalprofil öffnen") } }
-                            if (token != null && token.preference != Preference.NONE)
-                                TextButton(enabled = actions, onClick = { choose(Preference.NONE) }) { Text("Präferenz zurücksetzen") }
-                        }
-                    }
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                     }, afterDetails = {
                         item(key = "deck-actions") {
@@ -488,6 +512,7 @@ private fun SwipeShellHeader(
     onAvailability: (AvailabilityMode) -> Unit,
     identity: HeroIdentity?,
     onHero: () -> Unit,
+    profileActions: @Composable () -> Unit,
 ) {
     Row(Modifier.fillMaxSize().padding(horizontal = shellContentInset()), verticalAlignment = Alignment.CenterVertically) {
         val shown = identity.takeIf { presentation.identityInHeader }
@@ -500,6 +525,7 @@ private fun SwipeShellHeader(
         if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
         if (presentation.reading) {
             ShellIconButton(onClick = onHero) { Icon(Icons.Default.KeyboardArrowUp, "Zum Foto") }
+            profileActions()
         } else AvailabilityQuickChoice(context.availability, context.availabilityEnabled, context.deck, onAvailability)
     }
 }

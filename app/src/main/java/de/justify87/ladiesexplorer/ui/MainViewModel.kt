@@ -1338,6 +1338,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    internal fun refreshStandaloneProfile(token: ProfileIdentityToken) {
+        if (token is DetailIdentityToken && isProfileActionCurrent(token)) profileOperations.refreshProfile(token)
+    }
+
     internal fun retryProfileProjection(action: DetailRetryAction) = profileOperations.retryProfileProjection(action)
 
     fun refresh() {

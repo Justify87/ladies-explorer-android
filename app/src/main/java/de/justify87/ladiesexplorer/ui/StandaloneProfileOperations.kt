@@ -170,6 +170,19 @@ internal class StandaloneProfileOperations<C : Any>(
                 profileRead=null,profileMatchContext=matchContext,profileRetryFromArchive=false,profileSourceRetryAllowed=false,error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false,retryProfileListingId=null)
         }
+        startProfileRead(requestId, listingId)
+    }
+
+    fun refreshProfile(token: DetailIdentityToken) {
+        val active = _searchUiState.value
+        if (!admitsSession(token.sessionId) || active.loading || active.actionBusy || active.archiving ||
+            _discoverState.value.busy || active.detailIdentityToken() != token) return
+        _searchUiState.update { it.copy(loading = true, error = null, actionError = null,
+            retryProfileListingId = null, profileSourceRetryAllowed = false, mediaArchive = null, mediaWarning = null) }
+        startProfileRead(token.sessionId, token.listingId)
+    }
+
+    private fun startProfileRead(requestId: Long, listingId: Long) {
         scope.launch {
             var localReadReady = false
             var missingInitialProfile = false

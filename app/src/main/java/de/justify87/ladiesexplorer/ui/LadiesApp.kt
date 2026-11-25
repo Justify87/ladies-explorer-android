@@ -326,6 +326,7 @@ fun LadiesApp(
                     onConfirmIdentity = viewModel::confirmIdentity,
                     onCancelArchive = viewModel::cancelMediaArchive,
                     onRetryProfile = { renderedRetryAction?.let(viewModel::retryProfileProjection) },
+                    onRefreshProfile = viewModel::refreshStandaloneProfile,
                     onBack = { viewModel.closeProfile(renderedProfileSession) },
                     actionsBusy = discovery.busy,
                     touchGate = profileTouchGate,
