@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) ist durch Nutzerauftrag vom 25.11.2026 freigegeben. M10.1 und M10.2 sind abgeschlossen. Nächste Entwicklungsaufgabe: M10.3 / G10-Pure (READY). L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) ist durch Nutzerauftrag vom 25.11.2026 freigegeben. M10.1 und M10.2 sind abgeschlossen. Nächste Entwicklungsaufgabe: M10.3 / G10-Pure (DOING). L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M10 — Pure-UI-Konsolidierung
 
@@ -14,7 +14,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M10.3 / G10-Pure — Integriertes UI-Review und Abnahme
 
-**Status:** READY.
+**Status:** DOING — Branch `fix/m10-3-pure-integration`.
 
 **Abhängigkeit:** M10.1 und M10.2 integriert. Gate-ID G10-Pure von historischem G10 (M05.10) unterscheiden.
 
