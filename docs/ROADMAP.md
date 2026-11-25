@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.6 sind abgeschlossen. Nächste abhängige Aufgabe: M09.7 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.6 sind abgeschlossen. M09.7 nach gesonderter Nutzerfreigabe in Review; nächste abhängige Aufgabe M09.8 erst nach Integration und gesondertem Nutzerauftrag. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,7 +18,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.7 — Suche: kompakter Editor, Filtertext und Abschnittszustand
 
-**Status:** PLANNED.
+**Status:** REVIEW. Branch `m09-7-compact-search-editor`; JVM-Regressionen und native Probes ergänzt, vollständiges CI-Gate ausstehend.
 
 **Abhängigkeit:** M09.5; gesonderter Nutzerauftrag.
 

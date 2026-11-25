@@ -20,6 +20,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.CaptureMode
+import de.justify87.ladiesexplorer.core.SourceFilterCatalog
+import de.justify87.ladiesexplorer.core.SourceFilterGroup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -116,6 +118,40 @@ class FormDesignDeviceTest {
         }
     }
 
+
+
+    @Test fun filteringOptionsDoesNotClearHiddenSelectionOrSubmit() {
+        var search by mutableStateOf(SearchUiState(filterCatalog = SourceFilterCatalog(
+            listOf(""), listOf(SourceFilterGroup("haarfarbe", listOf("Braun", "Schwarz"))))))
+        var submitted = 0
+        rule.setContent {
+            MaterialTheme(colorScheme = ladiesDarkColors) {
+                SearchScreen(
+                    search = search, saved = SavedSearchUiState(),
+                    canStartSearch = true, canEditDraft = true,
+                    onDraftChange = { change -> search = change(SearchDraft.from(search)).applyTo(search) },
+                    onReset = { true }, onPreviewStart = {}, onPreviewStop = {},
+                    onSearch = { submitted++ }, onCancelSearch = {},
+                    onSave = {}, onName = {}, onCancelEdit = {}, generation = 12L,
+                    onProfile = {}, modifier = Modifier.width(360.dp).height(560.dp),
+                )
+            }
+        }
+        val query = rule.onNodeWithContentDescription("Filter suchen")
+        query.performTextReplacement("Braun")
+        rule.onNodeWithText("Braun").performScrollTo().performClick().assertIsSelected()
+        query.performScrollTo().performTextReplacement("Schwarz")
+        rule.onNodeWithText("Braun").assertDoesNotExist()
+        rule.onNodeWithText("Schwarz").performScrollTo().assertIsNotSelected()
+        rule.runOnIdle {
+            assertEquals(setOf("Braun"), search.selectedFilters["haarfarbe"])
+            assertEquals(0, submitted)
+        }
+        query.performScrollTo().performTextReplacement("fixture-no-match")
+        rule.onNodeWithText("Keine passenden Filter").assertExists()
+        query.performTextReplacement("")
+        rule.runOnIdle { assertEquals(setOf("Braun"), search.selectedFilters["haarfarbe"]) }
+    }
 
     @Test fun compactFilterInputAndChoicesKeepTouchTargetsAtLargeFont() {
         rule.setContent {
