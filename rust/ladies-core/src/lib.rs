@@ -143,8 +143,8 @@ pub use media::{DisplayImage, DisplayVideo, MediaArchiveReport};
 pub use operation::RequestControl;
 pub use prices::{PaidEncounter, PriceItem, PriceList, PriceListValues, PriceOverview};
 pub use profile_detail::{
-    EvidenceStatus, FilterEvidence, FilterMatchGroup, PersonDetail, PersonListing, ProfileFacts, ProfileField,
-    SnapshotDifference,
+    EvidenceStatus, FilterEvidence, FilterMatchGroup, PersonDetail, PersonListing, ProfileFacts,
+    ProfileField, SnapshotDifference,
 };
 pub use saved_search::{
     LocalVisibility, SavedSearchCard, SavedSearchDefinition, SavedSearchDelta, SavedSearchInfo,
