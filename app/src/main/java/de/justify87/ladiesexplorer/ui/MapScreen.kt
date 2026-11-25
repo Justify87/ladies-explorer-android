@@ -320,7 +320,8 @@ internal fun MapDetails(
     val scheme = MaterialTheme.colorScheme
     if (!hasMapDetails(state, tileState, active)) return
     Surface(modifier, shape = MaterialTheme.shapes.medium, color = scheme.surfaceContainerHigh) {
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(horizontal = ShellMetrics.small, vertical = ShellMetrics.gap),
+            verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
             if (state.resolving || state.loading) {
                 Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -338,13 +339,13 @@ internal fun MapDetails(
             if (tileState == MapTileState.Failed) {
                 Text("Karte konnte nicht geladen werden. Gespeicherte Profildaten bleiben verfügbar.",
                     color = scheme.error, style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = onRetryTiles, modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
+                OutlinedButton(onClick = onRetryTiles, modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus()) {
                     Text("Karte erneut laden")
                 }
             }
             if (state.resolving) {
                 TextButton(onClick = onCancel, enabled = !state.cancelling,
-                    modifier = Modifier.heightIn(min = 48.dp).shellFocus()) {
+                    modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus()) {
                     Text(if (state.cancelling) "Wird abgebrochen …" else "Standortaufbereitung abbrechen")
                 }
             }
@@ -358,7 +359,7 @@ internal fun MapDetails(
             if (active != null) {
                 Surface(shape = MaterialTheme.shapes.medium, color = scheme.surfaceContainerHigh,
                     modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(Modifier.padding(ShellMetrics.inset), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             // Only the selected profile uses the existing image adapter, never every marker.
@@ -374,17 +375,17 @@ internal fun MapDetails(
                             }
                         }
                         if (selectionCount > 1) {
-                            TextButton(onClick = onPickLocation, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()) {
+                            TextButton(onClick = onPickLocation, modifier = Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch).shellFocus()) {
                                 Text("$selectionCount Profile am ungefähren Ort")
                             }
                         }
                         Button(onClick = { onOpen(active) }, enabled = profileEnabled,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()) { Text("Profil öffnen") }
+                            modifier = Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch).shellFocus()) { Text("Profil öffnen") }
                     }
                 }
             }
             if (!overview?.profiles.isNullOrEmpty()) {
-                TextButton(onClick = onPickAll, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()) {
+                TextButton(onClick = onPickAll, modifier = Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch).shellFocus()) {
                     Text("Kartierte Profile auswählen")
                 }
             }
@@ -407,7 +408,7 @@ internal fun MapProfilePicker(
             if (profiles.isEmpty()) Text("Keine kartierbaren Profile verfügbar.")
             else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).selectableGroup()) {
                 items(profiles, key = { it.listingId }) { profile ->
-                    Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus()
+                    Column(Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch).shellFocus()
                         .selectable(selected = profile.listingId == selectedListingId, role = Role.RadioButton,
                             onClick = { onSelect(profile) })
                         .padding(8.dp)) {
@@ -419,7 +420,7 @@ internal fun MapProfilePicker(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp).shellFocus()) { Text("Schließen") } },
+        confirmButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus()) { Text("Schließen") } },
     )
 }
 

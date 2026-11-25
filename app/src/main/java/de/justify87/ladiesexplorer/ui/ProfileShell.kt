@@ -87,12 +87,12 @@ internal fun ProfileShell(
             AlertDialog(onDismissRequest = { dialog = false },
                 title = { Text("Status und Hinweise") },
                 text = {
-                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(ShellMetrics.inset)) {
                         notices.forEachIndexed { index, item ->
                             Text(item.message, color = if (item.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                             item.action?.let { label ->
                                 TextButton(onClick = { runNotice(index) }, enabled = item.enabled,
-                                    modifier = Modifier.heightIn(min = 48.dp)) { Text(label) }
+                                    modifier = Modifier.heightIn(min = ShellMetrics.touch)) { Text(label) }
                             }
                         }
                     }
@@ -106,10 +106,10 @@ internal fun ProfileShell(
             if (budget.notice > 0f) {
                 val index = notices.indexOfFirst { it.action != null && it.enabled }
                 val item = notices.getOrNull(index)
-                Row(Modifier.fillMaxWidth().height(budget.notice.dp).padding(horizontal = 4.dp),
+                Row(Modifier.fillMaxWidth().height(budget.notice.dp).padding(horizontal = ShellMetrics.gap),
                     verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { dialog = true }, modifier = Modifier.weight(1f).fillMaxHeight(),
-                        contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        contentPadding = PaddingValues(horizontal = ShellMetrics.small)) {
                         Text(indicator?.label.orEmpty(),
                             color = if (notices.any { it.warning }) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -117,7 +117,7 @@ internal fun ProfileShell(
                     }
                     if (item != null && width >= 300.dp && fontScale < 1.5f) {
                         TextButton(onClick = { runNotice(index) }, modifier = Modifier.fillMaxHeight(),
-                            contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            contentPadding = PaddingValues(horizontal = ShellMetrics.small)) {
                             Text(item.action.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
@@ -161,7 +161,7 @@ internal fun ProfileShellTitle(title: String, context: String, status: String, s
 internal fun IdentityInfoDialog(identity: HeroIdentity, dismiss: () -> Unit) {
     AlertDialog(onDismissRequest = dismiss, title = { Text("Profilinformationen") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
                 Text(identity.title, style = MaterialTheme.typography.titleLarge)
                 Text(identity.subtitle)
                 if (identity.decisions.isNotBlank()) Text(identity.decisions)
