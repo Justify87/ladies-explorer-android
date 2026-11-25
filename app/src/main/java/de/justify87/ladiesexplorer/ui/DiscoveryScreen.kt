@@ -113,7 +113,7 @@ internal fun DiscoverScreen(
     val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
         ?.let { decks[it] }?.takeIf { prepared?.model == it }
     val displayed = prepared?.model
-    val readError = cardKey?.let { failures[it] }?.takeIf { it.current }?.message
+    val readError = cardKey?.let { failures[it] }?.takeIf { it.current && it.invalidation == decks.invalidation(card) }?.message
     val projectedToken = state.swipeToken(current)
     val token = projectedToken?.takeIf { visible && currentSwipeActionCard(state, searchLoading, it) != null }
     var lastMismatch by remember(state.activeRunId, cardKey) {
@@ -140,6 +140,9 @@ internal fun DiscoverScreen(
         decks.applyExternalRevision(state.swipeExternalRevision)
         preparation.retain(windowKeys)
         failures.keys.toList().filterNot { it in windowKeys }.forEach { failures.remove(it) }
+        failures.toMap().forEach { (key, failure) ->
+            if (key != cardKey && failure.current) failures[key] = failure.copy(current = false)
+        }
         localRetries.keys.toList().filterNot { it in windowKeys }.forEach { localRetries.remove(it) }
         activeRead?.takeIf { it.first !in windowKeys }?.second?.cancel()
     }
@@ -168,6 +171,7 @@ internal fun DiscoverScreen(
                 }.first { it != null } ?: continue
                 val key = target.listingId to target.personId
                 videoFiles.retainPins(preparation, preparation.pinnedVideos())
+                if (!latestReadVisible || latestWindow.none { sameSwipeCard(it, target) }) continue
                 val model = decks[target]
                 if (model == null) {
                     val live = latestReadState
@@ -418,6 +422,7 @@ internal fun DiscoverScreen(
                             preparedMedia = prepared?.media.orEmpty(),
                             preparing = profile == null && readError == null,
                             videoPlaybackEnabled = started && !state.busy && !searchLoading && !transitioning,
+                            presentationOwner = cardIdentity,
                             actionToken = token,
                             favorite = identity?.favorite, onFavorite = { token?.takeIf(isProfileCurrent)?.let(onFavorite) },
                             onVisual = { visual = it },
