@@ -38,7 +38,7 @@ Gemeinsame Profilansicht unterhalb der Galerie in Swipe und Standalone gemäß [
 
 **Akzeptanz:** Einheitlicher flacher Profilfluss, unmittelbar lesbare strukturierte Angaben und vollständiger Zugriff auf sekundäre Inhalte ohne Datenverlust. Native Vergleichsbelege für Informationsdichte/Interaktionsaufwand und gemessene Bounds, keine starre Einsparquote. Dark/Light, 360 × 740, 390 × 844, 430 × 932 und 600 dp, Font Scale 1/1,3/2, kurze Fenster, Rotation, IME, TalkBack-/Fokussemantik und mindestens 48-dp-Touchziele risikogerecht prüfen. Galerie-/Prefetch-Stabilität, Run-/Owner-Admission, Entscheidungen, Undo, lokale Editoren und explizite Quellenaktionen unverändert.
 
-**Prüfung:** Vollständiges CI-Gate gemäß README, relevante Rust-/JVM-/Architekturtests, Lint sowie ARM64-Debug- und Instrumentierungs-APK. Tatsächlich ausgeführte Prüfungen, gebaute Artefakte und nicht ausgeführte Geräteprüfungen getrennt belegen; Geräteaufgaben gemäß Merge-Regel. Abschluss und Belege nur bei entsprechendem tatsächlichem Ergebnis gemäß [Pflege](#pflege).
+**Prüfung:** Vollständiges CI-Gate gemäß README, relevante Rust-/JVM-/Architekturtests, Lint sowie ARM64-Debug- und Instrumentierungs-APK. Tatsächlich ausgeführte Prüfungen, gebaute Artefakte und nicht ausgeführte Geräteprüfungen getrennt belegen; Geräteaufgaben gemäß Merge-Regel. Bedingten Abschluss vorbereiten und Belege nur entsprechend dem tatsächlichen Ergebnis gemäß [Pflege](#pflege) dokumentieren.
 
 ## Unabhängige Aufgaben
 
@@ -54,9 +54,7 @@ libmpv/FFmpeg-AAR-Lizenz, enthaltene Bibliotheken und ABIs, Corresponding Source
 
 | Status | Bedeutung |
 | --- | --- |
-| `READY` | Ausführbar |
-| `DOING` | Tatsächlich in Arbeit; Branch/PR nennen |
-| `REVIEW` | Zur Prüfung bereit; tatsächlicher Prüfstand im PR |
+| `READY` | Ausführbar; aktive Bearbeitung und Prüfstand im zugehörigen PR |
 | `BLOCKED` | Blocker und nächsten Schritt benennen |
 | `PLANNED` | Abhängig/vorläufig, nicht freigegeben |
 

@@ -309,7 +309,8 @@ jobs:
 
   # Keep the required check for all events, including documentation-only changes.
   build:
-    name: build
+    # Keep manual APK consumers stable; only a PR check can satisfy the PR rule.
+    name: ${{ github.event_name == 'pull_request' && 'PR build' || 'build' }}
     needs: [scope, core, android]
     if: ${{ always() }}
     runs-on: ubuntu-24.04

@@ -472,6 +472,7 @@ class WorkflowGateTest(unittest.TestCase):
         gate = self.workflow.split("  build:\n", 1)[1]
         self.assertIn("    if: ${{ always() }}", gate)
         self.assertIn("    needs: [scope, core, android]", gate)
+        self.assertIn("name: ${{ github.event_name == 'pull_request' && 'PR build' || 'build' }}", gate)
         self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", self.workflow)
         for job in ("core", "android"):
             section = self.workflow.split("  " + job + ":\n", 1)[1]
