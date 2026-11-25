@@ -1,6 +1,6 @@
 # UI- und Designvertrag
 
-Maßgebliches gestalterisches und interaktives Soll der nativen Android-App. Die [Designreferenz v3](../design-referenz/README.md) zeigt die freigegebene visuelle Richtung mit synthetischen Daten; sie ist keine WebView-Vorlage und kein eigenständiger Produktvertrag. Fachliche Funktionen und Grenzen: [PRODUCT](PRODUCT.md); technische Architektur und Lebenszyklus: [ARCHITECTURE](ARCHITECTURE.md); Aufgaben, Status und Abnahme: [ROADMAP](ROADMAP.md). Agentenablauf: [AGENTS](../AGENTS.md).
+Maßgebliches gestalterisches und interaktives Soll der nativen Android-App. Die [Designreferenz v3](../design-referenz/README.md) illustriert die ursprüngliche visuelle Richtung mit synthetischen Daten; bei Abweichungen gilt ausschließlich dieser Vertrag. Sie ist keine WebView-Vorlage und kein eigenständiger Produktvertrag. Fachliche Funktionen und Grenzen: [PRODUCT](PRODUCT.md); technische Architektur und Lebenszyklus: [ARCHITECTURE](ARCHITECTURE.md); Aufgaben, Status und Abnahme: [ROADMAP](ROADMAP.md). Agentenablauf: [AGENTS](../AGENTS.md).
 
 ## Zuständigkeit und Pflege
 
@@ -16,9 +16,9 @@ Maßgebliches gestalterisches und interaktives Soll der nativen Android-App. Die
 - Ruhige, flache, bildorientierte und kompakte Oberfläche mit progressiv zugänglichen Informationen; neutrale Flächen in beiden Themes und Orange als primärer Interaktionsakzent. Pure priorisiert die Medien vor dauerhaft sichtbarem UI. Containerflächen nur zur funktionalen Gruppierung einsetzen; keine dekorativen Rahmen, gestapelten Pillen, starken Flächenkontraste oder konkurrierenden Akzente.
 - Bestehendes Material 3 Expressive und die semantischen `MaterialTheme`-Rollen verwenden; keine zweite native Tokenbibliothek. [LadiesTheme.kt](../app/src/main/java/de/justify87/ladiesexplorer/ui/LadiesTheme.kt) ist nach nativer Anpassung die konkrete Implementierung. Dynamische Systemfarben nicht standardmäßig aktivieren.
 - **Dark und Light Mode gleichwertig unterstützen.** Die HTML-Referenz illustriert nur die dunkle Ausgangsrichtung; Light und Dark nativ abstimmen und prüfen, nicht durch blindes Invertieren. Semantische Statusfarben bleiben in beiden Modi unterscheidbar.
-- Farbe allein vermittelt weder Auswahl noch Like, Favorit, Quellenstatus, Fehler oder Erfolg. Symbol, Text bzw. zugängliche Zustandsbeschreibung ergänzen sie. Kontrast auf Fotos durch Scrim/Gradient gegen wechselnde Hintergründe sichern.
+- Farbe allein vermittelt weder Auswahl noch Like, Favorit, Quellenstatus, Fehler oder Erfolg. Symbol, Text bzw. zugängliche Zustandsbeschreibung ergänzen sie. Kontrast auf Fotos durch lokal begrenzte halbtransparente Icon-Flächen oder nötige Scrims gegen wechselnde Hintergründe sichern; keine großflächige dekorative Verdunkelung oder Gradients in Pure.
 
-**Richtwerte – gemeinsame dunkle Start-Tokens** aus [`styles.css`](../design-referenz/styles.css) (`:root`):
+**Richtwerte – gemeinsame dunkle Start-Tokens** (historische Rollen aus [`styles.css`](../design-referenz/styles.css); native Kontrast- und Flächenregeln haben Vorrang):
 
 | Rolle | Referenztoken | Wert | Native Zuordnung |
 | --- | --- | --- | --- |
@@ -29,7 +29,7 @@ Maßgebliches gestalterisches und interaktives Soll der nativen Android-App. Die
 | Text auf Akzent | `--on-accent` | `#1E160F` | `onPrimary` |
 | Primär-/Sekundärtext | `--primary`, `--secondary` | `#F7F7F7`, `#A6A6AA` | `onSurface`, `onSurfaceVariant` |
 | Trennlinie | `--line` | `#48494D` | `outlineVariant` |
-| Ablehnen / Gefällt | `--negative`, `--positive` | `#F72F49`, `#4CDA36` als historische Referenz | eigenständige kontrastgeprüfte Aktionsrollen; in Pure dezente getönte Flächen mit farbigem Symbol statt vollgesättigter großer Flächen |
+| Ablehnen / Gefällt | `--negative`, `--positive` | Theme-abhängig, kontrastgeprüft | eigenständige Aktionsrollen; in Pure dezente getönte Flächen mit farbigem Symbol statt vollgesättigter großer Flächen |
 | Favorit / Erfolg | `--favorite`, `--success` | `#D26BEC`, `#5DE44E` | voneinander getrennte Statusrollen |
 | Tastaturfokus | `--focus` | `#FFC18D` | sichtbarer Fokusindikator |
 
@@ -186,6 +186,6 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 5. Profilinhalt einschließlich Notiz, Identität, Snapshotvergleich, Begegnungen, Preislisten sowie gesicherte Entwürfe, Konflikte, Read-/Writefehler und begrenzte lokale Reads.
 6. SavedPeople, Watchlist, Statusprüfung, MapLibre/Standortauflösung und lokale Diagnose ohne neue Quellzugriffe, fiktive Statusnachweise oder versehentlichen Export.
 
-**Richtwerte und Freiraum:** Größe des Bildausschnitts, sekundäre Abstände, native Material-Details und adaptive Mehrspaltigkeit dürfen anhand von Geräte- und Accessibility-Messungen angepasst werden. Keine neuen Produktfunktionen aus der Bildvorlage ableiten. Die [Referenz](../design-referenz/README.md) mit `index.html`, `styles.css`, `app.js`, `demo-data.js` und lokalen Bildern zeigt ausschließlich die dunkle Gestaltung; **Demo-Orte, Zahlen, Suchergebnisse, Bilder und simulierte Editoraktionen sind nicht normativ**. Die native App bleibt Kotlin/Compose auf Rust-Core und SQLite – keine WebView oder zweite Daten-/Netzwerkimplementierung.
+**Richtwerte und Freiraum:** Größe des Bildausschnitts, sekundäre Abstände, native Material-Details und adaptive Mehrspaltigkeit dürfen anhand von Geräte- und Accessibility-Messungen angepasst werden. Keine neuen Produktfunktionen aus der Bildvorlage ableiten. Die [Referenz](../design-referenz/README.md) mit `index.html`, `styles.css`, `app.js`, `demo-data.js` und lokalen Bildern zeigt ausschließlich die ursprüngliche dunkle Gestaltung; **Demo-Orte, Zahlen, Suchergebnisse, Bilder und simulierte Editoraktionen sind nicht normativ**. Die native App bleibt Kotlin/Compose auf Rust-Core und SQLite – keine WebView oder zweite Daten-/Netzwerkimplementierung.
 
 Prüf- und Abschlussbelege gehören zum jeweiligen PR und in [ROADMAP](ROADMAP.md#pflege); die dortige Merge-Regel ersetzt keine behauptete tatsächliche Geräteausführung. Diese Datei enthält bewusst keine Aufgabenstände oder Fertigmeldungen.
