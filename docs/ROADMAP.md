@@ -12,7 +12,7 @@ Gemeinsame Profilansicht unterhalb der Galerie in Swipe und Standalone gemäß [
 
 ### M12.1 — Gemeinsamer kompakter Profilfluss und Informationskopf
 
-**Status:** READY.
+**Status:** REVIEW. Branch `feat/m12-1-compact-profile`; Implementierung bereit für das vollständige CI-Gate. Nächster Schritt: CI für den aktuellen PR-HEAD prüfen, bei Erfolg unabhängiges Abschlussreview durchführen. Merge nur nach ausdrücklicher Freigabe.
 
 **Umfang:** Bestehende Profilprojektion, `ProfileShell`, `ProfileFlow`, `ProfilePanels` und tatsächliche Aufrufer gegen das neue Soll prüfen. Gemeinsamen flachen Profilrahmen, kompakte Identität/Kontakte und eindeutige Status-/Fehlerdarstellung einführen. Nur den strukturellen Rahmen und Identitätskopf ersetzen; verbleibende Inhaltskomponenten direkt weiterverwenden, ohne ihre spätere Darstellung vorwegzunehmen. Galerie, Navigation/Rail, lokale Editor- und fachliche Operationsverträge unverändert lassen.
 
