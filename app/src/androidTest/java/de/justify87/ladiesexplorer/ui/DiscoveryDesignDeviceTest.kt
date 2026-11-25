@@ -431,6 +431,66 @@ class DiscoveryDesignDeviceTest {
         }
     }
 
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun lastGridMemberFadesOutAndBackWithoutAnInteractiveOutgoingCard() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val image = File.createTempFile("synthetic-fade-", ".png", context.cacheDir)
+        val bitmap = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.RED)
+        image.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        try {
+            val initial = (1L..4L).map { id ->
+                DiscoveryCard(id, id, "Fixture $id", "Ort", null, null,
+                    image.absolutePath.takeIf { id == 4L }, Preference.NONE,
+                    false, false, false, false, null)
+            }
+            var rows by mutableStateOf(initial)
+            rule.setContent {
+                LadiesTheme(darkTheme = true) {
+                    DiscoveryGridScreen(DiscoverUiState(localCards = rows, loading = false), SearchUiState(),
+                        onLoadMore = {}, onDecision = { _, _ -> }, onUndo = {}, onProfile = {},
+                        chrome = {}, onCancelSearch = {},
+                        modifier = Modifier.width(360.dp).height(480.dp).testTag("fade-grid"))
+                }
+            }
+            val grid = rule.onNodeWithTag("fade-grid")
+            val outgoing = rule.onNodeWithContentDescription("Fixture 4")
+            val position = outgoing.fetchSemanticsNode().boundsInRoot.center -
+                grid.fetchSemanticsNode().boundsInRoot.topLeft
+            fun redSignal(): Float {
+                val pixels = grid.captureToImage().toPixelMap()
+                val color = pixels[position.x.toInt(), position.y.toInt()]
+                return color.red - color.green
+            }
+            rule.waitUntil(10_000) { redSignal() > .9f }
+            val full = redSignal()
+            rule.mainClock.autoAdvance = false
+            try {
+                rule.runOnIdle { rows = initial.dropLast(1) }
+                rule.mainClock.advanceTimeByFrame()
+                rule.mainClock.advanceTimeBy(64)
+                outgoing.assertDoesNotExist()
+                val fading = redSignal()
+                rule.mainClock.advanceTimeBy(1000)
+                val absent = redSignal()
+                assertTrue(fading > absent + .05f && fading < full - .05f)
+                rule.runOnIdle { rows = initial }
+                rule.mainClock.advanceTimeByFrame()
+                rule.mainClock.advanceTimeBy(64)
+                val appearing = redSignal()
+                rule.mainClock.advanceTimeBy(1000)
+                assertTrue(appearing < full - .05f)
+            } finally {
+                rule.mainClock.autoAdvance = true
+            }
+            rule.waitUntil(10_000) { redSignal() > .9f }
+            outgoing.assertIsDisplayed()
+        } finally {
+            image.delete()
+        }
+    }
+
     @Test fun gridProjectionPendingAndFailureDoNotReplaceValidScrollAnchor() {
         val rows = (1L..24L).map { id ->
             DiscoveryCard(id, id, "Fixture $id", "Ort", null, null, null, Preference.NONE,
