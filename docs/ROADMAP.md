@@ -4,7 +4,23 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 / G10-Pure (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) einschließlich M10.1–M10.3 ist abgeschlossen. Keine weitere Entwicklungsaufgabe vorgesehen. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 / G10-Pure (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) einschließlich M10.1–M10.3 ist abgeschlossen. M10.4 ist als gezielte Nachkorrektur durch das Nutzerreview vom 25.11.2026 freigegeben; die bisherigen M10-Abschlüsse bleiben erhalten. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+
+## Aktuelle Entwicklungsaufgabe
+
+### M10.4 — Medieninteraktion, Layoutstabilität und Qualitätskonsolidierung
+
+**Status:** DOING (Branch `fix/m10-4-media-quality`).
+
+**Abhängigkeit:** M10 / G10-Pure integriert (Basis `8cad94f8`); ausdrückliche Nutzerfreigabe 25.11.2026.
+
+- R01: Galerie-Tapzonen nur am tatsächlichen Favoritenziel exklusiv; keine unnötige Sperrfläche, native Klick-/Fokus-/Swipe-/Kindpriorität erhalten. Gezielte synthetische Querformat-/Extremformat-Regressionsfälle.
+- R02: Flight übernimmt die erfolgreich dekodierte visuelle Darstellung ohne erneute Quellenauswahl; kein zusätzlicher Cache, keine Änderung an Admission/Mutation. Fallback und Übergang regressionssichern.
+- R03: Initiale Messung, Fensterwechsel, Restore und Decode-Start analysieren; nachweisbare unnötige Anforderung oder Geometriesprünge beheben, keine neue Layoutarchitektur ohne Evidenz. Risiken von Gerätebefunden unterscheiden.
+- R04: Betroffene native Regressionen, Layout/Rotation/Schrift/Fokus und reale Ausführbarkeit prüfen; vorhandenes vollständiges CI-Gate. Nicht ausgeführte Geräteprüfungen ausdrücklich ausweisen, Merge-Regel unverändert.
+- R05/R06: Betroffene Größen-/Abstandsrollen, Altpfade, Tests und DESIGN-/ARCHITECTURE-Konsistenz gezielt bereinigen, keine globale Neugestaltung.
+
+**Akzeptanz:** R01–R06 einzeln abgleichen, nachgewiesene Fehler ursächlich korrigieren, verbleibende Risiken begründen. Fach-, Netzwerk-, Persistenz-, FFI-, Medien- und Owner-Verträge erhalten. Vollständiger Review und CI-Beleg; PR zur Freigabe, kein Merge.
 
 ## Unabhängige Aufgaben
 
