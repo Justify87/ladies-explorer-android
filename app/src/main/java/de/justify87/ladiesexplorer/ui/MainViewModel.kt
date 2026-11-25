@@ -239,7 +239,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         swipeVisible = visible
         renderedSwipe = null
         _discoverState.update {
-            val window = it.cards.take(3).map { card -> card.listingId }.toSet()
+            val window = swipeReadWindow(it.cards).map { card -> card.listingId }.toSet()
             it.copy(swipeSessionId = it.swipeSessionId + 1,
                 localProfileReloadIds = if (visible) it.localProfileReloadIds else window,
                 localProfileStrictIds = it.localProfileStrictIds.intersect(window))
@@ -333,7 +333,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun invalidateSwipeProfilesLocally(strictListing: Long? = null) {
         renderedSwipe = null
         _discoverState.update {
-            val window = it.cards.take(3).map { card -> card.listingId }.toSet()
+            val window = swipeReadWindow(it.cards).map { card -> card.listingId }.toSet()
             val strict = it.localProfileStrictIds.intersect(window) + listOfNotNull(strictListing)
             it.copy(swipeSessionId = it.swipeSessionId + 1, swipeProfileRevision = it.swipeProfileRevision + 1,
                 localProfileReloadIds = window + strict, localProfileStrictIds = strict)
@@ -371,7 +371,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private val swipeInvalidation by lazy {
-        SwipeProjectionInvalidation(savedSearch::refreshProjection, ::refreshDiscovery, ::ensureMap)
+        SwipeProjectionInvalidation(savedSearch::refreshProjection,
+            { refreshDiscoveryAfter(null, background = swipeVisible) }, ::ensureMap)
     }
 
     private val profileOperations by lazy {
@@ -815,9 +816,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun markSwipeSnapshotChanged(oldWindow: Boolean) {
         // A late completion revokes replacement data without recursively cancelling its native work.
         renderedSwipe = null
-        _discoverState.update {
-            it.copy(swipeSessionId = it.swipeSessionId + 1,
-                swipeExternalRevision = it.swipeExternalRevision + if (oldWindow) 1 else 0)
+        if (oldWindow) _discoverState.update {
+            it.copy(swipeSessionId = it.swipeSessionId + 1, swipeExternalRevision = it.swipeExternalRevision + 1)
         }
         swipeInvalidation.sourceCompleted()
     }
@@ -840,15 +840,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshDiscovery()
     }
 
-    private fun refreshDiscoveryAfter(message: String?) {
+    private fun refreshDiscoveryAfter(message: String?, background: Boolean = false) {
         if (!swipeInvalidation.beginDiscovery(_discoverState.value.busy)) return
         val epoch = ++discoveryEpoch
-        _discoverState.update {
+        if (!background) _discoverState.update {
             it.copy(loading = true, loadingMore = false, savedLoadingMore = false, savedRecentLoadingMore = false)
         }
         viewModelScope.launch {
             try {
-                projectDiscovery(epoch)
+                if (background) {
+                    discoveryPublisher.project(epoch, background = true)
+                    if (epoch == discoveryEpoch) refreshMap()
+                } else projectDiscovery(epoch)
                 if (epoch == discoveryEpoch && message != null) _discoverState.update { it.copy(mutationError = message) }
             } finally {
                 if (epoch == discoveryEpoch) _discoverState.update { it.copy(loading = false) }
@@ -1274,7 +1277,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val queue = swipeSession.queue(membership, active = state.activeRunId != null)
             it.copy(cards = queue, swipeRestore = null,
                 swipePresentationGeneration = it.swipePresentationGeneration + 1,
-                localProfileReloadIds = it.localProfileReloadIds + queue.take(3).map { card -> card.listingId })
+                localProfileReloadIds = it.localProfileReloadIds + swipeReadWindow(queue).map { card -> card.listingId })
         }
         return true
     }
