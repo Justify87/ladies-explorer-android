@@ -25,9 +25,12 @@ internal fun mediaDiagnosticKey(value: String): String =
     MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
         .take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
+// Reference tokens are data, not error evidence (e.g. example.invalid or token=timeout).
+private val diagnosticReference = Regex("""[^\s"'<>]*[/=][^\s"'<>]+""")
+
 /** Classify external diagnostics without persisting arbitrary paths, tokens or metadata. */
 internal fun mediaDiagnosticReason(text: String): String {
-    val value = text.take(4096).lowercase(java.util.Locale.ROOT)
+    val value = diagnosticReference.replace(text.take(4096), " ").lowercase(java.util.Locale.ROOT)
     return when {
         "timeout" in value || "timed out" in value -> "timeout"
         "permission denied" in value -> "permission_denied"

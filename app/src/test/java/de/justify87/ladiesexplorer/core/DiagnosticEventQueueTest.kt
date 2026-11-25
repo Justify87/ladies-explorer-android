@@ -81,6 +81,15 @@ class DiagnosticEventQueueTest {
         assertFalse(result.contains('\u0000'))
     }
 
+    @Test fun referenceTokensDoNotOverrideTheActualFailureReason() {
+        assertEquals("decode", mediaDiagnosticReason("decode failed https://example.invalid/timeout.jpg"))
+        assertEquals("decode", mediaDiagnosticReason("decode failed /data/unsupported.jpg token=timeout"))
+        assertEquals("other", mediaDiagnosticReason("https://example.invalid/corrupt.jpg relative/decoder.jpg token=timeout"))
+        assertEquals("invalid_data", mediaDiagnosticReason("invalid image data https://example.invalid/file.jpg"))
+        assertEquals("timeout", mediaDiagnosticReason("connection timed out"))
+        assertEquals("permission_denied", mediaDiagnosticReason("permission denied /data/private"))
+    }
+
     @Test(timeout = 10_000)
     fun successfulEventsRunInFifoOrder() {
         val queue = DiagnosticEventQueue(maxPending = 8)
