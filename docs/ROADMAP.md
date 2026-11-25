@@ -14,7 +14,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M10.2 — Pure-Viewport, Medienintegration und Scrollgrenzen
 
-**Status:** DOING — `feat/m10-2-pure-viewport-media`, Ausgangscommit `59c51f21a01810f38494c3e7fb23116a07c63b56`. Gemessener Kontext-/Viewport-Budgetpfad, proportionaler Foto-Crop/Fit, gemeinsame Decode-Größe, Favoritenposition und Flight-Geometrie in Bearbeitung. Nächster Schritt: Video-/Fallback-Geometrie, reale ProfileFlow-Proben und vollständiges Review/CI; keine Geräteausführung belegt.
+**Status:** DOING — `feat/m10-2-pure-viewport-media`, Ausgangscommit `59c51f21a01810f38494c3e7fb23116a07c63b56`. Draft [PR #116](https://github.com/Justify87/ladies-explorer-android/pull/116): gemessener Kontext-/Viewport-Budgetpfad ohne Peek, proportionaler Foto-Crop/Fit (mindestens 85 % erhaltene dekodierte Bildfläche), gemeinsame Decode-Größe, Favoritenposition, tatsächliche Flight-Geometrie und nativer Video-Fit implementiert. Galerieposition semantisch ohne zusätzliches permanentes Chrome. Deterministische Budget-/Bounds-Tests und synthetische ProfileFlow-, Quellrand-, Gesten- und Video-Instrumentierungsproben ergänzt; Architekturvertrag aktualisiert. Nächster Schritt: vollständiges CI-Gate auf PR-HEAD verifizieren, Befunde beheben und Abschlussreview dokumentieren. Keine lokale Build- oder Geräteausführung belegt; ursprüngliche schwarze Linie am privaten Screenshot nicht reproduziert. Keine Mergefreigabe.
 
 **Abhängigkeit:** M10.1 integriert; durch M10-Nutzerauftrag vom 25.11.2026 vorab fachlich freigegeben.
 
