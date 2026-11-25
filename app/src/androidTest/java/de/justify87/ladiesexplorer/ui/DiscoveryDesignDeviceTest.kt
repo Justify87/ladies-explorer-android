@@ -11,17 +11,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import de.justify87.ladiesexplorer.core.DiscoveryCard
-import de.justify87.ladiesexplorer.core.Preference
-import de.justify87.ladiesexplorer.core.SearchRequest
-import de.justify87.ladiesexplorer.core.SearchResponse
+import de.justify87.ladiesexplorer.core.*
+import android.graphics.Bitmap
+import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -30,79 +29,124 @@ class DiscoveryDesignDeviceTest {
     @get:Rule val rule = createComposeRule()
 
     @Test fun contextHeroAndRailHaveIndependentMeasuredBounds() {
-        var pxPerDp = 1f
-        rule.setContent {
-            MaterialTheme {
-                pxPerDp = LocalDensity.current.density
-                val list = rememberLazyListState()
-                var measuredContext by remember { mutableIntStateOf(0) }
-                val deck = SwipeDeckToken(null, 1)
-                val context = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1),
-                    SwipeActionToken(null, 1, 4, 1, 11, 1, Preference.NONE, false, emptyList()),
-                    true, true, AvailabilityMode.All, false, true)
-                Column(Modifier.fillMaxSize()) {
-                    ProfileShell(Modifier.weight(1f), list, "hero", rootHeight = 64.dp,
-                        hasRail = true, notices = emptyList(), noticeOwner = context,
-                        heroLeadingHeight = with(LocalDensity.current) { measuredContext.toDp() },
-                        header = { _, _, _ -> Row(Modifier.fillMaxSize().testTag("header")) {
-                            Text("Entdecken", Modifier.weight(1f))
-                            AvailabilityQuickChoice(AvailabilityMode.All, true, deck, {})
-                        } },
-                        rail = {
-                            Box(Modifier.fillMaxSize().testTag("rail")) {
-                                SwipeDecisionControls(context, "Fixture", {}, {}, {})
-                            }
-                        }) { presentation ->
-                        LazyColumn(Modifier.fillMaxSize(), state = list,
-                            ) {
-                            item(key = "discover-context") {
-                                Box(Modifier.onSizeChanged { measuredContext = it.height }
-                                    .padding(bottom = ShellMetrics.inset)
-                                    .padding(horizontal = ShellMetrics.inset).testTag("context")) {
-                                    DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val image = File.createTempFile("synthetic-hero-", ".png", context.cacheDir)
+        val bitmap = Bitmap.createBitmap(360, 480, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.BLUE)
+        image.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        try {
+            val medium = ProfileMediaItem("IMAGE", "", image.absolutePath, 0u)
+            val base = ProfileResponse(listingId = 4, snapshotId = 11, newSnapshot = false, advertId = "fixture",
+                name = "Fixture", city = "Fixture", description = "Fixture description", postalCode = null,
+                hiddenLocation = null, sourceProfileId = null, canonicalId = null, phoneDisplay = "+49 170 1234567",
+                publishedAt = null, traitsJson = "{}", servicesJson = "{}", openingTimesJson = "{}", media = emptyList())
+            fun fixture(phone: Boolean) = ProfileReadModel(NativeProfileProjection(
+                base.copy(phoneDisplay = base.phoneDisplay.takeIf { phone }),
+                ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null, personNew = false,
+                    listingNew = false, hasVideo = false, age = null),
+                PersonSummary(1, "Fixture", Preference.NONE, false, 1u, ""),
+                listOf(medium), emptyList(), emptyList()), true)
+            val notes = NoteEditorActions({ _, _ -> }, { _, _ -> }, { _, _, _ -> }, { _, _ -> }, { _, _ -> })
+            val reads = ProfilePanelReads({ _, _ -> ProfileFacts(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()) },
+                { PersonDetail(emptyList(), 0u, 0u, 0u, 0u) }, { _, _, _ -> emptyList() })
+            var model by mutableStateOf(fixture(true))
+            var dark by mutableStateOf(false)
+            var visual by mutableStateOf<HeroVisual?>(null)
+            var pxPerDp = 1f
+            lateinit var list: androidx.compose.foundation.lazy.LazyListState
+            rule.setContent {
+                LadiesTheme(darkTheme = dark) {
+                    pxPerDp = LocalDensity.current.density
+                    list = rememberLazyListState()
+                    var measuredContext by remember { mutableIntStateOf(0) }
+                    val deck = SwipeDeckToken(null, 1)
+                    val token = SwipeActionToken(null, 1, 4, 1, 11, model.revision, Preference.NONE, false, emptyList())
+                    val controls = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1), token,
+                        true, true, AvailabilityMode.All, false, true)
+                    Column(Modifier.fillMaxSize()) {
+                        ProfileShell(Modifier.weight(1f), list, "hero", rootHeight = 64.dp,
+                            hasRail = true, notices = emptyList(), noticeOwner = controls,
+                            heroLeadingHeight = with(LocalDensity.current) { measuredContext.toDp() },
+                            header = { _, _, _ -> Row(Modifier.fillMaxSize().testTag("header")) {
+                                Text("Entdecken", Modifier.weight(1f))
+                                AvailabilityQuickChoice(AvailabilityMode.All, true, deck, {})
+                            } },
+                            rail = {
+                                Box(Modifier.fillMaxSize().testTag("rail")) {
+                                    SwipeDecisionControls(controls, "Fixture", {}, {}, {})
+                                }
+                            }) { presentation ->
+                            ProfileFlow(list, model, "{}", token, false, emptyMap(), notes, { true }, { _, _ -> },
+                                Modifier.fillMaxSize().testTag("profile-flow"), paddedDetails = true, panelReads = reads,
+                                onDiscoveryContextHeight = { measuredContext = it }) {
+                                item("discover-context") {
+                                    Box(Modifier.testTag("context")) {
+                                        DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
+                                    }
+                                }
+                                item("hero") {
+                                    Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) {
+                                        ProfileMediaHero(model.media, presentation.heroHeight, Modifier.testTag("hero"),
+                                            actionsEnabled = true, isCurrent = { true }, selection = mediaSelection,
+                                            favorite = false, onFavorite = {}, actionToken = token,
+                                            compact = presentation.budget.compactGallery, onVisual = { visual = it })
+                                    }
                                 }
                             }
-                            item(key = "hero") {
-                                Box(Modifier.padding(horizontal = 12.dp).testTag("hero")) {
-                                    ProfileMediaHero(emptyList(), presentation.heroHeight,
-                                        actionsEnabled = false, isCurrent = { false },
-                                        selection = remember { ProfileMediaSelection() },
-                                        favorite = false, onFavorite = {},
-                                        actionToken = null, compact = presentation.budget.compactGallery)
-                                }
-                            }
-                            items(20) { Text("Detail $it", Modifier.height(48.dp)) }
                         }
-                    }
-                    Box(Modifier.fillMaxWidth().testTag("root-nav")) {
-                        RootNavigation(RootDestination.Discover, true, false, {})
+                        Box(Modifier.fillMaxWidth().testTag("root-nav")) {
+                            RootNavigation(RootDestination.Discover, true, false, {})
+                        }
                     }
                 }
             }
-        }
-        val header = rule.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
-        val context = rule.onNodeWithTag("context").fetchSemanticsNode().boundsInRoot
-        val hero = rule.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
-        val rail = rule.onNodeWithTag("rail").fetchSemanticsNode().boundsInRoot
-        val nav = rule.onNodeWithTag("root-nav").fetchSemanticsNode().boundsInRoot
-        assertTrue(context.top >= header.bottom - 1f)
-        assertTrue(hero.top >= context.bottom - 1f)
-        assertTrue(hero.height > 0f)
-        assertEquals(rail.top, hero.bottom, 1f)
-        assertTrue(rail.bottom <= nav.top + 1f)
-        val favorite = rule.onNodeWithContentDescription("Als Favorit speichern").fetchSemanticsNode().boundsInRoot
-        assertTrue(favorite.width >= 48 * pxPerDp - 1f && favorite.height >= 48 * pxPerDp - 1f)
-        assertTrue(favorite.top >= hero.top - 1f && favorite.right <= hero.right + 1f)
-        rule.onNodeWithText("Fixture").assertDoesNotExist()
-        val decisions = listOf("Rückgängig", "Nein", "Später", "Gefällt").map { label ->
-            rule.onNodeWithContentDescription(label).fetchSemanticsNode().boundsInRoot
-        }
-        decisions.forEach { bounds ->
-            assertTrue(bounds.width >= 48 * pxPerDp - 1f)
-            assertTrue(bounds.height >= 48 * pxPerDp - 1f)
-        }
-        decisions.zipWithNext().forEach { (left, right) ->
-            assertTrue(left.right <= right.left + 1f)
+            rule.waitUntil(10_000) { visual != null }
+            val header = rule.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
+            val contextBounds = rule.onNodeWithTag("context").fetchSemanticsNode().boundsInRoot
+            val hero = rule.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
+            val rail = rule.onNodeWithTag("rail").fetchSemanticsNode().boundsInRoot
+            val nav = rule.onNodeWithTag("root-nav").fetchSemanticsNode().boundsInRoot
+            assertTrue(contextBounds.top >= header.bottom - 1f)
+            assertTrue(hero.top >= contextBounds.bottom - 1f)
+            assertTrue(hero.height > 0f)
+            assertEquals(rail.top, hero.bottom, 1f)
+            assertTrue(rail.bottom <= nav.top + 1f)
+            rule.runOnIdle {
+                val layout = list.layoutInfo
+                val contact = layout.visibleItemsInfo.firstOrNull { it.key == "profile-contact" }
+                assertTrue(contact == null || contact.offset >= layout.viewportEndOffset)
+            }
+            val favorite = rule.onNodeWithContentDescription("Als Favorit speichern").fetchSemanticsNode().boundsInRoot
+            val measured = checkNotNull(visual).geometry
+            val expected = measured.favoriteOrigin((48 * pxPerDp).toInt(), (6 * pxPerDp).toInt())
+            assertTrue(favorite.width >= 48 * pxPerDp - 1f && favorite.height >= 48 * pxPerDp - 1f)
+            assertEquals(hero.left + expected.x, favorite.left, 2f)
+            assertEquals(hero.top + expected.y, favorite.top, 2f)
+            val decisions = listOf("Rückgängig", "Nein", "Später", "Gefällt").map { label ->
+                rule.onNodeWithContentDescription(label).fetchSemanticsNode().boundsInRoot
+            }
+            decisions.forEach { bounds ->
+                assertTrue(bounds.width >= 48 * pxPerDp - 1f)
+                assertTrue(bounds.height >= 48 * pxPerDp - 1f)
+            }
+            decisions.zipWithNext().forEach { (left, right) -> assertTrue(left.right <= right.left + 1f) }
+            val flow = rule.onNodeWithTag("profile-flow")
+            flow.performScrollToKey("profile-contact")
+            rule.onNodeWithText("Telefon").assertIsDisplayed()
+            rule.onNodeWithText("WhatsApp").assertIsDisplayed()
+            flow.performScrollToKey("discover-context")
+            rule.runOnIdle { model = fixture(false); dark = true }
+            rule.waitUntil(10_000) { visual != null }
+            rule.runOnIdle {
+                val layout = list.layoutInfo
+                assertTrue(layout.visibleItemsInfo.none { it.key == "profile-contact" })
+                val heading = layout.visibleItemsInfo.firstOrNull { it.key == "profile-heading" }
+                assertTrue(heading == null || heading.offset >= layout.viewportEndOffset)
+            }
+            assertEquals(hero, rule.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot)
+        } finally {
+            image.delete()
         }
     }
 
