@@ -80,7 +80,8 @@ internal fun DiscoveryGridScreen(
             if (showPage) add("more")
         }
         val presentationContext = Triple(search.response?.searchRunId, discovery.globalVisibility, search.activeProjectionPending)
-        val listState = remember(presentationContext) {
+        val membershipUnknown = search.activeProjectionError != null || (discovery.error != null && cards.isEmpty())
+        val listState = remember(presentationContext, membershipUnknown) {
             val (index, offset) = gridRestorePosition(keys, anchorKey, anchorIndex, anchorOffset)
             LazyGridState(index, offset)
         }
@@ -110,7 +111,7 @@ internal fun DiscoveryGridScreen(
             if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = contentInset)) { chrome() }
             if (!inlineChrome && undoAction != null) GridUndoButton(undoAction, canUndo, onUndo)
             // Context replacement must not retain outgoing images from an invalid membership.
-            key(presentationContext) {
+            key(presentationContext, membershipUnknown) {
                 LazyVerticalGrid(
                     columns = profileGridCells(),
                     state = listState,
