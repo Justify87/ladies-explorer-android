@@ -95,7 +95,8 @@ class ProfileRestoreDeviceTest {
             assertTrue(whatsapp.top >= gallery.bottom)
             assertTrue(phone.bottom <= heading.top)
             assertTrue(whatsapp.bottom <= heading.top)
-            rule.onNodeWithText("Fixture · Zuletzt bekannt: Anzeige aktiv").assertExists()
+            rule.onNodeWithText("Fixture · Zuletzt bekannter Quellenstatus: Anzeige aktiv").assertExists()
+            rule.onNodeWithText("Anzeigen: 1").assertExists()
             rule.onNodeWithText("Offenbach am Main").assertDoesNotExist()
             rule.onNodeWithText("Übersicht").assertDoesNotExist()
             rule.runOnIdle { busy = true }
@@ -103,7 +104,10 @@ class ProfileRestoreDeviceTest {
             rule.onNodeWithText("WhatsApp").assertIsNotEnabled()
             rule.runOnIdle { busy = false; standalone = true }
         }
-        rule.runOnIdle { model = profile(phone = null) }
+        rule.runOnIdle { model = profile(snapshot = 12, phone = "invalid") }
+        rule.onNodeWithText("Telefon").assertDoesNotExist()
+        rule.onNodeWithText("WhatsApp").assertDoesNotExist()
+        rule.runOnIdle { model = profile(snapshot = 13, phone = null) }
         rule.onNodeWithText("Telefon").assertDoesNotExist()
         rule.onNodeWithText("WhatsApp").assertDoesNotExist()
     }
