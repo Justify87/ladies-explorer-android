@@ -4,21 +4,7 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M12.4 / G12. L01 ist unabhängig vor weiterer öffentlicher Distribution zu klären.
-
-## M12 — Unified Profile Experience: Compact Information Architecture
-
-Gemeinsame Profilansicht unterhalb der Galerie in Swipe und Standalone gemäß [DESIGN](DESIGN.md#informationshierarchie--compact-profile) vollständig neu gestalten. Das freigegebene Soll ersetzt den bisherigen Profil-Akkordeonaufbau. Fachlicher Umfang, Datenhoheit, Integrität, Medienvorbereitung und bestehende lokale Bearbeitungsfunktionen bleiben erhalten. Umsetzung seriell auf integriertem Stand. DESIGN beschreibt das gemeinsame Ziel; je Teilaufgabe gelten ihr abgegrenzter Umfang und die zugehörigen Abnahmekriterien. Bis zur vollständigen Umsetzung bleiben noch nicht umgestellte Inhalte und Interaktionen in ihren funktionierenden bestehenden Pfaden erreichbar. Keine temporären Parallelpfade oder vorgezogenen Umbauten; vollständige Designkonformität erst nach den Implementierungsaufgaben, integriert zu prüfen im Abschlussreview.
-
-### M12.4 / G12 — Integriertes Compact-Profile-Abschlussreview
-
-**Status:** READY.
-
-**Umfang:** Gesamten integrierten M12-Umfang gegen DESIGN, PRODUCT, ARCHITECTURE und AGENTS prüfen. Vollständige Feld-/Aktionszuordnung beider Profilkontexte gegen den tatsächlichen Projektions- und Aufruferumfang (einschließlich Anzeigenanzahl, Analyse-/Identitätsevidenz, Standalone-Präferenz/Neutral/Favorit und Swipe-Deckaktionen), semantische Dokumentationskonsistenz, abgelöste Pfade, native Layoutmessungen und Regressionen reviewen. Konkrete Befunde ursächlich beheben; keine unabhängigen Erweiterungen.
-
-**Akzeptanz:** Einheitlicher flacher Profilfluss, unmittelbar lesbare strukturierte Angaben und vollständiger Zugriff auf sekundäre Inhalte ohne Datenverlust. Native Vergleichsbelege für Informationsdichte/Interaktionsaufwand und gemessene Bounds, keine starre Einsparquote. Dark/Light, 360 × 740, 390 × 844, 430 × 932 und 600 dp, Font Scale 1/1,3/2, kurze Fenster, Rotation, IME, TalkBack-/Fokussemantik und mindestens 48-dp-Touchziele risikogerecht prüfen. Galerie-/Prefetch-Stabilität, Run-/Owner-Admission, Entscheidungen, Undo, lokale Editoren und explizite Quellenaktionen unverändert.
-
-**Prüfung:** Vollständiges CI-Gate gemäß README, relevante Rust-/JVM-/Architekturtests, Lint sowie ARM64-Debug- und Instrumentierungs-APK. Tatsächlich ausgeführte Prüfungen, gebaute Artefakte und nicht ausgeführte Geräteprüfungen getrennt belegen; Geräteaufgaben gemäß Merge-Regel. Bedingten Abschluss vorbereiten und Belege nur entsprechend dem tatsächlichen Ergebnis gemäß [Pflege](#pflege) dokumentieren.
+Kein regulärer Entwicklungsschritt. L01 ist unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Unabhängige Aufgaben
 
