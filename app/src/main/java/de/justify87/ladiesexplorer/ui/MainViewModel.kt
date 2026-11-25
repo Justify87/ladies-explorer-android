@@ -99,7 +99,6 @@ data class SearchUiState(
     val ageMax: UInt = 60u,
     val heightMin: UInt = 140u,
     val heightMax: UInt = 200u,
-    val maxPages: UInt = 10u,
     val selectedFilters: Map<String, Set<String>> = emptyMap(),
     val filterCatalog: SourceFilterCatalog? = null,
     val local: LocalVisibility = defaultLocalVisibility(),
@@ -110,6 +109,9 @@ data class SearchUiState(
     val previewEditorSession: Long? = null,
     val previewLoading: Boolean = false,
     val previewError: String? = null,
+    val defaultReady: Boolean = true,
+    val defaultSaving: Boolean = false,
+    val defaultStatus: String? = null,
     val activeCards: List<DiscoveryCard> = emptyList(),
     val loading: Boolean = false,
     val searchCancelling: Boolean = false,
@@ -145,7 +147,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val uiState: StateFlow<HomeUiState> = _uiState
     private val _discoverState = MutableStateFlow(DiscoverUiState())
     val discoverState: StateFlow<DiscoverUiState> = _discoverState
-    private val _searchUiState = MutableStateFlow(SearchUiState())
+    private val _searchUiState = MutableStateFlow(SearchUiState(defaultReady = false))
+    private var defaultSearchDraft = SearchDraft()
     val searchUiState: StateFlow<SearchUiState> = _searchUiState
     private val _profileNotes = MutableStateFlow<Map<Long, NoteEditorState>>(emptyMap())
     internal val profileNotes: StateFlow<Map<Long, NoteEditorState>> = _profileNotes
@@ -348,7 +351,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val savedSearch = SavedSearchController(
         scope = viewModelScope,
         store = SavedSearchStore(core),
-        canOperate = { !hasProfileEditor && !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
+        canOperate = { !hasProfileEditor && _searchUiState.value.defaultReady && !_searchUiState.value.defaultSaving && !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
         ordinaryDraft = { SearchDraft.from(_searchUiState.value) },
         onSourceFinished = { refreshAfterSourceSearch() },
     )
@@ -387,6 +390,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        viewModelScope.launch {
+            try {
+                core.loadDefaultSearch()?.let { definition ->
+                    defaultSearchDraft = SearchDraft.from(definition.query, definition.local)
+                    _searchUiState.update { defaultSearchDraft.applyTo(it) }
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (failure: Exception) {
+                _searchUiState.update {
+                    it.copy(defaultStatus = "Suchstandard konnte nicht geladen werden: ${failure.message.orEmpty()}")
+                }
+            } finally {
+                _searchUiState.update { it.copy(defaultReady = true) }
+            }
+        }
         refresh()
         refreshDiscovery()
         refreshSearchDefinitions()
@@ -494,15 +513,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val draft = SearchDraft.from(current)
         val next = change(draft)
         if (draft == next) return
-        _searchUiState.update { it.applyDraftChange(next.applyTo(it)) }
+        _searchUiState.update { it.applyDraftChange(next.applyTo(it)).copy(defaultStatus = null) }
     }
 
     internal fun resetSearchDraft(action: SearchDraftEditAction, renderedDraft: SearchDraft): Boolean {
         if (!searchDraftResetMatches(_discoverState.value, _searchUiState.value, savedSearch.state.value,
                 action, renderedDraft)) return false
-        editSearchDraft(action) { SearchDraft() }
+        editSearchDraft(action) { defaultSearchDraft }
         _discoverState.update { it.copy(actionGeneration = it.actionGeneration + 1) }
         return true
+    }
+
+    internal fun saveSearchDefault(action: SearchDraftEditAction, renderedDraft: SearchDraft) {
+        if (!searchDraftResetMatches(_discoverState.value, _searchUiState.value, savedSearch.state.value,
+                action, renderedDraft) || renderedDraft.city.isBlank()) return
+        _discoverState.update { it.copy(actionGeneration = it.actionGeneration + 1) }
+        _searchUiState.update { it.copy(defaultSaving = true, defaultStatus = null) }
+        viewModelScope.launch {
+            try {
+                withContext(NonCancellable) {
+                    val definition = core.saveDefaultSearch(renderedDraft.request(), renderedDraft.local)
+                    defaultSearchDraft = SearchDraft.from(definition.query, definition.local)
+                    _searchUiState.update { it.copy(defaultStatus = "Suchstandard gespeichert.") }
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (failure: Exception) {
+                _searchUiState.update {
+                    it.copy(defaultStatus = "Suchstandard konnte nicht gespeichert werden: ${failure.message.orEmpty()}")
+                }
+            } finally {
+                _searchUiState.update { it.copy(defaultSaving = false) }
+            }
+        }
     }
 
     /** Check swipe admission against live state, not the last Compose frame. */
@@ -555,7 +598,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun startSearch(request: SearchRequest, local: LocalVisibility) {
-        if (hasProfileEditor || searchOwner.occupied || _searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
+        if (hasProfileEditor || searchOwner.occupied || !_searchUiState.value.defaultReady || _searchUiState.value.defaultSaving || _searchUiState.value.loading || savedSearch.state.value.busy || _uiState.value.loading || _discoverState.value.busy) return
         invalidateSwipeActions(invalidateProfiles = true)
         // Revoke rendered actions even if this source run fails or is cancelled.
         _discoverState.update { it.copy(actionGeneration = it.actionGeneration + 1) }

@@ -460,6 +460,7 @@ fun LadiesApp(
                             }
                         } else { change -> viewModel.editSearchDraft(draftAction, change) },
                         onReset = { viewModel.resetSearchDraft(draftAction, SearchDraft.from(search)) },
+                        onSaveDefault = { viewModel.saveSearchDefault(draftAction, SearchDraft.from(search)) },
                         onPreviewStart = viewModel::beginPreview,
                         onPreviewStop = viewModel::endPreview,
                         onSearch = viewModel::submitSearch,

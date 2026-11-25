@@ -36,6 +36,6 @@ class SearchFilterPresentationTest {
         assertEquals(listOf(AvailabilityMode.Now), matchingFilterOptions("jet", listOf("Verfügbarkeit"), modes) { it.label })
         assertEquals(modes, matchingFilterOptions("verfüg", listOf("Verfügbarkeit"), modes) { it.label })
         assertEquals(listOf(20u), matchingFilterOptions("20 km", listOf("Umkreis"), listOf(5u, 20u, 50u)) { "$it km" })
-        assertTrue(matchingFilterOptions("Rubrik", listOf("Seitenlimit"), listOf(1u, 5u)) { it.toString() }.isEmpty())
+        assertTrue(matchingFilterOptions("Rubrik", listOf("Umkreis"), listOf(5u, 10u)) { it.toString() }.isEmpty())
     }
 }

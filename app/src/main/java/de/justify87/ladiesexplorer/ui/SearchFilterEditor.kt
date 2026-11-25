@@ -120,7 +120,6 @@ internal fun LazyListScope.searchFilterEditor(
     onCategory: (String) -> Unit,
     onAge: (UInt, UInt) -> Unit,
     onHeight: (UInt, UInt) -> Unit,
-    onPages: (UInt) -> Unit,
     onToggleFilter: (String, String) -> Unit,
     onAvailability: (AvailabilityMode) -> Unit,
     onLocalVisibility: (LocalVisibility) -> Unit,
@@ -246,10 +245,6 @@ internal fun LazyListScope.searchFilterEditor(
         }
         if (all || filterTextMatches(query, UNSUPPORTED_LABEL)) Text(UNSUPPORTED_LABEL,
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-    val pages = matchingFilterOptions(query, listOf("Seitenlimit", "Seiten"), listOf(1u, 5u, 10u, 25u, 50u)) { it.toString() }
-    if (pages.isNotEmpty()) section("pages", "Seitenlimit") {
-        FilterChoices { pages.forEach { count -> FilterChoice(state.maxPages == count, enabled, "$count") { onPages(count) } } }
     }
     if (!hasMatch) item(key = "filter-empty") { Text("Keine passenden Filter", style = MaterialTheme.typography.bodySmall) }
 }

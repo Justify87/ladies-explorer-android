@@ -20,15 +20,17 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ### Parameter und Top 5
 
-- Suchparameter: Ort, Rubrik, Radius 5/10/20/30/50/70/100 km, Alters-/Größenbereich, Treffpunkt, Kategorien, Merkmale, Services und Seitenlimit 1–50; Werte gemäß belegtem Quellkatalog.
+- Suchparameter: Ort, Rubrik, Radius 5/10/20/30/50/70/100 km, Alters-/Größenbereich, Treffpunkt, Kategorien, Merkmale, Services; Werte gemäß belegtem Quellkatalog. Kein nutzerseitiges Seitenlimit.
 - Alle/Jetzt/Heute werden kanonisch abgebildet. Nur die Schnellwahl im Entdecken-Header führt in allen drei Modi unmittelbar eine Suche aus. Bei aktivem Run verwendet sie dessen ausgeführte Query; ohne aktiven Run den aktuellen Entwurf.
 - Top 5: tatsächlich abgeschlossene Suchläufe zählen, pro Lauf dedupliziert und stabil sortiert; Rubrik zählt mit. Vorschau und bloße Auswahl zählen nicht, definierte Standardwerte ausgenommen.
 
 ### Aktive Suche, Vorschau und Vollständigkeit
 
 - Aktiven Suchlauf und Filterentwurf trennen. Der Filtertext schränkt ausschließlich die sichtbaren Filterelemente ein; Gruppenbezeichnungen öffnen passende Gruppen, Wertbezeichnungen zeigen nur passende Optionen. Ausgeblendete Auswahlen bleiben unverändert; der Filtertext führt weder eine Suche aus noch ändert er gespeicherte Definitionen.
-- Vorschau ist abbrechbar und leichtgewichtig; sie speichert weder Suchläufe noch Inserate, Beobachtungen oder Medien.
-- Quellzahl und lokal sichtbare Treffer unterscheiden. Vorschau-Count nur bei bestätigtem Radius und belastbarer Quellzahl (mindestens die Zahl erkannter Karten) zeigen; andernfalls **unbekannt**, nicht null – auch bei unbestätigtem 404.
+- Vorschau ist abbrechbar und leichtgewichtig, lädt nur Seite 1 (mit geprüftem API-Fallback) und speichert weder Suchläufe noch Inserate, Beobachtungen oder Medien.
+- Reguläre Suche und gespeicherte Suchläufe laden alle nachweislich verfügbaren Quellseiten innerhalb des gewählten Radius. Widersprüchliche oder fehlende Pagination, fehlender Fortschritt und erreichte interne Schutzgrenzen bleiben als Teilresultat erkennbar.
+- „Aktuelle Suche als Standard speichern“ speichert ausschließlich den explizit gerenderten gültigen Entwurf einschließlich lokaler Filter dauerhaft. App-Start und Reset verwenden den letzten erfolgreich gespeicherten Standard; ohne Standard gelten die bisherigen Ausgangswerte. Keine automatische Suche, keine Änderung einer gespeicherten Suchdefinition, Mitgliedschaft oder Quittierung. Fehler beim Speichern lassen den bisherigen Standard erhalten.
+- Quellzahl und lokal sichtbare Treffer unterscheiden. Der Suchbutton kennzeichnet die aktuelle Quellvorschau, alternativ den zuletzt lokal sichtbaren Count nur bei übereinstimmendem Entwurf oder den unbekannten Wert. Ein abweichender letzter Lauf bleibt separat zugänglich. Vorschau-Count nur bei bestätigtem Radius und belastbarer Quellzahl (mindestens die Zahl erkannter Karten) zeigen; andernfalls **unbekannt**, nicht null – auch bei unbestätigtem 404.
 - Erfolgreiche Suche öffnet Entdecken. Fehler oder Abbruch erhalten den letzten aktiven Lauf.
 - Radius niemals automatisch aufweiten; unbekannte Quellstruktur ist kein Nulltreffer.
 - Explizite Radiusabweichung auf Seite 1 ist ein Fehler. Tritt sie später auf, können bestätigte Karten als Teilresultat bleiben.

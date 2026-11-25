@@ -289,7 +289,6 @@ fn match_basis(
                 height_max: stored.height_max,
                 filters_json: serde_json::to_string(&stored.selected)
                     .map_err(|e| CoreError::Storage(e.to_string()))?,
-                max_pages: 1,
             };
             let Ok(query) = canonicalize_request(query) else {
                 return Ok(None);

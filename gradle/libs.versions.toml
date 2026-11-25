@@ -9,6 +9,7 @@ lifecycle = "2.9.4"
 coroutines = "1.10.2"
 jna = "5.19.1"
 junit = "4.13.2"
+jsonJvm = "20250517"
 androidxTestRunner = "1.7.0"
 coil = "3.6.3"
 libmpv = "1.0.0"
@@ -38,6 +39,7 @@ coil-network-core = { module = "io.coil-kt.coil3:coil-network-core", version.ref
 kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
 maplibre-sdk = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
 junit = { module = "junit:junit", version.ref = "junit" }
+json-jvm = { module = "org.json:json", version.ref = "jsonJvm" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

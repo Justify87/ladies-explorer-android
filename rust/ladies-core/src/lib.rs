@@ -567,6 +567,18 @@ impl LadiesCore {
         source::filter::frequent(self)
     }
 
+    pub fn load_default_search(&self) -> Result<Option<SavedSearchDefinition>, CoreError> {
+        saved_search::load_default(self)
+    }
+
+    pub fn save_default_search(
+        &self,
+        request: SearchRequest,
+        local: LocalVisibility,
+    ) -> Result<SavedSearchDefinition, CoreError> {
+        saved_search::save_default(self, request, local)
+    }
+
     pub fn save_search_definition(
         &self,
         name: String,

@@ -54,6 +54,40 @@ fn encode_definition(definition: &SavedSearchDefinition) -> Result<String, CoreE
     serde_json::to_string(definition).map_err(|e| CoreError::Storage(e.to_string()))
 }
 
+const DEFAULT_SEARCH_KEY: &str = "search:default";
+
+pub(crate) fn load_default(core: &LadiesCore) -> Result<Option<SavedSearchDefinition>, CoreError> {
+    let raw: Option<String> = core
+        .connection()?
+        .query_row(
+            "SELECT value_json FROM app_settings WHERE key=?1",
+            [DEFAULT_SEARCH_KEY],
+            |row| row.get(0),
+        )
+        .optional()?;
+    raw.as_deref().map(decode_definition).transpose()
+}
+
+pub(crate) fn save_default(
+    core: &LadiesCore,
+    query: SearchRequest,
+    local: LocalVisibility,
+) -> Result<SavedSearchDefinition, CoreError> {
+    validate_local(&local)?;
+    let definition = SavedSearchDefinition {
+        query: source::filter::canonicalize_request(query)?,
+        local,
+    };
+    let encoded = encode_definition(&definition)?;
+    core.connection()?.execute(
+        "INSERT INTO app_settings(key,value_json) VALUES (?1,?2)
+         ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,
+         updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+        params![DEFAULT_SEARCH_KEY, encoded],
+    )?;
+    Ok(definition)
+}
+
 #[cfg(test)]
 fn save(core: &LadiesCore, name: String, request: SearchRequest) -> Result<String, CoreError> {
     save_with_local(core, name, request, LocalVisibility::default())
@@ -174,7 +208,7 @@ pub(crate) fn decode_definition(definition: &str) -> Result<SavedSearchDefinitio
         "height_min",
         "height_max",
         "filters_json",
-        "max_pages",
+        "max_pages", // Obsolete native field: accepted on read, never written.
     ];
     // Reject malformed native definitions; never silently fall back to legacy defaults.
     if legacy.get("query").is_some() {
@@ -277,7 +311,6 @@ pub(crate) fn decode_definition(definition: &str) -> Result<SavedSearchDefinitio
             .get("selected")
             .filter(|v| v.is_object())
             .map_or_else(|| "{}".into(), |v| v.to_string()),
-        max_pages: 50,
     };
     Ok(SavedSearchDefinition {
         query: source::filter::canonicalize_request(request)?,
@@ -916,6 +949,59 @@ fn run_with_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn default_definition_roundtrip_is_independent_of_saved_searches() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("default.sqlite");
+        let core = LadiesCore::new(path.to_string_lossy().into_owned()).unwrap();
+        assert!(load_default(&core).unwrap().is_none());
+        let id = save(&core, "Unchanged".into(), SearchRequest::for_test()).unwrap();
+        let before = definition(&core, &id).unwrap();
+        let mut query = SearchRequest::for_test();
+        query.radius_km = 70;
+        query.filters_json = r#"{"figur":["schlank"]}"#.into();
+        let local = LocalVisibility {
+            hide_likes: true,
+            ..LocalVisibility::default()
+        };
+        let expected = save_default(&core, query.clone(), local.clone()).unwrap();
+        query.radius_km = 99;
+        assert!(save_default(&core, query, local).is_err());
+        assert_eq!(definition(&core, &id).unwrap(), before);
+        drop(core);
+        let reopened = LadiesCore::new(path.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(load_default(&reopened).unwrap(), Some(expected));
+        assert_eq!(definition(&reopened, &id).unwrap(), before);
+    }
+
+    #[test]
+    fn obsolete_native_page_limit_is_ignored_without_rewriting_saved_bytes() {
+        let core = LadiesCore::new(":memory:".into()).unwrap();
+        let id = save(&core, "Legacy".into(), SearchRequest::for_test()).unwrap();
+        let (raw, version) = definition(&core, &id).unwrap();
+        let mut legacy: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        legacy["query"]["max_pages"] = json!(1);
+        let legacy = legacy.to_string();
+        core.connection()
+            .unwrap()
+            .execute(
+                "UPDATE saved_searches SET filters_json=?2 WHERE saved_search_id=?1",
+                params![id, legacy],
+            )
+            .unwrap();
+        let decoded = load_definition(&core, id.clone()).unwrap();
+        assert_eq!(encode_definition(&decoded).unwrap(), raw);
+        update_with_local(
+            &core,
+            id.clone(),
+            "Renamed".into(),
+            decoded.query,
+            decoded.local,
+        )
+        .unwrap();
+        assert_eq!(definition(&core, &id).unwrap(), (legacy, version));
+    }
+
     #[test]
     fn strict_native_shape_and_unknown_legacy_fields_are_not_rewritten() {
         let core = LadiesCore::new(":memory:".into()).unwrap();

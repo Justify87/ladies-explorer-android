@@ -258,9 +258,6 @@ pub(crate) fn validate_request(request: &SearchRequest) -> Result<(), CoreError>
     {
         return Err(invalid("Height range must be within 140–200"));
     }
-    if !(1..=50).contains(&request.max_pages) {
-        return Err(invalid("Page limit must be between 1 and 50"));
-    }
     filter_path(request)?;
     Ok(())
 }

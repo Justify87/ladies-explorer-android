@@ -11,7 +11,7 @@ import org.junit.Test
 
 class ProfileEntryAdmissionTest {
     private fun response(id: Long) = SearchResponse(
-        query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}", 10u),
+        query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
         local = defaultLocalVisibility(), searchRunId = id, city = "Leipzig",
         requestedRadiusKm = 20u, serverCount = 1u, totalPages = 1u, fetchedPages = 1u,
         partial = false, radiusBoundaryStopped = false, radiusVerified = true,
