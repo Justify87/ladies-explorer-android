@@ -42,13 +42,14 @@ class PriceProfileDeviceTest {
         val rows = mutableListOf<PriceList>()
         var reads = 0
         var writes = 0
+        val paid = if (token is SwipeActionToken) PaidEncounter("2026-11-23T12:00:00.000Z", 42) else null
         lateinit var editor: PriceEditor
         editor = PriceEditor({ it == token }, { listing, owner ->
             assertEquals(4L, listing)
             assertEquals(1L, owner)
             reads++
             PriceOverview(rows.sortedWith(compareByDescending<PriceList> { it.values.observedAt }
-                .thenByDescending { it.priceListId }), PaidEncounter("2026-11-23T12:00:00.000Z", 42))
+                .thenByDescending { it.priceListId }), paid)
         }, { edit, values ->
             writes++
             val v = checkNotNull(values)
@@ -80,7 +81,11 @@ class PriceProfileDeviceTest {
         assertTrue(section.fetchSemanticsNode().boundsInRoot.height >= 48 * pxPerDp - 1f)
         section.performClick()
         rule.onNodeWithTag("price-flow").performScrollToKey("profile-prices-head")
-        rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag: 0,42 €", substring = true).assertExists()
+        if (paid != null)
+            rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag: 0,42 €", substring = true).assertExists()
+        else rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Keine Preislisten gespeichert.", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("aktuelle Gültigkeit", substring = true).assertDoesNotExist()
         val add = rule.onNodeWithText("Preisliste hinzufügen")
         assertTrue(add.fetchSemanticsNode().boundsInRoot.height >= 48 * pxPerDp - 1f)
         add.performClick()
@@ -97,6 +102,7 @@ class PriceProfileDeviceTest {
         rule.onNodeWithText("Speichern").performClick()
         rule.onNodeWithTag("price-flow").performScrollToKey("price/1")
         rule.onNodeWithText("Neueste erfasste Liste").assertExists()
+        rule.onNodeWithText("Manuell erfasst · aktuelle Gültigkeit nicht bestätigt.").assertExists()
         rule.onNodeWithText("12,34 €").assertExists()
         rule.onNodeWithTag("price-flow").performScrollToKey("profile-prices-head")
         rule.onNodeWithText("Preisliste hinzufügen").performClick()

@@ -57,7 +57,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 ## Profile, Medien und Kontakte
 
 - Swipe und Standalone zeigen den gemeinsamen Profilumfang: Identität, Name/Alter/Ort, belegte Verfügbarkeit/Status, Öffnungszeiten, Merkmale, Beschreibung, Dienste, Filterbelege (Ja/Nein/Unbekannt), Präferenz/Favorit, Medien, Kontakte, Analyse, Notizen, Verlauf, Snapshotvergleich und verknüpfte Anzeigen.
-- Alle tatsächlich vorhandenen Informationen bleiben erreichbar; fehlende Werte nicht erfinden.
+- Alle tatsächlich vorhandenen Informationen bleiben erreichbar; fehlende optionale Angaben nicht erfinden oder als leere Erklärung wiederholen. Quellgruppen und ihre Werte bleiben zusammen; Filterbelege unterscheiden weiterhin Ja, Nein und Unbekannt.
 - Galerie in Quellreihenfolge. Lokale archivierte Medien zuerst, dann Remote-Fallback; bei Fehler Platzhalter.
 - Reine Anzeige verändert weder Archiv noch Datenbestand. Eingebettete Videos und Darstellungsmodi nach [DESIGN](DESIGN.md#profile-und-medien).
 - Verknüpfte Anzeigen verwenden externe Original-URLs. Telefon und WhatsApp sind unmittelbar nach der Galerie nur bei gültiger, dem sichtbaren Profil zugeordneter Telefonnummer zugänglich. Telefon, WhatsApp und Originalprofil nur durch ausdrückliche Nutzerhandlung; keine automatischen Aktionen.
@@ -147,7 +147,7 @@ Bestätigtes fachliches Soll für M06; Umsetzung und Status ausschließlich in [
 
 - Begegnungen gehören einer Person; ein optionales Inserat muss ihr zugeordnet sein. Zeitpunkt, optionale Dauer, Grund-/Gesamtpreis, Gesamt-/Sympathiebewertung (1–5), Begegnungsnotiz und einfache persönliche Leistungszeilen können bewusst erfasst, korrigiert und gelöscht werden. Personennotiz, Präferenz, Favorit, Quellinformationen und Begegnungsdaten bleiben unabhängig.
 - Angebotspreise werden ausschließlich manuell als datierte Preislisten in EUR erfasst. Eine neue Liste erhält die frühere Liste; Korrekturen und bestätigtes Löschen sind möglich. Die neueste erfasste Liste ist kein Nachweis aktueller Gültigkeit. Tatsächlich bezahlte Beträge werden ausschließlich aus Begegnungen abgeleitet und getrennt bezeichnet.
-- Fehlende Angaben bleiben unbekannt; keine erfundenen Beträge, Bewertungen oder automatische Übernahme zwischen Begegnung, Preisliste und Quelle. Keine Pflicht, alle vorhandenen Schemafelder zu verwenden.
+- Fehlende Angaben bleiben unbekannt und werden im Profil ohne pauschale Leertexte weggelassen; keine erfundenen Beträge, Bewertungen oder automatische Übernahme zwischen Begegnung, Preisliste und Quelle. Keine Pflicht, alle vorhandenen Schemafelder zu verwenden.
 - Begegnungen und Preislisten sind im gemeinsamen Profil bedarfsorientiert zugänglich; keine zusätzliche Root-Navigation oder zweite Profilimplementierung. Alle persönlichen Daten bleiben lokal, ohne neuen Netzwerkzugriff.
 
 ### Nicht vorgesehene Erweiterungen

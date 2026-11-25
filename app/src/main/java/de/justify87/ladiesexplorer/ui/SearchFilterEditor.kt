@@ -136,20 +136,16 @@ internal fun LazyListScope.searchFilterEditor(
     }
     if (filterQuery.isBlank() || "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) ||
         state.filterCatalog?.categories.orEmpty().any { (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }) item {
-        ScreenGroup("Rubrik") {
-            OutlinedButton(onClick = { onCategoryExpanded(!categoryExpanded) }, enabled = enabled,
-                modifier = Modifier.fillMaxWidth()) {
-                Text(categoryLabels[state.category] ?: state.category)
-            }
-            if (categoryExpanded || filterQuery.isNotBlank()) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    state.filterCatalog?.categories.orEmpty()
-                        .filter { "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) || (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }
-                        .forEach { category ->
-                            ScreenChoice(selected = state.category == category, enabled = enabled,
-                                onClick = { onCategory(category) }, label = { Text(categoryLabels[category] ?: category) })
-                        }
-                }
+        ProgressiveSection("Rubrik", categoryExpanded || filterQuery.isNotBlank(),
+            { onCategoryExpanded(!categoryExpanded) }, hint = categoryLabels[state.category] ?: state.category,
+            enabled = enabled && filterQuery.isBlank()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.filterCatalog?.categories.orEmpty()
+                    .filter { "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) || (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }
+                    .forEach { category ->
+                        ScreenChoice(selected = state.category == category, enabled = enabled,
+                            onClick = { onCategory(category) }, label = { Text(categoryLabels[category] ?: category) })
+                    }
             }
         }
     }
@@ -255,19 +251,14 @@ private fun FilterSection(
     onToggle: (String) -> Unit,
 ) {
     var expanded by rememberSaveable(group.key) { mutableStateOf(initiallyExpanded) }
-    ScreenGroup((groupLabels[group.key] ?: group.key) + if (selected.isEmpty()) "" else " (${selected.size})") {
-        OutlinedButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (expanded) "Weniger anzeigen" else "Optionen anzeigen")
-        }
-        if (expanded || query.isNotBlank()) {
-            val all = (groupLabels[group.key] ?: group.key).contains(query, ignoreCase = true)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                group.options.filter { all || it.contains(query, ignoreCase = true) || it in selected }.forEach { option ->
-                    ScreenChoice(selected = option in selected, onClick = { onToggle(option) }, enabled = enabled,
-                        label = { Text(option) })
-                }
+    ProgressiveSection((groupLabels[group.key] ?: group.key) + if (selected.isEmpty()) "" else " (${selected.size})",
+        expanded || query.isNotBlank(), { expanded = !expanded }, enabled = query.isBlank()) {
+        val all = (groupLabels[group.key] ?: group.key).contains(query, ignoreCase = true)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            group.options.filter { all || it.contains(query, ignoreCase = true) || it in selected }.forEach { option ->
+                ScreenChoice(selected = option in selected, onClick = { onToggle(option) }, enabled = enabled,
+                    label = { Text(option) })
             }
         }
     }
 }
-
