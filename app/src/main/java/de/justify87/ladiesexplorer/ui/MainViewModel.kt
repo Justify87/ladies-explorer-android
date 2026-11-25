@@ -118,6 +118,7 @@ data class SearchUiState(
     val profileOpen: Boolean = false,
     val profileSessionId: Long = 0L,
     val profileRead: ProfileReadModel? = null,
+    val profileMatchContext: String = "{}",
     val profileRetryFromArchive: Boolean = false,
     val profileSourceRetryAllowed: Boolean = false,
     val actionBusy: Boolean = false,
@@ -1210,7 +1211,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal fun openSearchResultProfile(action: SearchResultOpenAction) {
         if (savedSearch.state.value.pane != SearchPane.Filters ||
             !searchResultOpenMatches(_searchUiState.value, _discoverState.value, action)) return
-        loadProfile(action.card.listingId, action.card.personId)
+        val response = _searchUiState.value.response?.takeIf { it.searchRunId == action.runId }
+        loadProfile(action.card.listingId, action.card.personId,
+            executedProfileMatchContext(response, action.card.personId))
     }
 
     internal fun openSavedSearchProfile(action: SavedSearchProfileOpenAction) {
@@ -1219,15 +1222,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             current.actionGeneration != action.generation || !savedSearch.admitsProfileOpen(action)) return
         val listing = action.card.listingId ?: return
         val person = action.card.personId ?: return
-        loadProfile(listing, person)
+        loadProfile(listing, person, savedProfileMatchContext(action.window.id, person))
     }
 
-    private fun loadProfile(listingId: Long, personId: Long) {
+    private fun loadProfile(listingId: Long, personId: Long, matchContext: String = "{}") {
         if (hasProfileEditor || _discoverState.value.busy || _searchUiState.value.loading || savedSearch.state.value.blockingNavigation) return
         invalidateSwipeActions()
         clearPreview()
         invalidateActiveSearch()
-        profileOperations.loadProfile(listingId, personId) { savedSearch.setVisible(false) }
+        profileOperations.loadProfile(listingId, personId, matchContext) { savedSearch.setVisible(false) }
     }
 
     internal fun confirmIdentity(token: ProfileIdentityToken, targetPersonId: Long) {

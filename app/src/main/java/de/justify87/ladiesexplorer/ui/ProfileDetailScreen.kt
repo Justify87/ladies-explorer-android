@@ -33,7 +33,7 @@ internal fun ProfileDetailScreen(
     prices: PriceEditor? = null,
 ) {
     val profile = state.profile
-    val filters = state.response?.takeIf { state.activeCards.any { card -> card.listingId == profile?.listingId } }?.query?.filtersJson ?: "{}"
+    val filters = profileMatchContextForOwner(state.profileMatchContext, state.profileIdentity?.personId)
     val renderedToken = state.detailIdentityToken()
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val detailListState = rememberLazyListState()

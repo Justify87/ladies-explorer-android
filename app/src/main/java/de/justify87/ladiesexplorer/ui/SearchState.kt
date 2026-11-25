@@ -130,6 +130,34 @@ internal fun searchResultOpenMatches(
         search.response?.searchRunId == action.runId &&
         search.activeCards.any { it == action.card }
 
+// The native projection resolves criteria from the persisted run or saved result, never the draft.
+internal fun executedProfileMatchContext(response: SearchResponse?, ownerId: Long?): String {
+    if (response == null || ownerId == null) return "{}"
+    val local = response.local
+    return JSONObject().apply {
+        put("kind", "run")
+        put("run_id", response.searchRunId)
+        put("owner_id", ownerId)
+        put("local", JSONObject().apply {
+            put("video_only", local.videoOnly)
+            put("photos_only", local.photosOnly)
+            put("hide_likes", local.hideLikes)
+            put("hide_dislikes", local.hideDislikes)
+            put("image_mode", local.imageMode)
+        })
+    }.toString()
+}
+
+internal fun savedProfileMatchContext(id: String, ownerId: Long): String = JSONObject().apply {
+    put("kind", "saved")
+    put("saved_id", id)
+    put("owner_id", ownerId)
+}.toString()
+
+internal fun profileMatchContextForOwner(context: String, ownerId: Long?): String =
+    if (context == "{}" || ownerId == null) "{}"
+    else JSONObject(context).put("owner_id", ownerId).toString()
+
 internal fun defaultLocalVisibility() = LocalVisibility(
     videoOnly = false, photosOnly = false, hideDislikes = true,
     hideLikes = false, imageMode = "ALL",
