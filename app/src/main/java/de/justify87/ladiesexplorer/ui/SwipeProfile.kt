@@ -69,10 +69,6 @@ internal suspend fun readSwipeProfile(
 internal fun sameSwipeCard(a: DiscoveryCard?, b: DiscoveryCard?): Boolean =
     a != null && b != null && a.listingId == b.listingId && a.personId == b.personId
 
-/** Current failure requires retry or demotion/promotion; speculative failure may retry once on promotion. */
-internal fun swipeFailureNeedsDemotion(startedCurrent: Boolean, stillCurrent: Boolean): Boolean =
-    startedCurrent && stillCurrent
-
 internal data class SwipeReadPolicy(val refresh: Boolean, val allowNetwork: Boolean)
 
 /** Active-run freshness is resolved before promotion; strict recovery is local-only. */
@@ -87,7 +83,10 @@ internal fun swipeReadPolicy(
     )
 }
 
-internal data class SwipeReadFailure(val invalidation: Long, val current: Boolean, val message: String)
+internal data class SwipeReadFailure(val current: Boolean, val message: String)
+
+internal fun swipeReadMayRetry(failure: SwipeReadFailure?, current: Boolean): Boolean =
+    failure == null || current && !failure.current
 
 /** Per-entry tickets reject late delivery after prune, reset or owner replacement. */
 internal class SwipeProfileWindow(
