@@ -359,6 +359,93 @@ private fun ProfileGroup(title: String, content: @Composable ColumnScope.() -> U
     }
 }
 
+internal fun evidenceLabel(status: EvidenceStatus): String = when (status) {
+    EvidenceStatus.YES -> "Ja"
+    EvidenceStatus.NO -> "Nein"
+    EvidenceStatus.UNKNOWN -> "Unbekannt"
+}
+
+private val traitAliases = listOf(
+    setOf("größe", "grösse", "groesse", "körpergröße", "koerpergroesse"),
+    setOf("busen", "oberweite", "brustgröße", "brustgroesse", "brust"),
+    setOf("konfektion", "konfektionsgröße", "konfektionsgroesse", "kleidergröße"),
+    setOf("sprachen", "sprache"),
+    setOf("gewicht"), setOf("figur", "körperbau"), setOf("haare", "haarfarbe"),
+    setOf("augen", "augenfarbe"), setOf("nationalität"), setOf("herkunft"),
+)
+private const val primaryTraitCount = 4
+
+private fun displayKey(value: String) = value.trim().split(Regex("\\s+")).joinToString(" ").lowercase(Locale.ROOT)
+private fun traitOrder(field: ProfileField): Int =
+    traitAliases.indexOfFirst { displayKey(field.label) in it }.takeIf { it >= 0 } ?: traitAliases.size
+
+// Only suppress an age already represented by the authoritative native identity.
+private fun sameDisplayedAge(value: String, age: String): Boolean =
+    Regex("^([0-9]{2})\\s*(?:jahr(?:e)?)?$", RegexOption.IGNORE_CASE)
+        .matchEntire(value.trim())?.groupValues?.get(1) == age
+
+private fun mergeIdenticalTraits(fields: List<ProfileField>): List<ProfileField> {
+    val result = mutableListOf<ProfileField>()
+    fields.forEach { field ->
+        val order = traitOrder(field)
+        val index = result.indexOfFirst {
+            order < traitAliases.size && displayKey(it.label.substringBefore(" / ")) in traitAliases[order] &&
+                it.values == field.values
+        }
+        if (index < 0) result.add(field)
+        else {
+            val previous = result[index]
+            result[index] = ProfileField("${previous.label} / ${field.label}", previous.values)
+        }
+    }
+    return result
+}
+
+internal fun ProfileFacts.overviewAndTraits(age: String? = null): Pair<List<Pair<String, String>>, List<ProfileField>> {
+    val ordered = traits.filter { field ->
+        field.values.isNotEmpty() && !(displayKey(field.label) == "alter" &&
+            age != null && field.values.size == 1 && sameDisplayedAge(field.values.single(), age))
+    }.sortedBy(::traitOrder)
+    val (primary, remaining) = ordered.partition { traitOrder(it) < primaryTraitCount }
+    val overview = mergeIdenticalTraits(primary).map { it.label to it.values.joinToString(" · ") } +
+        important.filterNot { evidence ->
+            // This is display equivalence, not a second evidence evaluator.
+            evidence.status == EvidenceStatus.YES && services.any { field ->
+                val label = displayKey(field.label)
+                val target = displayKey(evidence.label)
+                label !in setOf("treffpunkt", "treff", "location") &&
+                    field.values.any { raw ->
+                        val value = displayKey(raw)
+                        value == target || (label == target && value in setOf("ja", "yes"))
+                    }
+            }
+        }.map { it.label to evidenceLabel(it.status) }
+    return overview.distinct() to mergeIdenticalTraits(remaining)
+}
+
+private val weekdays = listOf("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+
+private fun weekdayIndex(label: String) = weekdays.indexOfFirst { it.equals(label.trim(), ignoreCase = true) }
+
+internal fun compactOpeningTimes(fields: List<ProfileField>): List<ProfileField> {
+    val populated = fields.filter { it.values.isNotEmpty() }
+    val (days, other) = populated.partition { weekdayIndex(it.label) >= 0 }
+    val ordered = days.sortedBy { weekdayIndex(it.label) }
+    val result = mutableListOf<ProfileField>()
+    var index = 0
+    while (index < ordered.size) {
+        val first = ordered[index]
+        var end = index
+        while (end + 1 < ordered.size &&
+            weekdayIndex(ordered[end + 1].label) == weekdayIndex(ordered[end].label) + 1 &&
+            ordered[end + 1].values == first.values) end++
+        val label = if (end == index) first.label else "${first.label} – ${ordered[end].label}"
+        result.add(ProfileField(label, first.values))
+        index = end + 1
+    }
+    return result + other.sortedBy { !it.label.contains("feiertag", ignoreCase = true) }
+}
+
 @Composable
 private fun CompactFieldRows(rows: List<Pair<String, String>>) {
     if (rows.isEmpty()) return
