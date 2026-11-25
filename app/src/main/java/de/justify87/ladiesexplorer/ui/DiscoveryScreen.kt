@@ -339,10 +339,14 @@ internal fun DiscoverScreen(
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
                     }
                     item {
-                        if (state.loading || searchLoading) CircularProgressIndicator()
+                        if (state.loading || searchLoading || search.activeProjectionPending) CircularProgressIndicator()
                         else {
-                            Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
-                            Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
+                            if (state.error != null || search.activeProjectionError != null) {
+                                Text("Lokale Treffer unbekannt.", style = MaterialTheme.typography.titleLarge)
+                            } else {
+                                Text("Deck beendet", style = MaterialTheme.typography.titleLarge)
+                                Text("Keine weiteren passenden Profile. Reset beginnt die Warteschlange erneut, ohne Entscheidungen zu löschen.")
+                            }
                             SwipeDeckActions(controls, { onRefresh(deckToken) }, { onReset(deckToken) },
                                 { onReplayLikes(deckToken, !state.replayLikes) })
                         }

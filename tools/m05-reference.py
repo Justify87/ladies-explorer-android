@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an isolated, synthetic native Android v2 database and M05 scenarios.
+"""Generate an isolated, synthetic native Android v3 database and M05 scenarios.
 
 No network, private data, production DB access or third-party packages.
 """

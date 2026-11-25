@@ -96,7 +96,7 @@ python3 tools/check_architecture.py
 
 Die CI prüft die in [ARCHITECTURE.md](docs/ARCHITECTURE.md#automatisierte-architekturverträge) beschriebenen Architekturverträge im bestehenden Core-Job und am tatsächlich erzeugten ARM64-Debug-APK vor dem Upload. Lokal nach dem Build: `python3 tools/check_architecture.py --apk app/build/outputs/apk/debug/app-debug.apk --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" --aapt2 /pfad/zum/sdk/build-tools/version/aapt2`. Prüfgrenzen und konkrete Regeln stehen im verlinkten Architekturvertrag.
 
-Eine grüne CI beweist keine funktionierende reale Website-Suche oder native Geräte-UX. Geräteprüfaufgaben werden nach der [Merge-Regel](docs/ROADMAP.md#pflege) abgeschlossen; nach Installation unter Einstellungen Datenbankstatus (Schema v2) kontrollieren.
+Eine grüne CI beweist keine funktionierende reale Website-Suche oder native Geräte-UX. Geräteprüfaufgaben werden nach der [Merge-Regel](docs/ROADMAP.md#pflege) abgeschlossen; nach Installation unter Einstellungen Datenbankstatus (Schema v3) kontrollieren.
 
 ## Lokale Diagnose
 
@@ -107,7 +107,7 @@ Eine grüne CI beweist keine funktionierende reale Website-Suche oder native Ger
 
 ## Synthetische Testdaten
 
-Die CI erzeugt eine isolierte native Android-v2-Testdatenbank ohne Nutzerimport oder Migration:
+Die CI erzeugt eine isolierte native Android-v3-Testdatenbank ohne Nutzerimport oder Migration:
 
 ```sh
 python3 tools/m05-reference.py /tmp/m05-reference --clock 2026-11-18T12:00:00+00:00

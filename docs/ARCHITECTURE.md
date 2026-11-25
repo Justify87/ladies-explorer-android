@@ -63,11 +63,12 @@ Person ist die kanonische Identität gemäß [PRODUCT](PRODUCT.md#personen-ident
 | Identitätsevidenz | `identity_evidence`, `identity_events` |
 | Persönliche Begegnungen | `encounters`, `encounter_services`, `price_lists`, `price_items` – typisierte lokale CRUD-APIs |
 | Einstellungen | `app_settings` |
+| Standortdaten | `listing_locations` |
 
 ### SQLite-Vertrag
 
-- **Ablage/Identität:** App-private Datenbank `filesDir/ladies.sqlite`; `user_version = 2` und `application_id = 0x4C445850` (LDXP). Eigenständiger Android-Datenbestand ohne nutzerseitige Übernahme gemäß [PRODUCT](PRODUCT.md#produktziel-und-grenzen).
-- **Schemafreigabe:** Installation und interne Schemaentwicklung transaktional vor Store-Freigabe. Native v1 muss dem kanonischen Schema entsprechen; v2 einschließlich Tabellen, Indizes und Triggern validieren.
+- **Ablage/Identität:** App-private Datenbank `filesDir/ladies.sqlite`; `user_version = 3` und `application_id = 0x4C445850` (LDXP). Eigenständiger Android-Datenbestand ohne nutzerseitige Übernahme gemäß [PRODUCT](PRODUCT.md#produktziel-und-grenzen).
+- **Schemafreigabe:** Installation und interne Schemaentwicklung transaktional vor Store-Freigabe. Bestehende native v1/v2/v3 müssen dem jeweiligen kanonischen Schema entsprechen; interne Migration auf v3 einschließlich Tabellen, Indizes, Triggern und Fremdschlüsselprüfung vor Commit validieren.
 - **Ungültige Schemata:** Fremde IDs, unerwartete unversionierte Tabellen, Schemaabweichungen oder unbekannte neuere Versionen erzeugen typisierte Fehler. Die exakt bekannte Demo mit `scaffold_notes` ist ein unterstützter technischer Migrationsfall; echte Nutzerdaten nicht implizit löschen.
 - **Connection:** `foreign_keys=ON` je Verbindung; Rust-Mutex schützt die Connection. Öffentliche Mutationen nutzen parametrisierte SQL-Anweisungen und Transaktionen.
 - **Owner-Integrität:** Person-INSERT erzeugt Nutzerstatus durch Trigger. Trigger verhindern unzulässige Personen-/Quellenzuordnung von Inseraten und Quellprofilen; Sichtungen aktualisieren die je Quelle zugehörigen `last_seen_at`-Zeitpunkte.

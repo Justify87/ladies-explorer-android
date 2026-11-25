@@ -18,9 +18,13 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.12 / G09 — Gesamtintegration und Abschluss
 
-**Status:** PLANNED.
+**Status:** REVIEW — Branch `feature/m09-12-integration`; ausdrücklicher Nutzerauftrag 25.11.2026.
 
-**Abhängigkeit:** M09.1–M09.11 integriert; gesonderter Nutzerauftrag.
+**Abhängigkeit:** M09.1–M09.11 integriert; gesonderter Nutzerauftrag erteilt.
+
+**Integrationsreview:** Ausgangscommit `af1323f80f6f0e1fee14e9011a3386d628a1c7a3`. Gemeinsame Ergebnis-/Run-/Owner-Admission, Grid-/Karten-Swipe-Einstieg und Back, Undo/Replay/Reset, globale Sichtbarkeitsprojektion, Suchstandard/Preview/Pagination, lokale Standortaufbereitung/Cluster, Profilmatch, progressive Abschnitte, Kontakte und Settings-Untermenüs anhand der integrierten Aufrufer und vorhandenen Regressionen abgeglichen. Konkrete Befunde: leere Grid-/Swipe-Projektion nach lokalem Lesefehler nicht als Nulltreffer bzw. Deckende darstellen; Pending als Loading behandeln. Synthetische Grid-Compose-Regression für Fehler → Pending → bestätigten Leerzustand ergänzt. Veraltete v2-Angaben in Architektur, README und Fixture-Kommentar auf v3 korrigiert. Keine Änderung an FFI, Schema, fachlichen Regeln oder CI-Grenzen.
+
+**Prüfstand:** [Vollständiges Vorgänger-Gate](https://github.com/Justify87/ladies-explorer-android/actions/runs/45602655214) grün; neues vollständiges G09-Gate für den PR-Head noch zu verifizieren. Kein lokaler Build oder tatsächlicher Gerätetest; Geräteprüfungen erst gemäß Merge-Regel. Responsive und native Interaktionsprüfung stützt sich auf vorhandene und ergänzte Instrumentierungsproben, nicht auf deren tatsächliche Geräteausführung. Vor Abschluss PR-Gate, verbleibende Befunde und integrierte Kriterien prüfen.
 
 - Alle Kriterien M09.1–M09.11 auf integriertem Stand abgleichen; insbesondere gemeinsamer Run → Grid/Map → Swipe → Back, persistente globale Sichtbarkeit, Standard/Reset/Preview/Pagination, Filterübereinstimmung, Ortsdaten → automatische Karte → Cluster, gemeinsame progressive Abschnitte, Kontakte und Diagnose-Untermenü.
 - Betroffene Aufrufer, States, FFI, Persistenz, Tests und Dokumentation auf Abweichungen, Altpfade, unnötige Abstraktionen und widersprüchliche Verträge prüfen. Belegte In-Scope-Befunde ursächlich beheben; keine unabhängigen Erweiterungen. Dark/Light, kleine/kurze Fenster, Font Scale, Touch-/Fokus, Fehler/Cancel/Lifecycle und Datenintegrität risikogerecht prüfen.

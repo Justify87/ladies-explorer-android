@@ -135,6 +135,28 @@ class DiscoveryDesignDeviceTest {
         }
     }
 
+    @Test fun gridDistinguishesUnknownFromConfirmedEmptyAfterLocalProjectionFailure() {
+        var discovery by mutableStateOf(DiscoverUiState(loading = false, error = "Synthetischer Lesefehler"))
+        var search by mutableStateOf(SearchUiState(activeProjectionError = "Synthetischer Lesefehler"))
+        rule.setContent {
+            LadiesTheme {
+                DiscoveryGridScreen(discovery, search, onLoadMore = {},
+                    onDecision = { _, _ -> }, onUndo = {}, onProfile = {}, chrome = {},
+                    onCancelSearch = {}, modifier = Modifier.width(360.dp).height(480.dp))
+            }
+        }
+        rule.onNodeWithText("Lokale Treffer unbekannt.").assertExists()
+        rule.onNodeWithText("Keine Treffer.").assertDoesNotExist()
+        rule.runOnIdle {
+            discovery = discovery.copy(error = null)
+            search = search.copy(activeProjectionPending = true, activeProjectionError = null)
+        }
+        rule.onNodeWithText("Keine Treffer.").assertDoesNotExist()
+        rule.onNodeWithText("Lokale Treffer unbekannt.").assertDoesNotExist()
+        rule.runOnIdle { search = search.copy(activeProjectionPending = false) }
+        rule.onNodeWithText("Keine Treffer.").assertExists()
+    }
+
     @Test fun gridUndoUsesCurrentReceiptAndRemainsAvailableWhenLocalCardDisappears() {
         val receipt = GridUndoReceipt(null, 11L, 12L, Preference.NONE, Preference.LIKE)
         var state by mutableStateOf(DiscoverUiState(loading = false, actionSurface = ProfileActionSurface.GRID,

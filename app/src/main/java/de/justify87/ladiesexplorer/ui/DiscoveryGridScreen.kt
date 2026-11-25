@@ -52,6 +52,8 @@ internal fun DiscoveryGridScreen(
 ) {
     val cards = gridCards(discovery, search)
     val active = search.response != null
+    val loadingResults = discovery.loading || search.loading || search.activeProjectionPending
+    val unknownResults = discovery.error != null || search.activeProjectionError != null
     val enabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy
     val undoAction = discovery.gridUndo?.let { GridUndoAction(it, discovery.actionGeneration) }
     val canUndo = undoAction != null && gridUndoMatches(discovery, search, undoAction)
@@ -69,7 +71,7 @@ internal fun DiscoveryGridScreen(
             if (showStatus) add("search-status")
             if (discovery.mutationError != null) add("mutation-error")
             if (discovery.error != null) add("error")
-            if (cards.isEmpty()) add(if (discovery.loading || search.loading) "loading" else "empty")
+            if (cards.isEmpty()) add(if (loadingResults) "loading" else "empty")
             cards.forEach { add(gridAnchorKey(it.listingId)) }
             if (pageAction != null) add("more")
         }
@@ -129,7 +131,7 @@ internal fun DiscoveryGridScreen(
                         Text(message, color = MaterialTheme.colorScheme.error)
                     }
                 }
-                if ((discovery.loading || search.loading) && cards.isEmpty()) {
+                if (loadingResults && cards.isEmpty()) {
                     item(key = "loading", span = { GridItemSpan(maxLineSpan) }) {
                         Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()
@@ -137,7 +139,8 @@ internal fun DiscoveryGridScreen(
                     }
                 } else if (cards.isEmpty()) {
                     item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                        Text("Keine Treffer.", style = MaterialTheme.typography.bodyLarge)
+                        Text(if (unknownResults) "Lokale Treffer unbekannt." else "Keine Treffer.",
+                            style = MaterialTheme.typography.bodyLarge)
                     }
                 }
                 items(cards, key = { it.listingId }) { card ->
