@@ -17,25 +17,28 @@ internal class ProfilePanels(
     private val readFacts: suspend (Long, String) -> ProfileFacts,
     private val readDetail: suspend (Long) -> PersonDetail,
     private val readComparison: suspend (Long, Long, Long) -> List<SnapshotDifference>,
+    seed: PreparedPanelData? = null,
+    seedSnapshot: Long? = null,
+    seedFilters: String = "",
 ) {
     private data class FactsKey(val snapshot: Long?, val filters: String)
-    private var factsKey: FactsKey? = null
+    private var factsKey: FactsKey? = seed?.let { FactsKey(seedSnapshot, seedFilters) }
     var factsGeneration by mutableLongStateOf(0L)
         private set
-    private var detailRequested = false
+    private var detailRequested = seed != null
     var detailGeneration by mutableLongStateOf(0L)
         private set
     private var closed = false
     private var factsRetry: Job? = null
     private var detailRetry: Job? = null
     private var comparisonJob: Job? = null
-    var facts by mutableStateOf<ProfileFacts?>(null)
+    var facts by mutableStateOf(seed?.facts)
         private set
-    var detail by mutableStateOf<PersonDetail?>(null)
+    var detail by mutableStateOf(seed?.detail)
         private set
-    var factsError by mutableStateOf<String?>(null)
+    var factsError by mutableStateOf(seed?.factsError)
         private set
-    var detailError by mutableStateOf<String?>(null)
+    var detailError by mutableStateOf(seed?.detailError)
         private set
     var comparison by mutableStateOf<List<SnapshotDifference>?>(null)
         private set
@@ -150,6 +153,7 @@ internal class ProfilePanelReads(
 @Composable
 internal fun rememberProfilePanels(
     model: ProfileReadModel?, filters: String, injected: ProfilePanelReads? = null,
+    prepared: PreparedPanelData? = null,
 ): ProfilePanels {
     val reads = injected ?: run {
         val core = (LocalContext.current.applicationContext as LadiesApplication).coreStore
@@ -157,8 +161,9 @@ internal fun rememberProfilePanels(
     }
     val scope = rememberCoroutineScope()
     val panels = remember(reads, scope, model?.profile?.listingId, model?.profile?.snapshotId,
-        model?.identity?.personId, model?.revision, filters) {
-        ProfilePanels(scope, model?.identity?.personId, reads.facts, reads.detail, reads.comparison)
+        model?.identity?.personId, model?.revision, filters, prepared) {
+        ProfilePanels(scope, model?.identity?.personId, reads.facts, reads.detail, reads.comparison,
+            prepared, model?.profile?.snapshotId, filters)
     }
     DisposableEffect(panels) { onDispose { panels.close() } }
     return panels
