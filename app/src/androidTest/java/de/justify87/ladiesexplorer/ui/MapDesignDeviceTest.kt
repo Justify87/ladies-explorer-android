@@ -35,6 +35,7 @@ import de.justify87.ladiesexplorer.core.MapOverview
 import de.justify87.ladiesexplorer.core.MapProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 
@@ -165,7 +166,7 @@ class MapDesignDeviceTest {
                 val ready = requireNotNull(map)
                 val zoom = requireNotNull(mapClusterZoom(requireNotNull(source), cluster, 4.0, ready.maxZoomLevel))
                 assertTrue(zoom > 4.0 && zoom <= 16.0)
-                assertEquals(null, mapClusterZoom(requireNotNull(source), cluster, zoom, ready.maxZoomLevel))
+                assertNull(mapClusterZoom(requireNotNull(source), cluster, zoom, ready.maxZoomLevel))
                 val point = cluster.geometry() as org.maplibre.geojson.Point
                 ready.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(point.latitude(), point.longitude()), zoom))
             }
@@ -220,14 +221,14 @@ class MapDesignDeviceTest {
             delayed.complete(Unit)
             rule.waitForIdle()
             rule.runOnIdle {
-                assertEquals(null, style?.getImage(mapThumbnailId(old)))
+                assertNull(style?.getImage(mapThumbnailId(old)))
                 val visible = rendered(MAP_SINGLE).single()
                 assertEquals(fresh, mapRenderedSelection(listOf(fresh), visible))
                 assertEquals("POSTAL", visible.getStringProperty("group_precision"))
                 assertTrue(visible.getBooleanProperty("selected"))
                 images?.update(emptyList())
                 requireNotNull(source).setGeoJson(asFeatures(emptyList(), null))
-                assertEquals(null, style?.getImage(mapThumbnailId(fresh)))
+                assertNull(style?.getImage(mapThumbnailId(fresh)))
             }
             rule.waitUntil(timeoutMillis = 20_000) {
                 rule.runOnIdle { rendered(MAP_SINGLE).isEmpty() && rendered(MAP_CLUSTERS).isEmpty() }
@@ -250,7 +251,7 @@ class MapDesignDeviceTest {
             assertEquals(80, decoded.height)
             assertEquals(BitmapColor.GREEN, decoded.getPixel(40, 40))
             assertEquals(BitmapColor.TRANSPARENT, decoded.getPixel(0, 0))
-            assertEquals(null, runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString()) })
+            assertNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString()) })
             assertEquals(BitmapColor.TRANSPARENT, mapFallbackBitmap().getPixel(0, 0))
         } finally {
             file.delete()
