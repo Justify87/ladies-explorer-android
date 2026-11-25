@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 / G10-Pure (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) einschließlich M10.1–M10.3 und der ergänzenden Qualitätskorrektur M10.4 ist abgeschlossen. M11.1 ist abgeschlossen. Nächste Entwicklungsaufgabe: M11.2 / Kartendock, native Cluster und Profilbildmarker (PLANNED; Bereitschaft auf integriertem Stand verifizieren). L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 / G10-Pure (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) einschließlich M10.1–M10.3 und der ergänzenden Qualitätskorrektur M10.4 ist abgeschlossen. M11.1 ist abgeschlossen. Nächste Entwicklungsaufgabe: M11.2 / Kartendock, native Cluster und Profilbildmarker (in Arbeit auf dem Aufgabenbranch; vollständiges CI-Gate und Abschlussreview ausstehend). L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M11 — Korrekturen aus praktischer Geräteerprobung
 
@@ -16,9 +16,11 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M11.2 — Kartendock, native Cluster und Profilbildmarker
 
-**Status:** PLANNED.
+**Status:** DOING.
 
-**Abhängigkeit:** M11.1 auf main abgeschlossen; vor Umsetzung gegen integrierten Stand verifizieren und auf READY setzen.
+**Abhängigkeit:** M11.1 auf `main` abgeschlossen; PR [#120](https://github.com/Justify87/ladies-explorer-android/pull/120), [Merge-Commit](https://github.com/Justify87/ladies-explorer-android/commit/f072c7eca7a4eb062a84f06f32f6a37552f7981c), abschließendes [CI-Gate](https://github.com/Justify87/ladies-explorer-android/actions/runs/45649348334) erfolgreich. Bereitschaft verifiziert.
+
+**Arbeitsstand:** Branch [`fix/m11-2-map-markers-dock`](https://github.com/Justify87/ladies-explorer-android/tree/fix/m11-2-map-markers-dock), Basis `f072c7eca7a4eb062a84f06f32f6a37552f7981c`. Gemessener Dockabstand, exakte native Cluster mit lokalen Zählsprites, Gleichortrepräsentant, native Expansion, begrenzte sichtbare Coil-Thumbnail-Sprites und synthetische JVM-/Instrumentierungsproben implementiert; Produkt-, Architektur- und Designvertrag konsolidiert. Nächster Schritt: vollständiges CI-Gate des Aufgaben-PRs verifizieren, Befunde beheben und integrierten M11-Abschlussreview durchführen; keine weitere Aufgabe und kein Merge ohne Freigabe. Geräteausführung und historische Reproduktion nicht belegt.
 
 **Befunde und Codeanker:**
 
