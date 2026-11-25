@@ -117,6 +117,27 @@ class SearchRunStateTest {
         assertEquals(emptyList<de.justify87.ladiesexplorer.core.DiscoveryCard>(), currentMapMembership(discovery, confirmed)?.cards)
     }
 
+    @Test fun emptyDiscoveryWaitsForProjectionPaginationAndMutationAndDistinguishesFailure() {
+        val idle = DiscoverUiState(activeRunId = 1L, loading = false)
+        val run = SearchUiState().acceptRun(response(1), emptyList())
+        assertEquals(DiscoveryEmptyState.Empty, discoveryEmptyState(idle, run))
+        assertEquals(DiscoveryEmptyState.Unknown, discoveryEmptyState(idle.copy(error = "local read"), run))
+        assertEquals(DiscoveryEmptyState.Unknown, discoveryEmptyState(idle, run.copy(activeProjectionError = "local read")))
+        for (state in listOf(idle.copy(loading = true), idle.copy(loadingMore = true), idle.copy(busy = true))) {
+            assertEquals(DiscoveryEmptyState.Loading, discoveryEmptyState(state, run))
+        }
+        assertEquals(DiscoveryEmptyState.Loading, discoveryEmptyState(idle, run.copy(loading = true)))
+        assertEquals(DiscoveryEmptyState.Loading, discoveryEmptyState(idle.copy(error = "old failure"),
+            run.copy(activeProjectionPending = true)))
+        // Source failure alone does not make the last confirmed local result unknown.
+        assertEquals(DiscoveryEmptyState.Empty, discoveryEmptyState(idle, run.endRun("source failure")))
+        val local = SearchUiState()
+        val localState = DiscoverUiState(loading = false)
+        assertEquals(DiscoveryEmptyState.Loading, discoveryEmptyState(localState.copy(loadingMore = true), local))
+        assertEquals(DiscoveryEmptyState.Unknown, discoveryEmptyState(localState.copy(error = "page failure"), local))
+        assertEquals(DiscoveryEmptyState.Empty, discoveryEmptyState(localState, local))
+    }
+
     @Test fun draftChangesAndCancellationKeepExecutedResult() {
         val old = SearchUiState().acceptRun(response(1), listOf(card(1)))
         val changed = old.applyDraftChange(old.copy(city = "Dresden", radiusKm = 50u))

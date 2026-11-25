@@ -140,6 +140,16 @@ internal fun discoveryMembership(discovery: DiscoverUiState, search: SearchUiSta
 internal fun gridCards(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
     discoveryMembership(discovery, search)
 
+internal enum class DiscoveryEmptyState { Loading, Unknown, Empty }
+
+// Only interpret this state when the rendered membership or traversal has no cards.
+internal fun discoveryEmptyState(discovery: DiscoverUiState, search: SearchUiState): DiscoveryEmptyState = when {
+    discovery.loading || discovery.loadingMore || discovery.busy ||
+        search.loading || search.activeProjectionPending -> DiscoveryEmptyState.Loading
+    discovery.error != null || search.activeProjectionError != null -> DiscoveryEmptyState.Unknown
+    else -> DiscoveryEmptyState.Empty
+}
+
 /** A local preference receipt, not a deck visit. */
 data class GridUndoReceipt(
     val runId: Long?,
