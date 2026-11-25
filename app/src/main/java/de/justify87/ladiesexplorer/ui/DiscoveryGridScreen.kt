@@ -229,13 +229,13 @@ internal fun ProfileGridCard(
         galleryEnabled = enabled, onSwipe = onDecision.takeIf { enabled }, onDrag = { drag = it },
         touchGate = touchGate) { hit ->
         val actions = Modifier.semantics {
-                contentDescription = name.ifBlank { "Inserat" }
-                stateDescription = gridPreferenceLabel(preference)
-                if (enabled) customActions = listOf(
-                    CustomAccessibilityAction("Gefällt") { onDecision(Preference.LIKE); true },
-                    CustomAccessibilityAction("Gefällt nicht") { onDecision(Preference.DISLIKE); true },
-                    CustomAccessibilityAction("Bewertung entfernen") { onDecision(Preference.NONE); true },
-                )
+            contentDescription = name.ifBlank { "Inserat" }
+            stateDescription = gridPreferenceLabel(preference)
+            if (enabled) customActions = listOf(
+                CustomAccessibilityAction("Gefällt") { onDecision(Preference.LIKE); true },
+                CustomAccessibilityAction("Gefällt nicht") { onDecision(Preference.DISLIKE); true },
+                CustomAccessibilityAction("Bewertung entfernen") { onDecision(Preference.NONE); true },
+            )
         }
         GridCardContent(name, age, null, thumbnailUrl, localPath, enabled, onOpen,
             Modifier.then(hit.photo), preference, shift, drag,
