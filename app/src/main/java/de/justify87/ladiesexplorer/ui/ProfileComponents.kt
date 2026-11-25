@@ -107,7 +107,7 @@ private fun ProfileImageSurface(
         val models = remember { mediaModels(localPath, url) }
         var retry by remember { mutableIntStateOf(0) }
         var attempt by remember(retry) { mutableIntStateOf(0) }
-        var loading by remember(retry, attempt) { mutableStateOf(true) }
+        var loading by remember(retry, attempt, decodeSize) { mutableStateOf(true) }
         val context = LocalContext.current
         Box(modifier.background(background), contentAlignment = Alignment.Center) {
             if (attempt < models.size && (decodeSize == null || decodeSize.width > 0 && decodeSize.height > 0)) {
