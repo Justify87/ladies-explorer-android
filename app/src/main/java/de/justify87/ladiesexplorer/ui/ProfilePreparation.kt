@@ -38,6 +38,14 @@ internal data class PreparedProfile(
     val complete: Boolean get() = panels != null && model.media.all { it.presentationKey() in media }
     val hasMediaFailures: Boolean get() = media.values.any { it == PreparedMedium.Unavailable }
 
+    // Keep static details and media visible, but never attribute old match evidence to
+    // a replaced projection or a different executed filter context.
+    fun panelsFor(currentFilters: String, projectionCurrent: Boolean): PreparedPanelData? {
+        val data = panels ?: return null
+        if (projectionCurrent && filters == currentFilters) return data
+        return data.copy(facts = data.facts?.copy(filters = emptyList()))
+    }
+
     fun matches(model: ProfileReadModel, filters: String, viewport: IntSize): Boolean =
         this.model == model && this.filters == filters && this.viewport == viewport
 }
