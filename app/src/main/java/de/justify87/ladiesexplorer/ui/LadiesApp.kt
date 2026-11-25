@@ -552,8 +552,9 @@ internal fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = modifier.verticalScroll(rememberScrollState())
+            .padding(horizontal = shellContentInset(), vertical = ShellMetrics.section),
+        verticalArrangement = Arrangement.spacedBy(ShellMetrics.section),
     ) {
         when (pane) {
             SettingsPane.Main -> {

@@ -229,9 +229,9 @@ private fun SavedPersonCard(
     Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Row(
-            Modifier.fillMaxWidth().padding(8.dp),
+            Modifier.fillMaxWidth().padding(ShellMetrics.small),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small),
         ) {
             Row(
                 Modifier.weight(1f).clickable(enabled = enabled && card != null) {
@@ -242,7 +242,7 @@ private fun SavedPersonCard(
             ) {
                 ProfileThumbnail(card?.thumbnailUrl, Modifier.size(64.dp, 80.dp).clip(MaterialTheme.shapes.medium),
                     card?.localPath)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
                     Text(listOfNotNull(row.name, card?.age).joinToString(" · "),
                         style = MaterialTheme.typography.titleSmall)
                     Text(card?.city?.takeIf { it.isNotBlank() } ?: "Ort unbekannt",
@@ -275,7 +275,7 @@ private fun SavedPersonCard(
                             text = { Text("Status prüfen") },
                             onClick = { menu = false; onCheckSingle(action) },
                         )
-                        listOf(Preference.LIKE to "Like", Preference.DISLIKE to "Dislike",
+                        listOf(Preference.LIKE to "Gefällt", Preference.DISLIKE to "Nein",
                             Preference.NONE to "Entscheidung entfernen").forEach { (target, title) ->
                             DropdownMenuItem(text = { Text(title) }, enabled = row.preference != target,
                                 onClick = { menu = false; onPreference(action, target) })

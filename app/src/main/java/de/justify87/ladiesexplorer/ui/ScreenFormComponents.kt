@@ -28,7 +28,7 @@ internal fun ScreenGroup(title: String? = null, content: @Composable () -> Unit)
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(ShellMetrics.inset), verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
             title?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
             content()
         }
@@ -46,7 +46,7 @@ internal fun ScreenChoice(
 ) {
     FilterChip(
         selected = selected, onClick = onClick, enabled = enabled, label = label,
-        modifier = if (compact) modifier.minimumInteractiveComponentSize() else modifier.heightIn(min = 48.dp),
+        modifier = (if (compact) modifier.minimumInteractiveComponentSize() else modifier.heightIn(min = ShellMetrics.touch)).shellFocus(),
         leadingIcon = {
             Box(Modifier.size(18.dp)) {
                 if (selected) Icon(Icons.Default.Check, contentDescription = null,
