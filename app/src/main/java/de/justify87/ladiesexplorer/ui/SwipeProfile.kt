@@ -7,6 +7,7 @@ import coil3.SingletonImageLoader
 import coil3.request.SuccessResult
 import androidx.compose.ui.unit.IntSize
 import de.justify87.ladiesexplorer.core.*
+import de.justify87.ladiesexplorer.LadiesApplication
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -91,7 +92,7 @@ internal fun swipeReadPolicy(
     )
 }
 
-internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
+internal suspend fun warmSwipeMedia(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
     if (size.width <= 0 || size.height <= 0) return
     val media = profile?.media.orEmpty().filter { it.kind == "IMAGE" }
         .map { mediaModels(it.localPath, it.url) }.filter { it.isNotEmpty() }
@@ -101,6 +102,17 @@ internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, prof
         currentCoroutineContext().ensureActive()
         val result = loader.execute(heroImageRequest(context, model, size))
         if (result is SuccessResult) break
+    }
+    val videos = (context.applicationContext as LadiesApplication).galleryVideoFiles
+    for (item in profile?.media.orEmpty().filter { it.kind == "VIDEO" }) {
+        currentCoroutineContext().ensureActive()
+        try {
+            videos.warm(item)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            // An unavailable video does not prevent warming the remaining gallery.
+        }
     }
 }
 
