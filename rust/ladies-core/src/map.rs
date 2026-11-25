@@ -45,6 +45,19 @@ fn postal_code(value: &str) -> Option<String> {
     (value.len() == 5 && value.bytes().all(|ch| ch.is_ascii_digit())).then(|| value.to_owned())
 }
 
+fn split_postal(value: &str) -> (Option<String>, &str) {
+    let value = value.trim();
+    let prefix = postal_code(value).map(|code| (code, "")).or_else(|| {
+        value
+            .split_once(char::is_whitespace)
+            .and_then(|(first, rest)| postal_code(first).map(|code| (code, rest.trim())))
+    });
+    match prefix {
+        Some((code, rest)) => (Some(code), rest),
+        None => (None, value),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Evidence {
     city: String,
@@ -53,15 +66,7 @@ struct Evidence {
 
 impl Evidence {
     fn new(city: &str, postal: Option<&str>) -> Self {
-        let city = city.trim();
-        let prefix = postal_code(city).map(|code| (code, "")).or_else(|| {
-            city.split_once(char::is_whitespace)
-                .and_then(|(first, rest)| postal_code(first).map(|code| (code, rest.trim())))
-        });
-        let (embedded, city) = match prefix {
-            Some((code, rest)) => (Some(code), rest),
-            None => (None, city),
-        };
+        let (embedded, city) = split_postal(city);
         let postal = match (postal.and_then(postal_code), embedded) {
             (Some(explicit), Some(embedded)) if explicit != embedded => None,
             (explicit, embedded) => explicit.or(embedded),
@@ -396,11 +401,7 @@ fn candidates(
         let evidence = if run_id.is_none() && city.trim().is_empty() {
             Evidence::new(&city, snapshot_postal.as_deref())
         } else {
-            Evidence::from_observations(
-                &city,
-                snapshot_city.as_deref(),
-                snapshot_postal.as_deref(),
-            )
+            Evidence::from_observations(&city, snapshot_city.as_deref(), snapshot_postal.as_deref())
         };
         Ok(Candidate {
             listing_id: row.get(0)?,
@@ -467,16 +468,15 @@ pub(crate) fn overview(
                 continue;
             }
         };
+        let (_, city_label) = split_postal(&person.city);
         let location_label = if location.precision == "POSTAL" {
-            if person.city.is_empty() {
+            if city_label.is_empty() {
                 person.evidence.postal.clone()
-            } else if person.city.split_whitespace().next() == Some(person.evidence.postal.as_str()) {
-                person.city.clone()
             } else {
-                format!("{} {}", person.evidence.postal, person.city)
+                format!("{} {city_label}", person.evidence.postal)
             }
         } else {
-            person.city.clone()
+            city_label.to_owned()
         };
         profiles.push(MapProfile {
             listing_id: person.listing_id,
@@ -639,6 +639,26 @@ mod tests {
             "POSTAL"
         );
         assert!(overview(&core, &[1], Some(2)).is_err());
+    }
+
+    #[test]
+    fn city_fallback_does_not_display_a_conflicting_postcode() {
+        let core = seed();
+        {
+            let db = core.connection().unwrap();
+            db.execute("INSERT INTO search_runs(search_run_id) VALUES (1)", [])
+                .unwrap();
+            db.execute(
+                "INSERT INTO search_results(search_run_id,listing_id,position,name,city)
+                 VALUES (1,1,1,'Fixture','04229 Berlin')",
+                [],
+            )
+            .unwrap();
+        }
+        prepare(&core, &[1], Some(1), &RequestControl::new()).unwrap();
+        let view = overview(&core, &[1], Some(1)).unwrap();
+        assert_eq!(view.profiles[0].precision, "CITY");
+        assert_eq!(view.profiles[0].location_label, "Berlin");
     }
 
     #[test]

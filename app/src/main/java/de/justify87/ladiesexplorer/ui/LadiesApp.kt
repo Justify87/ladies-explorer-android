@@ -158,10 +158,12 @@ fun LadiesApp(
         lifecycle.addObserver(observer)
         publishVisibility()
         viewModel.setProfilePresentationVisible(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        viewModel.setLocationPreparationActive(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         onDispose {
             lifecycle.removeObserver(observer)
             profileTouchGate.invalidate()
             viewModel.setProfilePresentationVisible(false)
+            viewModel.setLocationPreparationActive(false)
             viewModel.savedSearch.setVisible(false)
             viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
         }

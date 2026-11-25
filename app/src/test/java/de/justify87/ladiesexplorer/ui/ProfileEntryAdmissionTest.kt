@@ -122,6 +122,17 @@ class ProfileEntryAdmissionTest {
         assertFalse(searchResultOpenMatches(search, discovery.copy(actionSurface = ProfileActionSurface.SAVED_RESULTS), click))
     }
 
+    @Test fun mapEntryResumesIncompletePreparationButReusesCompleteProjection() {
+        val complete = MapUiState(overview = MapOverview(emptyList(), 0u, 0u, 0u))
+        val pending = complete.copy(overview = MapOverview(emptyList(), 1u, 1u, 1u))
+        assertFalse(complete.needsLocationPreparation())
+        assertTrue(pending.needsLocationPreparation())
+        assertTrue(complete.copy(error = "read failed").needsLocationPreparation())
+        assertTrue(MapUiState().needsLocationPreparation())
+        assertFalse(pending.copy(loading = true).needsLocationPreparation())
+        assertFalse(pending.copy(resolving = true).needsLocationPreparation())
+    }
+
     @Test fun mapControlsRequireRenderedStateAndVisibleMembership() {
         val cards = listOf(fixtureCard(1), fixtureCard(2))
         val membership = MapMembership(null, cards)

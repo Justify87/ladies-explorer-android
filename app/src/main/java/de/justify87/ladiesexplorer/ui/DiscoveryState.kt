@@ -66,6 +66,9 @@ internal fun currentMapMembership(discovery: DiscoverUiState, search: SearchUiSt
         MapMembership(discovery.activeRunId, discoveryMembership(discovery, search))
     else null
 
+internal fun MapUiState.needsLocationPreparation(): Boolean =
+    !loading && !resolving && (overview == null || overview.pendingLocations > 0u || error != null)
+
 internal enum class MapControl { REFRESH, CANCEL }
 
 internal fun mapControlMatches(

@@ -210,7 +210,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var mapEpoch = 0L
     private var mapControl: RequestControl? = null
     private var mapRefreshPending = false
-    private var locationPreparationActive = true
+    private var locationPreparationActive = false
     private var savedStatusControl: RequestControl? = null
     private var savedStatusAttemptId = 0L
 
@@ -666,7 +666,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun ensureMap() {
         val membership = mapMembership() ?: return
         val state = _mapState.value
-        if (state.membership == membership && (state.overview != null || state.loading || state.error != null)) return
+        if (state.membership == membership && !state.needsLocationPreparation()) return
         refreshMap()
     }
 

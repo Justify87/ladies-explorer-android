@@ -1318,13 +1318,7 @@ mod tests {
             .unwrap();
         assert_eq!(map.profiles.len(), 1);
         assert_eq!(map.profiles[0].precision, "CITY");
-        save_profile(
-            &core,
-            row.listing_id,
-            &row.profile_url,
-            profile("Fixture"),
-        )
-        .unwrap();
+        save_profile(&core, row.listing_id, &row.profile_url, profile("Fixture")).unwrap();
         let map = core
             .map_overview(vec![row.listing_id], Some(first.search_run_id))
             .unwrap();

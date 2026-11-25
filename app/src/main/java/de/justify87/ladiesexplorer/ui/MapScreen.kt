@@ -106,7 +106,7 @@ internal fun MapScreen(
     val selection = remember(points, active?.listingId) { mapSelection(points, active?.listingId) }
     val latestPoints by rememberUpdatedState(points)
     val detailsScroll = rememberScrollState()
-    LaunchedEffect(selectedListingId, state.resolving, tileState == MapTileState.Failed) {
+    LaunchedEffect(selectedListingId, tileState == MapTileState.Failed) {
         detailsScroll.scrollTo(0)
     }
     val scheme = MaterialTheme.colorScheme
