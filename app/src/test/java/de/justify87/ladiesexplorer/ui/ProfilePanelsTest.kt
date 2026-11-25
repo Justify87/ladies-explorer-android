@@ -223,6 +223,36 @@ class ProfilePanelsTest {
         assertEquals(listOf(service), facts.serviceRows())
     }
 
+    @Test fun identicalTraitAliasesAndNativeAgeVariantsAreConsolidatedWithoutLosingDifferences() {
+        val rows = listOf(ProfileField("Busen", listOf("A")), ProfileField("Oberweite", listOf("A")),
+            ProfileField("Brust", listOf("B")), ProfileField("Brustgröße", listOf("A")))
+        for (value in listOf("30", "30Jahr", "30 JAHRE", "30 jahr", " 30 Jahre ")) {
+            val facts = ProfileFacts(rows + ProfileField("Alter", listOf(value)), emptyList(),
+                emptyList(), emptyList(), emptyList())
+            val (overview, other) = facts.overviewAndTraits("30")
+            assertEquals(listOf("Busen / Oberweite / Brustgröße" to "A", "Brust" to "B"), overview)
+            assertTrue(other.isEmpty())
+            assertEquals(listOf(ProfileField("Alter", listOf(value))), facts.overviewAndTraits(null).second)
+        }
+        val ambiguous = ProfileField("Alter", listOf("30", "31"))
+        assertEquals(listOf(ambiguous), ProfileFacts(listOf(ambiguous), emptyList(), emptyList(),
+            emptyList(), emptyList()).overviewAndTraits("30").second)
+    }
+
+    @Test fun serviceDisplayEquivalenceNeverReinterpretsNativeStatusOrExcludedGroups() {
+        val service = listOf(FilterEvidence("service", "GV", EvidenceStatus.YES),
+            FilterEvidence("service", "AV", EvidenceStatus.NO),
+            FilterEvidence("service", "ZK", EvidenceStatus.UNKNOWN))
+        val excluded = listOf(ProfileField("Treffpunkt", listOf("GV")),
+            ProfileField("Location", listOf("GV")))
+        val raw = excluded + ProfileField("Dienst", listOf("GV-Sex", "AV", "ZK"))
+        val facts = ProfileFacts(emptyList(), raw, emptyList(), emptyList(), service)
+        assertEquals(listOf("GV" to "Ja", "AV" to "Nein", "ZK" to "Unbekannt"), facts.overviewAndTraits().first)
+        val confirmed = facts.copy(services = raw + ProfileField("GV", listOf("JA")))
+        assertEquals(listOf("AV" to "Nein", "ZK" to "Unbekannt"), confirmed.overviewAndTraits().first)
+        assertEquals(raw + ProfileField("GV", listOf("JA")), confirmed.serviceRows())
+    }
+
     @Test fun openingTimesCondenseOnlyIdenticalConsecutiveDaysAndKeepOtherEvidence() {
         val late = listOf("22:00–02:00", "12:00–14:00")
         val flexible = listOf("nach Absprache")
@@ -289,8 +319,7 @@ class ProfilePanelsTest {
         }.build()
         assertEquals(listOf("hero", "history-toggle", "profile-history-head", "event/1", "event/2", "other"),
             rows.map { it.key })
-        assertEquals(listOf(null, ProfileSection.History, ProfileSection.History,
-            ProfileSection.History, ProfileSection.History, null), rows.map { it.section })
+        assertEquals(listOf(null, "History", "History", "History", "History", null), rows.map { it.section })
         assertEquals(emptySet<ProfileRowRead>(), visibleProfileReads(rows, setOf("history-toggle")))
         assertEquals(setOf(ProfileRowRead.Detail), visibleProfileReads(rows, setOf("event/2")))
         val sections = ProfileSections()

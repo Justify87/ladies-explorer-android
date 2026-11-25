@@ -43,6 +43,33 @@ class ProfilePresentationTest {
         assertEquals(0 to 0, newOwner.target(listOf("hero", "profile-facts")))
     }
 
+    @Test fun factsErrorParksLogicalAnchorUntilRetryOrDeliberateScroll() {
+        val original = ProfileScrollAnchor("profile-services/group/7:Fixture/0", 12)
+        val memory = ProfileScrollMemory(original, initialRecovery = true)
+        val placeholder = ProfileFlowRows(ProfileMediaSelection()).apply {
+            item("hero") {}
+            item("profile-facts", ProfileRowRead.Facts) {}
+        }.build()
+        assertEquals(ProfileRowRead.Facts, memory.dependency(placeholder))
+        assertEquals(1 to 0, memory.target(placeholder.map { it.key }, readFailed = true))
+        memory.parkFactsFailure()
+        memory.observe("profile-facts", 0)
+        assertTrue(memory.parkedOnFactsError)
+        assertEquals(original, memory.anchor)
+        assertNull(memory.target(placeholder.map { it.key }))
+        memory.resumeFactsRetry()
+        assertEquals(ProfileRowRead.Facts, memory.dependency(placeholder))
+        assertEquals(2 to 12, memory.target(listOf("hero", "profile-services", original.key)))
+        assertEquals(1 to 0, memory.target(listOf("hero", "profile-services")))
+        assertEquals(1 to 0, memory.target(listOf("hero", "profile-heading")))
+        memory.parkFactsFailure()
+        memory.observe("hero", 5)
+        memory.resumeFactsRetry()
+        assertFalse(memory.recovering)
+        assertFalse(memory.parkedOnFactsError)
+        assertEquals(ProfileScrollAnchor("hero", 5), memory.anchor)
+    }
+
     @Test fun sameOwnerGapWaitsForFactsRatherThanRestoringOffsetIntoSpinner() {
         val memory = ProfileScrollMemory()
         memory.projectionChanged(ProfileProjectionKey(4L, 1L, 11L, 2L, "{}"))

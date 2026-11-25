@@ -12,7 +12,7 @@ Gemeinsame Profilansicht unterhalb der Galerie in Swipe und Standalone gemäß [
 
 ### M12.2 — Strukturierte Profildaten und verlustfreie Verdichtung
 
-**Status:** DOING. Branch `feat/m12-2-structured-profile`. Implementierung und Regressionen im PR; vollständiges CI-Gate, unabhängiges Review und Merge-Freigabe ausstehend.
+**Status:** REVIEW. PR #125, Branch `feat/m12-2-structured-profile`. Unabhängiges Review dokumentiert; R01–R07 korrigiert. Vollständiges CI-Gate für den Korrekturstand und Merge-Freigabe ausstehend.
 
 **Umfang:** Zentrale und weitere Merkmale, Dienste, Zeitangaben und Suchübereinstimmung gemäß DESIGN im gemeinsamen Rahmen darstellen und verlustfrei verdichten; tatsächliche Quellgruppen und vollständige Filterbelege erhalten. Den vorhandenen Preiskontext in die vorgesehene Reihenfolge einordnen und vorhandene Preisansichten weiterverwenden. Keine Änderung der Navigations-/Editorzustände, keine neue Quelle, Preisextraktion, Taxonomie oder fachliche Filterlogik.
 
