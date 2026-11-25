@@ -40,7 +40,10 @@ class ProfileRestoreDeviceTest {
         assertEquals("{}", (null as ProfileMatchContext?).encode())
     }
 
-    private fun profile(snapshot: Long = 11, phone: String? = null) = ProfileReadModel(
+    private fun profile(snapshot: Long = 11, phone: String? = null,
+        media: List<ProfileMediaItem> = listOf(ProfileMediaItem("IMAGE", "", null, 0u),
+            ProfileMediaItem("VIDEO", "https://example.invalid/fixture", null, 1u)),
+    ) = ProfileReadModel(
         NativeProfileProjection(
             ProfileResponse(listingId = 4, snapshotId = snapshot, newSnapshot = false, advertId = "fixture",
                 name = "Fixture", city = "Fixture", description = "Fixture ".repeat(120), postalCode = null,
@@ -50,8 +53,7 @@ class ProfileRestoreDeviceTest {
             ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null,
                 personNew = false, listingNew = false, hasVideo = false, age = null),
             PersonSummary(1, "Fixture", Preference.NONE, false, 1u, ""),
-            listOf(ProfileMediaItem("IMAGE", "", null, 0u),
-                ProfileMediaItem("VIDEO", "https://example.invalid/fixture", null, 1u)),
+            media,
             emptyList(), emptyList(),
         ), true,
     )
@@ -104,6 +106,47 @@ class ProfileRestoreDeviceTest {
         rule.runOnIdle { model = profile(phone = null) }
         rule.onNodeWithText("Telefon").assertDoesNotExist()
         rule.onNodeWithText("WhatsApp").assertDoesNotExist()
+    }
+
+    @Test fun confirmedFallbackAndRestoredGalleryUseTheSameSelectedMediumAndHeroBounds() {
+        val fallback = ProfileMediaItem("IMAGE", "", null, 0u)
+        val video = ProfileMediaItem("VIDEO", "", null, 1u)
+        var model by mutableStateOf<ProfileReadModel?>(null)
+        var selected by mutableStateOf<ProfileMediaItem?>(null)
+        var receipt by mutableStateOf<SwipePresentation?>(null)
+        var consumed by mutableIntStateOf(0)
+        rule.setContent {
+            LadiesTheme(darkTheme = false) {
+                val list = rememberLazyListState()
+                ProfileFlow(list, model, "{}", model?.let(::token), false, emptyMap(), notes,
+                    { true }, { _, _ -> }, Modifier.fillMaxSize(), panelReads = reads { facts() },
+                    fallbackMedia = listOf(fallback), onGallerySelection = { selected = it },
+                    swipeRestore = receipt, swipeRunId = 3,
+                    onSwipeRestoreConsumed = { consumed++; receipt = null }) {
+                    item("hero") {
+                        ProfileMediaHero(model?.media?.ifEmpty { listOf(fallback) } ?: listOf(fallback),
+                            height = 180.dp, modifier = Modifier.testTag("restore-hero"), selection = mediaSelection,
+                            projectionAvailable = model != null, actionToken = model?.let(::token),
+                            actionsEnabled = false, isCurrent = { false }, compact = true)
+                    }
+                }
+            }
+        }
+        rule.runOnIdle { assertNull(selected); model = profile(media = emptyList()) }
+        rule.runOnIdle { assertEquals(fallback, selected) }
+        val hero = rule.onNodeWithTag("restore-hero")
+        val bounds = hero.fetchSemanticsNode().boundsInRoot
+        rule.runOnIdle {
+            model = profile(media = listOf(fallback, video))
+            receipt = SwipePresentation(4, 1, 11, "{}", "VIDEO:", "hero", 0, emptyList(), 3, 1)
+        }
+        rule.waitUntil(5_000) { consumed == 1 }
+        rule.onNodeWithContentDescription("Video abspielen").assertExists().assertIsNotEnabled()
+        rule.runOnIdle { assertEquals(video, selected) }
+        assertEquals(bounds, hero.fetchSemanticsNode().boundsInRoot)
+        rule.onNodeWithContentDescription("Vorheriges Medium").performClick()
+        rule.runOnIdle { assertEquals(fallback, selected) }
+        assertEquals(bounds, hero.fetchSemanticsNode().boundsInRoot)
     }
 
     @Test fun searchMatchIsOpenAndShowsAlternativesWithoutASecondEvidenceList() {

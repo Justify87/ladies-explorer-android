@@ -1,6 +1,9 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.Preference
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.geometry.Rect
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -10,15 +13,60 @@ class ProfileHeroLayoutTest {
             val root = 80f
             val budget = profileShellBudget(width, height - root, root, 1f, false, true)
             assertEquals(height - root, budget.header + budget.rail + budget.notice + budget.body, .01f)
-            val hero = profileHeroHeight(width, height, budget.body, discoveryLeadingHeight(1f))
+            val measuredContext = 60f
+            val hero = profileHeroHeight(width, height, budget.body, measuredContext)
             assertTrue(hero > 250f)
-            assertTrue(hero <= height * .76f + .01f)
-            val previousHero = minOf(height * .63f, width * 1.55f, budget.body - 116f - 24f)
+            assertEquals(budget.body - measuredContext, hero, .01f)
+            val previousHero = minOf(height * .76f, width * 1.85f, budget.body - measuredContext - 24f)
             assertTrue("More room for the hero", hero > previousHero)
-            assertTrue(hero + discoveryLeadingHeight(1f) + 24f <= budget.body + .01f)
+            assertEquals(budget.body, hero + measuredContext, .01f)
             assertEquals(ShellMetrics.decisionRail.value, budget.rail, .01f)
             assertFalse(budget.compactGallery)
         }
+    }
+
+    @Test fun measuredContextAndShortViewportHaveNoIntentionalPeek() {
+        for (context in listOf(48f, 60f, 76f, 108f)) {
+            assertEquals(500f - context, profileHeroHeight(390f, 844f, 500f, context), .01f)
+        }
+        assertEquals(240f, profileHeroHeight(390f, 400f, 240f, 60f), .01f)
+        assertEquals(0f, profileHeroHeight(390f, 400f, 0f, 60f), .01f)
+    }
+
+    @Test fun proportionalCropRetainsAtLeast85PercentAndUnknownOrVideoUsesFit() {
+        val viewport = IntSize(340, 600)
+        val atThreshold = heroMediaGeometry(viewport, IntSize(400, 600))
+        assertTrue(atThreshold.cropped)
+        assertEquals(Rect(0f, 0f, 340f, 600f), atThreshold.imageBounds)
+        val outside = heroMediaGeometry(viewport, IntSize(401, 600))
+        assertFalse(outside.cropped)
+        val landscape = heroMediaGeometry(viewport, IntSize(1200, 300))
+        assertFalse(landscape.cropped)
+        assertEquals(340f, landscape.imageBounds!!.width, .01f)
+        assertEquals(85f, landscape.imageBounds!!.height, .01f)
+        val tall = heroMediaGeometry(viewport, IntSize(100, 1200))
+        assertFalse(tall.cropped)
+        assertEquals(50f, tall.imageBounds!!.width, .01f)
+        val video = heroMediaGeometry(viewport, IntSize(400, 600), allowCrop = false)
+        assertFalse(video.cropped)
+        assertEquals(null, heroMediaGeometry(viewport, IntSize.Zero).imageBounds)
+        assertFalse(heroMediaGeometry(IntSize.Zero, IntSize(340, 600)).cropped)
+    }
+
+    @Test fun favoriteTargetFitsActualImageOrAdjacentRestAreaWithConstantPadding() {
+        val viewport = IntSize(340, 600)
+        val fill = heroMediaGeometry(viewport, IntSize(340, 600))
+        assertEquals(IntOffset(286, 6), fill.favoriteOrigin(48, 6))
+        val wide = heroMediaGeometry(viewport, IntSize(1200, 300))
+        val wideBounds = wide.imageBounds!!
+        val wideOrigin = wide.favoriteOrigin(48, 6)
+        assertTrue(wideOrigin.y >= wideBounds.top + 6 && wideOrigin.y + 48 <= wideBounds.bottom - 6)
+        val extreme = heroMediaGeometry(viewport, IntSize(100, 1200))
+        val extremeBounds = extreme.imageBounds!!
+        val extremeOrigin = extreme.favoriteOrigin(48, 6)
+        assertTrue(extremeOrigin.x >= extremeBounds.right || extremeOrigin.x + 48 <= extremeBounds.left)
+        assertEquals(IntOffset(286, 6), heroMediaGeometry(viewport, IntSize.Zero).favoriteOrigin(48, 6))
+        assertEquals(IntOffset.Zero, heroMediaGeometry(IntSize(40, 40), IntSize.Zero).favoriteOrigin(48, 6))
     }
 
     @Test fun noticesAndRailCannotConsumeReservedBody() {
@@ -92,11 +140,13 @@ class ProfileHeroLayoutTest {
                         val usable = (height - system - ime - root).coerceAtLeast(0f)
                         val budget = profileShellBudget(width, usable, root, font, notice, rail)
                         val hero = profileHeroHeight(width, usable + root, budget.body,
-                            if (rail) discoveryLeadingHeight(font) else 0f)
+                            if (rail) 48f * font + ShellMetrics.inset.value else null)
                         val context = "width=$width, height=$height, font=$font, system=$system, ime=$ime, rail=$rail"
                         assertEquals(context, usable, budget.header + budget.notice + budget.rail + budget.body, .01f)
                         assertTrue(context, budget.body >= minOf(96f, usable - budget.header) - .01f)
                         assertTrue(context, hero >= 0f && hero <= budget.body + .01f)
+                        if (rail && budget.body - (48f * font + ShellMetrics.inset.value) >= 250f)
+                            assertEquals(context, budget.body, hero + 48f * font + ShellMetrics.inset.value, .01f)
                         assertTrue(context, !rail || budget.railInContent || budget.rail >= 48f)
                         assertTrue(context, rail || budget.railInContent)
                         assertTrue(context, !notice || budget.noticeInHeader || budget.notice >= 48f)

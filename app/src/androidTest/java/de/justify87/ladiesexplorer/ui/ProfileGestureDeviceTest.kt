@@ -1,5 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.platform.testTag
@@ -20,6 +24,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -146,6 +151,56 @@ class ProfileGestureDeviceTest {
         rule.onNodeWithText("2 / 2").assertDoesNotExist()
         rule.onNodeWithTag("gallery-video-control").assertExists()
         rule.runOnIdle { assertEquals(1, decisions.size) }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun realFitImagesKeepSourceBorderAndStableHeroAcrossGallery() {
+        val files = (0..1).map { i ->
+            File.createTempFile("synthetic-hero-", ".png", rule.activity.cacheDir).also { file ->
+                val bitmap = Bitmap.createBitmap(360, 720, Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(android.graphics.Color.BLUE)
+                if (i == 1) Canvas(bitmap).drawRect(0f, 0f, 360f, 48f,
+                    Paint().apply { color = android.graphics.Color.BLACK })
+                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
+            }
+        }
+        try {
+            val media = files.mapIndexed { i, f -> ProfileMediaItem("IMAGE", "", f.absolutePath, i.toUInt()) }
+            var visual by mutableStateOf<HeroVisual?>(null)
+            rule.setContent {
+                MaterialTheme {
+                    Box(Modifier.requiredWidth(320.dp)) {
+                        ProfileMediaHero(media = media, height = 360.dp, modifier = Modifier.testTag("hero"),
+                            actionsEnabled = true, isCurrent = { true }, selection = remember { ProfileMediaSelection() },
+                            actionToken = null, compact = false, onVisual = { visual = it })
+                    }
+                }
+            }
+            val hero = rule.onNodeWithTag("hero")
+            fun verify(index: Int, expected: androidx.compose.ui.graphics.Color) {
+                rule.waitUntil(10_000) { visual?.media == media[index] }
+                rule.waitForIdle()
+                val geometry = rule.runOnIdle { requireNotNull(visual).geometry }
+                assertFalse(geometry.cropped)
+                val pixels = hero.captureToImage().toPixelMap()
+                val rect = requireNotNull(geometry.imageBounds)
+                val actual = pixels[rect.center.x.toInt(), (rect.top + rect.height * .025f).toInt()]
+                assertEquals(expected.red, actual.red, .05f)
+                assertEquals(expected.green, actual.green, .05f)
+                assertEquals(expected.blue, actual.blue, .05f)
+            }
+            verify(0, androidx.compose.ui.graphics.Color.Blue)
+            val initialBounds = hero.fetchSemanticsNode().boundsInRoot
+            rule.onNodeWithContentDescription("Nächstes Medium").performClick()
+            verify(1, androidx.compose.ui.graphics.Color.Black)
+            assertEquals(initialBounds, hero.fetchSemanticsNode().boundsInRoot)
+            rule.onNodeWithContentDescription("Vorheriges Medium").performClick()
+            verify(0, androidx.compose.ui.graphics.Color.Blue)
+            assertEquals(initialBounds, hero.fetchSemanticsNode().boundsInRoot)
+        } finally {
+            files.forEach { it.delete() }
+        }
     }
 
     @Test fun realRailTargetCannotCommitFromSecondFingerInEitherOrder() {

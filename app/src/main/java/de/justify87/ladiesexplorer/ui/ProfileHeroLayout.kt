@@ -1,6 +1,13 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.roundToInt
 import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.ProfileIdentity
 import de.justify87.ladiesexplorer.core.ProfileResponse
@@ -19,20 +26,63 @@ internal data class ProfileShellBudget(
     val noticeInHeader get() = notice == 0f
 }
 
-internal fun discoveryLeadingHeight(fontScale: Float): Float =
-    60f * maxOf(1f, fontScale)
-
-// Context scrolls with the hero. On short viewports allow the hero to fill the body after scrolling.
-internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float, leadingHeight: Float = 0f): Float {
+// The discovery context remains a separate stable lazy row. Short windows prioritize a
+// complete scrollable hero over squeezing it into the space remaining above the inline rail.
+internal fun profileHeroHeight(width: Float, usableHeight: Float, viewportHeight: Float, leadingHeight: Float? = null): Float {
     val h = usableHeight.coerceAtLeast(0f)
     val available = viewportHeight.coerceIn(0f, h)
-    val discovery = leadingHeight > 0f
-    val desired = minOf(h * if (discovery) .76f else .63f,
-        width.coerceAtLeast(0f) * if (discovery) 1.85f else 1.55f)
-    val afterContext = (available - leadingHeight).coerceAtLeast(0f)
-    val visible = if (afterContext >= 250f) afterContext else available
-    val peek = if (visible >= 274f) 24f else 0f
-    return minOf(desired, (visible - peek).coerceAtLeast(0f))
+    if (leadingHeight != null) {
+        val afterContext = (available - leadingHeight.coerceAtLeast(0f)).coerceAtLeast(0f)
+        return if (afterContext >= 250f) afterContext else available
+    }
+    return minOf(h * .63f, width.coerceAtLeast(0f) * 1.55f, available)
+}
+
+// Crop only when at least 85% of the source area remains; the full photo is still
+// available through the existing Fit dialog. Unknown dimensions never trigger a crop.
+internal data class HeroMediaGeometry(val viewport: IntSize, val imageBounds: Rect?, val cropped: Boolean) {
+    val scale get() = if (cropped) ContentScale.Crop else ContentScale.Fit
+
+    fun favoriteOrigin(touch: Int, padding: Int): IntOffset {
+        val outer = Rect(0f, 0f, viewport.width.toFloat(), viewport.height.toFloat())
+        fun inside(rect: Rect, inset: Int): IntOffset? {
+            val left = ceil(rect.left).toInt() + inset
+            val top = ceil(rect.top).toInt() + inset
+            val right = floor(rect.right).toInt() - inset
+            val bottom = floor(rect.bottom).toInt() - inset
+            return if (right - left >= touch && bottom - top >= touch)
+                IntOffset(right - touch, top) else null
+        }
+        imageBounds?.let { bounds ->
+            inside(bounds, padding)?.let { return it }
+            // A very narrow fitted image cannot contain an independent touch target.
+            val rest = listOf(
+                Rect(outer.left, outer.top, outer.right, bounds.top),
+                Rect(bounds.right, outer.top, outer.right, outer.bottom),
+                Rect(outer.left, bounds.bottom, outer.right, outer.bottom),
+                Rect(outer.left, outer.top, bounds.left, outer.bottom),
+            ).sortedByDescending { it.width * it.height }
+            rest.firstNotNullOfOrNull { inside(it, padding) }?.let { return it }
+            rest.firstNotNullOfOrNull { inside(it, 0) }?.let { return it }
+        }
+        return inside(outer, padding) ?: inside(outer, 0) ?: IntOffset.Zero
+    }
+}
+
+internal fun heroMediaGeometry(viewport: IntSize, source: IntSize, allowCrop: Boolean = true): HeroMediaGeometry {
+    if (viewport.width <= 0 || viewport.height <= 0 || source.width <= 0 || source.height <= 0)
+        return HeroMediaGeometry(viewport, null, false)
+    val targetCross = viewport.width.toDouble() * source.height
+    val sourceCross = source.width.toDouble() * viewport.height
+    val cropped = allowCrop && minOf(targetCross, sourceCross) * 100 >= maxOf(targetCross, sourceCross) * 85
+    if (cropped) return HeroMediaGeometry(viewport,
+        Rect(0f, 0f, viewport.width.toFloat(), viewport.height.toFloat()), true)
+    val factor = minOf(viewport.width.toDouble() / source.width, viewport.height.toDouble() / source.height)
+    val width = (source.width * factor).roundToInt().coerceIn(0, viewport.width)
+    val height = (source.height * factor).roundToInt().coerceIn(0, viewport.height)
+    val left = ((viewport.width - width) / 2f).roundToInt().toFloat()
+    val top = ((viewport.height - height) / 2f).roundToInt().toFloat()
+    return HeroMediaGeometry(viewport, Rect(left, top, left + width, top + height), false)
 }
 
 internal fun profileShellBudget(

@@ -12,6 +12,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
@@ -94,6 +95,8 @@ internal fun ProfileFlow(
     encounters: EncounterEditor? = null,
     prices: PriceEditor? = null,
     fallbackIdentity: HeroIdentity? = null,
+    fallbackMedia: List<ProfileMediaItem> = emptyList(),
+    onDiscoveryContextHeight: ((Int) -> Unit)? = null,
     afterHeading: ProfileFlowRows.() -> Unit = {},
     leading: ProfileFlowRows.() -> Unit,
 ) {
@@ -108,7 +111,7 @@ internal fun ProfileFlow(
     val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
     val scroll = key(presentationOwner) { rememberProfileScrollMemory(ownerChanged) }
     val restore = remember(presentationOwner) { ProfileRestoreCoordinator() }
-    val selectedMedium = model?.media?.let { it.getOrNull(mediaSelection.resolve(it, true)) }
+    val selectedMedium = model?.media?.ifEmpty { fallbackMedia }?.let { it.getOrNull(mediaSelection.resolve(it, true)) }
     SideEffect { onGallerySelection(selectedMedium) }
     DisposableEffect(swipeCapture) { onDispose { swipeCapture?.read = { null } } }
     SideEffect {
@@ -267,7 +270,9 @@ internal fun ProfileFlow(
             val last = section != null && rows.getOrNull(index + 1)?.section != section
             val gap = if (index == rows.lastIndex || section != null && !last) 0.dp else ShellMetrics.inset
             val horizontal = if (paddedDetails && row.key != "hero" && row.key != "media") contentInset else 0.dp
-            Column(Modifier.fillMaxWidth().padding(horizontal = horizontal).padding(bottom = gap)) {
+            val measure = if (row.key == "discover-context" && onDiscoveryContextHeight != null)
+                Modifier.onSizeChanged { onDiscoveryContextHeight(it.height) } else Modifier
+            Column(Modifier.fillMaxWidth().then(measure).padding(horizontal = horizontal).padding(bottom = gap)) {
                 if (section != null) ProgressiveSectionFrame(first, last, header = first) { row.content() }
                 else row.content()
             }

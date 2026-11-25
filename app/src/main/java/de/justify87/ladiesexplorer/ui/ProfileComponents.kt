@@ -21,6 +21,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import coil3.request.ImageRequest
+import coil3.size.Scale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -79,6 +86,11 @@ internal fun openExternal(context: Context, link: String, dial: Boolean = false)
     }
 }
 
+internal fun heroImageRequest(context: Context, model: Any, size: IntSize): ImageRequest =
+    ImageRequest.Builder(context).data(model).size(size.width, size.height).scale(Scale.FIT).build()
+
+internal data class HeroVisual(val media: ProfileMediaItem, val geometry: HeroMediaGeometry)
+
 private data class ImageFeedback(val loading: Boolean = false, val failed: Boolean = false, val retry: (() -> Unit)? = null)
 
 @Composable
@@ -86,25 +98,44 @@ private fun ProfileImageSurface(
     url: String?, localPath: String?, modifier: Modifier, scale: ContentScale,
     description: String, allowRetry: Boolean,
     imageModifier: Modifier = Modifier,
+    decodeSize: IntSize? = null,
+    background: Color = MaterialTheme.colorScheme.surfaceVariant,
+    onDecodedSize: (IntSize) -> Unit = {},
     content: @Composable BoxScope.(ImageFeedback) -> Unit,
 ) {
     key(localPath, url) {
         val models = remember { mediaModels(localPath, url) }
         var retry by remember { mutableIntStateOf(0) }
         var attempt by remember(retry) { mutableIntStateOf(0) }
-        var loading by remember(retry, attempt) { mutableStateOf(true) }
-        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-            if (attempt < models.size) {
+        var loading by remember(retry, attempt, decodeSize) { mutableStateOf(true) }
+        val context = LocalContext.current
+        Box(modifier.background(background), contentAlignment = Alignment.Center) {
+            if (attempt < models.size && (decodeSize == null || decodeSize.width > 0 && decodeSize.height > 0)) {
                 val requested = attempt
-                key(retry, requested) {
-                    AsyncImage(model = models[requested], contentDescription = description, contentScale = scale,
-                        onSuccess = { loading = false },
-                        onError = { if (attempt == requested) attempt = requested + 1 },
+                key(retry, requested, decodeSize) {
+                    val model = remember(models, requested, decodeSize, context) {
+                        val source = models[requested]
+                        if (decodeSize != null && decodeSize.width > 0 && decodeSize.height > 0)
+                            heroImageRequest(context, source, decodeSize) else source
+                    }
+                    AsyncImage(model = model, contentDescription = description, contentScale = scale,
+                        onSuccess = {
+                            if (attempt == requested) {
+                                loading = false
+                                onDecodedSize(IntSize(it.result.image.width, it.result.image.height))
+                            }
+                        },
+                        onError = {
+                            if (attempt == requested) {
+                                onDecodedSize(IntSize.Zero)
+                                attempt = requested + 1
+                            }
+                        },
                         modifier = Modifier.fillMaxSize().then(imageModifier))
                 }
             }
             content(ImageFeedback(loading = attempt < models.size && loading, failed = attempt >= models.size,
-                retry = if (allowRetry && models.isNotEmpty()) ({ retry++ }) else null))
+                retry = if (allowRetry && models.isNotEmpty()) ({ onDecodedSize(IntSize.Zero); retry++ }) else null))
         }
     }
 }
@@ -124,8 +155,11 @@ private fun ImageFeedbackContent(feedback: ImageFeedback) {
 internal fun ProfileImage(
     url: String?, localPath: String?, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop,
     description: String = "Profilbild", allowRetry: Boolean = false,
+    decodeSize: IntSize? = null,
 ) {
-    ProfileImageSurface(url, localPath, modifier, scale, description, allowRetry) { feedback ->
+    ProfileImageSurface(url, localPath, modifier, scale, description, allowRetry,
+        decodeSize = decodeSize, background = if (decodeSize == null) MaterialTheme.colorScheme.surfaceVariant
+        else MaterialTheme.colorScheme.surface) { feedback ->
         ImageFeedbackContent(feedback)
     }
 }
@@ -151,13 +185,14 @@ internal fun ProfileMediaHero(
     onMediaSettled: (Boolean) -> Unit = {},
     favorite: Boolean? = null,
     onFavorite: (() -> Unit)? = null,
-    imageScale: ContentScale = ContentScale.Crop,
+    onVisual: (HeroVisual?) -> Unit = {},
 ) {
     val index = selection.resolve(media, projectionAvailable)
     LaunchedEffect(media, index, projectionAvailable) {
         if (projectionAvailable) selection.select(media, selection.resolve(media, true))
     }
     val item = media.getOrNull(index)
+    var decodedSize by remember(item) { mutableStateOf(IntSize.Zero) }
     val previous = projectionAvailable && index > 0
     val next = projectionAvailable && index < media.lastIndex
     val gestureOwner = Triple(actionToken, media, index)
@@ -168,47 +203,74 @@ internal fun ProfileMediaHero(
     val displayedDrag = heldDrag ?: drag
     val offset by animateFloatAsState(displayedDrag, animationSpec = if (displayedDrag == 0f) spring() else snap(),
         label = "swipe follows finger")
-    val imageMotion = Modifier.graphicsLayer {
-        translationX = offset
-        rotationZ = if (size.width > 0) (offset / size.width * 12f).coerceIn(-12f, 12f) else 0f
-    }
     PhotoGestureSurface(owner = Triple(gestureOwner, compact, projectionAvailable),
         modifier = Modifier.fillMaxWidth(), galleryEnabled = galleryTaps, onSwipe = decision,
         onDrag = { drag = it; onSwipeDrag(it) }, touchGate = touchGate) { hit ->
         val photoHeight = maxOf(height, 0.dp)
-        val surface = modifier.fillMaxWidth().height(photoHeight).clip(MaterialTheme.shapes.large)
-        Box(surface.background(MaterialTheme.colorScheme.surfaceVariant)) {
+        val surface = modifier.fillMaxWidth().height(photoHeight).clip(MaterialTheme.shapes.medium)
+        BoxWithConstraints(surface.background(MaterialTheme.colorScheme.surface)
+            .semantics { if (media.size > 1) stateDescription = "Medium ${index + 1} von ${media.size}" }) {
+            val density = LocalDensity.current
+            val viewport = with(density) { IntSize(maxWidth.roundToPx(), maxHeight.roundToPx()) }
+            val geometry = heroMediaGeometry(viewport, decodedSize, allowCrop = projectionAvailable && item?.kind == "IMAGE")
+            val imageMotion = Modifier.graphicsLayer {
+                translationX = offset
+                rotationZ = if (viewport.width > 0) (offset / viewport.width * 12f).coerceIn(-12f, 12f) else 0f
+            }
+            val favoriteOrigin = with(density) {
+                geometry.favoriteOrigin(48.dp.roundToPx(), 6.dp.roundToPx())
+            }
+            val favoriteBounds = if (favorite != null) with(density) {
+                androidx.compose.ui.geometry.Rect(favoriteOrigin.x.toFloat(), favoriteOrigin.y.toFloat(),
+                    (favoriteOrigin.x + 48.dp.roundToPx()).toFloat(), (favoriteOrigin.y + 48.dp.roundToPx()).toFloat())
+            } else null
             when (item?.kind) {
-                "IMAGE" -> ProfileImageSurface(item.url, item.localPath, Modifier.fillMaxSize(),
-                    imageScale, "Profilbild ${index + 1}", true, imageModifier = imageMotion) { feedback ->
-                    SideEffect { onMediaSettled(!feedback.loading) }
+                "IMAGE" -> key(item) { ProfileImageSurface(item.url, item.localPath, Modifier.fillMaxSize(),
+                    geometry.scale, "Profilbild ${index + 1}", true, imageModifier = imageMotion,
+                    decodeSize = viewport, background = MaterialTheme.colorScheme.surface,
+                    onDecodedSize = { decodedSize = it }) { feedback ->
+                    SideEffect {
+                        onMediaSettled(!feedback.loading)
+                        // A resized request is not the settled visual until its own decode succeeds.
+                        onVisual(if (!feedback.loading && !feedback.failed && geometry.imageBounds != null)
+                            HeroVisual(item, geometry) else null)
+                    }
                     BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                         // Reserve the center for retry or video controls.
-                        val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed) else 0f
+                        val side = if (galleryTaps) gallerySideFraction(maxWidth.value, feedback.failed || feedback.loading) else 0f
                         GalleryTargets(side, hit, gestureOwner, previous, next,
                             { selection.select(media, index - 1) }, { selection.select(media, index + 1) },
-                            reserveFavorite = favorite != null)
+                            favoriteBounds = favoriteBounds)
                         if (feedback.failed || feedback.loading) Box(Modifier.align(Alignment.Center)
                             .fillMaxWidth(if (side < .5f) 1f - side * 2 else .5f), contentAlignment = Alignment.Center) {
                             ImageFeedbackContent(feedback)
                         }
                     }
-                }
+                } }
                 "VIDEO" -> BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                     val side = if (galleryTaps) gallerySideFraction(maxWidth.value, true) else 0f
-                    SideEffect { onMediaSettled(true) } // playback has its own stable loading surface
+                    SideEffect { onVisual(null); onMediaSettled(true) } // playback has its own stable loading surface
+                    // Once the native aspect is known, the texture occupies only the fitted media
+                    // area; the remaining hero is the same neutral surface as a fitted photo.
+                    val videoSurface = geometry.imageBounds?.takeIf { it.width > 0f && it.height > 0f }?.let { bounds ->
+                        with(density) {
+                            Modifier.absoluteOffset { IntOffset(bounds.left.toInt(), bounds.top.toInt()) }
+                                .size(bounds.width.toDp(), bounds.height.toDp())
+                        }
+                    } ?: Modifier.fillMaxSize()
                     GalleryVideo(item, active = actionsEnabled && projectionAvailable,
                         mediaVisible = playbackVisible, canInteract = isCurrent,
-                        modifier = Modifier.fillMaxSize().then(imageMotion),
+                        onVideoSize = { decodedSize = it },
+                        modifier = videoSurface.then(imageMotion),
                         controlsModifier = Modifier.align(Alignment.Center),
                         onTargets = {
                             GalleryTargets(side, hit, gestureOwner, previous, next,
                                 { selection.select(media, index - 1) }, { selection.select(media, index + 1) },
-                            reserveFavorite = favorite != null)
+                            favoriteBounds = favoriteBounds)
                         })
                 }
                 else -> Box(Modifier.fillMaxSize().then(hit.photo), contentAlignment = Alignment.Center) {
-                    SideEffect { onMediaSettled(true) }
+                    SideEffect { onVisual(null); onMediaSettled(true) }
                     Text("Keine Medien verfügbar")
                 }
             }
@@ -220,7 +282,8 @@ internal fun ProfileMediaHero(
             if (favorite != null) key(actionToken) {
                 IconButton(onClick = { if (actionsEnabled && isCurrent()) onFavorite?.invoke() },
                     enabled = actionsEnabled && onFavorite != null,
-                    modifier = Modifier.align(Alignment.TopEnd).size(48.dp).shellFocus()) {
+                    modifier = Modifier.align(Alignment.TopStart).absoluteOffset { favoriteOrigin }
+                        .size(48.dp).then(hit.exclusive).shellFocus()) {
                     Box(Modifier.size(34.dp).background(Color.Black.copy(alpha = .78f), MaterialTheme.shapes.small),
                         contentAlignment = Alignment.Center) {
                         Icon(if (favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -236,15 +299,26 @@ internal fun ProfileMediaHero(
 @Composable
 private fun GalleryTargets(side: Float, hit: PhotoHitModifiers, owner: Any?,
     previous: Boolean, next: Boolean, onPrevious: () -> Unit, onNext: () -> Unit,
-    reserveFavorite: Boolean = false) {
+    favoriteBounds: androidx.compose.ui.geometry.Rect? = null) {
     if (side <= 0f) return
-    Row(Modifier.fillMaxSize()) {
-        PhotoTapTarget("Vorheriges Medium", Modifier.weight(side).fillMaxHeight().then(hit.previous), owner,
-            if (previous) onPrevious else null)
-        if (side < .5f) Spacer(Modifier.weight(1f - side * 2))
-        Box(Modifier.weight(side).fillMaxHeight().padding(top = if (reserveFavorite) 48.dp else 0.dp)) {
-            PhotoTapTarget("Nächstes Medium", Modifier.fillMaxSize().then(hit.next), owner,
-                if (next) onNext else null)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
+        fun reservedTop(left: Float, right: Float): Dp = with(density) {
+            (favoriteBounds?.takeIf { it.left < right && it.right > left }
+                ?.bottom?.coerceIn(0f, heightPx) ?: 0f).toDp()
+        }
+        Row(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(side).fillMaxHeight().padding(top = reservedTop(0f, widthPx * side))) {
+                PhotoTapTarget("Vorheriges Medium", Modifier.fillMaxSize().then(hit.previous), owner,
+                    if (previous) onPrevious else null)
+            }
+            if (side < .5f) Spacer(Modifier.weight(1f - side * 2))
+            Box(Modifier.weight(side).fillMaxHeight().padding(top = reservedTop(widthPx * (1f - side), widthPx))) {
+                PhotoTapTarget("Nächstes Medium", Modifier.fillMaxSize().then(hit.next), owner,
+                    if (next) onNext else null)
+            }
         }
     }
 }
