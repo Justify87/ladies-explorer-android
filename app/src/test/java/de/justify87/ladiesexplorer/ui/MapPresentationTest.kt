@@ -1,5 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
+import de.justify87.ladiesexplorer.core.DiscoveryCard
+import de.justify87.ladiesexplorer.core.Preference
 import de.justify87.ladiesexplorer.core.MapProfile
 import de.justify87.ladiesexplorer.core.MapOverview
 import org.junit.Assert.assertEquals
@@ -79,6 +81,23 @@ class MapPresentationTest {
         assertNull(mapRenderedSelection(listOf(a.copy(latitude = 52.0), mixed, c), representative))
         assertNull(mapRenderedSelection(listOf(a, c), representative))
         assertNull(mapRenderedSelection(points, features.first()))
+    }
+
+    @Test fun localThumbnailRequiresMatchingListingOwnerAndMedia() {
+        val photo = a.copy(thumbnailUrl = "fixture-a")
+        val card = DiscoveryCard(listingId = photo.listingId, personId = photo.personId,
+            name = "Fixture", city = "Leipzig", thumbnailUrl = photo.thumbnailUrl,
+            localPath = "/fixture/photo.png", description = null, preference = Preference.NONE,
+            favorite = false, hasVideo = false, hasAiContent = false, isPremium = false, age = null)
+        val paths = mapThumbnailPaths(listOf(photo), listOf(card))
+        assertEquals(mapOf(photo.listingId to "/fixture/photo.png"), paths)
+        assertTrue(mapThumbnailPaths(listOf(photo), listOf(card.copy(personId = 99L))).isEmpty())
+        assertTrue(mapThumbnailPaths(listOf(photo), listOf(card.copy(listingId = 99L))).isEmpty())
+        assertTrue(mapThumbnailPaths(listOf(photo), listOf(card.copy(thumbnailUrl = "fixture-other"))).isEmpty())
+        assertTrue(mapThumbnailPaths(listOf(photo), listOf(card.copy(localPath = " "))).isEmpty())
+        val feature = requireNotNull(asFeatures(listOf(photo), null, paths).features()).single()
+        assertEquals(mapThumbnailId(photo, paths[photo.listingId]), feature.getStringProperty("photo_id"))
+        assertFalse(mapThumbnailId(photo) == feature.getStringProperty("photo_id"))
     }
 
     @Test fun thumbnailsAreScopedToListingOwnerAndRevisionAndViewportBudget() {
