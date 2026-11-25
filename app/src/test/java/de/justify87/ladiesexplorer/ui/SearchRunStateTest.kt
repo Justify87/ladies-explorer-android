@@ -115,6 +115,19 @@ class SearchRunStateTest {
         assertEquals("0 laut Quelle", searchCountLabel(zero, changed, true))
     }
 
+    @Test fun lastLocalCountRequiresEquivalentSourceAndLocalFilters() {
+        val run = response(1).let {
+            it.copy(query = it.query.copy(filtersJson = """{"haarfarbe":["Braun","Schwarz"],"figur":["schlank"]}"""))
+        }
+        val state = SearchUiState().acceptRun(run, listOf(card(1)))
+        val draft = SearchDraft.from(state).copy(selectedFilters = mapOf(
+            "figur" to setOf("schlank"), "haarfarbe" to setOf("Schwarz", "Braun"),
+        ))
+        assertEquals("1 zuletzt lokal", searchCountLabel(state, draft, false))
+        assertEquals("Quellzahl unbekannt", searchCountLabel(state, draft.toggle("haarfarbe", "Braun"), false))
+        assertEquals("Quellzahl unbekannt", searchCountLabel(state, draft.copy(local = draft.local.copy(hideLikes = true)), false))
+    }
+
     @Test fun latePreviewReleaseCannotCancelReplacementWithIdenticalTarget() {
         val target = searchPreviewTarget(SearchUiState(), SavedSearchUiState())!!
         val owner = SearchPreviewOwner()
