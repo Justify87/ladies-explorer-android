@@ -287,7 +287,7 @@ class ProfilePanelsTest {
         assertEquals(emptyList<ProfileField>(), traits)
     }
 
-    @Test fun matchSummaryCountsGroupsInsteadOfAlternativesAndOpensByDefault() {
+    @Test fun matchSummaryCountsGroupsAndEvidenceExpansionRestores() {
         val groups = listOf(
             FilterMatchGroup("haarfarbe", EvidenceStatus.YES, listOf(
                 FilterEvidence("haarfarbe", "blond", EvidenceStatus.YES),
