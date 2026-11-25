@@ -183,7 +183,7 @@ class ProfileRestoreDeviceTest {
         assertEquals(bounds, hero.fetchSemanticsNode().boundsInRoot)
     }
 
-    @Test fun searchMatchIsOpenAndShowsAlternativesWithoutASecondEvidenceList() {
+    @Test fun compactSearchMatchOpensCompleteAlternativesWithoutASecondEvidenceList() {
         val original = profile()
         val source = ProfileFacts(emptyList(),
             listOf(ProfileField("Service", listOf("Fixture value"))), emptyList(),
@@ -217,6 +217,8 @@ class ProfileRestoreDeviceTest {
         rule.onNodeWithText("Suchkriterien").assertExists()
         rule.onNodeWithText("Lokale Sichtbarkeitsregeln").assertExists()
         rule.onNodeWithText("0 von 1 belegt · 1 nicht erfüllt · 0 unbekannt").assertExists()
+        rule.onNodeWithText("blond · Ja").assertDoesNotExist()
+        rule.onNodeWithText("Übereinstimmung mit deiner Suche").performClick()
         list.performScrollToKey("profile-match/group/haarfarbe/option/blond")
         rule.onNodeWithText("blond · Ja").assertExists()
         list.performScrollToKey("profile-match/group/haarfarbe/option/schwarz")

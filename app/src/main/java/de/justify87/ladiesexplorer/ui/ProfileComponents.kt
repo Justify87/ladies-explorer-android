@@ -391,6 +391,9 @@ internal fun ProfileActionRail(
                 modifier = Modifier.heightIn(min = ShellMetrics.touch),
                 onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.DISLIKE)) },
                 label = { Text("Nein") })
+            FilterChip(selected = person.preference == Preference.NONE, enabled = !busy && person.preference != Preference.NONE,
+                modifier = Modifier.heightIn(min = ShellMetrics.touch),
+                onClick = { onPreference(person.personId, Preference.NONE) }, label = { Text("Neutral") })
         }
     }
 }

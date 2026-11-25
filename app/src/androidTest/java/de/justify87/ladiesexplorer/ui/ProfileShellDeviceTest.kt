@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
@@ -27,6 +28,93 @@ import org.junit.Test
 /** Synthetic native UI probes; no source access or database writes. */
 class ProfileShellDeviceTest {
     @get:Rule val rule = createComposeRule()
+
+    @Test fun readingChromeGrowsBodyWithoutResizingHeroAndReturnsToRoot() {
+        lateinit var list: androidx.compose.foundation.lazy.LazyListState
+        var heroViewport = androidx.compose.ui.unit.IntSize.Zero
+        lateinit var scrollTo: (Int, Int) -> Unit
+        val restoration = StateRestorationTester(rule)
+        restoration.setContent {
+            MaterialTheme {
+                list = rememberLazyListState()
+                val scope = rememberCoroutineScope()
+                scrollTo = { index, offset -> scope.launch { list.scrollToItem(index, offset) } }
+                ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero",
+                    hasRail = true, notices = emptyList(), noticeOwner = "fixture",
+                    header = { presentation, _, _ -> Text(if (presentation.reading) "Lesen" else "Hero") },
+                    rail = { Box(Modifier.fillMaxSize().testTag("reading-rail")) },
+                    rootNavigation = { Box(Modifier.fillMaxWidth().height(64.dp).testTag("reading-root")) },
+                    heroLeadingMeasure = { Box(Modifier.height(48.dp)) },
+                ) { presentation ->
+                    SideEffect { heroViewport = presentation.heroViewport }
+                    LazyColumn(Modifier.fillMaxSize().testTag("reading-body"), state = list,
+                        contentPadding = PaddingValues(bottom = presentation.readingExtraSpace)) {
+                        item("discover-context") { Box(Modifier.height(48.dp)) }
+                        item("hero") { Box(Modifier.fillMaxWidth().height(presentation.heroHeight).testTag("reading-hero")) }
+                        item("profile-heading") { Text("Profil", Modifier.height(64.dp)) }
+                        items(20, key = { "detail/$it" }) { Text("Detail $it", Modifier.height(60.dp)) }
+                    }
+                }
+            }
+        }
+        val body = rule.onNodeWithTag("reading-body")
+        val hero = rule.onNodeWithTag("reading-hero")
+        val initialBody = body.fetchSemanticsNode().boundsInRoot
+        val initialHero = hero.fetchSemanticsNode().boundsInRoot
+        val size = rule.runOnIdle { heroViewport }
+        rule.onNodeWithTag("reading-root").assertIsDisplayed()
+        body.performScrollToKey("detail/4")
+        rule.onNodeWithText("Lesen").assertIsDisplayed()
+        rule.onNodeWithTag("reading-root").assertIsNotDisplayed()
+        assertTrue(body.fetchSemanticsNode().boundsInRoot.height > initialBody.height)
+        rule.runOnIdle {
+            assertEquals(size, heroViewport)
+            assertEquals("detail/4", list.layoutInfo.visibleItemsInfo.first().key)
+        }
+        rule.runOnIdle { scrollTo(7, 5) }
+        rule.waitForIdle()
+        val anchor = rule.runOnIdle { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
+        restoration.emulateSavedInstanceStateRestore()
+        rule.onNodeWithText("Lesen").assertIsDisplayed()
+        rule.onNodeWithTag("reading-root").assertIsNotDisplayed()
+        rule.runOnIdle {
+            assertEquals(anchor, list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset)
+            assertEquals(size, heroViewport)
+        }
+        body.performScrollToKey("discover-context")
+        rule.onNodeWithTag("reading-root").assertIsDisplayed()
+        rule.onNodeWithText("Hero").assertIsDisplayed()
+        assertEquals(initialBody, body.fetchSemanticsNode().boundsInRoot)
+        assertEquals(initialHero, hero.fetchSemanticsNode().boundsInRoot)
+        rule.runOnIdle { assertEquals(size, heroViewport) }
+    }
+
+    @Test fun standaloneNeutralAndFavoriteRemainIndependentAndBusyBlocksWrites() {
+        var preference by mutableStateOf(Preference.LIKE)
+        var favorite by mutableStateOf(false)
+        var busy by mutableStateOf(false)
+        val decisions = mutableListOf<Preference>()
+        rule.setContent {
+            MaterialTheme {
+                ProfileActionRail(
+                    de.justify87.ladiesexplorer.core.PersonSummary(1, "Fixture", preference, favorite, 1u, ""),
+                    busy, onFavorite = { favorite = !favorite },
+                    onPreference = { _, value -> decisions.add(value); preference = value },
+                )
+            }
+        }
+        rule.onNodeWithText("Favorit").performClick()
+        rule.onNodeWithText("Neutral").performClick()
+        rule.runOnIdle {
+            assertTrue(favorite)
+            assertEquals(Preference.NONE, preference)
+            assertEquals(listOf(Preference.NONE), decisions)
+            busy = true
+        }
+        rule.onNodeWithText("Gefällt").assertIsNotEnabled()
+        rule.onNodeWithText("Nein").assertIsNotEnabled()
+        rule.onNodeWithText("Favorit").assertIsNotEnabled()
+    }
 
     @Test fun fixedHeaderAndRailLeaveARealViewportWithLongWarningsAndLargeType() {
         var actionCount = 0
@@ -162,7 +250,7 @@ class ProfileShellDeviceTest {
                 val list = rememberLazyListState()
                 val scope = rememberCoroutineScope()
                 jump = { index, offset -> scope.launch { list.scrollToItem(index, offset) } }
-                ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero", rootHeight = 80.dp,
+                ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero",
                     hasRail = true, notices = emptyList(), noticeOwner = "fixture",
                     header = { presentation, _, _ ->
                         Box(Modifier.fillMaxSize().testTag("header")) {

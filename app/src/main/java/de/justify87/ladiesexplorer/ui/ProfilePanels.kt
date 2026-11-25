@@ -12,7 +12,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
@@ -29,8 +28,8 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-internal enum class ProfileSection(val label: String, val defaultExpanded: Boolean = false) {
-    Match("Übereinstimmung mit deiner Suche", defaultExpanded = true),
+internal enum class ProfileSection(val label: String) {
+    Match("Übereinstimmung mit deiner Suche"),
     Description("Über das Profil"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), Prices("Preise"), History("Verlauf / verknüpfte Anzeigen")
 }
 
@@ -44,8 +43,7 @@ internal class ProfileSections(initial: List<String> = emptyList()) {
     private fun validEntries(values: List<String>) = values.distinct().filter { name ->
         name == "history-description" || ProfileSection.entries.any { it.name == name }
     }
-    // Entries store deviations from each section's default, including a collapsed Match.
-    fun expanded(section: ProfileSection) = section.defaultExpanded != (section.name in entries)
+    fun expanded(section: ProfileSection) = section.name in entries
     fun toggle(section: ProfileSection) {
         entries = if (section.name in entries) entries - section.name else entries + section.name
     }
@@ -105,9 +103,9 @@ internal fun ProfileFlow(
     prices: PriceEditor? = null,
     fallbackIdentity: HeroIdentity? = null,
     fallbackMedia: List<ProfileMediaItem> = emptyList(),
-    onDiscoveryContextHeight: ((Int) -> Unit)? = null,
     preparedPanels: PreparedPanelData? = null,
     afterHeading: ProfileFlowRows.() -> Unit = {},
+    afterDetails: ProfileFlowRows.() -> Unit = {},
     leading: ProfileFlowRows.() -> Unit,
 ) {
     val owner = model?.identity?.personId
@@ -190,6 +188,7 @@ internal fun ProfileFlow(
             isCurrent = current,
             onRetryFacts = scroll::resumeFactsRetry,
             onConfirm = { target -> if (!busy && current()) confirmation = target })
+        afterDetails()
     }.build()
     val keys = rows.map { it.key }
     val available = model != null
@@ -236,15 +235,14 @@ internal fun ProfileFlow(
     }
     LaunchedEffect(state, scroll, projection, keys, recovering, waitingForAnchor, readFailed,
         photoRequest, swipeRestore, phase, canRestore) {
-        if (!available || (!canRestore && !terminal)) return@LaunchedEffect
         if (appliedPhotoRequest != photoRequest && keys.isNotEmpty()) {
             snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
             state.scrollToItem(0)
             scroll.returnToHero(keys.first())
-            restore.complete(swipeRestore)
+            restore.returnToHero(swipeRestore)
             appliedPhotoRequest = photoRequest
         }
-        if (waitingForAnchor) return@LaunchedEffect
+        if (!available || (!canRestore && !terminal) || waitingForAnchor) return@LaunchedEffect
         snapshotFlow { state.layoutInfo.totalItemsCount }.first { it == keys.size }
         scroll.target(keys, readFailed)?.let { (index, offset) ->
             state.scrollToItem(index)
@@ -278,9 +276,7 @@ internal fun ProfileFlow(
             val last = section != null && rows.getOrNull(index + 1)?.section != section
             val gap = if (index == rows.lastIndex || section != null && !last) 0.dp else ShellMetrics.inset
             val horizontal = if (paddedDetails && row.key != "hero" && row.key != "media") contentInset else 0.dp
-            val measure = if (row.key == "discover-context" && onDiscoveryContextHeight != null)
-                Modifier.onSizeChanged { onDiscoveryContextHeight(it.height) } else Modifier
-            Column(Modifier.fillMaxWidth().then(measure).padding(horizontal = horizontal).padding(bottom = gap)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = horizontal).padding(bottom = gap)) {
                 if (section != null) {
                     if (first) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Column(Modifier.fillMaxWidth().padding(bottom = if (first) 0.dp else ShellMetrics.small),
@@ -354,32 +350,6 @@ private fun ProfileGroup(title: String, content: @Composable ColumnScope.() -> U
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, modifier = Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
         content()
-    }
-}
-
-@Composable
-private fun FieldGrid(rows: List<Pair<String, String>>) {
-    if (rows.isEmpty()) return
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val fontScale = LocalDensity.current.fontScale
-        val columns = if (maxWidth < 340.dp || fontScale >= 1.5f) 1 else 2
-        Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainer) {
-            Column(Modifier.padding(ShellMetrics.inset), verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
-                rows.chunked(columns).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ShellMetrics.inset)) {
-                        row.forEach { (label, value) ->
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(label, style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(value, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -799,34 +769,7 @@ private fun ProfileFlowRows.profileContent(
         }
     }
     compactFields("profile-traits", "Weitere Merkmale", traits.map { it.label to it.values.joinToString(" · ") })
-    withSection(ProfileSection.Analysis) {
-        item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections, panels.detailError, panels.detailError != null) }
-        if (sections.expanded(ProfileSection.Analysis)) {
-            item(key = "profile-analysis", read = ProfileRowRead.Detail) {
-                ProfileGroup("Gespeicherte Evidenz") {
-                    val data = panels.detail
-                    FieldGrid(profileAnalysisFields(media.count { it.kind == "IMAGE" }, data))
-                    if (data == null) DetailStatus(panels, actionsBusy, isCurrent)
-                    Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            if (candidates.isNotEmpty()) item(key = "profile-candidate-head") {
-                Text("Mögliche Identitätsübereinstimmungen", style = MaterialTheme.typography.titleSmall)
-                Text("Keine automatische Zusammenführung.", style = MaterialTheme.typography.bodySmall)
-            }
-            items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
-                ProfileGroup("Person #${candidate.personId} · ${candidate.decision}") {
-                    Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
-                        "Quellprofil".takeIf { candidate.sourceProfileMatch },
-                        "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
-                        .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
-                    OutlinedButton(onClick = { if (isCurrent()) onConfirm(candidate.personId) },
-                        enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
-                }
-            }
-        }
-    }
+    item(key = "profile-my-info") { Text("Meine Informationen", style = MaterialTheme.typography.titleMedium) }
     withSection(ProfileSection.Notes) {
         item(key = "notes-toggle", read = ProfileRowRead.Note.takeIf { sections.expanded(ProfileSection.Notes) }) {
             SectionToggle(ProfileSection.Notes, sections, noteSectionHint(note),
@@ -856,6 +799,34 @@ private fun ProfileFlowRows.profileContent(
                 EncounterRow(row, !actionsBusy && isCurrent(),
                     onEdit = { encounters.begin(encounterPanel, row) },
                     onDelete = { encounters.begin(encounterPanel, row, deleting = true) })
+            }
+        }
+    }
+    withSection(ProfileSection.Analysis) {
+        item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections, panels.detailError, panels.detailError != null) }
+        if (sections.expanded(ProfileSection.Analysis)) {
+            item(key = "profile-analysis", read = ProfileRowRead.Detail) {
+                ProfileGroup("Gespeicherte Evidenz") {
+                    val data = panels.detail
+                    CompactFieldRows(profileAnalysisFields(media.count { it.kind == "IMAGE" }, data))
+                    if (data == null) DetailStatus(panels, actionsBusy, isCurrent)
+                    Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (candidates.isNotEmpty()) item(key = "profile-candidate-head") {
+                Text("Mögliche Identitätsübereinstimmungen", style = MaterialTheme.typography.titleSmall)
+                Text("Keine automatische Zusammenführung.", style = MaterialTheme.typography.bodySmall)
+            }
+            items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
+                ProfileGroup("Person #${candidate.personId} · ${candidate.decision}") {
+                    Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
+                        "Quellprofil".takeIf { candidate.sourceProfileMatch },
+                        "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
+                        .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
+                    OutlinedButton(onClick = { if (isCurrent()) onConfirm(candidate.personId) },
+                        enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
+                }
             }
         }
     }

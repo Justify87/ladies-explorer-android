@@ -2,9 +2,6 @@ package de.justify87.ladiesexplorer.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -306,7 +303,7 @@ fun LadiesApp(
             }
         },
         bottomBar = {
-            if (!search.profileOpen) RootNavigation(
+            if (!search.profileOpen && !swipeShell) RootNavigation(
                 active = route.root,
                 navigationEnabled = !saved.blockingNavigation && !viewModel.hasProfileEditor,
                 unreadSearch = saved.searches.any { it.unreadNewResults },
@@ -329,6 +326,7 @@ fun LadiesApp(
                     onConfirmIdentity = viewModel::confirmIdentity,
                     onCancelArchive = viewModel::cancelMediaArchive,
                     onRetryProfile = { renderedRetryAction?.let(viewModel::retryProfileProjection) },
+                    onRefreshProfile = viewModel::refreshStandaloneProfile,
                     onBack = { viewModel.closeProfile(renderedProfileSession) },
                     actionsBusy = discovery.busy,
                     touchGate = profileTouchGate,
@@ -348,8 +346,11 @@ fun LadiesApp(
                                 noteActions = viewModel.noteActions,
                                 encounters = viewModel.encounters, prices = viewModel.prices,
                                 search = search,
-                                rootBarHeight = (padding.calculateBottomPadding() -
-                                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()).coerceAtLeast(0.dp),
+                                rootNavigation = {
+                                    RootNavigation(active = route.root,
+                                        navigationEnabled = !saved.blockingNavigation && !viewModel.hasProfileEditor,
+                                        unreadSearch = saved.searches.any { it.unreadNewResults }, onSelect = ::selectRoot)
+                                },
                                 onSelectMode = { mode ->
                                     if (!viewModel.hasProfileEditor && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe &&
                                         mode != DiscoverMode.Swipe) {

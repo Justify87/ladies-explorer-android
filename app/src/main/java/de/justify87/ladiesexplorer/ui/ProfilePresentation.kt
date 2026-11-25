@@ -51,6 +51,7 @@ internal class ProfileRestoreCoordinator {
         private set
     private var request by mutableStateOf<SwipePresentation?>(null)
     private var prepared: ProfileProjectionKey? = null
+    private var heroRequested = false
 
     fun synchronize(
         receipt: SwipePresentation?, projection: ProfileProjectionKey?, run: Long?,
@@ -59,6 +60,7 @@ internal class ProfileRestoreCoordinator {
         if (request != receipt) {
             request = receipt
             prepared = null
+            heroRequested = false
             phase = if (receipt == null) Phase.Idle else Phase.Waiting
         }
         if (receipt == null || phase == Phase.Applied || phase == Phase.Invalid) return
@@ -77,7 +79,7 @@ internal class ProfileRestoreCoordinator {
             prepared?.filters != projection.filters) {
             media.restore(receipt.mediaIndex, receipt.mediaId)
             sections.restore(receipt.sections)
-            scroll.restore(receipt.anchorFor(projection))
+            scroll.restore(if (heroRequested) null else receipt.anchorFor(projection))
         }
         prepared = projection
         phase = Phase.Restoring
@@ -85,6 +87,13 @@ internal class ProfileRestoreCoordinator {
 
     fun canRestore(receipt: SwipePresentation?) =
         receipt == null || request == receipt && phase == Phase.Restoring
+
+    /** A user return during a projection gap supersedes only the pending scroll anchor. */
+    fun returnToHero(receipt: SwipePresentation?) {
+        if (receipt == null || request != receipt) return
+        if (phase == Phase.Waiting) heroRequested = true
+        else complete(receipt)
+    }
 
     fun complete(receipt: SwipePresentation?) {
         if (receipt != null && request == receipt && phase == Phase.Restoring) phase = Phase.Applied

@@ -140,8 +140,9 @@ internal class StandaloneProfileOperations<C : Any>(
         presentationVisible && profileGeneration.isCurrent(session) &&
             _searchUiState.value.let { it.profileOpen && it.profileSessionId == session }
 
-    fun cancelMediaArchive(session: Long) {
-        if (!admitsSession(session) || !_searchUiState.value.archiving) return
+    fun cancelMediaArchive(session: Long, attempt: Long) {
+        val active = _searchUiState.value
+        if (!admitsSession(session) || !active.archiving || active.profileArchiveAttempt != attempt) return
         // Cancellation signals the call; it owns the slot until drain.
         archiveCall?.cancel(io.cancelArchive)
     }
@@ -170,6 +171,19 @@ internal class StandaloneProfileOperations<C : Any>(
                 profileRead=null,profileMatchContext=matchContext,profileRetryFromArchive=false,profileSourceRetryAllowed=false,error=null,actionBusy=false,actionError=null,
                 mediaArchive=null,mediaWarning=null,archiving=false,retryProfileListingId=null)
         }
+        startProfileRead(requestId, listingId)
+    }
+
+    fun refreshProfile(token: DetailIdentityToken) {
+        val active = _searchUiState.value
+        if (!admitsSession(token.sessionId) || active.loading || active.actionBusy || active.archiving ||
+            _discoverState.value.busy || active.detailIdentityToken() != token) return
+        _searchUiState.update { it.copy(loading = true, error = null, actionError = null,
+            retryProfileListingId = null, profileSourceRetryAllowed = false, mediaArchive = null, mediaWarning = null) }
+        startProfileRead(token.sessionId, token.listingId)
+    }
+
+    private fun startProfileRead(requestId: Long, listingId: Long) {
         scope.launch {
             var localReadReady = false
             var missingInitialProfile = false
@@ -217,7 +231,8 @@ internal class StandaloneProfileOperations<C : Any>(
                 localReadReady = true
                 val local = readDetail(requestId, listingId) { value, revision ->
                     withProjection(value, revision, showingArchive, refreshError).copy(loading=false,
-                        mediaWarning=refreshError,archiving=!showingArchive)
+                        mediaWarning=refreshError, archiving=!showingArchive,
+                        profileArchiveAttempt = profileArchiveAttempt + if (showingArchive) 0L else 1L)
                 } ?: return@launch
                 if (showingArchive) return@launch
                 val profile = local.profile

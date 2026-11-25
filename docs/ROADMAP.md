@@ -4,25 +4,15 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M12.3. L01 ist unabhängig vor weiterer öffentlicher Distribution zu klären.
+M12.4 / G12. L01 ist unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M12 — Unified Profile Experience: Compact Information Architecture
 
 Gemeinsame Profilansicht unterhalb der Galerie in Swipe und Standalone gemäß [DESIGN](DESIGN.md#informationshierarchie--compact-profile) vollständig neu gestalten. Das freigegebene Soll ersetzt den bisherigen Profil-Akkordeonaufbau. Fachlicher Umfang, Datenhoheit, Integrität, Medienvorbereitung und bestehende lokale Bearbeitungsfunktionen bleiben erhalten. Umsetzung seriell auf integriertem Stand. DESIGN beschreibt das gemeinsame Ziel; je Teilaufgabe gelten ihr abgegrenzter Umfang und die zugehörigen Abnahmekriterien. Bis zur vollständigen Umsetzung bleiben noch nicht umgestellte Inhalte und Interaktionen in ihren funktionierenden bestehenden Pfaden erreichbar. Keine temporären Parallelpfade oder vorgezogenen Umbauten; vollständige Designkonformität erst nach den Implementierungsaufgaben, integriert zu prüfen im Abschlussreview.
 
-### M12.3 — Lesezustand, sekundäre Details und lokale Funktionen
-
-**Status:** READY.
-
-**Umfang:** Vorhandenen Identitätskopf um den Lesezustand, kontextabhängige Root-Navigation und kompakte einzelne Decision Rail ergänzen; Galerie-Rückkehr und Vollbildzugang erhalten. Zugänge zu Originalbeschreibung, vollständigen Nachweisen, Historie, verknüpften Anzeigen und privaten Funktionen einschließlich Preisbereich gemäß DESIGN neu einordnen; vorhandene strukturierte Datenkomponenten weiterverwenden. Profilaktionen und Deckverwaltung semantisch trennen. Bestehende Editoren, Read-/Commit-/Konflikt- und Merge-Verträge weiterverwenden. Scroll-Anker nur bei nachgewiesenem Bedarf, keine zweite Profilroute oder zweite Navigation für Inhaltsabschnitte.
-
-**Akzeptanz:** Lesemodus schafft zusätzlichen nutzbaren Raum ohne Rückkopplung durch geänderte Viewport-/Hero-Geometrie; stabile Scrollanker, Medienidentität und Aktionsziele bei beiden Übergangsrichtungen und Restore direkt im Lesemodus gemäß DESIGN. Back, Rotation, Font Scale, IME, kurze Fenster, Fehler und Owner-Wechsel beachten. Keine Entscheidungsgeste in Details, keine zusätzlichen Profil-Quellabrufe oder unnötige Medienvorbereitung, keine vorgezogenen privaten Reads, Entwurfsverluste oder parallelen Editoren. Root-Ziele durch eindeutige Rückkehr zum Hero erreichbar; Standalone ohne Deck-Rail, aber mit eigenen Präferenz-/Neutral- und Favoritenaktionen. Originaltext, Verlauf, Filterbelege, lokale Datensätze und alle bisherigen Verwaltungsaktionen vollständig erreichbar.
-
-**Prüfung:** JVM- und Instrumentierungsregressionen für beide Hero-/Leseübergänge und Restore im Lesemodus einschließlich Rückkopplungsfreiheit, stabiler Row-Keys/Offsets, Rail-/Root-/Hero-Bounds und einmaliger Insets, Back/Undo, Lifecycle, Galerie-/Medienzustand einschließlich zulässiger Video-Player-/Surface-Wiederherstellung, lokale Reads, Entwürfe, CAS, Konflikt/Retry und explizite Identitätsoperationen; Aufruferreview einschließlich Grid/Karte/Gespeichert. Betroffene veraltete Profil-UI und Tests entfernen, Suchfilter-Akkordeons erhalten.
-
 ### M12.4 / G12 — Integriertes Compact-Profile-Abschlussreview
 
-**Status:** PLANNED. Abhängig von M12.3.
+**Status:** READY.
 
 **Umfang:** Gesamten integrierten M12-Umfang gegen DESIGN, PRODUCT, ARCHITECTURE und AGENTS prüfen. Vollständige Feld-/Aktionszuordnung beider Profilkontexte gegen den tatsächlichen Projektions- und Aufruferumfang (einschließlich Anzeigenanzahl, Analyse-/Identitätsevidenz, Standalone-Präferenz/Neutral/Favorit und Swipe-Deckaktionen), semantische Dokumentationskonsistenz, abgelöste Pfade, native Layoutmessungen und Regressionen reviewen. Konkrete Befunde ursächlich beheben; keine unabhängigen Erweiterungen.
 

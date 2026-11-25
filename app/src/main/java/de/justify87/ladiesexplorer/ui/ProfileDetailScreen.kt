@@ -13,7 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.justify87.ladiesexplorer.LadiesApplication
@@ -32,8 +31,9 @@ internal fun ProfileDetailScreen(
     onPreference: (ProfileIdentityToken, Preference) -> Unit,
     isProfileCurrent: (ProfileIdentityToken) -> Boolean,
     onConfirmIdentity: (ProfileIdentityToken, Long) -> Unit,
-    onCancelArchive: (Long) -> Unit,
+    onCancelArchive: (Long, Long) -> Unit,
     onRetryProfile: () -> Unit,
+    onRefreshProfile: (ProfileIdentityToken) -> Unit,
     onBack: () -> Unit,
     actionsBusy: Boolean,
     touchGate: ProfileTouchGate? = null,
@@ -90,7 +90,7 @@ internal fun ProfileDetailScreen(
         it.person.preference, it.person.favorite) }
     var selectedMedia by remember(state.profileSessionId, owner) { mutableStateOf<ProfileMediaItem?>(null) }
     var fullImage by remember(state.profileSessionId, owner) { mutableStateOf<ProfileMediaItem?>(null) }
-    var galleryMenu by remember(state.profileSessionId, owner, selectedMedia?.presentationKey()) { mutableStateOf(false) }
+    var galleryMenu by remember(state.profileSessionId, owner, renderedToken, selectedMedia?.presentationKey()) { mutableStateOf(false) }
     val latestSelected by rememberUpdatedState(selectedMedia)
     fullImage?.takeIf { item -> displayed?.media?.any { it.presentationKey() == item.presentationKey() } == true }
         ?.let { ProfileImageDialog(it) { fullImage = null } }
@@ -105,12 +105,12 @@ internal fun ProfileDetailScreen(
             if (state.profileSourceRetryAllowed) "Online abrufen" else "Erneut laden",
             !state.actionBusy && !actionsBusy, onRetryProfile, warning = true))
         if (state.archiving) add(ProfileNotice("Medienarchiv", "Medien werden lokal archiviert", "Stoppen", true,
-            { onCancelArchive(state.profileSessionId) }))
+            { onCancelArchive(state.profileSessionId, state.profileArchiveAttempt) }))
         state.mediaWarning?.let { add(ProfileNotice("Archivhinweis", it, warning = true)) }
         if (actionsBusy || state.actionBusy) add(ProfileNotice("Wird verarbeitet", "Profilaktion wird verarbeitet."))
     }
     ProfileShell(modifier, detailListState, "media", hasRail = false, notices = notices,
-        noticeOwner = Triple(state.profileSessionId, renderedToken, state.retryProfileListingId),
+        noticeOwner = listOf(state.profileSessionId, renderedToken, state.retryProfileListingId, state.profileArchiveAttempt),
         header = { presentation, compactNotice, onNotice ->
             Row(Modifier.fillMaxSize().padding(start = ShellMetrics.gap, end = shellContentInset()),
                 verticalAlignment = Alignment.CenterVertically) {
@@ -118,7 +118,7 @@ internal fun ProfileDetailScreen(
                 val shown = identity.takeIf { presentation.identityInHeader }
                 ProfileShellTitle(shown?.title ?: "Profil", shown?.compactSubtitle ?: "Profilansicht",
                     shown?.decisions.orEmpty(), presentation.budget.shortHeader, Modifier.weight(1f),
-                    onClick = if (identity == null) null else ({ info = true }))
+                    onClick = if (identity == null) null else ({ if (presentation.reading) photoRequest++ else info = true }))
                 if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
                 if (presentation.photoShortcut && profile != null) ShellIconButton(onClick = { photoRequest++ }) {
                     Icon(Icons.Default.KeyboardArrowUp, "Zum Foto")
@@ -126,6 +126,8 @@ internal fun ProfileDetailScreen(
                 if (identity != null) Box {
                     ShellIconButton(onClick = { galleryMenu = true }) { Icon(Icons.Default.MoreVert, "Profilaktionen") }
                     DropdownMenu(expanded = galleryMenu, onDismissRequest = { galleryMenu = false }) {
+                        DropdownMenuItem(text = { Text("Profil aktualisieren") }, enabled = !busy && !state.loading && !state.archiving,
+                            onClick = { galleryMenu = false; renderedToken?.takeIf(isProfileCurrent)?.let(onRefreshProfile) })
                         DropdownMenuItem(text = { Text("Vollständige Profilinformationen") },
                             onClick = { galleryMenu = false; info = true })
                         selectedMedia?.takeIf { it.kind == "IMAGE" }?.let { item ->
@@ -141,6 +143,7 @@ internal fun ProfileDetailScreen(
             }
         },
     ) { presentation ->
+        SideEffect { heroSize = presentation.heroViewport }
         ProfileFlow(state = detailListState, model = displayed, filters = filters,
             token = renderedToken, actionsBusy = busy, notes = notes, noteActions = noteActions,
             isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
@@ -163,7 +166,7 @@ internal fun ProfileDetailScreen(
                 item(key = "media") {
                     Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) {
                         ProfileMediaHero(displayed?.media.orEmpty(), height = presentation.heroHeight,
-                            modifier = Modifier.onSizeChanged { heroSize = it }, selection = mediaSelection,
+                            selection = mediaSelection,
                             projectionAvailable = displayed != null,
                             preparedMedia = prepared?.media.orEmpty(), preparing = displayed == null,
                             presentationOwner = owner,

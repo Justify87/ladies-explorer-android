@@ -68,6 +68,12 @@ internal suspend fun readSwipeProfile(
 internal fun sameSwipeCard(a: DiscoveryCard?, b: DiscoveryCard?): Boolean =
     a != null && b != null && a.listingId == b.listingId && a.personId == b.personId
 
+/** A queued refresh must still target the exact rendered revision when the worker admits it. */
+internal fun swipeRefreshMatches(state: DiscoverUiState, token: SwipeActionToken, model: ProfileReadModel,
+    card: DiscoveryCard): Boolean =
+    sameSwipeCard(card, state.cards.firstOrNull()) &&
+        state.swipeToken(model) == token && currentSwipeActionCard(state, false, token) != null
+
 internal data class SwipeReadPolicy(val refresh: Boolean, val allowNetwork: Boolean)
 
 /** Active-run freshness is resolved before promotion; strict recovery is local-only. */

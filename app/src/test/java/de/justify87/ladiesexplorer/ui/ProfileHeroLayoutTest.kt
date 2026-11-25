@@ -8,6 +8,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProfileHeroLayoutTest {
+    @Test fun readingViewportGrowsWithoutChangingHeaderOrInlineRail() {
+        for (width in listOf(300f, 360f, 600f)) for (height in listOf(200f, 600f, 900f)) {
+            for (font in listOf(1f, 1.3f, 2f)) {
+                val root = 64f
+                val hero = profileShellBudget(width, height - root, root, font, true)
+                val reading = profileReadingBudget(hero, width, height, font)
+                assertEquals(hero.header, reading.header, .01f)
+                assertTrue(reading.body >= hero.body)
+                assertEquals(hero.railInContent, reading.railInContent)
+                assertEquals(height, reading.header + reading.body + reading.rail, .01f)
+            }
+        }
+        assertFalse(profileReadingPosition(null, "hero"))
+        assertFalse(profileReadingPosition("discover-context", "hero"))
+        assertFalse(profileReadingPosition("compact-decisions", "hero"))
+        assertFalse(profileReadingPosition("hero", "hero"))
+        assertTrue(profileReadingPosition("profile-heading", "hero"))
+        assertTrue(profileReadingPosition("profile-description", "hero"))
+    }
+
     @Test fun normalPortraitUsesSharedChromeBudget() {
         for ((width, height) in listOf(390f to 844f, 430f to 932f, 390f to 780f, 600f to 900f, 360f to 740f)) {
             val root = 80f
@@ -23,13 +43,6 @@ class ProfileHeroLayoutTest {
             assertEquals(ShellMetrics.decisionRail.value, budget.rail, .01f)
             assertFalse(budget.compactGallery)
         }
-    }
-
-    @Test fun initialHeroWaitsForMeasuredContextButRestoredRowsNeverDependOnIt() {
-        assertTrue(awaitDiscoveryContext(0, 0))
-        assertFalse(awaitDiscoveryContext(60, 0))
-        assertFalse(awaitDiscoveryContext(0, 1))
-        assertFalse(awaitDiscoveryContext(0, 4))
     }
 
     @Test fun measuredContextAndShortViewportHaveNoIntentionalPeek() {
