@@ -22,17 +22,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.gson.JsonObject
 import de.justify87.ladiesexplorer.core.MapProfile
+import de.justify87.ladiesexplorer.core.MapOverview
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -79,6 +82,9 @@ internal fun mapLocationLabel(profile: MapProfile): String =
         "CITY" -> "Stadtbereich · ${profile.locationLabel}"
         else -> "Ungefähre Ortslage · ${profile.locationLabel}"
     }
+
+internal fun mapInitialFitReady(overview: MapOverview?, resolving: Boolean): Boolean =
+    overview != null && overview.profiles.isNotEmpty() && (overview.pendingLocations == 0u || !resolving)
 
 @Composable
 internal fun MapScreen(
@@ -134,6 +140,7 @@ internal fun MapScreen(
             key(mapAttempt, marker, markerInk, selectionRing, cityMarker) {
                 NativeProfileMap(
                     points = points,
+                    fitReady = mapInitialFitReady(overview, state.resolving),
                     selectedListingId = active?.listingId,
                     savedCamera = camera,
                     onCameraChanged = { camera = it },
@@ -146,7 +153,7 @@ internal fun MapScreen(
                             if (mapSelection(latestPoints, id).size > 1) picker = MapPickerScope.Location
                         }
                     },
-                    focusRequest = focusRequest,
+                    focusRequest = focusRequest?.takeIf { it == active?.listingId },
                     onFocusConsumed = { focusRequest = null },
                     marker = marker,
                     markerInk = markerInk,
@@ -394,6 +401,7 @@ internal fun installMapProfileLayers(
 @Composable
 private fun NativeProfileMap(
     points: List<MapProfile>,
+    fitReady: Boolean,
     selectedListingId: Long?,
     savedCamera: CameraPosition?,
     onCameraChanged: (CameraPosition) -> Unit,
@@ -421,6 +429,7 @@ private fun NativeProfileMap(
     var nativeView by remember { mutableStateOf<LifecycleMapView?>(null) }
     var loadError by remember { mutableStateOf(false) }
     var positioned by remember { mutableStateOf(savedCamera != null) }
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
 
     Box(modifier = modifier) {
         AndroidView(
@@ -451,6 +460,11 @@ private fun NativeProfileMap(
                                     ready.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(51.0, 10.0), 5.0))
                                 }
                                 publishCameraReader { if (mapView.released || !positioned) null else ready.cameraPosition }
+                                ready.addOnCameraMoveStartedListener { reason ->
+                                    if (!mapView.released && reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
+                                        positioned = true
+                                    }
+                                }
                                 ready.addOnCameraIdleListener {
                                     if (!mapView.released && positioned) saveCamera(ready.cameraPosition)
                                 }
@@ -459,6 +473,7 @@ private fun NativeProfileMap(
                                         val screen = ready.projection.toScreenLocation(location)
                                         val single = ready.queryRenderedFeatures(screen, MAP_SINGLE).firstOrNull()
                                         if (single != null && single.hasProperty("listing_id") && single.hasProperty("owner_id")) {
+                                            positioned = true
                                             currentSelect(single.getNumberProperty("listing_id").toLong(),
                                                 single.getNumberProperty("owner_id").toLong())
                                             true
@@ -466,6 +481,7 @@ private fun NativeProfileMap(
                                             val cluster = ready.queryRenderedFeatures(screen, MAP_CLUSTERS).firstOrNull()
                                             val center = cluster?.geometry() as? Point
                                             if (center != null) {
+                                                positioned = true
                                                 ready.animateCamera(CameraUpdateFactory.newLatLngZoom(
                                                     LatLng(center.latitude(), center.longitude()),
                                                     (ready.cameraPosition.zoom + 2.0).coerceAtMost(16.0)))
@@ -483,7 +499,7 @@ private fun NativeProfileMap(
                 }
                 mapView
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().onSizeChanged { viewport = it },
             onRelease = { view ->
                 if (!view.released && positioned) map?.cameraPosition?.let(saveCamera)
                 publishCameraReader { null }
@@ -506,22 +522,27 @@ private fun NativeProfileMap(
         ready.getStyle { style ->
             if (map === ready && nativeView?.released == false) {
                 (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(currentPoints, currentSelection))
-                if (!positioned && currentPoints.isNotEmpty()) {
-                    val locations = currentPoints.map { LatLng(it.latitude, it.longitude) }.distinct()
-                    val padding = minOf(64, (minOf(nativeView?.width ?: 0, nativeView?.height ?: 0) / 4))
-                    val update = if (locations.size == 1) CameraUpdateFactory.newLatLngZoom(locations.first(), 10.0)
-                    else CameraUpdateFactory.newLatLngBounds(LatLngBounds.Builder().includes(locations).build(), padding)
-                    positioned = true
-                    ready.moveCamera(update)
-                    saveCamera(ready.cameraPosition)
-                }
             }
         }
+    }
+    LaunchedEffect(map, fitReady, points, viewport) {
+        val ready = map?.takeIf { nativeView?.released == false } ?: return@LaunchedEffect
+        // Partial projections are visible immediately, but the initial fit waits for the final
+        // local projection and real layout dimensions. Explicit camera interaction takes priority.
+        if (positioned || !fitReady || points.isEmpty() || viewport.width <= 0 || viewport.height <= 0) return@LaunchedEffect
+        val locations = points.map { LatLng(it.latitude, it.longitude) }.distinct()
+        val padding = minOf(64, minOf(viewport.width, viewport.height) / 4)
+        val update = if (locations.size == 1) CameraUpdateFactory.newLatLngZoom(locations.first(), 10.0)
+        else CameraUpdateFactory.newLatLngBounds(LatLngBounds.Builder().includes(locations).build(), padding)
+        positioned = true
+        ready.moveCamera(update)
+        saveCamera(ready.cameraPosition)
     }
     LaunchedEffect(map, focusRequest, points) {
         val ready = map?.takeIf { nativeView?.released == false } ?: return@LaunchedEffect
         val id = focusRequest ?: return@LaunchedEffect
         points.firstOrNull { it.listingId == id }?.let {
+            positioned = true
             ready.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude),
                 maxOf(16.0, ready.cameraPosition.zoom)))
         }
