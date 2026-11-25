@@ -59,7 +59,7 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
 
     fun remove(key: Pair<Long, Long>) { if (key in slots) slots[key] = Slot() }
     fun clear() { slots.clear() }
-    fun displayed(key: Pair<Long, Long>?): PreparedProfile? = slots[key]?.published
+    fun displayed(key: Pair<Long, Long>?): PreparedProfile? = key?.let { slots[it]?.published }
 
     fun ready(model: ProfileReadModel, filters: String, viewport: IntSize): Boolean =
         slots[model.key()]?.published?.matches(model, filters, viewport) == true
@@ -96,7 +96,7 @@ internal class ProfilePreparationWindow(private val imageBudget: Long = 96L * 10
                 media = reusable?.media?.filterKeys { it in keys }.orEmpty(),
                 panels = previous?.takeIf { it.model == model && it.filters == filters }?.panels)
         }
-        val ticket = slot.copy(working = working)
+        val ticket = if (slot.working === working) slot else slot.copy(working = working)
         slots[key] = ticket
         val next = if (working.panels == null) working.copy(panels = readPanels()) else {
             val item = model.media.firstOrNull { it.presentationKey() !in working.media }
