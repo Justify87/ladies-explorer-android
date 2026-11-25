@@ -52,7 +52,9 @@ class ProfilePreparationWindowTest {
         val initial = model()
         window.retain(setOf(key))
         repeat(3) {
-            window.step(initial, "{}", size, { panelData }, { _, _ -> PreparedMedium.Video })
+            window.step(initial, "{}", size, { panelData }, { item, _ ->
+                if (item.kind == "VIDEO") PreparedMedium.Video else PreparedMedium.Unavailable
+            })
         }
         val prior = requireNotNull(window.displayed(key))
         val newModel = model(2L)
