@@ -360,6 +360,7 @@ internal fun DiscoverScreen(
                 refreshTarget = SwipeCardToken(SwipeDeckToken(subject.runId, subject.session), subject.listingId, subject.ownerId)
                 failures.remove(subject.listingId to subject.ownerId)
                 localRetries.remove(subject.listingId to subject.ownerId)
+                onRenderedSwipe(null)
                 decks.remove(subject.listingId)
             }
         }

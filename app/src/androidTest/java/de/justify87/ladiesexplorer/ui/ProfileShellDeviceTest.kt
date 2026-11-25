@@ -60,6 +60,7 @@ class ProfileShellDeviceTest {
         rule.onNodeWithTag("reading-root").assertIsDisplayed()
         body.performScrollToKey("detail/4")
         rule.onNodeWithText("Lesen").assertIsDisplayed()
+        rule.onNodeWithTag("reading-root").assertIsNotDisplayed()
         assertTrue(body.fetchSemanticsNode().boundsInRoot.height > initialBody.height)
         rule.runOnIdle {
             assertEquals(size, heroViewport)

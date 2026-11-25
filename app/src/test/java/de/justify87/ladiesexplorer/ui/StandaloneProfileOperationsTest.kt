@@ -98,6 +98,30 @@ class StandaloneProfileOperationsTest {
         }
     }
 
+    @Test(timeout = 15_000) fun explicitRefreshRetainsSessionAndRejectsDuplicateOrStaleToken() = runBlocking {
+        val f = Fixture(this)
+        f.openOffline()
+        val old = requireNotNull(f.search.value.detailIdentityToken())
+        val original = f.search.value.profileRead
+        val release = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        f.source = { started.complete(Unit); release.awaitSignal(); fixtureProfile(12L) }
+        f.operations.refreshProfile(old)
+        started.awaitSignal()
+        assertTrue(f.search.value.loading)
+        assertEquals(old.sessionId, f.search.value.profileSessionId)
+        assertEquals(original, f.search.value.profileRead)
+        f.operations.refreshProfile(old)
+        release.complete(Unit)
+        f.idle()
+        val current = requireNotNull(f.search.value.detailIdentityToken())
+        assertEquals(old.sessionId, current.sessionId)
+        assertEquals(12L, current.snapshotId)
+        f.operations.refreshProfile(old)
+        f.idle()
+        assertEquals(1, f.calls.count { it.startsWith("source:") })
+    }
+
     @Test(timeout = 15_000) fun dirtyNotesForEitherOwnerBlockRealMergeAdmission() = runBlocking {
         val f = Fixture(this)
         f.openOffline()
