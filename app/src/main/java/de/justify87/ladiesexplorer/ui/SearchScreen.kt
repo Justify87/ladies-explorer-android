@@ -99,7 +99,8 @@ internal fun SearchScreen(
         val inlineFooter = maxHeight < 360.dp || (maxHeight < 460.dp && LocalDensity.current.fontScale > 1.3f)
         val footer: @Composable () -> Unit = {
             Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = shellContentInset(), vertical = ShellMetrics.gap),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = if (inlineFooter) 0.dp else shellContentInset(),
+                    vertical = ShellMetrics.gap),
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface,
