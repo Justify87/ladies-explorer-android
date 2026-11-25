@@ -18,7 +18,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.7 — Suche: kompakter Editor, Filtertext und Abschnittszustand
 
-**Status:** REVIEW. Branch `m09-7-compact-search-editor`; JVM-Regressionen und native Probes ergänzt, vollständiges CI-Gate ausstehend.
+**Status:** REVIEW. [PR #108](https://github.com/Justify87/ladies-explorer-android/pull/108), Branch `m09-7-compact-search-editor`; JVM-Regressionen und native Probes ergänzt, vollständiges CI-Gate ausstehend.
 
 **Abhängigkeit:** M09.5; gesonderter Nutzerauftrag.
 

@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -119,7 +120,6 @@ class FormDesignDeviceTest {
     }
 
 
-
     @Test fun filteringOptionsDoesNotClearHiddenSelectionOrSubmit() {
         var search by mutableStateOf(SearchUiState(filterCatalog = SourceFilterCatalog(
             listOf(""), listOf(SourceFilterGroup("haarfarbe", listOf("Braun", "Schwarz"))))))
@@ -153,6 +153,41 @@ class FormDesignDeviceTest {
         rule.runOnIdle { assertEquals(setOf("Braun"), search.selectedFilters["haarfarbe"]) }
     }
 
+    @Test fun normalSectionStateSurvivesTemporaryFilterTextAndTabRemoval() {
+        var visible by mutableStateOf(true)
+        rule.setContent {
+            MaterialTheme(colorScheme = ladiesDarkColors) {
+                val holder = rememberSaveableStateHolder()
+                if (visible) holder.SaveableStateProvider("Filters") {
+                    SearchScreen(
+                        search = SearchUiState(), saved = SavedSearchUiState(),
+                        canStartSearch = true, canEditDraft = true,
+                        onDraftChange = {}, onReset = { true }, onPreviewStart = {}, onPreviewStop = {},
+                        onSearch = {}, onCancelSearch = {}, onSave = {}, onName = {}, onCancelEdit = {},
+                        generation = 1L, onProfile = {}, modifier = Modifier.width(360.dp).height(560.dp),
+                    )
+                }
+            }
+        }
+        val query = rule.onNodeWithContentDescription("Filter suchen")
+        val location = rule.onNodeWithText("Standort")
+        val city = rule.onNodeWithContentDescription("Ort")
+        city.assertExists()
+        location.performClick()
+        city.assertDoesNotExist()
+        query.performTextReplacement("Ort")
+        city.assertExists()
+        query.performTextReplacement("")
+        city.assertDoesNotExist()
+        rule.runOnIdle { visible = false }
+        rule.waitForIdle()
+        rule.runOnIdle { visible = true }
+        location.assertExists()
+        city.assertDoesNotExist()
+        location.performClick()
+        city.assertExists()
+    }
+
     @Test fun compactFilterInputAndChoicesKeepTouchTargetsAtLargeFont() {
         rule.setContent {
             val density = LocalDensity.current
@@ -162,7 +197,7 @@ class FormDesignDeviceTest {
                         var text by remember { mutableStateOf("") }
                         CompactFilterField(text, { text = it }, "Filter suchen")
                         ProgressiveSection("Rubrik", true, {}, compact = true) {
-                            ScreenChoice(true, {}, true, { Text("Fixture", style = MaterialTheme.typography.bodySmall) })
+                            ScreenChoice(true, {}, true, { Text("Fixture", style = MaterialTheme.typography.bodySmall) }, compact = true)
                         }
                     }
                 }

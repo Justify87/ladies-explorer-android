@@ -42,7 +42,6 @@ internal val groupLabels = mapOf(
     "treff" to "Treffpunkt", "location" to "Location", "zeiten" to "Zeiten",
 )
 
-
 private const val LOCAL_FILTER_TITLE = "Bilddarstellung und lokale Filter"
 private const val PHOTOS_ONLY_LABEL = "Nur mit Bildern"
 private const val VIDEO_ONLY_LABEL = "Nur mit Video"
@@ -91,7 +90,7 @@ internal fun CompactFilterField(value: String, onChange: (String) -> Unit, label
 
 @Composable
 private fun FilterChoice(selected: Boolean, enabled: Boolean, label: String, onClick: () -> Unit) {
-    ScreenChoice(selected, onClick, enabled, { Text(label, style = MaterialTheme.typography.bodySmall) })
+    ScreenChoice(selected, onClick, enabled, { Text(label, style = MaterialTheme.typography.bodySmall) }, compact = true)
 }
 
 @Composable
