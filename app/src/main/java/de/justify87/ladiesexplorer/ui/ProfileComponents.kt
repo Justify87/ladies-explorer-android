@@ -127,7 +127,7 @@ private fun ProfileImageSurface(
 
 @Composable
 private fun HeroPhotoSurface(
-    item: ProfileMediaItem, viewport: IntSize, allowCrop: Boolean, description: String,
+    item: ProfileMediaItem, viewport: IntSize, description: String,
     imageMotion: Modifier, content: @Composable BoxScope.(ImageFeedback, HeroMediaGeometry) -> Unit,
 ) {
     key(item, viewport) {
@@ -137,7 +137,7 @@ private fun HeroPhotoSurface(
         val context = LocalContext.current
         val retryAction: (() -> Unit)? = if (models.isNotEmpty()) ({ retry++ }) else null
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (attempt < models.size && viewport.width > 0 && viewport.height > 0) {
+            val (feedback, geometry) = if (attempt < models.size && viewport.width > 0 && viewport.height > 0) {
                 val requested = attempt
                 key(retry, requested) {
                     val request = remember(context, models, requested, viewport) {
@@ -147,8 +147,8 @@ private fun HeroPhotoSurface(
                     val state by painter.state.collectAsState()
                     val success = state as? AsyncImagePainter.State.Success
                     val decoded = success?.result?.image?.let { IntSize(it.width, it.height) }
-                    val settled = settledHeroPhotoGeometry(viewport, decoded, allowCrop)
-                    val geometry = settled ?: heroMediaGeometry(viewport, IntSize.Zero, allowCrop)
+                    val settled = settledHeroPhotoGeometry(viewport, decoded, true)
+                    val geometry = settled ?: heroMediaGeometry(viewport, IntSize.Zero)
                     // Never draw the loading painter at provisional geometry. The successful
                     // request supplies the pixels and dimensions in the same composition.
                     if (success != null && settled != null) Image(painter = success.painter, contentDescription = description,
@@ -156,13 +156,13 @@ private fun HeroPhotoSurface(
                     if (state is AsyncImagePainter.State.Error) LaunchedEffect(Unit) {
                         attempt = requested + 1
                     }
-                    content(ImageFeedback(settled == null, false, success?.painter?.takeIf { settled != null }, retryAction), geometry)
+                    ImageFeedback(settled == null, false, success?.painter?.takeIf { settled != null }, retryAction) to geometry
                 }
             } else {
                 val failed = attempt >= models.size
-                content(ImageFeedback(!failed, failed, null, retryAction),
-                    heroMediaGeometry(viewport, IntSize.Zero, allowCrop))
+                ImageFeedback(!failed, failed, null, retryAction) to heroMediaGeometry(viewport, IntSize.Zero)
             }
+            content(feedback, geometry)
         }
     }
 }
@@ -225,8 +225,11 @@ internal fun ProfileMediaHero(
     var drag by remember(gestureOwner) { mutableFloatStateOf(0f) }
     // Gesture hit geometry stays stationary; only the drawn media moves.
     val displayedDrag = heldDrag ?: drag
-    val offset by animateFloatAsState(displayedDrag, animationSpec = if (displayedDrag == 0f) spring() else snap(),
-        label = "swipe follows finger")
+    // A different medium must not inherit the previous photo's spring return.
+    val offset by key(item) {
+        animateFloatAsState(displayedDrag, animationSpec = if (displayedDrag == 0f) spring() else snap(),
+            label = "swipe follows finger")
+    }
     PhotoGestureSurface(owner = Triple(gestureOwner, compact, projectionAvailable),
         modifier = Modifier.fillMaxWidth(), galleryEnabled = galleryTaps, onSwipe = decision,
         onDrag = { drag = it; onSwipeDrag(it) }, touchGate = touchGate) { hit ->
@@ -261,7 +264,7 @@ internal fun ProfileMediaHero(
                 }
             }
             when (item?.kind) {
-                "IMAGE" -> HeroPhotoSurface(item, viewport, projectionAvailable,
+                "IMAGE" -> HeroPhotoSurface(item, viewport,
                     "Profilbild ${index + 1}", imageMotion) { feedback, geometry ->
                     SideEffect {
                         onMediaSettled(!feedback.loading)
