@@ -30,15 +30,18 @@ import java.util.Locale
 
 internal enum class ProfileSection(val label: String, val defaultExpanded: Boolean = false) {
     Match("Übereinstimmung mit deiner Suche", defaultExpanded = true),
-    Description("Über das Profil"), OpeningTimes("Öffnungszeiten"), Traits("Merkmale"), Services("Dienste"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), Prices("Manuelle Angebotspreise"), History("Verlauf / verknüpfte Anzeigen")
+    Description("Über das Profil"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), Prices("Manuelle Angebotspreise"), History("Verlauf / verknüpfte Anzeigen")
 }
 
 @Stable
 internal class ProfileSections(initial: List<String> = emptyList()) {
-    var entries by mutableStateOf(initial.distinct())
+    var entries by mutableStateOf(validEntries(initial))
         private set
     fun restore(values: List<String>) {
-        entries = values.distinct().filter { name -> name == "history-description" || ProfileSection.entries.any { it.name == name } }
+        entries = validEntries(values)
+    }
+    private fun validEntries(values: List<String>) = values.distinct().filter { name ->
+        name == "history-description" || ProfileSection.entries.any { it.name == name }
     }
     // Entries store deviations from each section's default, including a collapsed Match.
     fun expanded(section: ProfileSection) = section.defaultExpanded != (section.name in entries)
@@ -382,20 +385,117 @@ internal fun evidenceLabel(status: EvidenceStatus): String = when (status) {
     EvidenceStatus.UNKNOWN -> "Unbekannt"
 }
 
-@Composable
-private fun FieldValues(rows: List<ProfileField>) {
-    FieldGrid(rows.map { it.label to it.values.joinToString(" · ") })
+private val primaryTraitLabels = listOf(
+    setOf("größe", "grösse", "groesse", "körpergröße", "koerpergroesse"),
+    setOf("busen", "oberweite", "brustgröße", "brustgroesse", "brust"),
+    setOf("konfektion", "konfektionsgröße", "konfektionsgroesse", "kleidergröße"),
+    setOf("sprachen", "sprache"),
+)
+
+private fun traitOrder(field: ProfileField): Int {
+    val label = field.label.trim().lowercase(Locale.ROOT)
+    val primary = primaryTraitLabels.indexOfFirst { label in it }
+    if (primary >= 0) return primary
+    return when (label) {
+        "gewicht", "figur", "körperbau" -> 4
+        "haarfarbe", "haare", "augenfarbe" -> 5
+        "nationalität", "herkunft" -> 6
+        else -> 7
+    }
 }
 
-/** Preserve aliases with distinct values. */
-internal fun ProfileFacts.overviewAndTraits(): Pair<List<Pair<String, String>>, List<ProfileField>> {
-    val promoted = traits.indexOfFirst {
-        it.label.lowercase() in setOf("busen", "oberweite", "brustgröße", "brustgroesse", "brust")
+internal fun ProfileFacts.overviewAndTraits(age: String? = null): Pair<List<Pair<String, String>>, List<ProfileField>> {
+    val ordered = traits.filter { field ->
+        field.values.isNotEmpty() && !(field.label.equals("Alter", ignoreCase = true) &&
+            age != null && field.values.all { it.trim().removeSuffix(" Jahre").trim() == age.trim() })
+    }.sortedBy(::traitOrder)
+    val (primary, remaining) = ordered.partition { traitOrder(it) < primaryTraitLabels.size }
+    val rawServices = services.flatMap { it.values }
+    val overview = primary.map { it.label to it.values.joinToString(" · ") } +
+        important.filterNot { evidence ->
+            evidence.status == EvidenceStatus.YES && rawServices.any { it.equals(evidence.label, ignoreCase = true) }
+        }.map { it.label to evidenceLabel(it.status) }
+    return overview.distinct() to remaining.distinct()
+}
+
+private val weekdays = listOf("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+
+private fun weekdayIndex(label: String) = weekdays.indexOfFirst { it.equals(label.trim(), ignoreCase = true) }
+
+internal fun compactOpeningTimes(fields: List<ProfileField>): List<ProfileField> {
+    val populated = fields.filter { it.values.isNotEmpty() }
+    val (days, other) = populated.partition { weekdayIndex(it.label) >= 0 }
+    val ordered = days.sortedBy { weekdayIndex(it.label) }
+    val result = mutableListOf<ProfileField>()
+    var index = 0
+    while (index < ordered.size) {
+        val first = ordered[index]
+        var end = index
+        while (end + 1 < ordered.size &&
+            weekdayIndex(ordered[end + 1].label) == weekdayIndex(ordered[end].label) + 1 &&
+            ordered[end + 1].values == first.values) end++
+        val label = if (end == index) first.label else "${first.label} – ${ordered[end].label}"
+        result.add(ProfileField(label, first.values))
+        index = end + 1
     }
-    val first = traits.getOrNull(promoted)
-    val overview = listOfNotNull(first?.let { it.label to it.values.joinToString(" · ") }) +
-        important.map { it.label to evidenceLabel(it.status) }
-    return overview to traits.filterIndexed { index, _ -> index != promoted }
+    return result + other.sortedBy { !it.label.contains("feiertag", ignoreCase = true) }
+}
+
+@Composable
+private fun CompactFieldRows(rows: List<Pair<String, String>>) {
+    if (rows.isEmpty()) return
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = if (maxWidth >= 280.dp && LocalDensity.current.fontScale < 1.5f) 2 else 1
+        val groups = buildList<List<Pair<String, String>>> {
+            var pending = mutableListOf<Pair<String, String>>()
+            rows.forEach { field ->
+                if (field.first.length > 20 || field.second.length > 30) {
+                    if (pending.isNotEmpty()) add(pending.toList())
+                    pending = mutableListOf()
+                    add(listOf(field))
+                } else {
+                    pending.add(field)
+                    if (pending.size == columns) {
+                        add(pending.toList())
+                        pending = mutableListOf()
+                    }
+                }
+            }
+            if (pending.isNotEmpty()) add(pending.toList())
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            groups.forEach { group ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ShellMetrics.inset)) {
+                    group.forEach { (label, value) ->
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(label, style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(value, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactFactsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    ProfileGroup(title, content)
+}
+
+@Composable
+private fun CompactServiceValues(values: List<String>) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        values.forEach { value ->
+            Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainer) {
+                Text(value, Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
 }
 
 internal fun ProfileFacts.serviceRows(): List<ProfileField> = services.filter { it.values.isNotEmpty() }
@@ -406,6 +506,8 @@ internal fun matchSummary(groups: List<FilterMatchGroup>): String {
     val unknown = groups.count { it.status == EvidenceStatus.UNKNOWN }
     return "$yes von ${groups.size} belegt · $no nicht erfüllt · $unknown unbekannt"
 }
+
+internal fun splitMatchGroups(groups: List<FilterMatchGroup>) = groups.partition { !it.group.startsWith("local_") }
 
 private fun matchGroupLabel(group: String): String = when (group) {
     "radius" -> "Suchumkreis"
@@ -431,23 +533,36 @@ private fun MatchEvidenceText(label: String, status: EvidenceStatus) {
 internal fun ProfileMatchSection(groups: List<FilterMatchGroup>, sections: ProfileSections) {
     if (groups.isEmpty()) return
     val section = ProfileSection.Match
-    ProfileDisclosure(section.label, sections.expanded(section), { sections.toggle(section) },
-        hint = matchSummary(groups)) {
-        groups.forEach { group ->
-            val title = matchGroupLabel(group.group)
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (group.options.size > 1) {
-                    MatchEvidenceText("$title (Alternativen)", group.status)
-                } else {
-                    Text(title, style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                group.options.forEach { option ->
-                    val label = if (group.group == "category") categoryLabels[option.label] ?: option.label
-                        else option.label
-                    MatchEvidenceText(label, option.status)
-                }
+    val (source, local) = splitMatchGroups(groups)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf("Personenbezogene Suche" to source, "Lokale Sichtbarkeitsregeln" to local)
+            .filter { it.second.isNotEmpty() }.forEach { (label, entries) ->
+                Text(label, style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(matchSummary(entries), style = MaterialTheme.typography.bodyMedium)
             }
+        ProfileDisclosure(section.label, sections.expanded(section), { sections.toggle(section) }) {
+            listOf("Suchkriterien" to source, "Lokale Regeln" to local)
+                .filter { it.second.isNotEmpty() }.forEach { (label, entries) ->
+                    ProfileGroup(label) {
+                        entries.forEach { group ->
+                            val title = matchGroupLabel(group.group)
+                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                if (group.options.size != 1 || group.options.single().status != group.status) {
+                                    MatchEvidenceText(if (group.options.size > 1) "$title (Alternativen)" else title, group.status)
+                                } else {
+                                    Text(title, style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                group.options.forEach { option ->
+                                    val optionLabel = if (group.group == "category") categoryLabels[option.label] ?: option.label
+                                        else option.label
+                                    MatchEvidenceText(optionLabel, option.status)
+                                }
+                            }
+                        }
+                    }
+                }
         }
     }
 }
@@ -579,45 +694,55 @@ private fun ProfileFlowRows.profileContent(
     isCurrent: () -> Boolean,
     onConfirm: (Long) -> Unit,
 ) {
-    item(key = "profile-facts", read = ProfileRowRead.Facts) {
+    val facts = panels.facts
+    val (overview, traits) = facts?.overviewAndTraits(identity?.age) ?: (emptyList<Pair<String, String>>() to emptyList())
+    if (facts == null || overview.isNotEmpty()) item(key = "profile-facts", read = ProfileRowRead.Facts) {
         Column(verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
-            FactsContent(panels, actionsBusy, isCurrent) { facts ->
-                ProfileMatchSection(facts.filters, sections)
-                FieldGrid(facts.overviewAndTraits().first)
+            FactsContent(panels, actionsBusy, isCurrent) {
+                CompactFactsGroup("Wichtige Merkmale") { CompactFieldRows(overview) }
             }
         }
     }
-    val facts = panels.facts
-    if (!facts?.openingTimes.isNullOrEmpty()) item(key = "profile-opening-times", read = ProfileRowRead.Facts) {
-        val section = ProfileSection.OpeningTimes
-        ProfileDisclosure(section.label, sections.expanded(section), { sections.toggle(section) }) {
-            FieldValues(checkNotNull(facts).openingTimes)
+    val serviceRows = facts?.serviceRows().orEmpty()
+    if (serviceRows.isNotEmpty()) item(key = "profile-services", read = ProfileRowRead.Facts) {
+        CompactFactsGroup("Dienste") {
+            serviceRows.forEach { field ->
+                ProfileGroup(field.label) { CompactServiceValues(field.values) }
+            }
         }
     }
-    val traits = facts?.overviewAndTraits()?.second.orEmpty()
-    if (traits.isNotEmpty()) item(key = "profile-traits", read = ProfileRowRead.Facts) {
-        val section = ProfileSection.Traits
-        ProfileDisclosure(section.label, sections.expanded(section), { sections.toggle(section) }) { FieldValues(traits) }
-    }
-    if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile, sections) }
-    val serviceRows = facts?.serviceRows()
-    if (serviceRows == null || serviceRows.isNotEmpty())
-        item(key = "profile-services", read = ProfileRowRead.Facts) {
-            val section = ProfileSection.Services
-            ProfileDisclosure(section.label, sections.expanded(section), { sections.toggle(section) },
-                hint = panels.factsError, hintError = panels.factsError != null) {
-                FactsContent(panels, actionsBusy, isCurrent) { loaded ->
-                    loaded.serviceRows().forEach { field ->
-                        ProfileGroup(field.label) {
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(ShellMetrics.section),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                field.values.forEach { value -> Text(value, style = MaterialTheme.typography.bodyMedium) }
-                            }
-                        }
+    if (prices != null) withSection(ProfileSection.Prices) {
+        item(key = "prices-toggle", read = ProfileRowRead.Prices.takeIf { sections.expanded(ProfileSection.Prices) }) {
+            SectionToggle(ProfileSection.Prices, sections, pricePanel?.error, hintError = pricePanel?.error != null)
+        }
+        if (sections.expanded(ProfileSection.Prices)) {
+            item(key = "profile-prices-head", read = ProfileRowRead.Prices) {
+                val data = pricePanel?.snapshot
+                if (pricePanel?.error != null) {
+                    TextButton(enabled = !actionsBusy, onClick = { onRetryPrices(checkNotNull(pricePanel)) }) { Text("Neu laden") }
+                } else if (data == null) {
+                    if (!actionsBusy) CircularProgressIndicator(Modifier.size(24.dp))
+                } else {
+                    data.lastPaid?.let { paid ->
+                        Text("Zuletzt bekannter bezahlter Gesamtbetrag (Begegnungen): ${euro(paid.amountCents)} € · ${displayTime(paid.occurredAt, java.time.ZoneId.systemDefault())}")
                     }
+                    OutlinedButton(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !actionsBusy && isCurrent(),
+                        onClick = { prices.begin(checkNotNull(pricePanel)) }) { Text("Preisliste hinzufügen") }
                 }
             }
+            val overview = pricePanel?.snapshot
+            if (overview != null) items(overview.lists, key = { "price/${it.priceListId}" }, read = ProfileRowRead.Prices) { row ->
+                PriceListRow(row, row == overview.lists.first(), !actionsBusy && isCurrent(),
+                    onEdit = { prices.begin(checkNotNull(pricePanel), row) },
+                    onDelete = { prices.begin(checkNotNull(pricePanel), row, deleting = true) })
+            }
         }
+    }
+    if (traits.isNotEmpty()) item(key = "profile-traits", read = ProfileRowRead.Facts) {
+        CompactFactsGroup("Weitere Merkmale") {
+            CompactFieldRows(traits.map { it.label to it.values.joinToString(" · ") })
+        }
+    }
     withSection(ProfileSection.Analysis) {
         item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections, panels.detailError, panels.detailError != null) }
         if (sections.expanded(ProfileSection.Analysis)) {
@@ -678,31 +803,14 @@ private fun ProfileFlowRows.profileContent(
             }
         }
     }
-    if (prices != null) withSection(ProfileSection.Prices) {
-        item(key = "prices-toggle", read = ProfileRowRead.Prices.takeIf { sections.expanded(ProfileSection.Prices) }) {
-            SectionToggle(ProfileSection.Prices, sections, pricePanel?.error, hintError = pricePanel?.error != null)
-        }
-        if (sections.expanded(ProfileSection.Prices)) {
-            item(key = "profile-prices-head", read = ProfileRowRead.Prices) {
-                val data = pricePanel?.snapshot
-                if (pricePanel?.error != null) {
-                    TextButton(enabled = !actionsBusy, onClick = { onRetryPrices(checkNotNull(pricePanel)) }) { Text("Neu laden") }
-                } else if (data == null) {
-                    if (!actionsBusy) CircularProgressIndicator(Modifier.size(24.dp))
-                } else {
-                    data.lastPaid?.let { paid ->
-                        Text("Zuletzt bekannter bezahlter Gesamtbetrag: ${euro(paid.amountCents)} € · ${displayTime(paid.occurredAt, java.time.ZoneId.systemDefault())}")
-                    }
-                    OutlinedButton(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !actionsBusy && isCurrent(),
-                        onClick = { prices.begin(checkNotNull(pricePanel)) }) { Text("Preisliste hinzufügen") }
-                }
-            }
-            val overview = pricePanel?.snapshot
-            if (overview != null) items(overview.lists, key = { "price/${it.priceListId}" }, read = ProfileRowRead.Prices) { row ->
-                PriceListRow(row, row == overview.lists.first(), !actionsBusy && isCurrent(),
-                    onEdit = { prices.begin(checkNotNull(pricePanel), row) },
-                    onDelete = { prices.begin(checkNotNull(pricePanel), row, deleting = true) })
-            }
+    if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile, sections) }
+    if (!facts?.filters.isNullOrEmpty()) item(key = "profile-match", read = ProfileRowRead.Facts) {
+        ProfileMatchSection(checkNotNull(facts).filters, sections)
+    }
+    val times = compactOpeningTimes(facts?.openingTimes.orEmpty())
+    if (times.isNotEmpty()) item(key = "profile-opening-times", read = ProfileRowRead.Facts) {
+        CompactFactsGroup("Öffnungszeiten") {
+            CompactFieldRows(times.map { it.label to it.values.joinToString(" · ") })
         }
     }
     withSection(ProfileSection.History) {

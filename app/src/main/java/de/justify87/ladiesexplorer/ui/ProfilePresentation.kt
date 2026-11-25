@@ -136,7 +136,10 @@ internal class ProfileScrollMemory(
             saved.key.startsWith("price/") -> "profile-prices-head"
             else -> "profile-facts"
         }
-        return keys.indexOf(fallback).takeIf { it >= 0 }?.let { it to 0 } ?: (0 to 0)
+        return keys.indexOf(fallback).takeIf { it >= 0 }?.let { it to 0 }
+            ?: listOf("profile-facts", "profile-services", "profile-traits", "profile-match", "profile-opening-times", "profile-heading")
+                .firstNotNullOfOrNull { key -> keys.indexOf(key).takeIf { it >= 0 }?.let { it to 0 } }
+            ?: (0 to 0)
     }
     fun restored() { recovering = false }
     fun returnToHero(key: String) {

@@ -93,7 +93,7 @@ class ProfilePresentationTest {
         assertEquals(0, selection.resolve(listOf(b, a), true))
         assertEquals(0, selection.resolve(listOf(a), true))
         assertEquals(0, selection.resolve(emptyList(), true))
-        assertTrue(ProfileSections(position.sections).expanded(ProfileSection.Services))
+        assertTrue(ProfileSections(position.sections).entries.isEmpty())
         val memory = ProfileScrollMemory(ProfileScrollAnchor(requireNotNull(position.anchorKey), position.anchorOffset),
             initialRecovery = true)
         assertEquals(ProfileRowRead.Facts, memory.dependency(ProfileFlowRows(ProfileMediaSelection()).apply {

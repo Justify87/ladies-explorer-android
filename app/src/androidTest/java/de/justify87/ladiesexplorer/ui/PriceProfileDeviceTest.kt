@@ -82,7 +82,7 @@ class PriceProfileDeviceTest {
         section.performClick()
         rule.onNodeWithTag("price-flow").performScrollToKey("profile-prices-head")
         if (paid != null)
-            rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag: 0,42 €", substring = true).assertExists()
+            rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag (Begegnungen): 0,42 €", substring = true).assertExists()
         else rule.onNodeWithText("Zuletzt bekannter bezahlter Gesamtbetrag", substring = true).assertDoesNotExist()
         rule.onNodeWithText("Keine Preislisten gespeichert.", substring = true).assertDoesNotExist()
         rule.onNodeWithText("aktuelle Gültigkeit", substring = true).assertDoesNotExist()
