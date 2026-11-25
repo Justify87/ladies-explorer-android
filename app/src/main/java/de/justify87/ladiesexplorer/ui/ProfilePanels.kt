@@ -265,7 +265,7 @@ internal fun ProfileFlow(
             val first = section != null && rows.getOrNull(index - 1)?.section != section
             val last = section != null && rows.getOrNull(index + 1)?.section != section
             val gap = if (index == rows.lastIndex || section != null && !last) 0.dp else 12.dp
-            val horizontal = if (paddedDetails && row.key != "hero" && row.key != "media") 16.dp else 0.dp
+            val horizontal = if (paddedDetails && row.key != "hero" && row.key != "media") ShellMetrics.inset else 0.dp
             Column(Modifier.fillMaxWidth().padding(horizontal = horizontal).padding(bottom = gap)) {
                 if (section != null) ProgressiveSectionFrame(first, last, header = first) { row.content() }
                 else row.content()

@@ -12,10 +12,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,7 +42,6 @@ internal fun DiscoverScreen(
     noteActions: NoteEditorActions,
     search: SearchUiState,
     rootBarHeight: Dp,
-    onOpenSearch: () -> Unit,
     onSelectMode: (DiscoverMode) -> Unit,
     availabilityEnabled: Boolean,
     onAvailability: (SwipeDeckToken, AvailabilityMode) -> Unit,
@@ -323,14 +320,14 @@ internal fun DiscoverScreen(
             heroLeadingHeight = discoveryLeadingHeight(LocalDensity.current.fontScale).dp,
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(presentation, sourceContext, controls, compactNotice,
-                    onNotice, onOpenSearch, { onAvailability(deckToken, it) })
+                    onNotice, { onAvailability(deckToken, it) })
             },
             rail = { SwipeDecisionControls(controls, identity?.title, undo, skip, choose) },
         ) { presentation ->
             Box(Modifier.fillMaxSize().clipToBounds()) {
             if (card == null) {
-                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(ShellMetrics.inset),
+                    verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
                     item(key = "discover-context") {
                         DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode, Modifier)
                     }
@@ -444,14 +441,11 @@ fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: Str
 private fun SwipeShellHeader(
     presentation: ProfileShellPresentation, sourceContext: String, context: SwipeControlsContext,
     compactNotice: ProfileNoticeIndicator?, onNotice: () -> Unit,
-    onSearch: () -> Unit, onAvailability: (AvailabilityMode) -> Unit,
+    onAvailability: (AvailabilityMode) -> Unit,
 ) {
-    Row(Modifier.fillMaxSize().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxSize().padding(horizontal = ShellMetrics.inset), verticalAlignment = Alignment.CenterVertically) {
         ProfileShellTitle("Entdecken", sourceContext, "", presentation.budget.shortHeader, Modifier.weight(1f))
         if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
-        if (!presentation.budget.narrowHeader) ShellIconButton(onClick = onSearch) {
-            Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
-        }
         AvailabilityQuickChoice(context.availability, context.availabilityEnabled, context.deck, onAvailability)
     }
 }
@@ -471,37 +465,43 @@ private fun SwipeDeckActions(context: SwipeControlsContext, onRefresh: () -> Uni
 internal fun SwipeDecisionControls(context: SwipeControlsContext, profileTitle: String?, onUndo: () -> Unit,
     onSkip: () -> Unit, onChoose: (Preference) -> Unit, modifier: Modifier = Modifier.fillMaxSize()) {
     BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface)) {
-        val compact = maxHeight < 72.dp || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
+        val compact = maxHeight < ShellMetrics.decisionRail || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
         val scheme = MaterialTheme.colorScheme
-        val dark = scheme.surface.luminance() < .5f
-        val reject = if (dark) Color(0xFFF72F49) else scheme.error
-        val like = if (dark) Color(0xFF4CDA36) else scheme.tertiary
-        FlowRow(Modifier.fillMaxSize().semantics { contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen" },
-            horizontalArrangement = Arrangement.SpaceEvenly, verticalArrangement = Arrangement.Center) {
-            DecisionAction("Undo", Icons.Default.Undo, context.deckEnabled && context.canUndo, compact,
-                scheme.surfaceContainerHigh, scheme.onSurface, onUndo)
+        val inset = if (maxWidth >= 216.dp) ShellMetrics.inset else 0.dp
+        FlowRow(Modifier.fillMaxSize().padding(horizontal = inset).semantics {
+            contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen"
+        }, horizontalArrangement = Arrangement.Center, verticalArrangement = Arrangement.Center,
+            maxItemsInEachRow = 4) {
+            val actionWidth = if (maxWidth >= 192.dp) (maxWidth - inset * 2) / 4 else ShellMetrics.touch
+            DecisionAction("Rückgängig", Icons.Default.Undo, context.deckEnabled && context.canUndo, compact,
+                scheme.surfaceContainer, scheme.onSurfaceVariant, false, actionWidth, onUndo)
             DecisionAction("Nein", Icons.Default.Close, context.profile != null, compact,
-                reject, if (dark) Color(0xFF1E160F) else scheme.onError) { onChoose(Preference.DISLIKE) }
-            DecisionAction("Später", Icons.Default.SkipNext, context.deckEnabled && context.card != null, compact,
-                scheme.surfaceContainerHigh, scheme.onSurface, onSkip)
+                scheme.errorContainer, scheme.onErrorContainer, true, actionWidth) { onChoose(Preference.DISLIKE) }
+            DecisionAction("Später", Icons.Default.Schedule, context.deckEnabled && context.card != null, compact,
+                scheme.surfaceContainer, scheme.onSurfaceVariant, false, actionWidth, onSkip)
             DecisionAction("Gefällt", Icons.Default.Favorite, context.profile != null, compact,
-                like, if (dark) Color(0xFF153A0C) else scheme.onTertiary) { onChoose(Preference.LIKE) }
+                scheme.tertiaryContainer, scheme.onTertiaryContainer, true, actionWidth) { onChoose(Preference.LIKE) }
         }
     }
 }
 
 @Composable
 private fun DecisionAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector,
-    enabled: Boolean, compact: Boolean, background: Color, foreground: Color, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    enabled: Boolean, compact: Boolean, background: Color, foreground: Color,
+    primary: Boolean, width: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    Column(Modifier.width(width), horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(onClick = onClick, enabled = enabled,
-            modifier = Modifier.size(48.dp).shellFocus().background(
-                if (enabled) background else MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)) {
-            Icon(icon, contentDescription = label,
-                tint = if (enabled) foreground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .38f))
+            modifier = Modifier.size(ShellMetrics.touch).shellFocus()) {
+            Box(Modifier.size(if (primary) ShellMetrics.touch else ShellMetrics.secondaryAction)
+                .background(if (enabled) background else MaterialTheme.colorScheme.surfaceContainer,
+                    MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = label, modifier = Modifier.size(if (primary) 24.dp else 20.dp),
+                    tint = if (enabled) foreground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .38f))
+            }
         }
         if (!compact) Text(label, style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.clearAndSetSemantics {},
-            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1)
     }
 }

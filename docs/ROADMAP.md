@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) ist durch Nutzerauftrag vom 25.11.2026 freigegeben. Nächste Entwicklungsaufgabe: M10.1; danach M10.2 und M10.3 seriell auf integriertem Stand. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) ist durch Nutzerauftrag vom 25.11.2026 freigegeben. Aktuelle Entwicklungsaufgabe: M10.1; danach M10.2 und M10.3 seriell auf integriertem Stand. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M10 — Pure-UI-Konsolidierung
 
@@ -14,7 +14,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M10.1 — Gemeinsame Shell, Design-Tokens und Interaktionshierarchie
 
-**Status:** READY.
+**Status:** DOING — Branch `feat/m10-1-pure-shell`. Umsetzung der gemeinsamen Shell, Symbolsemantik, Rail-Hierarchie und zugehörigen Testanpassungen begonnen; noch nicht abgenommen. Nächster Schritt: vollständiger Aufrufer-/Bounds-/Kontrastreview und vollständiges CI-Gate; verbleibende Befunde ursächlich beheben. Keine Geräteausführung belegt.
 
 **Abhängigkeit:** G09.
 

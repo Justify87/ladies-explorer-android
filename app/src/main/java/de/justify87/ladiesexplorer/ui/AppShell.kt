@@ -6,8 +6,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -26,8 +26,14 @@ internal object ShellMetrics {
     val touch = 48.dp
     val header = 56.dp
     val navigation = 64.dp
-    val inset = 16.dp
     val gap = 4.dp
+    val small = 8.dp
+    val inset = 12.dp
+    val section = 16.dp
+    val large = 24.dp
+    val extraLarge = 32.dp
+    val decisionRail = 72.dp
+    val secondaryAction = 36.dp
 }
 
 internal fun shellFocusColor(dark: Boolean) = if (dark) Color(0xFFFFC18D) else Color(0xFF8E350B)
@@ -67,7 +73,7 @@ internal fun AppHeader(
             Modifier.fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .heightIn(min = ShellMetrics.header)
-                .padding(start = if (onBack == null) ShellMetrics.inset else ShellMetrics.gap, end = ShellMetrics.gap),
+                .padding(start = if (onBack == null) ShellMetrics.inset else ShellMetrics.gap, end = ShellMetrics.inset),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (onBack != null) ShellIconButton(onBack, backEnabled) {
@@ -90,10 +96,11 @@ internal fun RootNavigation(
     unreadSearch: Boolean,
     onSelect: (RootDestination) -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(
             Modifier.fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                .padding(horizontal = ShellMetrics.inset)
                 .height(IntrinsicSize.Min)
                 .selectableGroup(),
             verticalAlignment = Alignment.CenterVertically,
@@ -113,17 +120,17 @@ internal fun RootNavigation(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Surface(
-                        color = if (selected) scheme.primaryContainer else Color.Transparent,
+                        color = if (selected) scheme.surfaceContainerHighest else Color.Transparent,
                         shape = MaterialTheme.shapes.medium,
                     ) {
                         Box(Modifier.width(52.dp).height(28.dp), contentAlignment = Alignment.Center) {
                             val icon = when (destination) {
-                                RootDestination.Discover -> Icons.Default.FavoriteBorder
+                                RootDestination.Discover -> Icons.Default.Explore
                                 RootDestination.Search -> Icons.Default.Search
-                                RootDestination.Saved -> Icons.Default.Favorite
+                                RootDestination.Saved -> Icons.Default.Bookmark
                                 RootDestination.Settings -> Icons.Default.Settings
                             }
-                            val iconColor = (if (selected) scheme.onPrimaryContainer else tint)
+                            val iconColor = tint
                                 .let { if (enabled) it else it.copy(alpha = .38f) }
                             BadgedBox(badge = {
                                 if (destination == RootDestination.Search && unreadSearch) Badge()

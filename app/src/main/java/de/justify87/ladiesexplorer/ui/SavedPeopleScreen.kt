@@ -8,8 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -262,7 +262,7 @@ private fun SavedPersonCard(
             }
             Column(horizontalAlignment = Alignment.End) {
                 IconButton(onClick = { onFavorite(action) }, enabled = enabled) {
-                    Icon(if (row.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    Icon(if (row.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                         contentDescription = if (row.favorite) "Favorit entfernen" else "Favorit hinzufügen",
                         tint = if (row.favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }

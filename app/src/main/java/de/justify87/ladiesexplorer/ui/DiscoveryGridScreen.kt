@@ -103,15 +103,15 @@ internal fun DiscoveryGridScreen(
             }
         }
         Column(Modifier.fillMaxSize()) {
-            if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { chrome() }
+            if (!inlineChrome) Box(Modifier.fillMaxWidth().padding(horizontal = ShellMetrics.inset)) { chrome() }
             if (!inlineChrome && undoAction != null) GridUndoButton(undoAction, canUndo, onUndo)
             LazyVerticalGrid(
                 columns = profileGridCells(),
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(horizontal = ShellMetrics.inset, vertical = ShellMetrics.small),
+                horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small),
+                verticalArrangement = Arrangement.spacedBy(ShellMetrics.small),
             ) {
                 if (inlineChrome) item(key = "discovery-chrome", span = { GridItemSpan(maxLineSpan) }) { chrome() }
                 if (inlineChrome && undoAction != null) item(key = "grid-undo", span = { GridItemSpan(maxLineSpan) }) {

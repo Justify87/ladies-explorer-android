@@ -275,11 +275,11 @@ internal fun ProfileActionRail(
             FilterChip(selected = person.preference == Preference.LIKE, enabled = !busy,
                 modifier = Modifier.heightIn(min = 48.dp),
                 onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.LIKE)) },
-                label = { Text("Like") }, leadingIcon = { Icon(Icons.Default.Favorite, null) })
+                label = { Text("Gefällt") }, leadingIcon = { Icon(Icons.Default.Favorite, null) })
             FilterChip(selected = person.favorite, enabled = !busy,
                 modifier = Modifier.heightIn(min = 48.dp),
                 onClick = { onFavorite(person.personId) }, label = { Text("Favorit") },
-                leadingIcon = { Icon(Icons.Default.Star, null) })
+                leadingIcon = { Icon(if (person.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, null) })
             FilterChip(selected = person.preference == Preference.DISLIKE, enabled = !busy,
                 modifier = Modifier.heightIn(min = 48.dp),
                 onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.DISLIKE)) },

@@ -33,6 +33,7 @@ class LadiesThemeTest {
             scheme.primary to scheme.surfaceContainerHigh,
             scheme.primary to scheme.surfaceContainerHighest,
             scheme.onSurfaceVariant to scheme.surfaceContainerHighest,
+            scheme.onSurfaceVariant to scheme.surfaceContainer,
             scheme.error to scheme.surfaceContainerHighest,
         )
         pairs.forEach { (foreground, background) ->

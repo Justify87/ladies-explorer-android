@@ -24,7 +24,7 @@ internal fun AvailabilityQuickChoice(availability: AvailabilityMode, enabled: Bo
     Box(modifier) {
         TextButton(onClick = { opened = true }, enabled = enabled,
             modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus(),
-            contentPadding = PaddingValues(horizontal = 8.dp)) {
+            contentPadding = PaddingValues(horizontal = ShellMetrics.small)) {
             Text(availability.label + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         DropdownMenu(expanded = opened && enabled, onDismissRequest = { opened = false }) {
@@ -43,21 +43,21 @@ internal fun AvailabilityQuickChoice(availability: AvailabilityMode, enabled: Bo
 
 @Composable
 internal fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode) -> Unit,
-    modifier: Modifier = Modifier.padding(horizontal = 16.dp)) {
+    modifier: Modifier = Modifier.padding(horizontal = ShellMetrics.inset)) {
     val scheme = MaterialTheme.colorScheme
-    Surface(modifier.fillMaxWidth(), color = scheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) {
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp),
+    Surface(modifier.fillMaxWidth(), color = scheme.surfaceContainer, shape = MaterialTheme.shapes.small) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(0.dp),
             verticalAlignment = Alignment.CenterVertically) {
             DiscoverMode.entries.forEach { mode ->
                 val selected = mode == active
-                Surface(Modifier.weight(1f).heightIn(min = 48.dp).fillMaxHeight().shellFocus()
+                Surface(Modifier.weight(1f).heightIn(min = ShellMetrics.touch).fillMaxHeight().shellFocus()
                     .selectable(selected = selected, role = Role.Tab, onClick = { if (!selected) onSelect(mode) }),
                     color = Color.Transparent,
-                    shape = MaterialTheme.shapes.medium) {
-                    Box(Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
+                    shape = MaterialTheme.shapes.small) {
+                    Box(Modifier.fillMaxSize().padding(ShellMetrics.gap), contentAlignment = Alignment.Center) {
                         Surface(color = if (selected) scheme.primaryContainer else Color.Transparent,
-                            shape = MaterialTheme.shapes.medium) {
-                            Text(mode.title, Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp),
+                            shape = MaterialTheme.shapes.extraSmall) {
+                            Text(mode.title, Modifier.fillMaxWidth().padding(vertical = ShellMetrics.small),
                                 textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge,
                                 color = if (selected) scheme.onPrimaryContainer else scheme.onSurface)
                         }

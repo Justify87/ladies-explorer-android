@@ -145,7 +145,7 @@ class ProfileShellDeviceTest {
         rule.onNode(hasText("Nein") or hasContentDescription("Nein")).assertIsNotEnabled()
         rule.onNode(hasText("Später") or hasContentDescription("Später")).assertIsNotEnabled()
         rule.onNode(hasText("Gefällt") or hasContentDescription("Gefällt")).assertIsNotEnabled()
-        rule.onNode(hasText("Undo") or hasContentDescription("Undo")).performClick()
+        rule.onNode(hasText("Rückgängig") or hasContentDescription("Rückgängig")).performClick()
         rule.runOnIdle { assertEquals(listOf("LIKE", "DISLIKE", "skip", "undo"), actions) }
     }
 
