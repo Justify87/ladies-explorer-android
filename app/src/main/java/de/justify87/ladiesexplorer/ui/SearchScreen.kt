@@ -47,6 +47,7 @@ internal fun SearchScreen(
     canEditDraft: Boolean,
     onDraftChange: ((SearchDraft) -> SearchDraft) -> Unit,
     onReset: () -> Boolean,
+    onSaveDefault: () -> Unit,
     onPreviewStart: (SearchPreviewLease) -> Unit,
     onPreviewStop: (SearchPreviewLease) -> Unit,
     onSearch: (SearchSubmitAction) -> Unit,
@@ -62,7 +63,7 @@ internal fun SearchScreen(
     val editing = editor != null
     val draft = editor?.draft ?: SearchDraft.from(search)
     val state = draft.applyTo(search)
-    val enabled = !search.loading && !saved.busy && (if (editing) canStartSearch else canEditDraft)
+    val enabled = search.defaultReady && !search.defaultSaving && !search.loading && !saved.busy && (if (editing) canStartSearch else canEditDraft)
     var resultsVisible by rememberSaveable { mutableStateOf(false) }
     var filterQuery by rememberSaveable { mutableStateOf("") }
     var flippedSections by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
@@ -97,36 +98,53 @@ internal fun SearchScreen(
     BoxWithConstraints(modifier = modifier) {
         val inlineFooter = maxHeight < 360.dp || (maxHeight < 460.dp && LocalDensity.current.fontScale > 1.3f)
         val footer: @Composable () -> Unit = {
-            Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(when {
-                        state.searchCancelling -> "Suche wird beendet …"
-                        state.loading -> "Suche läuft …"
-                        !previewMatches -> "Quellzahl noch nicht geprüft"
-                        state.previewLoading -> "Quellzahl wird geprüft …"
-                        state.previewError != null -> "Vorschau nicht verfügbar"
-                        state.preview?.serverCount != null -> "${state.preview.serverCount} Treffer laut Quelle"
-                        state.preview != null -> "Quellzahl unbekannt (Radius/Metadaten nicht bestätigt)"
-                        else -> "Quellzahl noch nicht geprüft"
-                    }, style = MaterialTheme.typography.bodySmall)
-                    Text("Lokale Filter werden nach der Suche angewendet.", style = MaterialTheme.typography.labelSmall)
-                    if (state.response != null) Text("Der letzte Suchlauf bleibt bis zur neuen Suche erhalten.",
-                        style = MaterialTheme.typography.labelSmall)
-                    if (editor != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onCancelEdit, enabled = !saved.blockingNavigation, modifier = Modifier.heightIn(min = 48.dp)) { Text("Abbrechen") }
-                        Button(onClick = { onSave(SavedEditorAction(editor, saved.actionGeneration)) }, enabled = enabled && editor.name.isNotBlank() && editor.name.length <= 100 && draft.city.isNotBlank(), modifier = Modifier.heightIn(min = 48.dp)) {
-                            Text(if (saved.operation == SavedOperation.Write) "Speichert …" else "Speichern")
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                tonalElevation = 2.dp,
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (editor != null) {
+                        Text(searchCountLabel(state, draft, previewMatches, allowLastRun = false),
+                            style = MaterialTheme.typography.labelSmall)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OutlinedButton(onClick = onCancelEdit, enabled = !saved.blockingNavigation, modifier = Modifier.heightIn(min = 48.dp)) { Text("Abbrechen") }
+                            Button(onClick = { onSave(SavedEditorAction(editor, saved.actionGeneration)) }, enabled = enabled && editor.name.isNotBlank() && editor.name.length <= 100 && draft.city.isNotBlank(), modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text(if (saved.operation == SavedOperation.Write) "Speichert …" else "Speichern")
+                            }
                         }
-                    } else FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (state.response != null) TextButton(onClick = { resultsVisible = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Ergebnisse ansehen") }
-                        OutlinedButton(onClick = {
-                            if (currentFilterContext === filterContext && onReset()) filterQuery = ""
-                        }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text("Reset") }
-                        Button(onClick = if (state.loading) onCancelSearch else ({ onSearch(SearchSubmitAction(draft, generation)) }),
-                            enabled = !state.searchCancelling && (state.loading || (canStartSearch && enabled && state.city.isNotBlank())), modifier = Modifier.heightIn(min = 48.dp)) {
-                            Text(if (state.searchCancelling) "Wird beendet …" else if (state.loading) "Abbrechen" else "Suchen")
+                    } else {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.Center) {
+                            OutlinedButton(onClick = {
+                                if (currentFilterContext === filterContext && onReset()) filterQuery = ""
+                            }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text("Reset") }
+                            Button(onClick = if (state.loading) onCancelSearch else ({
+                                if (currentFilterContext === filterContext) onSearch(SearchSubmitAction(draft, generation))
+                            }), enabled = !state.searchCancelling && (state.loading || (canStartSearch && enabled && state.city.isNotBlank())), modifier = Modifier.heightIn(min = 48.dp)) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(if (state.searchCancelling) "Wird beendet …" else if (state.loading) "Abbrechen" else "Suchen")
+                                    if (!state.loading) Text(searchCountLabel(state, draft, previewMatches),
+                                        style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
                         }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = {
+                                if (currentFilterContext === filterContext) onSaveDefault()
+                            }, enabled = enabled && draft.city.isNotBlank(), modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text(if (state.defaultSaving) "Standard wird gespeichert …" else "Aktuelle Suche als Standard speichern",
+                                    style = MaterialTheme.typography.labelMedium)
+                            }
+                            if (state.response != null) TextButton(onClick = { resultsVisible = true },
+                                modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text("Letzte Ergebnisse (${state.activeCards.size} lokal)", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                        if (!state.defaultReady) Text("Suchstandard wird geladen …", style = MaterialTheme.typography.labelSmall)
+                        state.defaultStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }
@@ -197,7 +215,6 @@ internal fun SearchScreen(
                         onCategory = { value -> changeDraft { it.copy(category = value) } },
                         onAge = { min, max -> changeDraft { it.copy(ageMin = min, ageMax = max) } },
                         onHeight = { min, max -> changeDraft { it.copy(heightMin = min, heightMax = max) } },
-                        onPages = { value -> changeDraft { it.copy(maxPages = value) } },
                         onToggleFilter = { group, value -> changeDraft { it.toggle(group, value) } },
                         onAvailability = { value -> changeDraft { it.availability(value) } },
                         onLocalVisibility = { value -> changeDraft { it.copy(local = value) } },

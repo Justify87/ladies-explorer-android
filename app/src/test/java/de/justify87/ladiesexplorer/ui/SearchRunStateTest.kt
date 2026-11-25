@@ -1,6 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.Preference
+import de.justify87.ladiesexplorer.core.SearchPreview
 import de.justify87.ladiesexplorer.core.SearchRequest
 import de.justify87.ladiesexplorer.core.SearchResponse
 import org.junit.Assert.assertEquals
@@ -25,7 +26,7 @@ class SearchRunStateTest {
     }
 
     private fun response(id: Long, partial: Boolean = false) = SearchResponse(
-        query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}", 10u),
+        query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
         local = defaultLocalVisibility(),
         searchRunId = id,
         city = "Leipzig",
@@ -80,10 +81,8 @@ class SearchRunStateTest {
         val saved = SavedSearchUiState()
         val normal = searchPreviewTarget(search, saved)!!
         assertEquals("Dresden", normal.draft.city)
-        assertEquals(1u, normal.draft.maxPages)
         assertEquals(null, normal.editorSession)
-        assertEquals(normal, searchPreviewTarget(search.copy(maxPages = 20u,
-            local = search.local.copy(hideLikes = true)), saved))
+        assertEquals(normal, searchPreviewTarget(search.copy(local = search.local.copy(hideLikes = true)), saved))
         assertFalse(normal == searchPreviewTarget(search.copy(radiusKm = 50u), saved))
         assertEquals(null, searchPreviewTarget(search.beginRun(), saved))
         assertEquals(null, searchPreviewTarget(search.copy(profileOpen = true), saved))
@@ -96,6 +95,24 @@ class SearchRunStateTest {
         assertFalse(normal == editorTarget)
         assertFalse(editorTarget == searchPreviewTarget(search, editing.copy(editor = editor.copy(session = 8L))))
         assertEquals(null, searchPreviewTarget(search, editing.copy(operation = SavedOperation.Write)))
+    }
+
+    @Test fun sourcePreviewAndLastLocalCountAreNeverConfusedWithAnUnknownNewDraft() {
+        val state = SearchUiState().acceptRun(response(1), listOf(card(1)))
+        val draft = SearchDraft.from(state)
+        val preview = state.copy(preview = SearchPreview(20u, true))
+        assertEquals("20 laut Quelle", searchCountLabel(preview, draft, true))
+        assertEquals("1 zuletzt lokal", searchCountLabel(preview, draft, false))
+        assertEquals("1 zuletzt lokal", searchCountLabel(state, draft, true))
+        val changed = draft.copy(city = "Dresden")
+        assertEquals("Quellzahl unbekannt", searchCountLabel(preview, changed, false))
+        assertEquals("Quellzahl unbekannt", searchCountLabel(state, draft, true, allowLastRun = false))
+        val unverified = preview.copy(preview = SearchPreview(0u, false))
+        assertEquals("Quellzahl unbekannt", searchCountLabel(unverified, changed, true))
+        val loading = state.copy(previewLoading = true)
+        assertEquals("Quellzahl wird geprüft", searchCountLabel(loading, changed, true))
+        val zero = state.copy(preview = SearchPreview(0u, true))
+        assertEquals("0 laut Quelle", searchCountLabel(zero, changed, true))
     }
 
     @Test fun latePreviewReleaseCannotCancelReplacementWithIdenticalTarget() {
@@ -133,6 +150,8 @@ class SearchRunStateTest {
         assertFalse(searchDraftEditMatches(discovery, search.beginRun(), saved, action))
         assertFalse(searchDraftEditMatches(discovery, search.copy(profileOpen = true), saved, action))
         assertFalse(searchDraftEditMatches(discovery, search.copy(actionBusy = true), saved, action))
+        assertFalse(searchDraftEditMatches(discovery, search.copy(defaultReady = false), saved, action))
+        assertFalse(searchDraftEditMatches(discovery, search.copy(defaultSaving = true), saved, action))
     }
 
     @Test fun resetRequiresRenderedDraftAndRevokesOldEditContextWithoutChangingRun() {
@@ -145,9 +164,11 @@ class SearchRunStateTest {
         assertFalse(searchDraftResetMatches(discovery, search.copy(city = "Berlin"), saved, action, rendered))
         val blank = search.copy(city = "")
         assertTrue(searchDraftResetMatches(discovery, blank, saved, action, SearchDraft.from(blank)))
-        val reset = search.applyDraftChange(SearchDraft().applyTo(search))
+        val standard = SearchDraft(city = "Halle", radiusKm = 50u, selectedFilters = mapOf("haarfarbe" to setOf("Braun")),
+            local = defaultLocalVisibility().copy(hideLikes = true))
+        val reset = search.applyDraftChange(standard.applyTo(search))
         val next = discovery.copy(actionGeneration = 8)
-        assertEquals(SearchDraft(), SearchDraft.from(reset))
+        assertEquals(standard, SearchDraft.from(reset))
         assertEquals(search.response, reset.response)
         assertEquals(search.activeCards, reset.activeCards)
         assertFalse(searchDraftEditMatches(next, reset, saved, action))

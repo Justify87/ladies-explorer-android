@@ -70,7 +70,7 @@ class ProfileProjectionTest {
         assertEquals("saved read failed", state.value.savedError)
 
         val run = SearchResponse(
-            SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}", 10u),
+            SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
             defaultLocalVisibility(), 3L, "Leipzig", 20u, 1u, 1u, 1u, false, false, true, emptyList(),
         )
         search.value = search.value.acceptRun(run, listOf(fixtureCard(1L)))
