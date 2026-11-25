@@ -860,6 +860,31 @@ mod tests {
     }
 
     #[test]
+    fn services_preserve_source_groups_and_values_across_repeated_headings() {
+        let html = r#"<h2 class="page-heading kuenstlername">Fixture</h2>
+            <div class="standard-attributes">
+              <div class="list-group"><div class="attribute-heading"><strong>Service</strong></div>
+                <div class="attribute-item"><span>Fixture A</span></div>
+                <div class="attribute-item"><span>Fixture B: nein</span></div></div>
+              <div class="list-group"><div class="attribute-heading"><strong>Service</strong></div>
+                <div class="attribute-item"><span>Fixture A</span></div>
+                <div class="attribute-item"><span>Fixture C</span></div></div>
+              <div class="list-group"><div class="attribute-heading"><strong>Treffpunkt</strong></div>
+                <div class="attribute-item"><span>Fixture A</span></div></div>
+              <div class="list-group"><div class="attribute-heading"><strong>Leer</strong></div></div>
+            </div>"#;
+        let profile = parse_profile(html, &example_card()).unwrap();
+        let groups: serde_json::Value = serde_json::from_str(&profile.services_json).unwrap();
+        assert_eq!(
+            groups,
+            serde_json::json!({
+                "Service": ["Fixture A", "Fixture B: nein", "Fixture C"],
+                "Treffpunkt": ["Fixture A"]
+            })
+        );
+    }
+
+    #[test]
     fn unrelated_location_metadata_cannot_be_attributed_to_profile() {
         let html = r#"<nav data-ort="Offenbach am Main"></nav>
             <h2 class="page-heading kuenstlername">Fixture</h2>

@@ -6,8 +6,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -512,12 +510,16 @@ private fun ProfileFlowRows.profileContent(
     if (serviceRows == null || serviceRows.source.isNotEmpty() || serviceRows.filters.isNotEmpty())
         item(key = "profile-services", read = ProfileRowRead.Facts) {
             val section = ProfileSection.Services
-            ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) }) {
+            ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) },
+                hint = panels.factsError, hintError = panels.factsError != null) {
                 FactsContent(panels, actionsBusy, isCurrent) { loaded ->
                     val all = loaded.serviceRows()
                     all.source.forEach { field ->
                         ProfileGroup(field.label) {
-                            field.values.forEach { value -> Text(value, style = MaterialTheme.typography.bodyMedium) }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                field.values.forEach { value -> Text(value, style = MaterialTheme.typography.bodyMedium) }
+                            }
                         }
                     }
                     if (all.filters.isNotEmpty()) ProfileGroup("Filterbelege") { FieldGrid(all.filters) }

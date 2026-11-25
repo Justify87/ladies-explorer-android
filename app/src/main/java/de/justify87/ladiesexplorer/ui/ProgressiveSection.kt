@@ -8,7 +8,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -56,12 +55,12 @@ internal fun ProgressiveSectionFrame(
 @Composable
 internal fun ProgressiveSection(
     title: String, expanded: Boolean, onToggle: () -> Unit,
-    hint: String? = null, enabled: Boolean = true,
+    hint: String? = null, hintError: Boolean = false, enabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
         ProgressiveSectionFrame(first = true, last = !expanded, header = true) {
-            ProgressiveSectionHeader(title, expanded, onToggle, hint = hint, enabled = enabled)
+            ProgressiveSectionHeader(title, expanded, onToggle, hint = hint, hintError = hintError, enabled = enabled)
         }
         if (expanded) ProgressiveSectionFrame(first = false, last = true, header = false, content = content)
     }

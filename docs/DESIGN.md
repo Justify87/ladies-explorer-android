@@ -82,7 +82,7 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 - **Verbindlich:** Top 5 der **abgeschlossenen** früheren Suchläufe zugänglich halten; Sortierung und Zählregeln kommen aus [PRODUCT](PRODUCT.md#parameter-und-top-5). Unterstützte lokale Filter (nur Foto/Video, Likes/Dislikes ausblenden, `ALL`/`AI`/`NATURAL` auf belegten Markern) bedienbar lassen. `NATURAL` bedeutet fehlende KI-Markierung, nicht nachgewiesene Natürlichkeit.
 - **Verbindlich:** Filterentwurf, nicht persistierende Vorschau und ausgeführter Suchlauf bleiben unabhängig. Die letzte ausgeführte Trefferliste ist trotz geändertem Entwurf mit Profilöffnung und Rückkehr zugänglich. Gespeicherte Suchen verwenden denselben Editor und respektieren dessen gültigen Entwurfskontext.
 - **Verbindlich:** Suchstart mit Loading, Abbrechen, Fehler, Retry und Teilresultat; erfolgreicher Run öffnet Entdecken. Fehler/Abbruch erhalten den letzten bestätigten Run. Vorschau-Count bei nicht bestätigtem Radius bzw. unzuverlässiger Quellzahl **unbekannt** statt null zeigen; Radius nicht automatisch aufweiten. Lokale Sichtbarkeitsfilter beeinflussen nicht den Quellen-Count.
-- **Richtwert:** Einklappbare Filtergruppen, Footer mit `Reset` und `Suchen` sowie Count/Status; Scrollposition und Gruppenöffnung während relevanter Navigation erhalten. Lange Auswahltexte werden umgebrochen statt abgeschnitten.
+- **Richtwert:** Einklappbare Filtergruppen gemäß [progressivem Abschnittsmuster](#informationshierarchie--progressive-offenlegung), Footer mit `Reset` und `Suchen` sowie Count/Status; Scrollposition und Gruppenöffnung während relevanter Navigation erhalten. Lange Auswahltexte werden umgebrochen statt abgeschnitten.
 
 ### Gespeichert
 
@@ -125,16 +125,16 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 | Priorität | Bereich | Sichtbarer Umfang |
 | --- | --- | --- |
 | 0 | Kontakte | Telefon und WhatsApp direkt nach der Galerie, bei gültiger Nummer farblich unterscheidbare Theme-Buttons; Originalprofil als explizite Profilaktion, Favorit getrennt |
-| 1 | Anzeigentitel und Fakten | Akzentuierter tatsächlicher Name mit belegtem Alter, Stadt/PLZ und Verfügbarkeit; Öffnungszeiten, wichtige Merkmale und Anzeigenanzahl soweit verlässlich; auf kleinen Screens eine Spalte |
-| 2 | Beschreibung | Mehrzeiliger Auszug, vollständiger Originaltext über „Mehr anzeigen“; kein KI-Resümee |
-| 3 | Dienste und Filterbelege | Kompakte Gruppen mit eindeutigen Ja/Nein/Unbekannt-Belegen; keine geglättete Quellenunsicherheit |
+| 1 | Anzeigentitel und Fakten | Akzentuierter tatsächlicher Name mit belegtem Alter, Stadt/PLZ und Verfügbarkeit; kompakte wichtige Fakten und Anzeigenanzahl soweit verlässlich; Öffnungszeiten und weitere Merkmale zunächst geschlossen |
+| 2 | Über das Profil | Zunächst vollständig geschlossen, ohne Vorschau; „Mehr anzeigen“ öffnet den vollständigen Originaltext, erneut schließbar |
+| 3 | Dienste und Filterbelege | Zunächst geschlossen; eine Überschrift je tatsächlicher Quellgruppe, sämtliche Werte und eindeutige Ja/Nein/Unbekannt-Belege erreichbar; keine geglättete Quellenunsicherheit |
 | 4 | Hinweise und Profilaktionen | Relevante Owner-, Archivfehler- und Konflikthinweise bleiben sichtbar; keine redundanten Status-Pills oder technischen Rohwerte |
 | 5 | Analyse / Identität | Kandidaten mit Evidenz, ausdrücklich bestätigte Operation, keine automatischen Merges |
 | 6 | Meine Notiz | Personennotiz, Entwurf/Fehler/Konflikt schon im Abschnittskopf; Save/Retry/Conflict ohne Datenverlust |
 | 7 | Meine Begegnungen / Manuelle Angebotspreise | Getrennte lokale Sektionen, bedarfsgesteuerter Editor, frühere Listen, bezahlte Beträge nur aus Begegnungen |
 | 8 | Verlauf / verknüpfte Anzeigen | Echte Änderungen und Snapshots mit explizitem Vergleich, relevante Zeit-/Filterfunktionen und Original-URLs |
 
-- **Verbindlich:** Analyse, Notiz, Begegnungen, Angebotspreise und Verlauf dürfen eingeklappt starten. Öffnen lädt nur erforderliche lokale Daten; keine erneute fachliche Mutation. Ungespeicherte Entwürfe, Commit-/Readfehler, Ownerwechsel und Konflikte müssen in den bestehenden nativen Editorverträgen verarbeitet werden. Personennotiz und Begegnungsnotiz bleiben getrennt; Angebotspreise nicht mit gezahlten Beträgen verwechseln.
+- **Verbindlich:** Profilbeschreibung, Öffnungszeiten, vollständige Merkmale und Dienste sowie Analyse, Notiz, Begegnungen, Angebotspreise und Verlauf starten eingeklappt. Profil und aufklappbare Suchfilter nutzen dieselbe abgerundete Abschnittsoberfläche mit kompaktem Kopf, Zustandsindikator und mindestens 48 dp großem Ziel; zugehörige Texte, Aktionen und Inline-Editoren liegen innerhalb der Oberfläche. Separate bestätigungspflichtige Editor- und Vergleichsdialoge bleiben erhalten. Fehlende optionale Werte und leere Gruppen ohne pauschale Erklärung weglassen; bei konkreter historischer Preisliste Gültigkeit und Herkunft kenntlich machen. Öffnen lädt nur erforderliche lokale Daten; keine erneute fachliche Mutation. Ungespeicherte Entwürfe, Commit-/Readfehler, Ownerwechsel und Konflikte müssen in den bestehenden nativen Editorverträgen verarbeitet werden. Personennotiz und Begegnungsnotiz bleiben getrennt; Angebotspreise nicht mit gezahlten Beträgen verwechseln.
 - **Richtwert:** Gruppenabstände 12–16 dp, innerhalb 4–8 dp, wenige Divider. Scanbare Labels und Werte; bei langen Angaben oder Font Scale auf einspaltige Darstellung wechseln. „Mehr anzeigen“ und aufklappbare Bereiche halten ihren Scrollanker stabil.
 
 ### Gesten und Präsentation

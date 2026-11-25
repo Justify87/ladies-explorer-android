@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.4 sind abgeschlossen. Nächste abhängige Aufgabe: M09.5 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.4 sind abgeschlossen. M09.5 ist nach gesonderter Nutzerfreigabe umgesetzt und zur technischen Prüfung vorgesehen; M09.6 folgt erst nach Integration und eigener Freigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,7 +18,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.5 — Gemeinsame progressive Abschnitte und Profilinhalte
 
-**Status:** PLANNED.
+**Status:** REVIEW — Branch `feature/m09-5-progressive-sections`; Nutzerfreigabe liegt vor. CI-Gate und Merge ausstehend.
 
 **Abhängigkeit:** M09.4; gesonderter Nutzerauftrag.
 

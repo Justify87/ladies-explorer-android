@@ -9,6 +9,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -88,6 +89,57 @@ class ProfileRestoreDeviceTest {
         rule.runOnIdle { model = profile(phone = null) }
         rule.onNodeWithText("Telefon").assertDoesNotExist()
         rule.onNodeWithText("WhatsApp").assertDoesNotExist()
+    }
+
+    @Test fun progressiveProfileShowsFullSourceGroupsOnlyOnExpansion() {
+        val original = profile()
+        val source = ProfileFacts(
+            listOf(ProfileField("Fixture trait", listOf("Trait value"))),
+            listOf(ProfileField("Service", listOf("Value 1", "Value 2")),
+                ProfileField("Treffpunkt", listOf("Other value"))),
+            listOf(ProfileField("Montag", listOf("Fixture time"))), emptyList(), emptyList())
+        var calls = 0
+        lateinit var state: LazyListState
+        rule.setContent {
+            LadiesTheme(darkTheme = false) {
+                state = rememberLazyListState()
+                ProfileFlow(state, original, "{}", token(original), false, emptyMap(), notes,
+                    { true }, { _, _ -> }, Modifier.fillMaxSize().testTag("progressive-profile"),
+                    panelReads = reads { calls++; source }) {
+                    item("hero") { Text("Synthetic hero") }
+                }
+            }
+        }
+        val list = rule.onNodeWithTag("progressive-profile")
+        list.performScrollToKey("profile-facts")
+        rule.waitForIdle()
+        list.performScrollToKey("profile-description")
+        rule.onNodeWithText(original.profile.description).assertDoesNotExist()
+        rule.onNodeWithText("Mehr anzeigen").performClick()
+        rule.onNodeWithText(original.profile.description).assertExists()
+        list.performScrollToKey("profile-description")
+        rule.onNodeWithText("Weniger anzeigen").performClick()
+        rule.onNodeWithText(original.profile.description).assertDoesNotExist()
+        list.performScrollToKey("profile-opening-times")
+        rule.onNodeWithText("Fixture time").assertDoesNotExist()
+        rule.onNodeWithText("Öffnungszeiten").performClick()
+        rule.onNodeWithText("Fixture time").assertExists()
+        list.performScrollToKey("profile-traits")
+        rule.onNodeWithText("Trait value").assertDoesNotExist()
+        rule.onNodeWithText("Merkmale").performClick()
+        rule.onNodeWithText("Trait value").assertExists()
+        list.performScrollToKey("profile-services")
+        rule.onNodeWithText("Value 1").assertDoesNotExist()
+        rule.onNodeWithText("Dienste und Filterbelege").performClick()
+        rule.onAllNodesWithText("Service", substring = false).assertCountEquals(1)
+        rule.onNodeWithText("Value 1").assertExists()
+        rule.onNodeWithText("Value 2").assertExists()
+        rule.onNodeWithText("Treffpunkt").assertExists()
+        rule.onNodeWithText("Other value").assertExists()
+        val first = rule.runOnIdle { state.firstVisibleItemIndex }
+        rule.onNodeWithText("Dienste und Filterbelege").performClick()
+        rule.onNodeWithText("Value 1").assertDoesNotExist()
+        rule.runOnIdle { assertEquals(first, state.firstVisibleItemIndex); assertEquals(1, calls) }
     }
 
     @Test fun lateUndoReceiptWaitsForRealRowsAndSurvivesSavedStateRecreation() {
