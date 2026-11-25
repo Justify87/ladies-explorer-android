@@ -1,8 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
@@ -162,10 +160,10 @@ class MapDesignDeviceTest {
                             DiscoveryMapLayout(hasPanel = true, statusLabel = "Suchfehler", warning = true,
                                 modeSwitcher = { DiscoverModeSwitcher(DiscoverMode.Map, {}, Modifier) },
                                 searchStatus = {
-                                    Column {
-                                        TextButton(onClick = { actions.add("search") }) { Text("Suche abbrechen") }
-                                        Text("Lange synthetische Suchmeldung ".repeat(35))
-                                    }
+                                    DiscoverySearchRunStatus(
+                                        SearchUiState(loading = true, error = "Lange synthetische Suchmeldung ".repeat(35)),
+                                        onCancel = { actions.add("search") }
+                                    )
                                 },
                                 mapContent = { Box(Modifier.fillMaxSize().testTag("map-viewport")) },
                                 details = { modifier, close ->
@@ -189,7 +187,7 @@ class MapDesignDeviceTest {
         rule.onNodeWithText("Karte").assertIsSelected()
         rule.onNodeWithText("Profil öffnen").assertDoesNotExist()
         openPanel.performClick()
-        rule.onNodeWithText("Suche abbrechen").performScrollTo().performClick()
+        rule.onNodeWithText("Abbrechen").performScrollTo().performClick()
         rule.onNodeWithText("Karte erneut laden").performScrollTo().performClick()
         rule.onNodeWithText("Standortaufbereitung abbrechen").performScrollTo().performClick()
         rule.onNodeWithText("Kartierte Profile auswählen").performScrollTo().performClick()
