@@ -400,16 +400,18 @@ internal fun ProfileContactActions(phone: String?, busy: Boolean, isCurrent: () 
     if (phone?.let(::phoneForWhatsApp) == null) return
     val context = LocalContext.current
     FlowRow(horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
-        Button(enabled = !busy, modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus(), onClick = {
+        OutlinedButton(enabled = !busy, modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus(),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+            contentPadding = PaddingValues(horizontal = ShellMetrics.inset, vertical = ShellMetrics.small), onClick = {
             profileContactTarget(phone, false, busy, isCurrent)?.let { openExternal(context, it, dial = true) }
         }) {
             Icon(Icons.Default.Phone, null, Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text("Telefon")
         }
-        Button(enabled = !busy, modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus(),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary,
-                contentColor = MaterialTheme.colorScheme.onTertiary),
+        OutlinedButton(enabled = !busy, modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus(),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+            contentPadding = PaddingValues(horizontal = ShellMetrics.inset, vertical = ShellMetrics.small),
             onClick = {
                 profileContactTarget(phone, true, busy, isCurrent)?.let { openExternal(context, it) }
             }) {

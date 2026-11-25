@@ -14,14 +14,29 @@ class ProfilePanelsTest {
     private fun facts() = ProfileFacts(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
     private fun detail() = PersonDetail(emptyList(), 0u, 0u, 0u, 0u)
 
-    @Test fun analysisListingCountIsOnlyAFallbackWhenSummaryIsMissing() {
+    @Test fun compactHeadingOwnsListingCountAndPublicationWithoutAnalysisDuplication() {
         val stored = detail()
-        val withSummary = profileAnalysisFields(2, 1u, stored)
+        val analysis = profileAnalysisFields(2, stored)
         assertEquals(listOf("Bilder im aktuellen Profil", "Bekannte Namen", "Bekannte Orte",
-            "Archivierte Bildreferenzen (Assets)", "Mit anderen Personen geteilte Assets"), withSummary.map { it.first })
-        assertEquals("2", withSummary.first().second)
-        assertEquals("0", profileAnalysisFields(2, null, stored).toMap()["Anzeigen"])
-        assertFalse(profileAnalysisFields(2, null, null).toMap().containsKey("Anzeigen"))
+            "Archivierte Bildreferenzen (Assets)", "Mit anderen Personen geteilte Assets"), analysis.map { it.first })
+        assertEquals("2", analysis.first().second)
+        assertFalse(profileAnalysisFields(2, null).toMap().containsKey("Anzeigen"))
+        val identity = heroIdentity(fixtureProfile().copy(city = "Dresden", postalCode = "01067"),
+            fixtureIdentity(1), false)
+        assertEquals(listOf("Dresden · 01067 · Quellenstatus: Anzeige aktiv",
+            "Anzeigen: 2 · Veröffentlicht: 24.11.2026"),
+            compactProfileMetadata(identity, 2u, " 2026-11-24 "))
+        assertEquals(emptyList<String>(), compactProfileMetadata(HeroIdentity("Fixture", place = ""), null, " "))
+    }
+
+    @Test fun publicationUsesOnlyValidSourceDateOrTimestampWithoutInventingZone() {
+        assertEquals("24.11.2026", profilePublicationLabel("2026-11-24"))
+        assertEquals("24.11.2026, 23:15 +02:00", profilePublicationLabel("2026-11-24T23:15:41+02:00"))
+        assertEquals("24.11.2026, 23:15 +00:00", profilePublicationLabel("2026-11-24T23:15:41Z"))
+        assertEquals("24.11.2026, 23:15", profilePublicationLabel("2026-11-24T23:15:41"))
+        listOf(null, "", "20invalid", "2026-02-30", "2026-11-24T25:00:00Z").forEach {
+            assertNull(profilePublicationLabel(it))
+        }
     }
 
     @Test(timeout = 15_000) fun factsAndAnalysisUseIndependentLocalReadKeysAndErrors() = runBlocking {

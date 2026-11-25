@@ -36,8 +36,7 @@ internal data class PreparedProfile(
     val panels: PreparedPanelData? = null,
 ) {
     val complete: Boolean get() = panels != null && model.media.all { it.presentationKey() in media }
-    val degraded: Boolean get() = media.values.any { it == PreparedMedium.Unavailable } ||
-        panels?.let { it.factsError != null || it.detailError != null } == true
+    val hasMediaFailures: Boolean get() = media.values.any { it == PreparedMedium.Unavailable }
 
     fun matches(model: ProfileReadModel, filters: String, viewport: IntSize): Boolean =
         this.model == model && this.filters == filters && this.viewport == viewport

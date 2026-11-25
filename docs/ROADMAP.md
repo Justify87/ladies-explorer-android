@@ -4,25 +4,15 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M12.1. L01 ist unabhängig vor weiterer öffentlicher Distribution zu klären.
+M12.2. L01 ist unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M12 — Unified Profile Experience: Compact Information Architecture
 
 Gemeinsame Profilansicht unterhalb der Galerie in Swipe und Standalone gemäß [DESIGN](DESIGN.md#informationshierarchie--compact-profile) vollständig neu gestalten. Das freigegebene Soll ersetzt den bisherigen Profil-Akkordeonaufbau. Fachlicher Umfang, Datenhoheit, Integrität, Medienvorbereitung und bestehende lokale Bearbeitungsfunktionen bleiben erhalten. Umsetzung seriell auf integriertem Stand. DESIGN beschreibt das gemeinsame Ziel; je Teilaufgabe gelten ihr abgegrenzter Umfang und die zugehörigen Abnahmekriterien. Bis zur vollständigen Umsetzung bleiben noch nicht umgestellte Inhalte und Interaktionen in ihren funktionierenden bestehenden Pfaden erreichbar. Keine temporären Parallelpfade oder vorgezogenen Umbauten; vollständige Designkonformität erst nach den Implementierungsaufgaben, integriert zu prüfen im Abschlussreview.
 
-### M12.1 — Gemeinsamer kompakter Profilfluss und Informationskopf
-
-**Status:** READY.
-
-**Umfang:** Bestehende Profilprojektion, `ProfileShell`, `ProfileFlow`, `ProfilePanels` und tatsächliche Aufrufer gegen das neue Soll prüfen. Gemeinsamen flachen Profilrahmen, kompakte Identität/Kontakte und eindeutige Status-/Fehlerdarstellung einführen. Nur den strukturellen Rahmen und Identitätskopf ersetzen; verbleibende Inhaltskomponenten direkt weiterverwenden, ohne ihre spätere Darstellung vorwegzunehmen. Galerie, Navigation/Rail, lokale Editor- und fachliche Operationsverträge unverändert lassen.
-
-**Akzeptanz:** Beide Profilkontexte zeigen dieselben gültigen Daten ohne doppelte Identität, ungültige Kontaktziele, Quellenstatus als Live-Verfügbarkeit oder sichtbare Layoutsprünge. Alle bisherigen Felder und Aktionen bleiben während der Integration erreichbar. Keine zusätzlichen Profil-Quellabrufe oder unnötige erneute Medienvorbereitung durch bloßes Lesen; notwendige sichtbarkeits-/lifecyclegebundene Medienwiederherstellung gemäß DESIGN und ARCHITECTURE erhalten.
-
-**Prüfung:** Gezielte JVM-/native UI-Regressionen für Listing-/Owner-/Snapshot-Bezug, fehlende Werte, Kontakt-/Statussemantik, Fehler/Retry und gemeinsamen Profilfluss; tatsächliche Aufrufer und stabilen Präsentationszustand reviewen. Betroffene technische Ist-Beschreibung in ARCHITECTURE nach Umsetzung konsistent halten.
-
 ### M12.2 — Strukturierte Profildaten und verlustfreie Verdichtung
 
-**Status:** PLANNED. Abhängig von M12.1.
+**Status:** READY.
 
 **Umfang:** Zentrale und weitere Merkmale, Dienste, Zeitangaben und Suchübereinstimmung gemäß DESIGN im gemeinsamen Rahmen darstellen und verlustfrei verdichten; tatsächliche Quellgruppen und vollständige Filterbelege erhalten. Den vorhandenen Preiskontext in die vorgesehene Reihenfolge einordnen und vorhandene Preisansichten weiterverwenden. Keine Änderung der Navigations-/Editorzustände, keine neue Quelle, Preisextraktion, Taxonomie oder fachliche Filterlogik.
 

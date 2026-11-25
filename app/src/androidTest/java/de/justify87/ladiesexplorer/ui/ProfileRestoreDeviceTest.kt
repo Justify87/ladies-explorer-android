@@ -59,7 +59,7 @@ class ProfileRestoreDeviceTest {
     )
 
     private fun token(model: ProfileReadModel) = SwipeActionToken(
-        3, 1, 4, 1, model.profile.snapshotId, model.revision, Preference.NONE, false, emptyList(),
+        3, 1, model.profile.listingId, model.identity.personId, model.profile.snapshotId, model.revision, Preference.NONE, false, emptyList(),
     )
 
     private fun facts() = ProfileFacts(emptyList(),
@@ -75,11 +75,17 @@ class ProfileRestoreDeviceTest {
         var model by mutableStateOf(profile(phone = "+49 170 1234567"))
         var busy by mutableStateOf(false)
         var standalone by mutableStateOf(false)
+        var admitted by mutableStateOf(true)
+        val readers = reads { facts() }
+        fun currentToken(): ProfileIdentityToken = if (standalone)
+            DetailIdentityToken(1, model.profile.listingId, model.identity.personId, model.profile.snapshotId,
+                model.revision, model.person.preference, model.person.favorite, model.candidates)
+        else token(model)
         rule.setContent {
             LadiesTheme(darkTheme = standalone) {
-                ProfileFlow(rememberLazyListState(), model, "{}", token(model), busy, emptyMap(), notes,
-                    isProfileCurrent = { true }, onConfirmIdentity = { _, _ -> },
-                    modifier = Modifier.fillMaxSize(), panelReads = reads { facts() }) {
+                ProfileFlow(rememberLazyListState(), model, "{}", currentToken().takeIf { admitted }, busy, emptyMap(), notes,
+                    isProfileCurrent = { admitted && it == currentToken() }, onConfirmIdentity = { _, _ -> },
+                    modifier = Modifier.fillMaxSize().testTag("compact-profile"), panelReads = readers) {
                     item(if (standalone) "media" else "hero") {
                         Text("Galerie", Modifier.height(72.dp))
                     }
@@ -90,20 +96,44 @@ class ProfileRestoreDeviceTest {
             val gallery = rule.onNodeWithText("Galerie").fetchSemanticsNode().boundsInRoot
             val phone = rule.onNodeWithText("Telefon").fetchSemanticsNode().boundsInRoot
             val whatsapp = rule.onNodeWithText("WhatsApp").fetchSemanticsNode().boundsInRoot
-            val heading = rule.onAllNodesWithText("Fixture", substring = false)[0].fetchSemanticsNode().boundsInRoot
+            rule.onAllNodesWithText("Fixture", substring = false).assertCountEquals(1)
+            val heading = rule.onNodeWithText("Fixture").fetchSemanticsNode().boundsInRoot
             assertTrue(phone.top >= gallery.bottom)
             assertTrue(whatsapp.top >= gallery.bottom)
             assertTrue(phone.bottom <= heading.top)
             assertTrue(whatsapp.bottom <= heading.top)
-            rule.onNodeWithText("Fixture · Zuletzt bekannt: Anzeige aktiv").assertExists()
+            rule.onNodeWithText("Fixture · Zuletzt bekannter Quellenstatus: Anzeige aktiv").assertExists()
+            rule.onAllNodesWithText("Anzeigen: 1").assertCountEquals(1)
             rule.onNodeWithText("Offenbach am Main").assertDoesNotExist()
             rule.onNodeWithText("Übersicht").assertDoesNotExist()
             rule.runOnIdle { busy = true }
             rule.onNodeWithText("Telefon").assertIsNotEnabled()
             rule.onNodeWithText("WhatsApp").assertIsNotEnabled()
-            rule.runOnIdle { busy = false; standalone = true }
+            rule.runOnIdle { busy = false; admitted = false }
+            rule.onNodeWithText("Telefon").assertIsNotEnabled()
+            rule.onNodeWithText("WhatsApp").assertIsNotEnabled()
+            rule.runOnIdle { admitted = true; standalone = true }
         }
-        rule.runOnIdle { model = profile(phone = null) }
+        rule.runOnIdle {
+            val next = profile(snapshot = 12, phone = "invalid")
+            model = next.copy(local = next.local.copy(
+                profile = next.profile.copy(listingId = 8, name = "Neue Anzeige", city = "Neuer Ort",
+                    publishedAt = "2026-11-24T23:15:00+02:00"),
+                identity = next.identity.copy(personId = 2, age = "30", status = "UNKNOWN"),
+                person = next.person.copy(personId = 2, listingCount = 2u)))
+        }
+        rule.onNodeWithTag("compact-profile").performScrollToKey("profile-heading")
+        rule.onAllNodesWithText("Neue Anzeige, 30").assertCountEquals(1)
+        rule.onNodeWithText("Neuer Ort · Zuletzt bekannter Quellenstatus: Status unbekannt").assertExists()
+        rule.onNodeWithText("Anzeigen: 2 · Veröffentlicht: 24.11.2026, 23:15 +02:00").assertExists()
+        rule.onNodeWithText("Anzeigen: 1").assertDoesNotExist()
+        rule.onNodeWithText("Fixture", substring = false).assertDoesNotExist()
+        rule.onNodeWithText("Telefon").assertDoesNotExist()
+        rule.onNodeWithText("WhatsApp").assertDoesNotExist()
+        rule.runOnIdle { model = profile(snapshot = 13, phone = null) }
+        rule.onNodeWithTag("compact-profile").performScrollToKey("profile-heading")
+        rule.onNodeWithText("Neue Anzeige, 30").assertDoesNotExist()
+        rule.onNodeWithText("Veröffentlicht:", substring = true).assertDoesNotExist()
         rule.onNodeWithText("Telefon").assertDoesNotExist()
         rule.onNodeWithText("WhatsApp").assertDoesNotExist()
     }
@@ -462,6 +492,7 @@ class ProfileRestoreDeviceTest {
         }
         rule.onAllNodesWithText("Neu laden").onFirst().performClick()
         rule.onNodeWithText("Value 1").assertExists()
+        rule.onNodeWithText("Fixture read failure").assertDoesNotExist()
         rule.runOnIdle {
             assertNull(receipt)
             assertEquals("VIDEO:https://example.invalid/fixture", capture.read()?.mediaId)

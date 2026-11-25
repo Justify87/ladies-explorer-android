@@ -22,6 +22,11 @@ import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 internal enum class ProfileSection(val label: String, val defaultExpanded: Boolean = false) {
     Match("Übereinstimmung mit deiner Suche", defaultExpanded = true),
@@ -166,15 +171,10 @@ internal fun ProfileFlow(
         }
         val heading = model?.let { heroIdentity(it.profile, it.identity, it.fromArchive) } ?: fallbackIdentity
         if (heading != null) item(key = "profile-heading") {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(heading.title, modifier = Modifier.semantics { heading() },
-                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                val details = listOfNotNull(heading.place.takeIf { it.isNotBlank() }, heading.status).joinToString(" · ")
-                if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodyMedium)
-            }
+            CompactProfileHeading(heading, model?.person?.listingCount, model?.profile?.publishedAt)
         }
         afterHeading()
-        if (model != null) profileContent(model.profile, model.identity, model.person, model.media,
+        if (model != null) profileContent(model.profile, model.identity, model.media,
             panels, sections, model.candidates, model.history, busy,
             owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
             noteDemand = noteDemand,
@@ -274,10 +274,54 @@ internal fun ProfileFlow(
             val measure = if (row.key == "discover-context" && onDiscoveryContextHeight != null)
                 Modifier.onSizeChanged { onDiscoveryContextHeight(it.height) } else Modifier
             Column(Modifier.fillMaxWidth().then(measure).padding(horizontal = horizontal).padding(bottom = gap)) {
-                if (section != null) ProgressiveSectionFrame(first, last, header = first) { row.content() }
-                else row.content()
+                if (section != null) {
+                    if (first) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Column(Modifier.fillMaxWidth().padding(bottom = if (first) 0.dp else ShellMetrics.small),
+                        verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) { row.content() }
+                } else row.content()
             }
         }
+    }
+}
+
+internal fun profilePublicationLabel(raw: String?): String? {
+    val source = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val date = DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMAN)
+    val time = DateTimeFormatter.ofPattern("dd.MM.yyyy, HH:mm", Locale.GERMAN)
+    val offsetTime = DateTimeFormatter.ofPattern("dd.MM.yyyy, HH:mm xxx", Locale.GERMAN)
+    return runCatching { OffsetDateTime.parse(source).format(offsetTime) }.getOrNull()
+        ?: runCatching { LocalDateTime.parse(source).format(time) }.getOrNull()
+        ?: runCatching { LocalDate.parse(source).format(date) }.getOrNull()
+}
+
+internal fun compactProfileMetadata(identity: HeroIdentity, listingCount: UInt?, publishedAt: String?): List<String> =
+    listOf(
+        listOfNotNull(identity.place.takeIf { it.isNotBlank() }, identity.status).joinToString(" · "),
+        listOfNotNull(listingCount?.let { "Anzeigen: $it" },
+            profilePublicationLabel(publishedAt)?.let { "Veröffentlicht: $it" }).joinToString(" · "),
+    ).filter { it.isNotBlank() }
+
+@Composable
+private fun CompactProfileHeading(identity: HeroIdentity, listingCount: UInt?, publishedAt: String?) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(identity.title, modifier = Modifier.semantics { heading() },
+            style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+        compactProfileMetadata(identity, listingCount, publishedAt).forEach { line ->
+            Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ProfileDisclosure(
+    title: String, expanded: Boolean, onToggle: () -> Unit,
+    hint: String? = null, hintError: Boolean = false, content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        ProgressiveSectionHeader(title, expanded, onToggle, hint = hint, hintError = hintError)
+        if (expanded) Column(Modifier.fillMaxWidth().padding(bottom = ShellMetrics.small),
+            verticalArrangement = Arrangement.spacedBy(ShellMetrics.small), content = content)
     }
 }
 
@@ -387,7 +431,7 @@ private fun MatchEvidenceText(label: String, status: EvidenceStatus) {
 internal fun ProfileMatchSection(groups: List<FilterMatchGroup>, sections: ProfileSections) {
     if (groups.isEmpty()) return
     val section = ProfileSection.Match
-    ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) },
+    ProfileDisclosure(section.label, sections.expanded(section), { sections.toggle(section) },
         hint = matchSummary(groups)) {
         groups.forEach { group ->
             val title = matchGroupLabel(group.group)
@@ -411,7 +455,7 @@ internal fun ProfileMatchSection(groups: List<FilterMatchGroup>, sections: Profi
 @Composable
 private fun ProfileDescription(profile: ProfileResponse, sections: ProfileSections) {
     val expanded = sections.expanded(ProfileSection.Description)
-    ProgressiveSection(ProfileSection.Description.label, expanded, { sections.toggle(ProfileSection.Description) },
+    ProfileDisclosure(ProfileSection.Description.label, expanded, { sections.toggle(ProfileSection.Description) },
         hint = if (expanded) "Weniger anzeigen" else "Mehr anzeigen") {
         SelectionContainer { Text(profile.description) }
     }
@@ -502,11 +546,10 @@ private fun HistoryValues(before: String?, after: String?) {
     }
 }
 
-internal fun profileAnalysisFields(imageCount: Int, listingCount: UInt?, data: PersonDetail?): List<Pair<String, String>> =
+internal fun profileAnalysisFields(imageCount: Int, data: PersonDetail?): List<Pair<String, String>> =
     buildList {
         add("Bilder im aktuellen Profil" to imageCount.toString())
         if (data != null) {
-            if (listingCount == null) add("Anzeigen" to data.listings.size.toString())
             add("Bekannte Namen" to data.knownNames.toString())
             add("Bekannte Orte" to data.knownCities.toString())
             add("Archivierte Bildreferenzen (Assets)" to data.archivedImages.toString())
@@ -517,7 +560,6 @@ internal fun profileAnalysisFields(imageCount: Int, listingCount: UInt?, data: P
 private fun ProfileFlowRows.profileContent(
     profile: ProfileResponse,
     identity: ProfileIdentity?,
-    person: PersonSummary?,
     media: List<ProfileMediaItem>,
     panels: ProfilePanels,
     sections: ProfileSections,
@@ -539,32 +581,30 @@ private fun ProfileFlowRows.profileContent(
 ) {
     item(key = "profile-facts", read = ProfileRowRead.Facts) {
         Column(verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
-            val listingFields = listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() })
-            if (panels.facts == null && listingFields.isNotEmpty()) FieldGrid(listingFields)
             FactsContent(panels, actionsBusy, isCurrent) { facts ->
                 ProfileMatchSection(facts.filters, sections)
-                FieldGrid(facts.overviewAndTraits().first + listingFields)
+                FieldGrid(facts.overviewAndTraits().first)
             }
         }
     }
     val facts = panels.facts
     if (!facts?.openingTimes.isNullOrEmpty()) item(key = "profile-opening-times", read = ProfileRowRead.Facts) {
         val section = ProfileSection.OpeningTimes
-        ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) }) {
+        ProfileDisclosure(section.label, sections.expanded(section), { sections.toggle(section) }) {
             FieldValues(checkNotNull(facts).openingTimes)
         }
     }
     val traits = facts?.overviewAndTraits()?.second.orEmpty()
     if (traits.isNotEmpty()) item(key = "profile-traits", read = ProfileRowRead.Facts) {
         val section = ProfileSection.Traits
-        ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) }) { FieldValues(traits) }
+        ProfileDisclosure(section.label, sections.expanded(section), { sections.toggle(section) }) { FieldValues(traits) }
     }
     if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile, sections) }
     val serviceRows = facts?.serviceRows()
     if (serviceRows == null || serviceRows.isNotEmpty())
         item(key = "profile-services", read = ProfileRowRead.Facts) {
             val section = ProfileSection.Services
-            ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) },
+            ProfileDisclosure(section.label, sections.expanded(section), { sections.toggle(section) },
                 hint = panels.factsError, hintError = panels.factsError != null) {
                 FactsContent(panels, actionsBusy, isCurrent) { loaded ->
                     loaded.serviceRows().forEach { field ->
@@ -584,7 +624,7 @@ private fun ProfileFlowRows.profileContent(
             item(key = "profile-analysis", read = ProfileRowRead.Detail) {
                 ProfileGroup("Gespeicherte Evidenz") {
                     val data = panels.detail
-                    FieldGrid(profileAnalysisFields(media.count { it.kind == "IMAGE" }, person?.listingCount, data))
+                    FieldGrid(profileAnalysisFields(media.count { it.kind == "IMAGE" }, data))
                     if (data == null) DetailStatus(panels, actionsBusy, isCurrent)
                     Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
                         style = MaterialTheme.typography.bodySmall)

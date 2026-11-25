@@ -315,7 +315,7 @@ internal fun DiscoverScreen(
                     }
                 }, warning = true))
             }
-            if (prepared?.degraded == true) add(ProfileNotice("Medienhinweis", "Einige Profilinhalte konnten nicht vorbereitet werden.", warning = true))
+            if (prepared?.hasMediaFailures == true) add(ProfileNotice("Medienhinweis", "Einige Medien konnten nicht vorbereitet werden.", warning = true))
             if (card != null && profile == null && readError == null && visible)
                 add(ProfileNotice("Profil wird geladen", "Profil wird geladen …"))
             if (state.busy) add(ProfileNotice("Wird gespeichert", "Entscheidung oder Aktualisierung wird verarbeitet."))
@@ -349,7 +349,7 @@ internal fun DiscoverScreen(
         // Keep admission and the hero budget on the same measured-context snapshot.
         val measuredContextHeight = discoveryContextHeight
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
-            hasRail = true, notices = notices, noticeOwner = controls, fixedNoticeSlot = true,
+            hasRail = true, notices = notices, noticeOwner = controls,
             heroLeadingHeight = with(LocalDensity.current) { measuredContextHeight.toDp() },
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(presentation, sourceContext, controls, compactNotice,
