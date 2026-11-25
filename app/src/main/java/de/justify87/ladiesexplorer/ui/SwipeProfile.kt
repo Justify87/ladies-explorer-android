@@ -96,8 +96,6 @@ internal class SwipeProfileWindow(
     private data class Slot(val owner: Long, val ticket: Long)
     private val slots = mutableMapOf<Long, Slot>()
     private val inFlight = mutableMapOf<Long, Slot>()
-    // Presentation survives internal reprojection; action admission still requires a valid entry.
-    private val presentation = mutableStateMapOf<Long, ProfileReadModel>()
     private var nextTicket = 0L
     private val invalidations = mutableStateMapOf<Long, Long>()
     private val staleProvenance = mutableMapOf<Long, Pair<Boolean, String?>>()
@@ -114,7 +112,6 @@ internal class SwipeProfileWindow(
     /** A disposed window's late commit revokes replacement data, not its native execution. */
     fun applyExternalRevision(revision: Long) {
         if (isCurrent(revision) || closed) return
-        presentation.clear()
         invalidateSlots()
         externalRevision.longValue = revision
     }
@@ -124,19 +121,13 @@ internal class SwipeProfileWindow(
             it.person.personId == card.personId
     }
 
-    fun displayed(card: DiscoveryCard): ProfileReadModel? = presentation[card.listingId]?.takeIf {
-        it.identity.personId == card.personId && it.person.personId == card.personId && it.profile.listingId == card.listingId
-    }
-
     fun remove(listingId: Long) {
         entries.remove(listingId)
-        presentation.remove(listingId)
         slots[listingId]?.let { slots[listingId] = it.copy(ticket = ++nextTicket) }
     }
 
     fun clear() {
         entries.clear()
-        presentation.clear()
         slots.clear()
         inFlight.clear()
         invalidations.clear()
@@ -167,7 +158,6 @@ internal class SwipeProfileWindow(
             slots.remove(it)
             inFlight.remove(it)
             entries.remove(it)
-            presentation.remove(it)
             invalidations.remove(it)
             staleProvenance.remove(it)
         }
@@ -200,7 +190,6 @@ internal class SwipeProfileWindow(
             val published = if (provenance == null) profile.copy(revision = ticket.ticket)
                 else profile.copy(revision = ticket.ticket, fromArchive = provenance.first, warning = provenance.second)
             entries[listingId] = published
-            presentation[listingId] = published
             return published
         } finally {
             if (inFlight[listingId] == ticket) {
@@ -215,6 +204,4 @@ internal class SwipeProfileWindow(
     suspend fun readCurrent(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? =
         obtain(card, read)
 
-    suspend fun prefetch(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? =
-        get(card) ?: obtain(card, read)
 }
