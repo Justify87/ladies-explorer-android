@@ -441,22 +441,32 @@ internal fun MapProfilePicker(
     )
 }
 
+private data class MapMarkerGroup(
+    val representativeId: Long,
+    val count: Int,
+    val city: Boolean,
+    val selected: Boolean,
+)
+
 internal fun asFeatures(points: List<MapProfile>, selectedListingId: Long?): FeatureCollection {
-    val groups = points.groupBy { it.latitude to it.longitude }
+    val groups = points.groupBy { it.latitude to it.longitude }.mapValues { (_, members) ->
+        MapMarkerGroup(members.minOf { it.listingId }, members.size,
+            members.any { it.precision != "POSTAL" }, members.any { it.listingId == selectedListingId })
+    }
     val features = points.map { item ->
         val group = groups.getValue(item.latitude to item.longitude)
-        val representative = group.minBy { it.listingId }
-        val city = group.any { it.precision != "POSTAL" }
         val properties = JsonObject().apply {
             addProperty("listing_id", item.listingId)
             addProperty("owner_id", item.personId)
-            addProperty("selected", group.any { it.listingId == selectedListingId })
+            addProperty("selected", group.selected)
+            addProperty("latitude", item.latitude)
+            addProperty("longitude", item.longitude)
             addProperty("precision", item.precision)
-            addProperty("representative", item.listingId == representative.listingId)
-            addProperty("group_precision", if (city) "CITY" else "POSTAL")
-            addProperty("group_count", group.size)
-            addProperty("group_image", MAP_COUNT_PREFIX + group.size + if (city) "-city" else "")
-            addProperty("photo_id", if (group.size == 1) mapThumbnailId(item) else MAP_FALLBACK_IMAGE)
+            addProperty("representative", item.listingId == group.representativeId)
+            addProperty("group_precision", if (group.city) "CITY" else "POSTAL")
+            addProperty("group_count", group.count)
+            addProperty("group_image", MAP_COUNT_PREFIX + group.count + if (group.city) "-city" else "")
+            addProperty("photo_id", if (group.count == 1) mapThumbnailId(item) else MAP_FALLBACK_IMAGE)
         }
         // Keep one native source point per listing so native point_count stays exact.
         Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude), properties)
@@ -465,14 +475,21 @@ internal fun asFeatures(points: List<MapProfile>, selectedListingId: Long?): Fea
 }
 
 internal fun mapRenderedSelection(points: List<MapProfile>, feature: Feature): MapProfile? {
-    val center = feature.geometry() as? Point ?: return null
+    if (!listOf("listing_id", "owner_id", "latitude", "longitude", "group_count", "representative")
+            .all(feature::hasProperty) || !feature.getBooleanProperty("representative")) return null
     val profile = mapSelectedProfile(points, feature.getNumberProperty("listing_id").toLong(),
         feature.getNumberProperty("owner_id").toLong()) ?: return null
+    // Rendered geometry is tile-quantized; the original source coordinates are the identity evidence.
     return profile.takeIf {
-        it.latitude == center.latitude() && it.longitude == center.longitude() &&
+        it.latitude == feature.getNumberProperty("latitude").toDouble() &&
+            it.longitude == feature.getNumberProperty("longitude").toDouble() &&
             mapSelection(points, it.listingId).size == feature.getNumberProperty("group_count").toInt()
     }
 }
+
+internal fun mapClusterZoom(source: GeoJsonSource, cluster: Feature, current: Double, maximum: Double): Double? =
+    runCatching { source.getClusterExpansionZoom(cluster).toDouble() }.getOrNull()
+        ?.coerceAtMost(maximum)?.takeIf { it > current }
 
 internal fun installMapProfileLayers(
     view: LifecycleMapView,
@@ -641,9 +658,10 @@ private fun NativeProfileMap(
                                         val center = cluster?.geometry() as? Point
                                         if (cluster != null && center != null) {
                                             val source = style.getSource(MAP_SOURCE) as? GeoJsonSource
-                                            val zoom = source?.let { runCatching { it.getClusterExpansionZoom(cluster) }.getOrNull() }
-                                                ?.toDouble()?.coerceAtMost(ready.maxZoomLevel)
-                                            if (zoom != null && zoom > ready.cameraPosition.zoom) {
+                                            val zoom = source?.let {
+                                                mapClusterZoom(it, cluster, ready.cameraPosition.zoom, ready.maxZoomLevel)
+                                            }
+                                            if (zoom != null) {
                                                 positioned = true
                                                 ready.animateCamera(CameraUpdateFactory.newLatLngZoom(
                                                     LatLng(center.latitude(), center.longitude()), zoom))
