@@ -10,7 +10,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SwipeProfileWindowTest {
-    @Test(timeout = 15_000) fun actualWindowPrunesAndReusesCurrentAndTwoFollowingProfiles() = runBlocking {
+    @Test(timeout = 15_000) fun actualWindowPrunesAndReusesCurrentAndFiveFollowingProfiles() = runBlocking {
         val entries = mutableMapOf<Long, ProfileReadModel>()
         val cache = SwipeProfileWindow(entries)
         val cards = (1L..250L).map { fixtureCard(it) }
@@ -18,12 +18,12 @@ class SwipeProfileWindowTest {
         cache.retain(window)
         cache.readCurrent(window.first()) { fixtureSwipe(1L, 1L) }
         window.drop(1).forEach { card -> cache.prefetch(card) { fixtureSwipe(card.listingId, card.personId) } }
-        assertEquals(setOf(1L, 2L, 3L), entries.keys)
-        cache.retain(cards.drop(1).take(3))
-        assertEquals(setOf(2L, 3L), entries.keys)
+        assertEquals((1L..6L).toSet(), entries.keys)
+        cache.retain(cards.drop(1).take(6))
+        assertEquals((2L..6L).toSet(), entries.keys)
         assertEquals(2L, cache.prefetch(cards[1]) { error("cached profile must not read") }?.profile?.listingId)
-        cache.prefetch(cards[3]) { fixtureSwipe(4L, 4L) }
-        assertEquals(setOf(2L, 3L, 4L), entries.keys)
+        cache.prefetch(cards[6]) { fixtureSwipe(7L, 7L) }
+        assertEquals((2L..7L).toSet(), entries.keys)
         cache.clear()
         assertTrue(entries.isEmpty())
     }
@@ -101,6 +101,7 @@ class SwipeProfileWindowTest {
         assertEquals(7L, returned.identity.personId)
         assertEquals(12L, returned.profile.snapshotId)
         assertNull(cache[oldCard])
+        assertNull(cache.displayed(oldCard))
     }
 
     @Test(timeout = 15_000) fun lateCompletionAfterResetAndSameListingReuseCannotRepopulate() = runBlocking {
@@ -134,6 +135,7 @@ class SwipeProfileWindowTest {
         cache.prefetch(next) { sourceCompleted ->
             sourceCompleted()
             assertNull(cache[current])
+            assertEquals(initial, cache.displayed(current))
             assertTrue(cache.requiresLocal(current))
             fixtureSwipe(2L, 2L, 12L)
         }
@@ -148,6 +150,7 @@ class SwipeProfileWindowTest {
         })
         assertEquals(initial.profile.snapshotId, refreshed.profile.snapshotId)
         assertNotEquals(initial.revision, refreshed.revision)
+        assertEquals(refreshed, cache.displayed(current))
         assertEquals("/fixture/local.jpg", refreshed.media.single().localPath)
         assertEquals(9L, refreshed.candidates.single().personId)
         assertFalse(refreshed.fromArchive)
