@@ -58,7 +58,7 @@ class MapDesignDeviceTest {
         rule.onNodeWithText("Stadtbereich · Leipzig").assertExists()
         rule.onNodeWithText("Aktualisieren").assertDoesNotExist()
         rule.onNodeWithText("2 von 3 Profilen kartiert · 1 ohne Position").assertDoesNotExist()
-        rule.onNodeWithText("Abbrechen").performScrollTo().performClick()
+        rule.onNodeWithText("Standortaufbereitung abbrechen").performScrollTo().performClick()
         rule.onNodeWithText("Wird abgebrochen …").assertIsNotEnabled()
         rule.onNodeWithText("2 Profile am ungefähren Ort").performScrollTo().performClick()
         rule.onNodeWithText("Profil öffnen").performScrollTo().performClick()
@@ -162,8 +162,10 @@ class MapDesignDeviceTest {
                             DiscoveryMapLayout(hasPanel = true, statusLabel = "Suchfehler", warning = true,
                                 modeSwitcher = { DiscoverModeSwitcher(DiscoverMode.Map, {}, Modifier) },
                                 searchStatus = {
-                                    TextButton(onClick = { actions.add("search") }) { Text("Suche abbrechen") }
-                                    Text("Lange synthetische Suchmeldung ".repeat(35))
+                                    Column {
+                                        TextButton(onClick = { actions.add("search") }) { Text("Suche abbrechen") }
+                                        Text("Lange synthetische Suchmeldung ".repeat(35))
+                                    }
                                 },
                                 mapContent = { Box(Modifier.fillMaxSize().testTag("map-viewport")) },
                                 details = { modifier, close ->
@@ -189,7 +191,7 @@ class MapDesignDeviceTest {
         openPanel.performClick()
         rule.onNodeWithText("Suche abbrechen").performScrollTo().performClick()
         rule.onNodeWithText("Karte erneut laden").performScrollTo().performClick()
-        rule.onNodeWithText("Abbrechen").performScrollTo().performClick()
+        rule.onNodeWithText("Standortaufbereitung abbrechen").performScrollTo().performClick()
         rule.onNodeWithText("Kartierte Profile auswählen").performScrollTo().performClick()
         rule.onNodeWithText("Kartenstatus und Profile").assertDoesNotExist()
         openPanel.performClick()
