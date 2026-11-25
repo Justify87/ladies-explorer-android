@@ -1,6 +1,9 @@
 package de.justify87.ladiesexplorer.ui
 
 import de.justify87.ladiesexplorer.core.Preference
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.geometry.Rect
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -28,6 +31,42 @@ class ProfileHeroLayoutTest {
         }
         assertEquals(240f, profileHeroHeight(390f, 400f, 240f, 60f), .01f)
         assertEquals(0f, profileHeroHeight(390f, 400f, 0f, 60f), .01f)
+    }
+
+    @Test fun proportionalCropRetainsAtLeast85PercentAndUnknownOrVideoUsesFit() {
+        val viewport = IntSize(340, 600)
+        val atThreshold = heroMediaGeometry(viewport, IntSize(400, 600))
+        assertTrue(atThreshold.cropped)
+        assertEquals(Rect(0f, 0f, 340f, 600f), atThreshold.imageBounds)
+        val outside = heroMediaGeometry(viewport, IntSize(401, 600))
+        assertFalse(outside.cropped)
+        val landscape = heroMediaGeometry(viewport, IntSize(1200, 300))
+        assertFalse(landscape.cropped)
+        assertEquals(340f, landscape.imageBounds!!.width, .01f)
+        assertEquals(85f, landscape.imageBounds!!.height, .01f)
+        val tall = heroMediaGeometry(viewport, IntSize(100, 1200))
+        assertFalse(tall.cropped)
+        assertEquals(50f, tall.imageBounds!!.width, .01f)
+        val video = heroMediaGeometry(viewport, IntSize(400, 600), allowCrop = false)
+        assertFalse(video.cropped)
+        assertEquals(null, heroMediaGeometry(viewport, IntSize.Zero).imageBounds)
+        assertFalse(heroMediaGeometry(IntSize.Zero, IntSize(340, 600)).cropped)
+    }
+
+    @Test fun favoriteTargetFitsActualImageOrAdjacentRestAreaWithConstantPadding() {
+        val viewport = IntSize(340, 600)
+        val fill = heroMediaGeometry(viewport, IntSize(340, 600))
+        assertEquals(IntOffset(286, 6), fill.favoriteOrigin(48, 6))
+        val wide = heroMediaGeometry(viewport, IntSize(1200, 300))
+        val wideBounds = wide.imageBounds!!
+        val wideOrigin = wide.favoriteOrigin(48, 6)
+        assertTrue(wideOrigin.y >= wideBounds.top + 6 && wideOrigin.y + 48 <= wideBounds.bottom - 6)
+        val extreme = heroMediaGeometry(viewport, IntSize(100, 1200))
+        val extremeBounds = extreme.imageBounds!!
+        val extremeOrigin = extreme.favoriteOrigin(48, 6)
+        assertTrue(extremeOrigin.x >= extremeBounds.right || extremeOrigin.x + 48 <= extremeBounds.left)
+        assertEquals(IntOffset(286, 6), heroMediaGeometry(viewport, IntSize.Zero).favoriteOrigin(48, 6))
+        assertEquals(IntOffset.Zero, heroMediaGeometry(IntSize(40, 40), IntSize.Zero).favoriteOrigin(48, 6))
     }
 
     @Test fun noticesAndRailCannotConsumeReservedBody() {
