@@ -130,9 +130,10 @@ private fun HeroPhotoSurface(
     item: ProfileMediaItem, viewport: IntSize, description: String,
     imageMotion: Modifier, content: @Composable BoxScope.(ImageFeedback, HeroMediaGeometry) -> Unit,
 ) {
-    key(item, viewport) {
-        val models = remember { mediaModels(item.localPath, item.url) }
+    // Archiving the same URL must not replace an already decoded painter. Retry can use the new local path.
+    key(item.kind, item.url, item.localPath.takeIf { item.url.isBlank() }, viewport) {
         var retry by remember { mutableIntStateOf(0) }
+        val models = remember(retry) { mediaModels(item.localPath, item.url) }
         var attempt by remember(retry) { mutableIntStateOf(0) }
         val context = LocalContext.current
         val retryAction: (() -> Unit)? = if (models.isNotEmpty()) ({ retry++ }) else null
