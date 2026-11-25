@@ -30,6 +30,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import java.util.UUID
@@ -39,6 +41,9 @@ internal const val MAP_COUNT_PREFIX = "ladies-marker-count-"
 internal const val MAP_THUMBNAIL_LIMIT = 64
 private const val PHOTO_PIXELS = 80
 private const val IMAGE_DENSITY = 320
+private const val MAP_DECODE_LIMIT = 4
+// Cancelled generations or replaced styles may still drain a decode. Share the budget until it returns.
+private val mapDecodePermits = Semaphore(MAP_DECODE_LIMIT)
 
 internal fun mapThumbnailPaths(points: List<MapProfile>, cards: List<DiscoveryCard>): Map<Long, String> {
     val byListing = cards.associateBy { it.listingId }
@@ -194,12 +199,15 @@ internal class MapMarkerImages(
         val missing = desired.filterNot { it in attempted }
         if (missing.isEmpty()) return
         pending = scope.launch {
-            for (batch in missing.chunked(4)) coroutineScope {
+            for (batch in missing.chunked(MAP_DECODE_LIMIT)) coroutineScope {
                 batch.map { id ->
                     async {
                         val thumbnail = profiles[id] ?: return@async
                         val bitmap = try {
-                            decode(view.context, thumbnail.url, thumbnail.localPath)
+                            mapDecodePermits.withPermit {
+                                ensureActive()
+                                decode(view.context, thumbnail.url, thumbnail.localPath)
+                            }
                         } catch (cancel: CancellationException) {
                             throw cancel
                         } catch (_: Exception) {
