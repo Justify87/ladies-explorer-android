@@ -80,7 +80,8 @@ internal fun ProfileDetailScreen(
     val prepared = preparation.displayed(owner)
     val displayed = prepared?.model
     val profile = displayed?.profile
-    val renderedToken = state.detailIdentityToken().takeIf { displayed != null && displayed == raw }
+    val projectionCurrent = displayed != null && displayed == raw && prepared?.filters == filters
+    val renderedToken = state.detailIdentityToken().takeIf { projectionCurrent }
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val detailListState = rememberLazyListState()
     val heroVisible by remember(detailListState) { derivedStateOf { profileHeroVisible(detailListState, "media") } }
@@ -149,7 +150,7 @@ internal fun ProfileDetailScreen(
             isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
             modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest,
             onGallerySelection = { selectedMedia = it }, encounters = encounters, prices = prices,
-            preparedPanels = prepared?.panels,
+            preparedPanels = prepared?.panelsFor(filters, projectionCurrent),
             afterHeading = {
                 if (profile != null && displayed != null) item(key = "actions") {
                     ProfileActionRail(displayed.person, busy, onFavorite = { renderedToken?.let(onFavorite) },

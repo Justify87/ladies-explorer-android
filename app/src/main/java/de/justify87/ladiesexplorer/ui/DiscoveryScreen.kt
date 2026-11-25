@@ -115,7 +115,9 @@ internal fun DiscoverScreen(
     val cardKey = card?.let { it.listingId to it.personId }
     val prepared = preparation.displayed(cardKey)?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
     val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
-        ?.let { decks[it] }?.takeIf { model -> prepared?.model == model }
+        ?.let { decks[it] }?.takeIf { model ->
+            prepared?.model == model && prepared?.filters == executedFiltersJson
+        }
     val displayed = prepared?.model
     val readError = cardKey?.let { failures[it] }?.takeIf { it.current }?.message
     val projectedToken = state.swipeToken(current)
@@ -443,7 +445,7 @@ internal fun DiscoverScreen(
                     userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices,
-                    fallbackIdentity = identity, fallbackMedia = fallback, preparedPanels = prepared?.panels,
+                    fallbackIdentity = identity, fallbackMedia = fallback, preparedPanels = prepared?.panelsFor(executedFiltersJson, current != null),
                     afterHeading = {
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                     }, afterDetails = {

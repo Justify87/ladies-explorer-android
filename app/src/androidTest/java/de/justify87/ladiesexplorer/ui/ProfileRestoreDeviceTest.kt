@@ -248,24 +248,47 @@ class ProfileRestoreDeviceTest {
                 ProfileField("Treffpunkt", listOf("Other value"))),
             listOf(ProfileField("Dienstag", listOf("Fixture time")), ProfileField("Montag", listOf("Fixture time"))),
             emptyList(), emptyList())
-        var dark by mutableStateOf(false)
-        var scale by mutableFloatStateOf(1f)
+        data class Window(val width: Int, val height: Int, val font: Float, val dark: Boolean)
+        val windows = listOf(360 to 740, 390 to 844, 430 to 932, 600 to 900, 740 to 360, 360 to 300)
+            .flatMap { (width, height) ->
+                listOf(1f, 1.3f, 2f).mapIndexed { index, font ->
+                    Window(width, height, font, index % 2 == 1)
+                }
+            } + Window(390, 844, 2f, true)
+        var window by mutableStateOf(windows.first())
+        var pixelsPerDp = 1f
         val readers = reads { source }
         rule.setContent {
-            val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, scale)) {
-                LadiesTheme(darkTheme = dark) {
-                    ProfileFlow(rememberLazyListState(), original, "{}", token(original), false,
-                        emptyMap(), notes, { true }, { _, _ -> },
-                        Modifier.width(300.dp).height(300.dp).testTag("structured-profile"), panelReads = readers) {
-                        item("hero") { Text("Synthetic hero") }
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val density = LocalDensity.current
+                // Fit the requested logical viewport into the actual test host, without
+                // changing the relationship between dp, font scale and measured bounds.
+                val fitted = with(density) {
+                    minOf(maxWidth.toPx() / (window.width + 1), maxHeight.toPx() / (window.height + 1),
+                        density.density)
+                }
+                SideEffect { pixelsPerDp = fitted }
+                CompositionLocalProvider(LocalDensity provides Density(fitted, window.font)) {
+                    LadiesTheme(darkTheme = window.dark) {
+                        ProfileFlow(rememberLazyListState(), original, "{}", token(original), false,
+                            emptyMap(), notes, { true }, { _, _ -> },
+                            Modifier.size(window.width.dp, window.height.dp).testTag("structured-profile"),
+                            panelReads = readers) {
+                            item("hero") { Text("Synthetic hero") }
+                        }
                     }
                 }
             }
         }
         val list = rule.onNodeWithTag("structured-profile")
         rule.waitForIdle()
-        repeat(2) {
+        windows.forEach { scenario ->
+            rule.runOnIdle { window = scenario }
+            rule.waitForIdle()
+            val viewportBounds = list.fetchSemanticsNode().boundsInRoot
+            val density = rule.runOnIdle { pixelsPerDp }
+            assertEquals(scenario.width.toFloat(), viewportBounds.width / density, 2f)
+            assertEquals(scenario.height.toFloat(), viewportBounds.height / density, 2f)
             list.performScrollToKey("profile-facts/field/Größe")
             rule.onNodeWithText("170 cm").assertExists()
             list.performScrollToKey("profile-services")
@@ -295,7 +318,10 @@ class ProfileRestoreDeviceTest {
             list.performScrollToKey("profile-opening-times/field/Montag – Dienstag")
             rule.onNodeWithText("Montag – Dienstag").assertExists()
             rule.onNodeWithText("Fixture time").assertExists()
-            rule.runOnIdle { dark = true; scale = 2f }
+            android.util.Log.i("CompactProfileBounds",
+                "$scenario viewport=${viewportBounds.width / density}x${viewportBounds.height / density}dp " +
+                    "serviceWidth=${serviceBounds.width / density}dp " +
+                    "traitHeight=${layouts.single().size.height / density}dp; structured disclosures=0")
         }
         list.performScrollToKey("profile-description")
         rule.onNodeWithText(original.profile.description).assertDoesNotExist()

@@ -29,6 +29,33 @@ class ProfilePanelsTest {
         assertEquals(emptyList<String>(), compactProfileMetadata(HeroIdentity("Fixture", place = ""), null, " "))
     }
 
+    @Test fun compactMetadataUsesOnlyPositiveNativeNoveltyAndVideoEvidence() {
+        val profile = fixtureProfile()
+        val base = fixtureIdentity(1)
+        val shown = heroIdentity(profile, base.copy(personNew = true, listingNew = true, hasVideo = true), false)
+        assertEquals("Person neu im Bestand · Anzeige neu · Video", compactProfileMetadata(shown, null, null).last())
+        val existing = heroIdentity(profile, base.copy(listingNew = true), false)
+        assertEquals("Anzeige neu", compactProfileMetadata(existing, null, null).last())
+        assertEquals(1, compactProfileMetadata(heroIdentity(profile, base, false), null, null).size)
+        assertEquals(emptyList<String>(), compactProfileMetadata(HeroIdentity("Fixture", place = ""), null, null))
+    }
+
+    @Test fun identityCandidatesPreserveWeakAndStrongEvidenceWithoutInventingDistance() {
+        val weak = IdentityCandidate(2L, "CANDIDATE", false, false, 3u, 0u, 7u)
+        assertEquals(mapOf("Telefonübereinstimmung" to "Nicht belegt", "Quellprofilübereinstimmung" to "Nicht belegt",
+            "Bildtreffer" to "3", "Starke Bildtreffer" to "0", "Geringste Bildhash-Distanz" to "7"),
+            identityCandidateFields(weak).toMap())
+        val phone = IdentityCandidate(3L, "CANDIDATE", false, true, 0u, 0u, null)
+        val phoneFields = identityCandidateFields(phone).toMap()
+        assertEquals("Belegt", phoneFields["Telefonübereinstimmung"])
+        assertEquals("0", phoneFields["Bildtreffer"])
+        assertFalse(phoneFields.containsKey("Geringste Bildhash-Distanz"))
+        val strong = IdentityCandidate(4L, "CANDIDATE", true, false, 5u, 2u, 0u)
+        assertEquals("Belegt", identityCandidateFields(strong).toMap()["Quellprofilübereinstimmung"])
+        assertEquals("2", identityCandidateFields(strong).toMap()["Starke Bildtreffer"])
+        assertEquals("0", identityCandidateFields(strong).toMap()["Geringste Bildhash-Distanz"])
+    }
+
     @Test fun publicationUsesOnlyValidSourceDateOrTimestampWithoutInventingZone() {
         assertEquals("24.11.2026", profilePublicationLabel("2026-11-24"))
         assertEquals("24.11.2026, 23:15 +02:00", profilePublicationLabel("2026-11-24T23:15:41+02:00"))

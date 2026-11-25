@@ -1,7 +1,7 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.ui.unit.IntSize
-import de.justify87.ladiesexplorer.core.ProfileMediaItem
+import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -50,6 +50,51 @@ class ProfilePreparationWindowTest {
         val prepared = PreparedProfile(model(), "{}", size, panels = panelData)
         assertFalse(prepared.hasMediaFailures)
         assertTrue(prepared.copy(media = mapOf(first.presentationKey() to PreparedMedium.Unavailable)).hasMediaFailures)
+    }
+
+    @Test(timeout = 15_000) fun changingFilterContextRetainsMediaButNeverPublishesOldMatchEvidence() = runBlocking {
+        val window = ProfilePreparationWindow()
+        val key = 4L to 1L
+        val current = model()
+        val trait = ProfileField("Größe", listOf("170 cm"))
+        val oldGroup = FilterMatchGroup("height", EvidenceStatus.YES,
+            listOf(FilterEvidence("height", "170", EvidenceStatus.YES)))
+        val newGroup = FilterMatchGroup("height", EvidenceStatus.NO,
+            listOf(FilterEvidence("height", "180", EvidenceStatus.NO)))
+        val priorData = PreparedPanelData(
+            ProfileFacts(listOf(trait), emptyList(), emptyList(), listOf(oldGroup), emptyList()),
+            null, null, "detail unavailable")
+        val nextData = priorData.copy(facts = priorData.facts?.copy(filters = listOf(newGroup)))
+        window.retain(setOf(key))
+        repeat(3) {
+            window.step(current, "old", size, { priorData }, { _, _ -> PreparedMedium.Video })
+        }
+        val prior = requireNotNull(window.displayed(key))
+        assertSame(priorData, prior.panelsFor("old", true))
+        for ((filters, currentProjection) in listOf("new" to true, "old" to false)) {
+            val safe = requireNotNull(prior.panelsFor(filters, currentProjection))
+            assertEquals(emptyList<FilterMatchGroup>(), safe.facts?.filters)
+            assertEquals(listOf(trait), safe.facts?.traits)
+            assertEquals(priorData.detailError, safe.detailError)
+        }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val job = launch {
+            window.step(current, "new", size, {
+                entered.complete(Unit)
+                release.await()
+                nextData
+            }, { _, _ -> error("unchanged gallery must not be prepared again") })
+        }
+        entered.await()
+        assertSame(prior, window.displayed(key))
+        assertTrue(window.displayed(key)?.panelsFor("new", false)?.facts?.filters.orEmpty().isEmpty())
+        release.complete(Unit)
+        job.join()
+        val next = requireNotNull(window.displayed(key))
+        assertEquals(prior.media, next.media)
+        assertEquals(listOf(newGroup), next.panelsFor("new", true)?.facts?.filters)
+        assertTrue(window.ready(current, "new", size))
     }
 
     @Test(timeout = 15_000) fun sameSnapshotReprojectionKeepsGalleryAndReplacesPanelsAtomically() = runBlocking {
