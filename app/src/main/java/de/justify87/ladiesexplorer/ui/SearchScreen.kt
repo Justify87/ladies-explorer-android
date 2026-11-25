@@ -21,7 +21,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
@@ -66,7 +65,7 @@ internal fun SearchScreen(
     val enabled = !search.loading && !saved.busy && (if (editing) canStartSearch else canEditDraft)
     var resultsVisible by rememberSaveable { mutableStateOf(false) }
     var filterQuery by rememberSaveable { mutableStateOf("") }
-    var categoryExpanded by rememberSaveable { mutableStateOf(false) }
+    var flippedSections by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     val filterListState = rememberLazyListState()
     val resultListState = rememberLazyListState()
     var lastRunId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -119,7 +118,8 @@ internal fun SearchScreen(
                         Button(onClick = { onSave(SavedEditorAction(editor, saved.actionGeneration)) }, enabled = enabled && editor.name.isNotBlank() && editor.name.length <= 100 && draft.city.isNotBlank(), modifier = Modifier.heightIn(min = 48.dp)) {
                             Text(if (saved.operation == SavedOperation.Write) "Speichert …" else "Speichern")
                         }
-                    } else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    } else FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (state.response != null) TextButton(onClick = { resultsVisible = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Ergebnisse ansehen") }
                         OutlinedButton(onClick = {
                             if (currentFilterContext === filterContext && onReset()) filterQuery = ""
                         }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text("Reset") }
@@ -135,19 +135,12 @@ internal fun SearchScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(if (editorVisible) 4.dp else 12.dp),
             ) {
-                if (!editing) item {
-                    ScreenGroup(if (resultsVisible && state.response != null) "Letzter Suchlauf" else "Filterentwurf") {
-                        if (state.response != null) {
-                            if (!resultsVisible) Text("Letzter Suchlauf: ${state.activeCards.size} lokal sichtbare Treffer",
-                                style = MaterialTheme.typography.bodyMedium)
-                            TextButton(onClick = { resultsVisible = !resultsVisible }) {
-                                Text(if (resultsVisible) "Filter ändern" else "Ergebnisse ansehen")
-                            }
-                        } else Text("Filter auswählen und mit Suchen ausdrücklich ausführen.",
-                            style = MaterialTheme.typography.bodyMedium)
+                if (!editorVisible) item {
+                    TextButton(onClick = { resultsVisible = false }, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("Filter ändern")
                     }
                 }
                 if (state.loading && !editorVisible) item {
@@ -188,16 +181,16 @@ internal fun SearchScreen(
                     }
                 } else {
                     if (editor != null) item {
-                        OutlinedTextField(value = editor.name, onValueChange = onName,
-                            label = { Text("Name der Suche") }, singleLine = true,
-                            enabled = enabled, modifier = Modifier.fillMaxWidth())
+                        CompactFilterField(editor.name, onName, "Name der Suche", enabled)
                     }
                     searchFilterEditor(
                         state = state,
                         filterQuery = filterQuery,
                         onFilterQuery = { filterQuery = it },
-                        categoryExpanded = categoryExpanded,
-                        onCategoryExpanded = { categoryExpanded = it },
+                        flippedSections = flippedSections,
+                        onToggleSection = { key ->
+                            if (filterQuery.isBlank()) flippedSections = ArrayList(if (key in flippedSections) flippedSections - key else flippedSections + key)
+                        },
                         enabled = enabled,
                         onCity = { value -> changeDraft { it.copy(city = value) } },
                         onRadius = { value -> changeDraft { it.copy(radiusKm = value) } },

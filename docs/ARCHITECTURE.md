@@ -116,6 +116,7 @@ Alle app-internen HTTP(S)-Anfragen an ladies.de, APIs, Subdomains und zugehörig
 - Filterkatalog kanonisiert Gruppen, Aliase und Slugs; Orts-API-Schlüssel case-insensitiv mit lokalem Slug-Fallback.
 - Preview nutzt denselben geprüften Seite-1-Abruf mit Fallback, 350 ms Debounce und keinerlei Persistenz. Eine eigene Lease bindet die sichtbare Filteransicht bzw. Editor-Session an den STARTED-Lifecycle; Stop/Dispose widerrufen nur ihre eigene Lease. Vor I/O und Publikation müssen Lease, Request-Generation und aktueller Quellentwurf übereinstimmen. Lokale Filter und Seitenlimit beeinflussen die Seite-1-Vorschau nicht.
 - Häufige Filter kommen aus `search_runs`, ohne weiteren Store.
+- `SearchScreen` hält Filtertext und Abweichungen von den normalen Abschnittsvorgaben im vorhandenen pane-/editorsessiongebundenen Saveable-State. `SearchFilterEditor` projiziert daraus sichtbare Gruppen und Werte ohne Änderung des `SearchDraft`; Treffer öffnen Abschnitte nur temporär. Kein zusätzlicher Store, kein Einfluss auf Preview-Lease, Request- oder Run-Admission.
 
 **Zulässiger Profilabruf:**
 - Nur lokal bekannte Inserate, HTTPS, erlaubte Hosts/Präfixe `/sex-anzeigen/`, `/fkk-saunaclubs/`, `/stars/` und kanonische www-URL; keine frei eingegebene URL.

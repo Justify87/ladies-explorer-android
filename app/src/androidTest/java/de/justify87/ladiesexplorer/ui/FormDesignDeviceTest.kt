@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -20,6 +21,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.CaptureMode
+import de.justify87.ladiesexplorer.core.SourceFilterCatalog
+import de.justify87.ladiesexplorer.core.SourceFilterGroup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -106,7 +109,7 @@ class FormDesignDeviceTest {
                 )
             }
         }
-        rule.onNodeWithText("Ort").performScrollTo().performTextReplacement("Teststadt")
+        rule.onNodeWithContentDescription("Ort").performScrollTo().performTextReplacement("Teststadt")
         rule.runOnIdle { assertTrue(submitted.isEmpty()) }
         rule.onNodeWithText("Suchen").performClick()
         rule.runOnIdle {
@@ -114,6 +117,104 @@ class FormDesignDeviceTest {
             assertEquals("Teststadt", submitted.single().draft.city)
             assertEquals(12L, submitted.single().generation)
         }
+    }
+
+
+    @Test fun filteringOptionsDoesNotClearHiddenSelectionOrSubmit() {
+        var search by mutableStateOf(SearchUiState(filterCatalog = SourceFilterCatalog(
+            listOf(""), listOf(SourceFilterGroup("haarfarbe", listOf("Braun", "Schwarz"))))))
+        var submitted = 0
+        rule.setContent {
+            MaterialTheme(colorScheme = ladiesDarkColors) {
+                SearchScreen(
+                    search = search, saved = SavedSearchUiState(),
+                    canStartSearch = true, canEditDraft = true,
+                    onDraftChange = { change -> search = change(SearchDraft.from(search)).applyTo(search) },
+                    onReset = { true }, onPreviewStart = {}, onPreviewStop = {},
+                    onSearch = { submitted++ }, onCancelSearch = {},
+                    onSave = {}, onName = {}, onCancelEdit = {}, generation = 12L,
+                    onProfile = {}, modifier = Modifier.width(360.dp).height(560.dp),
+                )
+            }
+        }
+        val query = rule.onNodeWithContentDescription("Filter suchen")
+        query.performTextReplacement("Braun")
+        rule.onNodeWithText("Braun").performScrollTo().performClick().assertIsSelected()
+        query.performScrollTo().performTextReplacement("Schwarz")
+        rule.onNodeWithText("Braun").assertDoesNotExist()
+        rule.onNodeWithText("Schwarz").performScrollTo().assertIsNotSelected()
+        rule.runOnIdle {
+            assertEquals(setOf("Braun"), search.selectedFilters["haarfarbe"])
+            assertEquals(0, submitted)
+        }
+        query.performScrollTo().performTextReplacement("fixture-no-match")
+        rule.onNodeWithText("Keine passenden Filter").assertExists()
+        query.performTextReplacement("")
+        rule.runOnIdle { assertEquals(setOf("Braun"), search.selectedFilters["haarfarbe"]) }
+    }
+
+    @Test fun normalSectionStateSurvivesTemporaryFilterTextAndTabRemoval() {
+        var visible by mutableStateOf(true)
+        rule.setContent {
+            MaterialTheme(colorScheme = ladiesDarkColors) {
+                val holder = rememberSaveableStateHolder()
+                if (visible) holder.SaveableStateProvider("Filters") {
+                    SearchScreen(
+                        search = SearchUiState(), saved = SavedSearchUiState(),
+                        canStartSearch = true, canEditDraft = true,
+                        onDraftChange = {}, onReset = { true }, onPreviewStart = {}, onPreviewStop = {},
+                        onSearch = {}, onCancelSearch = {}, onSave = {}, onName = {}, onCancelEdit = {},
+                        generation = 1L, onProfile = {}, modifier = Modifier.width(360.dp).height(560.dp),
+                    )
+                }
+            }
+        }
+        val query = rule.onNodeWithContentDescription("Filter suchen")
+        val location = rule.onNodeWithText("Standort")
+        val city = rule.onNodeWithContentDescription("Ort")
+        city.assertExists()
+        location.performClick()
+        city.assertDoesNotExist()
+        query.performTextReplacement("Ort")
+        city.assertExists()
+        query.performTextReplacement("")
+        city.assertDoesNotExist()
+        rule.runOnIdle { visible = false }
+        rule.waitForIdle()
+        rule.runOnIdle { visible = true }
+        location.assertExists()
+        city.assertDoesNotExist()
+        location.performClick()
+        city.assertExists()
+    }
+
+    @Test fun compactFilterInputAndChoicesKeepTouchTargetsAtLargeFont() {
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                MaterialTheme(colorScheme = ladiesLightColors) {
+                    Column(Modifier.width(320.dp)) {
+                        var text by remember { mutableStateOf("") }
+                        CompactFilterField(text, { text = it }, "Filter suchen")
+                        ProgressiveSection("Rubrik", true, {}, compact = true) {
+                            ScreenChoice(true, {}, true, { Text("Fixture", style = MaterialTheme.typography.bodySmall) }, compact = true)
+                        }
+                    }
+                }
+            }
+        }
+        val min = with(rule.density) { 48.dp.toPx() }
+        val field = rule.onNodeWithContentDescription("Filter suchen")
+        field.performClick().performTextInput("Test")
+        field.assertTextContains("Test")
+        val header = rule.onNodeWithText("Rubrik")
+        val choice = rule.onNodeWithText("Fixture")
+        for (node in listOf(field, header, choice)) {
+            assertTrue(node.fetchSemanticsNode().boundsInRoot.height >= min - 1f)
+        }
+        assertTrue(header.fetchSemanticsNode().boundsInRoot.top >= field.fetchSemanticsNode().boundsInRoot.bottom)
+        assertTrue(choice.fetchSemanticsNode().boundsInRoot.top >= header.fetchSemanticsNode().boundsInRoot.bottom)
+        choice.assertIsSelected()
     }
 
     @Test fun lightSettingsShowUnknownStatusAndDoNotExportOrCaptureImplicitly() {

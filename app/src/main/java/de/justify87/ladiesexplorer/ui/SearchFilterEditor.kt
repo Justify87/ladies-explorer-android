@@ -1,28 +1,22 @@
 package de.justify87.ladiesexplorer.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RangeSlider
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.LocalVisibility
-import de.justify87.ladiesexplorer.core.SourceFilterGroup
 import kotlin.math.roundToInt
 
 internal val categoryLabels = mapOf(
@@ -53,20 +47,73 @@ private const val PHOTOS_ONLY_LABEL = "Nur mit Bildern"
 private const val VIDEO_ONLY_LABEL = "Nur mit Video"
 private const val HIDE_DISLIKES_LABEL = "Dislikes ausblenden"
 private const val HIDE_LIKES_LABEL = "Likes ausblenden"
+private const val UNSUPPORTED_LABEL = "Studio, FaceApp und Betriebsprofile: keine zuverlässigen nativen Klassifikationsdaten."
 private val imageModeLabels = listOf("ALL" to "Alle", "NATURAL" to "Ohne KI-Markierung", "AI" to "KI-markiert")
-private val localFilterLabels = listOf(LOCAL_FILTER_TITLE, PHOTOS_ONLY_LABEL, VIDEO_ONLY_LABEL,
-    HIDE_DISLIKES_LABEL, HIDE_LIKES_LABEL) + imageModeLabels.map { it.second }
+
+// A parent match exposes its children; otherwise only matching values are visible.
+internal fun filterTextMatches(query: String, vararg labels: String): Boolean =
+    query.isBlank() || labels.any { it.contains(query.trim(), ignoreCase = true) }
+
+internal fun <T> matchingFilterOptions(
+    query: String, parents: List<String>, options: List<T>, label: (T) -> String,
+): List<T> = if (filterTextMatches(query, *parents.toTypedArray())) options
+    else options.filter { filterTextMatches(query, label(it)) }
+
+internal fun filterSectionExpanded(key: String, initiallyExpanded: Boolean, flipped: List<String>, query: String): Boolean =
+    query.isNotBlank() || (initiallyExpanded != (key in flipped))
 
 internal fun matchesLocalFilterQuery(query: String): Boolean =
-    query.isBlank() || localFilterLabels.any { it.contains(query, ignoreCase = true) } ||
-        "Bilder Fotos Video Dislikes Likes Natürlich Studio FaceApp KI Betrieb Filter".contains(query, ignoreCase = true)
+    filterTextMatches(query, LOCAL_FILTER_TITLE, PHOTOS_ONLY_LABEL, VIDEO_ONLY_LABEL,
+        HIDE_DISLIKES_LABEL, HIDE_LIKES_LABEL, UNSUPPORTED_LABEL, "Fotos", "Natürlich", *imageModeLabels.map { it.second }.toTypedArray())
+
+@Composable
+internal fun CompactFilterField(value: String, onChange: (String) -> Unit, label: String, enabled: Boolean = true) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val colors = MaterialTheme.colorScheme
+    BasicTextField(value = value, onValueChange = onChange, enabled = enabled, singleLine = true,
+        interactionSource = interaction, textStyle = MaterialTheme.typography.bodyMedium.copy(
+            color = if (enabled) colors.onSurface else colors.onSurfaceVariant),
+        cursorBrush = SolidColor(colors.primary),
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
+        decorationBox = { inner ->
+            Surface(shape = MaterialTheme.shapes.small, color = colors.surface,
+                border = BorderStroke(if (focused) 2.dp else 1.dp, if (focused) colors.primary else colors.outline)) {
+                Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.Center) {
+                    Text(label, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                    inner()
+                }
+            }
+        })
+}
+
+@Composable
+private fun FilterChoice(selected: Boolean, enabled: Boolean, label: String, onClick: () -> Unit) {
+    ScreenChoice(selected, onClick, enabled, { Text(label, style = MaterialTheme.typography.bodySmall) }, compact = true)
+}
+
+@Composable
+private fun FilterChoices(content: @Composable FlowRowScope.() -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), content = content)
+}
+
+private fun LazyListScope.filterSection(
+    key: String, title: String, query: String, flipped: List<String>, onToggle: (String) -> Unit,
+    initiallyExpanded: Boolean = false, hint: String? = null, content: @Composable ColumnScope.() -> Unit,
+) {
+    item(key = "filter/$key") {
+        ProgressiveSection(title, filterSectionExpanded(key, initiallyExpanded, flipped, query),
+            { onToggle(key) }, hint = hint.takeIf { query.isBlank() }, enabled = query.isBlank(), compact = true, content = content)
+    }
+}
 
 internal fun LazyListScope.searchFilterEditor(
     state: SearchUiState,
     filterQuery: String,
     onFilterQuery: (String) -> Unit,
-    categoryExpanded: Boolean,
-    onCategoryExpanded: (Boolean) -> Unit,
+    flippedSections: List<String>,
+    onToggleSection: (String) -> Unit,
     enabled: Boolean,
     onCity: (String) -> Unit,
     onRadius: (UInt) -> Unit,
@@ -78,85 +125,89 @@ internal fun LazyListScope.searchFilterEditor(
     onAvailability: (AvailabilityMode) -> Unit,
     onLocalVisibility: (LocalVisibility) -> Unit,
 ) {
-    item {
-        OutlinedTextField(value = filterQuery, onValueChange = onFilterQuery,
-            label = { Text("Filter suchen") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    val query = filterQuery.trim()
+    item(key = "filter-query") { CompactFilterField(filterQuery, onFilterQuery, "Filter suchen") }
+    var hasMatch = false
+    fun section(key: String, title: String, initiallyExpanded: Boolean = false, hint: String? = null,
+        content: @Composable ColumnScope.() -> Unit) {
+        hasMatch = true
+        filterSection(key, title, query, flippedSections, onToggleSection, initiallyExpanded, hint, content)
     }
-    item {
-        ScreenGroup("Standort") {
-            OutlinedTextField(value = state.city, onValueChange = onCity,
-                label = { Text("Ort") }, singleLine = true,
-                enabled = enabled, modifier = Modifier.fillMaxWidth())
-            Text("Umkreis", style = MaterialTheme.typography.titleSmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (radius in listOf(5u,10u,20u,30u,50u,70u,100u)) {
-                    ScreenChoice(selected = state.radiusKm == radius,
-                        onClick = { onRadius(radius) }, enabled = enabled, label = { Text("$radius km") })
-                }
+    val cityVisible = filterTextMatches(query, "Standort", "Ort", state.city)
+    val radii = matchingFilterOptions(query, listOf("Standort", "Umkreis", "Radius"), listOf(5u, 10u, 20u, 30u, 50u, 70u, 100u)) { "$it km" }
+    if (cityVisible || radii.isNotEmpty()) section("location-input", "Standort", initiallyExpanded = true) {
+        if (cityVisible) CompactFilterField(state.city, onCity, "Ort", enabled)
+        if (radii.isNotEmpty()) {
+            Text("Umkreis", style = MaterialTheme.typography.labelMedium)
+            FilterChoices { radii.forEach { radius ->
+                FilterChoice(state.radiusKm == radius, enabled, "$radius km") { onRadius(radius) }
+            } }
+        }
+    }
+    val frequent = matchingFilterOptions(query, listOf("Häufige Filter", "Top 5"), state.frequentFilters) {
+        if (it.group == "category") categoryLabels[it.value] ?: it.value else it.value
+    }
+    if (frequent.isNotEmpty()) section("frequent", "Häufige Filter", initiallyExpanded = true) {
+        FilterChoices { frequent.forEach { filter ->
+            val category = filter.group == "category"
+            val selected = if (category) state.category == filter.value else filter.value in state.selectedFilters[filter.group].orEmpty()
+            FilterChoice(selected, enabled, if (category) categoryLabels[filter.value] ?: filter.value else filter.value) {
+                if (category) onCategory(if (selected) "" else filter.value)
+                else onToggleFilter(filter.group, filter.value)
             }
+        } }
+    }
+    val availability = matchingFilterOptions(query, listOf("Verfügbarkeit", "Geöffnet"), AvailabilityMode.entries) { it.label }
+    if (availability.isNotEmpty()) section("availability", "Verfügbarkeit", initiallyExpanded = true) {
+        FilterChoices { availability.forEach { mode ->
+            FilterChoice(mode == availabilityMode(state.selectedFilters), enabled, mode.label) { onAvailability(mode) }
+        } }
+    }
+    val ageLabel = "${state.ageMin}–${state.ageMax} Jahre"
+    if (filterTextMatches(query, "Alter", "Jahre", ageLabel)) section("age", "Alter", initiallyExpanded = true) {
+        Text(ageLabel, style = MaterialTheme.typography.labelMedium)
+        RangeSlider(value = state.ageMin.toFloat()..state.ageMax.toFloat(),
+            onValueChange = { onAge(it.start.roundToInt().toUInt().coerceIn(18u,60u),
+                it.endInclusive.roundToInt().toUInt().coerceIn(18u,60u)) },
+            valueRange = 18f..60f, enabled = enabled)
+    }
+    fun catalogOptions(group: de.justify87.ladiesexplorer.core.SourceFilterGroup, parent: String): List<String> {
+        val title = groupLabels[group.key] ?: group.key
+        val aliases = when (group.key) {
+            "figur" -> "Figurtyp"
+            "busen" -> "Brustgröße"
+            "treff" -> "Treffpunkte"
+            else -> title
+        }
+        return matchingFilterOptions(query, listOf(parent, title, aliases), group.options) { it }
+    }
+    fun catalogGroup(group: de.justify87.ladiesexplorer.core.SourceFilterGroup, parent: String) {
+        val title = groupLabels[group.key] ?: group.key
+        val options = catalogOptions(group, parent)
+        if (options.isEmpty()) return
+        val selected = state.selectedFilters[group.key].orEmpty()
+        section("catalog/${group.key}", title,
+            hint = selected.size.takeIf { it > 0 }?.let { "$it ausgewählt" }) {
+            FilterChoices { options.forEach { option ->
+                FilterChoice(option in selected, enabled, option) { onToggleFilter(group.key, option) }
+            } }
         }
     }
-    if (state.frequentFilters.isNotEmpty() && filterQuery.isBlank()) item {
-        ScreenGroup("Häufige Filter") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.frequentFilters.forEach { filter ->
-                    ScreenChoice(
-                        selected = if (filter.group == "category") state.category == filter.value
-                            else filter.value in state.selectedFilters[filter.group].orEmpty(),
-                        onClick = {
-                            if (filter.group == "category") onCategory(if (state.category == filter.value) "" else filter.value)
-                            else onToggleFilter(filter.group, filter.value)
-                        },
-                        enabled = enabled,
-                        label = { Text(if (filter.group == "category") categoryLabels[filter.value] ?: filter.value else filter.value) },
-                    )
-                }
-            }
-        }
+    val groups = state.filterCatalog?.groups.orEmpty()
+    groups.firstOrNull { it.key == "treff" }?.let { catalogGroup(it, "Treffpunkte") }
+    val categories = matchingFilterOptions(query, listOf("Rubrik", "Kategorie"), state.filterCatalog?.categories.orEmpty()) { categoryLabels[it] ?: it }
+    if (categories.isNotEmpty()) section("category", "Rubrik", hint = categoryLabels[state.category] ?: state.category) {
+        FilterChoices { categories.forEach { category ->
+            FilterChoice(state.category == category, enabled, categoryLabels[category] ?: category) { onCategory(category) }
+        } }
     }
-    item {
-        ScreenGroup("Verfügbarkeit") {
-            AvailabilitySelector(availabilityMode(state.selectedFilters), enabled, onAvailability)
-        }
-    }
-    item {
-        ScreenGroup("Alter") {
-            Text("${state.ageMin}–${state.ageMax} Jahre", style = MaterialTheme.typography.titleSmall)
-            RangeSlider(value = state.ageMin.toFloat()..state.ageMax.toFloat(),
-                onValueChange = { onAge(it.start.roundToInt().toUInt().coerceIn(18u,60u),
-                    it.endInclusive.roundToInt().toUInt().coerceIn(18u,60u)) },
-                valueRange = 18f..60f, enabled = enabled)
-        }
-    }
-    state.filterCatalog?.groups?.firstOrNull { it.key == "treff" }?.let { group ->
-        if (matchesFilterGroup(group, filterQuery)) item(key = "filter/treff") {
-            FilterSection(group, state.selectedFilters[group.key].orEmpty(), enabled,
-                filterQuery, true, { onToggleFilter(group.key, it) })
-        }
-    }
-    if (filterQuery.isBlank() || "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) ||
-        state.filterCatalog?.categories.orEmpty().any { (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }) item {
-        ProgressiveSection("Rubrik", categoryExpanded || filterQuery.isNotBlank(),
-            { onCategoryExpanded(!categoryExpanded) }, hint = categoryLabels[state.category] ?: state.category,
-            enabled = enabled && filterQuery.isBlank()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.filterCatalog?.categories.orEmpty()
-                    .filter { "Rubrik Kategorie".contains(filterQuery, ignoreCase = true) || (categoryLabels[it] ?: it).contains(filterQuery, ignoreCase = true) }
-                    .forEach { category ->
-                        ScreenChoice(selected = state.category == category, enabled = enabled,
-                            onClick = { onCategory(category) }, label = { Text(categoryLabels[category] ?: category) })
-                    }
-            }
-        }
-    }
-    if (filterQuery.isBlank() || "Größe Groesse Körpergröße cm".contains(filterQuery, ignoreCase = true)) item {
-        ScreenGroup("Größe") {
-            Text("${state.heightMin}–${state.heightMax} cm", style = MaterialTheme.typography.titleSmall)
-            RangeSlider(value = state.heightMin.toFloat()..state.heightMax.toFloat(),
-                onValueChange = { onHeight(it.start.roundToInt().toUInt().coerceIn(140u,200u),
-                    it.endInclusive.roundToInt().toUInt().coerceIn(140u,200u)) },
-                valueRange = 140f..200f, enabled = enabled)
-        }
+    val heightLabel = "${state.heightMin}–${state.heightMax} cm"
+    if (filterTextMatches(query, "Größe", "Groesse", "Körpergröße", "cm", heightLabel)) section("height", "Größe") {
+        Text(heightLabel, style = MaterialTheme.typography.labelMedium)
+        RangeSlider(value = state.heightMin.toFloat()..state.heightMax.toFloat(),
+            onValueChange = { onHeight(it.start.roundToInt().toUInt().coerceIn(140u,200u),
+                it.endInclusive.roundToInt().toUInt().coerceIn(140u,200u)) },
+            valueRange = 140f..200f, enabled = enabled)
     }
     val groupOrder = listOf(
         "Eigenschaften" to setOf("figur", "typ", "geschlecht", "busen", "intimbereich", "hautton",
@@ -165,100 +216,49 @@ internal fun LazyListScope.searchFilterEditor(
         "Weitere Optionen" to setOf("sonstiges", "location", "zeiten"),
     )
     groupOrder.forEach { (title, keys) ->
-        val groups = state.filterCatalog?.groups.orEmpty().filter { group ->
-            group.key in keys && matchesFilterGroup(group, filterQuery)
+        val visibleGroups = groups.filter { it.key in keys && catalogOptions(it, title).isNotEmpty() }
+        if (visibleGroups.isNotEmpty() && keys.size > 1) item(key = "heading/$title") {
+            Text(title, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
         }
-        if (groups.isNotEmpty()) item(key = "section/$title") {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-        }
-        groups.forEach { group ->
-            item(key = "filter/${group.key}") {
-                FilterSection(group, state.selectedFilters[group.key].orEmpty(), enabled,
-                    filterQuery, false, { onToggleFilter(group.key, it) })
-            }
-        }
+        visibleGroups.forEach { catalogGroup(it, title) }
     }
-    if (matchesLocalFilterQuery(filterQuery)) item {
-        ScreenGroup(LOCAL_FILTER_TITLE) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                imageModeLabels.forEach { (mode, label) ->
-                    ScreenChoice(selected = state.local.imageMode.ifBlank { "ALL" } == mode, enabled = enabled,
-                        onClick = {
-                            if (state.local.imageMode.ifBlank { "ALL" } != mode) {
-                                onLocalVisibility(state.local.copy(imageMode = mode))
-                            }
-                        }, label = { Text(label) })
-                }
-            }
-            LocalFilterRow(PHOTOS_ONLY_LABEL, state.local.photosOnly, enabled) {
-                onLocalVisibility(state.local.copy(photosOnly = it))
-            }
-            LocalFilterRow(VIDEO_ONLY_LABEL, state.local.videoOnly, enabled) {
-                onLocalVisibility(state.local.copy(videoOnly = it))
-            }
-            LocalFilterRow(HIDE_DISLIKES_LABEL, state.local.hideDislikes, enabled) {
-                onLocalVisibility(state.local.copy(hideDislikes = it))
-            }
-            LocalFilterRow(HIDE_LIKES_LABEL, state.local.hideLikes, enabled) {
-                onLocalVisibility(state.local.copy(hideLikes = it))
-            }
-            Text("Studio, FaceApp und Betriebsprofile: keine zuverlässigen nativen Klassifikationsdaten.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (matchesLocalFilterQuery(query)) section("local", LOCAL_FILTER_TITLE) {
+        val all = filterTextMatches(query, LOCAL_FILTER_TITLE)
+        val modes = matchingFilterOptions(query, listOf(LOCAL_FILTER_TITLE, "Bilddarstellung"), imageModeLabels) {
+            if (it.first == "NATURAL") it.second + " Natürlich" else it.second
         }
-    }
-    item {
-        ScreenGroup("Seitenlimit") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (pages in listOf(1u,5u,10u,25u,50u)) {
-                    ScreenChoice(selected = state.maxPages == pages, onClick = { onPages(pages) },
-                        enabled = enabled, label = { Text("$pages") })
-                }
+        if (modes.isNotEmpty()) FilterChoices { modes.forEach { (mode, label) ->
+            FilterChoice(state.local.imageMode.ifBlank { "ALL" } == mode, enabled, label) {
+                if (state.local.imageMode.ifBlank { "ALL" } != mode) onLocalVisibility(state.local.copy(imageMode = mode))
             }
+        } }
+        if (all || filterTextMatches(query, PHOTOS_ONLY_LABEL, "Fotos")) LocalFilterRow(PHOTOS_ONLY_LABEL, state.local.photosOnly, enabled) {
+            onLocalVisibility(state.local.copy(photosOnly = it))
         }
-    }
-}
-
-@Composable
-internal fun AvailabilitySelector(active: AvailabilityMode, enabled: Boolean, onSelect: (AvailabilityMode) -> Unit) {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        AvailabilityMode.entries.forEach { mode ->
-            ScreenChoice(selected = mode == active, enabled = enabled,
-                onClick = { onSelect(mode) }, label = { Text(mode.label) })
+        if (all || filterTextMatches(query, VIDEO_ONLY_LABEL)) LocalFilterRow(VIDEO_ONLY_LABEL, state.local.videoOnly, enabled) {
+            onLocalVisibility(state.local.copy(videoOnly = it))
         }
+        if (all || filterTextMatches(query, HIDE_DISLIKES_LABEL)) LocalFilterRow(HIDE_DISLIKES_LABEL, state.local.hideDislikes, enabled) {
+            onLocalVisibility(state.local.copy(hideDislikes = it))
+        }
+        if (all || filterTextMatches(query, HIDE_LIKES_LABEL)) LocalFilterRow(HIDE_LIKES_LABEL, state.local.hideLikes, enabled) {
+            onLocalVisibility(state.local.copy(hideLikes = it))
+        }
+        if (all || filterTextMatches(query, UNSUPPORTED_LABEL)) Text(UNSUPPORTED_LABEL,
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    val pages = matchingFilterOptions(query, listOf("Seitenlimit", "Seiten"), listOf(1u, 5u, 10u, 25u, 50u)) { it.toString() }
+    if (pages.isNotEmpty()) section("pages", "Seitenlimit") {
+        FilterChoices { pages.forEach { count -> FilterChoice(state.maxPages == count, enabled, "$count") { onPages(count) } } }
+    }
+    if (!hasMatch) item(key = "filter-empty") { Text("Keine passenden Filter", style = MaterialTheme.typography.bodySmall) }
 }
 
 @Composable
 private fun LocalFilterRow(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
         Switch(checked = checked, onCheckedChange = onChange, enabled = enabled,
             modifier = Modifier.semantics { contentDescription = label })
-    }
-}
-
-private fun matchesFilterGroup(group: SourceFilterGroup, query: String): Boolean =
-    query.isBlank() || (groupLabels[group.key] ?: group.key).contains(query, ignoreCase = true) ||
-        group.options.any { it.contains(query, ignoreCase = true) }
-
-@Composable
-private fun FilterSection(
-    group: SourceFilterGroup,
-    selected: Set<String>,
-    enabled: Boolean,
-    query: String,
-    initiallyExpanded: Boolean,
-    onToggle: (String) -> Unit,
-) {
-    var expanded by rememberSaveable(group.key) { mutableStateOf(initiallyExpanded) }
-    ProgressiveSection((groupLabels[group.key] ?: group.key) + if (selected.isEmpty()) "" else " (${selected.size})",
-        expanded || query.isNotBlank(), { expanded = !expanded }, enabled = query.isBlank()) {
-        val all = (groupLabels[group.key] ?: group.key).contains(query, ignoreCase = true)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            group.options.filter { all || it.contains(query, ignoreCase = true) || it in selected }.forEach { option ->
-                ScreenChoice(selected = option in selected, onClick = { onToggle(option) }, enabled = enabled,
-                    label = { Text(option) })
-            }
-        }
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,10 +42,11 @@ internal fun ScreenChoice(
     enabled: Boolean,
     label: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     FilterChip(
         selected = selected, onClick = onClick, enabled = enabled, label = label,
-        modifier = modifier.heightIn(min = 48.dp),
+        modifier = if (compact) modifier.minimumInteractiveComponentSize() else modifier.heightIn(min = 48.dp),
         leadingIcon = {
             Box(Modifier.size(18.dp)) {
                 if (selected) Icon(Icons.Default.Check, contentDescription = null,

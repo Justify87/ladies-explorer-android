@@ -26,7 +26,7 @@ Maßgeblicher fachlicher Soll-Vertrag der eigenständigen lokalen Android-App. T
 
 ### Aktive Suche, Vorschau und Vollständigkeit
 
-- Aktiven Suchlauf und Filterentwurf trennen.
+- Aktiven Suchlauf und Filterentwurf trennen. Der Filtertext schränkt ausschließlich die sichtbaren Filterelemente ein; Gruppenbezeichnungen öffnen passende Gruppen, Wertbezeichnungen zeigen nur passende Optionen. Ausgeblendete Auswahlen bleiben unverändert; der Filtertext führt weder eine Suche aus noch ändert er gespeicherte Definitionen.
 - Vorschau ist abbrechbar und leichtgewichtig; sie speichert weder Suchläufe noch Inserate, Beobachtungen oder Medien.
 - Quellzahl und lokal sichtbare Treffer unterscheiden. Vorschau-Count nur bei bestätigtem Radius und belastbarer Quellzahl (mindestens die Zahl erkannter Karten) zeigen; andernfalls **unbekannt**, nicht null – auch bei unbestätigtem 404.
 - Erfolgreiche Suche öffnet Entdecken. Fehler oder Abbruch erhalten den letzten aktiven Lauf.
