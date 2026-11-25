@@ -52,6 +52,9 @@ class MapPresentationTest {
         assertEquals(listOf(1L, 2L, 3L), features.map { it.getNumberProperty("owner_id").toLong() })
         assertEquals(listOf("CITY", "CITY", "POSTAL"), features.map { it.getStringProperty("precision") })
         assertEquals(listOf(true, true, false), features.map { it.getBooleanProperty("selected") })
+        assertEquals(listOf(true, false, true), features.map { it.getBooleanProperty("representative") })
+        assertEquals(listOf(2, 2, 1), features.map { it.getNumberProperty("group_count").toInt() })
+        assertEquals(listOf("CITY", "CITY", "POSTAL"), features.map { it.getStringProperty("group_precision") })
         val point = features.first().geometry() as Point
         assertEquals(a.longitude, point.longitude(), 0.0)
         assertEquals(a.latitude, point.latitude(), 0.0)
@@ -59,5 +62,40 @@ class MapPresentationTest {
         assertEquals(3L, filtered.single().getNumberProperty("listing_id").toLong())
         assertEquals(false, filtered.single().getBooleanProperty("selected"))
         assertTrue(requireNotNull(asFeatures(emptyList(), null).features()).isEmpty())
+    }
+
+    @Test fun groupRepresentativeIsStableAndTapRejectsObsoleteOwnerOrLocation() {
+        val mixed = b.copy(precision = "POSTAL")
+        val points = listOf(mixed, a, c)
+        val features = requireNotNull(asFeatures(points, mixed.listingId).features())
+        val representative = features.single {
+            it.getBooleanProperty("representative") && it.getNumberProperty("group_count").toInt() == 2
+        }
+        assertEquals(a.listingId, representative.getNumberProperty("listing_id").toLong())
+        assertEquals("CITY", representative.getStringProperty("group_precision"))
+        assertEquals(MAP_COUNT_PREFIX + "2-city", representative.getStringProperty("group_image"))
+        assertEquals(a, mapRenderedSelection(points, representative))
+        assertNull(mapRenderedSelection(listOf(a.copy(personId = 99), mixed, c), representative))
+        assertNull(mapRenderedSelection(listOf(a.copy(latitude = 52.0), mixed, c), representative))
+        assertNull(mapRenderedSelection(listOf(a, c), representative))
+        assertNull(mapRenderedSelection(points, features.first()))
+    }
+
+    @Test fun thumbnailsAreScopedToListingOwnerAndRevisionAndViewportBudget() {
+        val photo = a.copy(thumbnailUrl = "fixture-a")
+        val id = mapThumbnailId(photo)
+        assertEquals(MAP_FALLBACK_IMAGE, mapThumbnailId(a))
+        assertEquals(id, mapThumbnailId(photo.copy(name = "Changed")))
+        assertFalse(id == mapThumbnailId(photo.copy(personId = 99)))
+        assertFalse(id == mapThumbnailId(photo.copy(thumbnailUrl = "fixture-b")))
+        val grouped = requireNotNull(asFeatures(listOf(photo, b), null).features())
+        assertTrue(grouped.all { it.getStringProperty("photo_id") == MAP_FALLBACK_IMAGE })
+        val available = (1..100).map { "photo-$it" }.toSet()
+        val rendered = available.toList() + available.toList() + "obsolete"
+        val visible = mapVisibleThumbnailIds(rendered, available)
+        assertEquals(MAP_THUMBNAIL_LIMIT, visible.size)
+        assertEquals(visible, mapVisibleThumbnailIds(rendered.reversed(), available))
+        assertTrue(visible.all { it in available })
+        assertEquals(emptyList<String>(), mapVisibleThumbnailIds(rendered, emptySet()))
     }
 }
