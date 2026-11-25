@@ -72,10 +72,10 @@ class SwipeDeckStateTest {
         assertEquals(listOf(1L, 3L), session.queue(rows, true).map { it.listingId })
     }
 
-    @Test fun prefetchNeverExceedsTwoFollowingCards() {
+    @Test fun prefetchNeverExceedsFiveFollowingCards() {
         val rows = (1L..8L).map { card(it) }
-        assertEquals(listOf(2L, 3L), prefetchCards(rows).map { it.listingId })
-        assertTrue(prefetchCards(emptyList()).isEmpty())
+        assertEquals(listOf(2L, 3L, 4L, 5L, 6L), swipeReadWindow(rows).drop(1).map { it.listingId })
+        assertTrue(swipeReadWindow(emptyList()).drop(1).isEmpty())
     }
 
     @Test fun explicitNoneDoesNotVisitButSkipHasNoPreviousPreference() {
@@ -102,7 +102,7 @@ class SwipeDeckStateTest {
         session.undo(first)
         assertEquals(second, session.last)
         val rows = (1L..250L).map { card(it) }
-        assertEquals(listOf(4L, 5L), prefetchCards(session.queue(rows, true)).map { it.listingId })
+        assertEquals(listOf(4L, 5L, 6L, 7L, 8L), swipeReadWindow(session.queue(rows, true)).drop(1).map { it.listingId })
         session.undo(second)
         assertEquals(first, session.last)
         assertEquals(2L, session.queue(rows, true).first().listingId)

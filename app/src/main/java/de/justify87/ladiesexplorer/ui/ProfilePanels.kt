@@ -97,6 +97,7 @@ internal fun ProfileFlow(
     fallbackIdentity: HeroIdentity? = null,
     fallbackMedia: List<ProfileMediaItem> = emptyList(),
     onDiscoveryContextHeight: ((Int) -> Unit)? = null,
+    preparedPanels: PreparedPanelData? = null,
     afterHeading: ProfileFlowRows.() -> Unit = {},
     leading: ProfileFlowRows.() -> Unit,
 ) {
@@ -132,7 +133,7 @@ internal fun ProfileFlow(
         restore.synchronize(swipeRestore, projection, swipeRunId, mediaSelection, sections, scroll)
         if (owner != null) lastOwner = owner
     }
-    val panels = rememberProfilePanels(model, filters, panelReads)
+    val panels = rememberProfilePanels(model, filters, panelReads, preparedPanels)
     val busy = actionsBusy || token == null
     val boundNotes = noteActions.boundTo(token, isProfileCurrent)
     val scope = rememberCoroutineScope()

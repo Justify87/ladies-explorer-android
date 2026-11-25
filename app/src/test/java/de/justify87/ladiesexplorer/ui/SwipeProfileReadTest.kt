@@ -31,7 +31,7 @@ class SwipeProfileReadTest {
 
     @Test fun slotRolePreservesActiveFreshnessAndLocalFirstRecovery() {
         assertEquals(SwipeReadPolicy(true, true), swipeReadPolicy(true, 3, 4, false, false))
-        assertEquals(SwipeReadPolicy(false, true), swipeReadPolicy(false, 3, 4, false, false))
+        assertEquals(SwipeReadPolicy(true, true), swipeReadPolicy(false, 3, 4, false, false))
         assertEquals(SwipeReadPolicy(false, true), swipeReadPolicy(true, null, 4, false, false))
         assertEquals(SwipeReadPolicy(false, false), swipeReadPolicy(false, null, 4, false, false))
         assertEquals(SwipeReadPolicy(false, false), swipeReadPolicy(true, 3, 4, true, false))
@@ -132,51 +132,34 @@ class SwipeProfileReadTest {
         assertEquals(1, f.calls.count { it.startsWith("source:") })
     }
 
-    @Test(timeout = 15_000) fun cacheOnlyPrefetchRefreshesExactlyOnceAfterPromotion() = runBlocking {
+    @Test(timeout = 15_000) fun activeRunPrefetchRefreshesBeforePromotionAndIsReused() = runBlocking {
         val fixture = Fixture(fixtureProfile())
         val card = fixtureCard(4L, 1L)
         val window = SwipeProfileWindow(mutableMapOf())
         window.retain(listOf(card))
-        val speculative = requireNotNull(window.prefetch(card) {
-            readSwipeProfile(card.listingId, false, true, {}, fixture.reads)
+        val policy = swipeReadPolicy(false, 3L, card.listingId, false, false)
+        val speculative = requireNotNull(window.readCurrent(card) {
+            readSwipeProfile(card.listingId, policy.refresh, policy.allowNetwork, it, fixture.reads)
         })
-        assertTrue(speculative.fromArchive)
-        assertFalse(fixture.calls.any { it.startsWith("source:") })
-
-        val policy = swipeReadPolicy(true, 3L, card.listingId, false, false)
-        assertTrue(shouldRefreshPromotedCurrent(policy, speculative, alreadyAttempted = false))
-        val refreshed = requireNotNull(window.readCurrent(card) {
-            readSwipeProfile(card.listingId, policy.refresh, policy.allowNetwork, {}, fixture.reads)
-        })
-        assertFalse(refreshed.fromArchive)
-        assertEquals(12L, refreshed.profile.snapshotId)
-        assertSame(refreshed, window[card])
-        assertFalse(shouldRefreshPromotedCurrent(policy, refreshed, alreadyAttempted = true))
+        assertFalse(speculative.fromArchive)
+        assertEquals(12L, speculative.profile.snapshotId)
+        assertSame(speculative, window[card])
         assertEquals(1, fixture.calls.count { it.startsWith("source:") })
     }
 
-    @Test fun promotedRefreshDoesNotRedoFailedSourceOrStrictLocalRecovery() {
-        val cached = fixtureSwipe(4L, 1L).copy(fromArchive = true)
-        val network = swipeReadPolicy(true, 3L, 4L, false, false)
-        assertTrue(shouldRefreshPromotedCurrent(network, cached, false))
-        assertFalse(shouldRefreshPromotedCurrent(network, cached, true))
-        assertFalse(shouldRefreshPromotedCurrent(network, cached.copy(warning = "Offline"), false))
-        assertFalse(shouldRefreshPromotedCurrent(swipeReadPolicy(true, 3L, 4L, true, false), cached, false))
-        assertFalse(shouldRefreshPromotedCurrent(swipeReadPolicy(true, 3L, 4L, false, true), cached, false))
-        assertFalse(shouldRefreshPromotedCurrent(swipeReadPolicy(true, null, 4L, false, false), cached, false))
-        assertFalse(shouldRefreshPromotedCurrent(network, cached.copy(fromArchive = false), false))
+    @Test fun speculativeFailureRetriesOnlyOnPromotionAndCurrentFailureWaitsForExplicitRetry() {
+        val speculative = SwipeReadFailure(false, "offline")
+        val current = SwipeReadFailure(true, "offline")
+        assertTrue(swipeReadMayRetry(null, false))
+        assertFalse(swipeReadMayRetry(speculative, false))
+        assertTrue(swipeReadMayRetry(speculative, true))
+        assertFalse(swipeReadMayRetry(current, true))
+        assertFalse(swipeReadMayRetry(current, false))
     }
 
-    @Test fun currentReadFailureWaitsForDemotionButSpeculativeFailureDoesNot() {
-        assertTrue(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = true))
-        assertFalse(swipeFailureNeedsDemotion(startedCurrent = true, stillCurrent = false))
-        assertFalse(swipeFailureNeedsDemotion(startedCurrent = false, stillCurrent = true))
-        assertFalse(swipeFailureNeedsDemotion(startedCurrent = false, stillCurrent = false))
-    }
-
-    @Test(timeout = 15_000) fun cachedActiveRunPrefetchStillAvoidsSource() = runBlocking {
+    @Test(timeout = 15_000) fun cachedLocalOnlyPrefetchStillAvoidsSource() = runBlocking {
         val f = Fixture(fixtureProfile())
-        val result = readSwipeProfile(4L, false, true, { f.calls += "completion" }, f.reads)
+        val result = readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads)
         assertTrue(result.fromArchive)
         assertEquals(1L, result.person.personId)
         assertFalse(f.calls.any { it.startsWith("source:") || it == "completion" })

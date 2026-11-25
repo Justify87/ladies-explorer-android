@@ -9,9 +9,11 @@ import coil3.network.DeDupeConcurrentRequestStrategy
 import coil3.network.NetworkFetcher
 import de.justify87.ladiesexplorer.core.CoreStore
 import de.justify87.ladiesexplorer.core.RustImageNetworkClient
+import de.justify87.ladiesexplorer.ui.GalleryVideoFiles
 
 class LadiesApplication : Application(), SingletonImageLoader.Factory {
     val coreStore: CoreStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { CoreStore(this) }
+    internal val galleryVideoFiles by lazy { GalleryVideoFiles(coreStore) }
 
     @OptIn(ExperimentalCoilApi::class)
     override fun newImageLoader(context: Context): ImageLoader =

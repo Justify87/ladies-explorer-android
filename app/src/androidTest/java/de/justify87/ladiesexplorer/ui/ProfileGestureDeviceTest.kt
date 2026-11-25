@@ -116,6 +116,47 @@ class ProfileGestureDeviceTest {
         rule.runOnIdle { assertEquals(0, decisions); assertEquals(2, taps) }
     }
 
+    @Test fun preparedPhotoTapAndArchivePathChangeKeepDecodedVisual() {
+        val first = Bitmap.createBitmap(64, 128, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.BLUE)
+        }
+        val second = Bitmap.createBitmap(128, 64, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.RED)
+        }
+        val a = ProfileMediaItem("IMAGE", "https://example.invalid/a.jpg", null, 0u)
+        val b = ProfileMediaItem("IMAGE", "https://example.invalid/b.jpg", null, 1u)
+        var media by mutableStateOf(listOf(a, b))
+        var visual by mutableStateOf<HeroVisual?>(null)
+        var actions by mutableStateOf(true)
+        val prepared = mapOf(a.presentationKey() to PreparedMedium.Photo(first),
+            b.presentationKey() to PreparedMedium.Photo(second))
+        rule.setContent {
+            MaterialTheme {
+                Box(Modifier.requiredWidth(320.dp)) {
+                    ProfileMediaHero(media, 360.dp, modifier = Modifier.testTag("prepared-hero"),
+                        actionsEnabled = actions, isCurrent = { actions },
+                        selection = remember { ProfileMediaSelection() }, actionToken = null,
+                        compact = false, preparedMedia = prepared, presentationOwner = "same-owner",
+                        onVisual = { visual = it })
+                }
+            }
+        }
+        rule.waitUntil(5_000) { visual?.media == a }
+        val before = rule.runOnIdle { requireNotNull(visual) }
+        rule.runOnIdle {
+            media = listOf(a.copy(localPath = "/fixture/archived.jpg"), b)
+            actions = false
+        }
+        rule.waitUntil(5_000) { visual?.media?.localPath == "/fixture/archived.jpg" }
+        rule.runOnIdle {
+            assertSame(before.painter, visual?.painter)
+            assertEquals(before.geometry, visual?.geometry)
+        }
+        rule.onNodeWithContentDescription("Nächstes Medium").performClick()
+        rule.waitUntil(5_000) { visual?.media == b }
+        rule.onNodeWithContentDescription("Profilbild 2").assertExists()
+    }
+
     @Test fun actualHeroSideTapAndSwipeDoNotInvokeEachOther() {
         val decisions = mutableListOf<Preference>()
         var favorites by mutableIntStateOf(0)

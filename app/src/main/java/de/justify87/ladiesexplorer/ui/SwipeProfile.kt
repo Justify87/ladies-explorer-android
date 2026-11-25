@@ -1,11 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
-import android.content.Context
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateMapOf
-import coil3.SingletonImageLoader
-import coil3.request.SuccessResult
-import androidx.compose.ui.unit.IntSize
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -73,43 +68,24 @@ internal suspend fun readSwipeProfile(
 internal fun sameSwipeCard(a: DiscoveryCard?, b: DiscoveryCard?): Boolean =
     a != null && b != null && a.listingId == b.listingId && a.personId == b.personId
 
-/** Current failure requires retry or demotion/promotion; speculative failure may retry once on promotion. */
-internal fun swipeFailureNeedsDemotion(startedCurrent: Boolean, stillCurrent: Boolean): Boolean =
-    startedCurrent && stillCurrent
-
 internal data class SwipeReadPolicy(val refresh: Boolean, val allowNetwork: Boolean)
 
-/** Active-run freshness is explicit; speculation prefers cache and strict recovery is local-only. */
+/** Active-run freshness is resolved before promotion; strict recovery is local-only. */
 internal fun swipeReadPolicy(
     current: Boolean, runId: Long?, listingId: Long,
     localOnly: Boolean, preferLocal: Boolean,
 ): SwipeReadPolicy {
     require(listingId > 0)
     return SwipeReadPolicy(
-        refresh = current && runId != null && !localOnly && !preferLocal,
+        refresh = runId != null && !localOnly && !preferLocal,
         allowNetwork = !localOnly && (current || runId != null),
     )
 }
 
-/** Cache-only speculation needs one current-source attempt, never a redo after refresh failure. */
-internal fun shouldRefreshPromotedCurrent(
-    policy: SwipeReadPolicy,
-    model: ProfileReadModel?,
-    alreadyAttempted: Boolean,
-): Boolean = policy.refresh && model?.fromArchive == true && model.warning == null && !alreadyAttempted
+internal data class SwipeReadFailure(val current: Boolean, val message: String)
 
-internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
-    if (size.width <= 0 || size.height <= 0) return
-    val media = profile?.media.orEmpty().filter { it.kind == "IMAGE" }
-        .map { mediaModels(it.localPath, it.url) }.filter { it.isNotEmpty() }.take(2)
-        .ifEmpty { listOf(mediaModels(card.localPath, card.thumbnailUrl)) }
-    val loader = SingletonImageLoader.get(context)
-    for (models in media) for (model in models) {
-        currentCoroutineContext().ensureActive()
-        val result = loader.execute(heroImageRequest(context, model, size))
-        if (result is SuccessResult) break
-    }
-}
+internal fun swipeReadMayRetry(failure: SwipeReadFailure?, current: Boolean): Boolean =
+    failure == null || current && !failure.current
 
 /** Per-entry tickets reject late delivery after prune, reset or owner replacement. */
 internal class SwipeProfileWindow(
@@ -120,13 +96,10 @@ internal class SwipeProfileWindow(
     private val slots = mutableMapOf<Long, Slot>()
     private val inFlight = mutableMapOf<Long, Slot>()
     private var nextTicket = 0L
-    private val invalidations = mutableStateMapOf<Long, Long>()
     private val staleProvenance = mutableMapOf<Long, Pair<Boolean, String?>>()
     private val externalRevision = mutableLongStateOf(initialExternalRevision)
     var closed = false
         private set
-
-    fun invalidation(card: DiscoveryCard?): Long = card?.let { invalidations[it.listingId] } ?: 0L
 
     fun requiresLocal(card: DiscoveryCard): Boolean = card.listingId in staleProvenance
 
@@ -153,7 +126,6 @@ internal class SwipeProfileWindow(
         entries.clear()
         slots.clear()
         inFlight.clear()
-        invalidations.clear()
         staleProvenance.clear()
     }
 
@@ -167,10 +139,7 @@ internal class SwipeProfileWindow(
         for ((id, slot) in slots.toMap()) {
             if (id == listingId && slot == ticket) continue
             entries.remove(id)?.let { staleProvenance[id] = it.fromArchive to it.warning }
-            val next = ++nextTicket
-            slots[id] = slot.copy(ticket = next)
-            // Revoke now; let the rejected read schedule recovery after drain to avoid recursive cancellation.
-            if (id !in inFlight) invalidations[id] = next
+            slots[id] = slot.copy(ticket = ++nextTicket)
         }
     }
 
@@ -181,7 +150,6 @@ internal class SwipeProfileWindow(
             slots.remove(it)
             inFlight.remove(it)
             entries.remove(it)
-            invalidations.remove(it)
             staleProvenance.remove(it)
         }
         for (card in cards) {
@@ -215,18 +183,11 @@ internal class SwipeProfileWindow(
             entries[listingId] = published
             return published
         } finally {
-            if (inFlight[listingId] == ticket) {
-                inFlight.remove(listingId)
-                slots[listingId]?.takeIf { it.owner == card.personId && it != ticket }?.let {
-                    invalidations[listingId] = it.ticket
-                }
-            }
+            if (inFlight[listingId] == ticket) inFlight.remove(listingId)
         }
     }
 
     suspend fun readCurrent(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? =
         obtain(card, read)
 
-    suspend fun prefetch(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? =
-        get(card) ?: obtain(card, read)
 }

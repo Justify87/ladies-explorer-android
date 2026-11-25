@@ -110,8 +110,9 @@ internal class SwipeSession {
     }
 }
 
-internal fun prefetchCards(cards: List<DiscoveryCard>): List<DiscoveryCard> =
-    cards.drop(1).take(2)
+internal const val SWIPE_WINDOW_SIZE = 6
+
+internal fun swipeReadWindow(cards: List<DiscoveryCard>): List<DiscoveryCard> = cards.take(SWIPE_WINDOW_SIZE)
 
 /** Non-writing traversal remains available without a detail projection. */
 internal data class SwipeDeckToken(val runId: Long?, val session: Long)

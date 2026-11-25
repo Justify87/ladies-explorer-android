@@ -98,6 +98,31 @@ class ProfileProjectionTest {
         assertEquals("new", state.value.savedError)
     }
 
+    @Test(timeout = 15_000) fun speculativeProjectionKeepsDeckGenerationUntilMembershipActuallyChanges() = runBlocking {
+        val search = MutableStateFlow(SearchUiState())
+        val first = fixtureCard(1L)
+        val state = MutableStateFlow(DiscoverUiState(
+            cards = listOf(first), localCards = listOf(first), swipeSessionId = 7L, loading = false,
+        ))
+        val page = SavedPersonPage(emptyList(), 0u, 0u, 1L, null)
+        var rows = listOf(first)
+        val publisher = DiscoveryProjectionPublisher(search, state, SwipeSession(), { 1L }, {},
+            {
+                assertFalse("Background refresh must not show foreground loading", state.value.loading)
+                DiscoveryProjection(null, emptyList(), DiscoveryPage(rows, null))
+            },
+            { SavedPeopleWindow(page, null) })
+        assertTrue(publisher.project(1L, background = true))
+        assertEquals(listOf(first), state.value.cards)
+        assertEquals(7L, state.value.swipeSessionId)
+        assertFalse(state.value.loading)
+        rows = listOf(first, fixtureCard(2L))
+        assertTrue(publisher.project(1L, background = true))
+        assertEquals(rows, state.value.cards)
+        assertEquals(8L, state.value.swipeSessionId)
+        assertFalse(state.value.loading)
+    }
+
     @Test(timeout = 15_000) fun mapReadFailureInvalidatesOldOverviewAndLateSuccessCannotReplaceNewEpoch() = runBlocking {
         val old = MapOverview(emptyList(), 1u, 1u, 0u)
         val new = MapOverview(emptyList(), 2u, 2u, 0u)

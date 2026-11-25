@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.justify87.ladiesexplorer.LadiesApplication
 import de.justify87.ladiesexplorer.core.ProfileMediaItem
+import de.justify87.ladiesexplorer.core.CoreStore
 import dev.jdtech.mpv.MPVLib
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +31,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /** Recognize only MP4/EBML headers and select the corresponding demuxer. */
@@ -47,9 +51,112 @@ private fun localVideo(file: File): LocalGalleryVideo? {
     return LocalGalleryVideo(file.canonicalFile, demuxer)
 }
 
-private data class LocalGalleryVideo(val file: File, val demuxer: String)
+internal data class LocalGalleryVideo(val file: File, val demuxer: String)
 
-/** The visible medium owns its temporary file and player; archive files are never deleted. */
+/** Cache hits never queue behind network I/O. Window pins and playback leases have separate lifetimes. */
+internal class GalleryVideoFiles(
+    private val downloadBytes: suspend (String) -> ByteArray,
+    private val createFile: () -> File,
+    private val budget: Long = 256L * 1024 * 1024,
+    private val warmBudget: Long = budget - 48L * 1024 * 1024,
+) {
+    constructor(core: CoreStore) : this({ url -> core.loadDisplayVideo(url).bytes }, core::createDisplayVideoFile)
+    private data class Entry(val video: LocalGalleryVideo, val bytes: Long, var users: Int = 0,
+        val pins: MutableSet<Any> = mutableSetOf())
+    private val gate = Mutex()
+    private val downloadGate = Mutex()
+    private val files = LinkedHashMap<String, Entry>(16, 0.75f, true)
+
+    private fun discard(url: String, entry: Entry): Boolean {
+        if (entry.video.file.exists() && !entry.video.file.delete()) return false
+        files.remove(url)
+        return true
+    }
+
+    private fun makeRoom(bytes: Long): Boolean {
+        for ((url, entry) in files.toList()) {
+            if (files.values.sumOf { it.bytes } + bytes <= budget) break
+            if (entry.users == 0 && entry.pins.isEmpty()) discard(url, entry)
+        }
+        return files.values.sumOf { it.bytes } + bytes <= budget
+    }
+
+    private fun pin(entry: Entry, owner: Any?) {
+        if (owner == null || owner in entry.pins) return
+        val pinned = files.values.filter { it.pins.isNotEmpty() }.sumOf { it.bytes }
+        check(entry.pins.isNotEmpty() || pinned + entry.bytes <= warmBudget) { "Video-Prefetch-Budget erreicht" }
+        entry.pins.add(owner)
+    }
+
+    suspend fun retainPins(owner: Any, urls: Set<String>) = withContext(Dispatchers.IO) {
+        gate.withLock {
+            files.forEach { (url, entry) -> if (url !in urls) entry.pins.remove(owner) }
+        }
+    }
+
+    suspend fun warm(item: ProfileMediaItem, owner: Any): Boolean =
+        withVideo(item, pinOwner = owner) { true }
+
+    suspend fun <T> withVideo(item: ProfileMediaItem, refresh: Boolean = false,
+        pinOwner: Any? = null, use: suspend (LocalGalleryVideo) -> T): T {
+        val archived = withContext(Dispatchers.IO) {
+            item.localPath?.let { runCatching { localVideo(File(it)) }.getOrNull() }
+        }
+        if (archived != null) return use(archived)
+        check(item.url.isNotBlank()) { "No video source" }
+        var lease: Entry? = null
+        suspend fun reuse() = withContext(Dispatchers.IO) {
+            gate.withLock {
+                val entry = files[item.url] ?: return@withLock
+                if (!entry.video.file.isFile ||
+                    (refresh && entry.users == 0 && entry.pins.isEmpty())) {
+                    check(discard(item.url, entry)) { "Video-Cache-Datei nicht entfernbar" }
+                    return@withLock
+                }
+                pin(entry, pinOwner)
+                entry.users++
+                lease = entry
+            }
+        }
+        try {
+            reuse()
+            if (lease == null) downloadGate.withLock {
+                reuse()
+                if (lease == null) {
+                    val download = downloadBytes(item.url)
+                    withContext(Dispatchers.IO) {
+                        gate.withLock {
+                            val bytes = download.size.toLong()
+                            if (pinOwner != null) check(
+                                files.values.filter { it.pins.isNotEmpty() }.sumOf { it.bytes } + bytes <= warmBudget
+                            ) { "Video-Prefetch-Budget erreicht" }
+                            check(makeRoom(bytes)) { "Video-Cache-Budget erreicht" }
+                            val destination = createFile()
+                            try {
+                                destination.writeBytes(download)
+                                val video = checkNotNull(localVideo(destination)) { "Unsupported local video" }
+                                val entry = Entry(video, destination.length(), users = 1)
+                                pin(entry, pinOwner)
+                                files[item.url] = entry
+                                lease = entry
+                            } catch (failure: Exception) {
+                                destination.delete()
+                                throw failure
+                            }
+                        }
+                    }
+                }
+            }
+            return use(checkNotNull(lease).video)
+        } finally {
+            if (lease != null) withContext(NonCancellable + Dispatchers.IO) {
+                gate.withLock { checkNotNull(lease).users-- }
+            }
+        }
+    }
+}
+
+/** The visible medium owns the player and a lease on its local file. */
 @Composable
 internal fun GalleryVideo(
     item: ProfileMediaItem,
@@ -60,54 +167,44 @@ internal fun GalleryVideo(
     controlsModifier: Modifier,
     onTargets: @Composable () -> Unit,
     onVideoSize: (IntSize) -> Unit = {},
+    prepared: PreparedMedium? = null,
 ) {
     val context = LocalContext.current
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     val visible = mediaVisible && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
     val playing = visible && active
     val playbackAllowed by rememberUpdatedState(active)
-    var retry by remember(item) { mutableIntStateOf(0) }
-    var paused by remember(item) { mutableStateOf(false) }
-    var file by remember(item, retry, visible) { mutableStateOf<LocalGalleryVideo?>(null) }
-    var failure by remember(item, retry, visible) { mutableStateOf(false) }
-    var ready by remember(item, retry, playing) { mutableStateOf(false) }
-    var videoSize by remember(item, retry) { mutableStateOf(IntSize.Zero) }
+    val mediaKey = item.presentationKey()
+    var retry by remember(mediaKey) { mutableIntStateOf(0) }
+    var paused by remember(mediaKey) { mutableStateOf(false) }
+    val unavailable = prepared == PreparedMedium.Unavailable
+    var file by remember(mediaKey, retry, visible, unavailable) { mutableStateOf<LocalGalleryVideo?>(null) }
+    var failure by remember(mediaKey, retry, visible, unavailable) { mutableStateOf(unavailable && retry == 0) }
+    var ready by remember(mediaKey, retry, playing) { mutableStateOf(false) }
+    var videoSize by remember(mediaKey, retry) { mutableStateOf(IntSize.Zero) }
     SideEffect { onVideoSize(if (failure) IntSize.Zero else videoSize) }
-    LaunchedEffect(item, retry, visible) {
-        if (!visible) return@LaunchedEffect
+    LaunchedEffect(mediaKey, retry, visible, unavailable) {
+        if (!visible || (unavailable && retry == 0)) return@LaunchedEffect
         snapshotFlow { playbackAllowed }.first { it }
         // Transient action locks must not trigger another download.
-        var temporary: File? = null
         try {
-            val archived = withContext(Dispatchers.IO) {
-                item.localPath?.let { runCatching { localVideo(File(it)) }.getOrNull() }
+            val app = context.applicationContext as LadiesApplication
+            app.galleryVideoFiles.withVideo(item, refresh = retry > 0) { prepared ->
+                file = prepared
+                awaitCancellation()
             }
-            if (archived != null) {
-                file = archived
-            } else {
-                check(item.url.isNotBlank()) { "No video source" }
-                val app = context.applicationContext as LadiesApplication
-                val download = app.coreStore.loadDisplayVideo(item.url)
-                file = withContext(Dispatchers.IO) {
-                    val destination = app.coreStore.createDisplayVideoFile()
-                    temporary = destination
-                    destination.writeBytes(download.bytes)
-                    checkNotNull(localVideo(destination)) { "Unsupported local video" }
-                }
-            }
-            awaitCancellation()
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (_: Exception) {
             failure = true
-        } finally {
-            withContext(NonCancellable + Dispatchers.IO) { temporary?.delete() }
         }
     }
     val video = file
     if (playing && video != null && !failure) {
         key(video, retry) {
-            LocalMpvPlayer(video, paused, modifier, onLoading = { ready = false },
+            LocalMpvPlayer(video, paused, modifier.graphicsLayer {
+                alpha = if (ready && videoSize.width > 0 && videoSize.height > 0) 1f else 0f
+            }, onLoading = { ready = false },
                 onReady = { ready = true }, onFailure = { failure = true }, onSize = { videoSize = it })
         }
     } else Box(modifier)
@@ -118,7 +215,7 @@ internal fun GalleryVideo(
             failure -> IconButton(onClick = { if (canInteract()) { paused = false; retry++ } }) {
                 Icon(Icons.Default.PlayArrow, "Video erneut laden")
             }
-            !ready -> CircularProgressIndicator(Modifier.size(28.dp))
+            !ready || videoSize.width <= 0 || videoSize.height <= 0 -> CircularProgressIndicator(Modifier.size(28.dp))
             else -> FilledIconButton(onClick = { if (canInteract()) paused = !paused }) {
                 Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
                     if (paused) "Video abspielen" else "Video pausieren")
