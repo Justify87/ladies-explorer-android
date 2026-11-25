@@ -91,6 +91,47 @@ class ProfileRestoreDeviceTest {
         rule.onNodeWithText("WhatsApp").assertDoesNotExist()
     }
 
+    @Test fun searchMatchIsOpenAndShowsAlternativesWithoutASecondEvidenceList() {
+        val original = profile()
+        val source = ProfileFacts(emptyList(),
+            listOf(ProfileField("Service", listOf("Fixture value"))), emptyList(),
+            listOf(FilterMatchGroup("haarfarbe", EvidenceStatus.YES, listOf(
+                FilterEvidence("haarfarbe", "blond", EvidenceStatus.YES),
+                FilterEvidence("haarfarbe", "schwarz", EvidenceStatus.UNKNOWN))),
+                FilterMatchGroup("radius", EvidenceStatus.UNKNOWN,
+                    listOf(FilterEvidence("radius", "20 km", EvidenceStatus.UNKNOWN)))), emptyList())
+        var context by mutableStateOf("run-1")
+        val readers = ProfilePanelReads(
+            { _, key -> if (key == "run-1") source else source.copy(filters = emptyList()) },
+            { PersonDetail(emptyList(), 0u, 0u, 0u, 0u) }, { _, _, _ -> emptyList() })
+        rule.setContent {
+            LadiesTheme(darkTheme = false) {
+                ProfileFlow(rememberLazyListState(), original, context, token(original), false,
+                    emptyMap(), notes, { true }, { _, _ -> },
+                    Modifier.fillMaxWidth().height(320.dp).testTag("match-profile"), panelReads = readers) {
+                    item("hero") { Text("Synthetic hero") }
+                }
+            }
+        }
+        val list = rule.onNodeWithTag("match-profile")
+        list.performScrollToKey("profile-facts")
+        rule.waitForIdle()
+        rule.onNodeWithText("Übereinstimmung mit deiner Suche").assertExists()
+        rule.onNodeWithText("1 von 2 belegt · 0 nicht erfüllt · 1 unbekannt").assertExists()
+        rule.onNodeWithText("blond · Ja").assertExists()
+        rule.onNodeWithText("schwarz · Unbekannt").assertExists()
+        rule.onNodeWithText("Übereinstimmung mit deiner Suche").performClick()
+        rule.onNodeWithText("blond · Ja").assertDoesNotExist()
+        rule.onNodeWithText("Übereinstimmung mit deiner Suche").performClick()
+        list.performScrollToKey("profile-services")
+        rule.onNodeWithText("Dienste").performClick()
+        rule.onNodeWithText("Filterbelege").assertDoesNotExist()
+        rule.runOnIdle { context = "run-2" }
+        list.performScrollToKey("profile-facts")
+        rule.waitForIdle()
+        rule.onNodeWithText("Übereinstimmung mit deiner Suche").assertDoesNotExist()
+    }
+
     @Test fun progressiveProfileShowsFullSourceGroupsOnlyOnExpansion() {
         val original = profile()
         val source = ProfileFacts(
@@ -131,14 +172,14 @@ class ProfileRestoreDeviceTest {
         rule.onNodeWithText("Trait value").assertExists()
         list.performScrollToKey("profile-services")
         rule.onNodeWithText("Value 1").assertDoesNotExist()
-        rule.onNodeWithText("Dienste und Filterbelege").performClick()
+        rule.onNodeWithText("Dienste").performClick()
         rule.onAllNodesWithText("Service", substring = false).assertCountEquals(1)
         rule.onNodeWithText("Value 1").assertExists()
         rule.onNodeWithText("Value 2").assertExists()
         rule.onNodeWithText("Treffpunkt").assertExists()
         rule.onNodeWithText("Other value").assertExists()
         val first = rule.runOnIdle { state.firstVisibleItemIndex }
-        rule.onNodeWithText("Dienste und Filterbelege").performClick()
+        rule.onNodeWithText("Dienste").performClick()
         rule.onNodeWithText("Value 1").assertDoesNotExist()
         rule.runOnIdle { assertEquals(first, state.firstVisibleItemIndex); assertEquals(1, calls) }
     }

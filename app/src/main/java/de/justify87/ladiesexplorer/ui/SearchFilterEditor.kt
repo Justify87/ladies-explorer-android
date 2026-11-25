@@ -25,7 +25,7 @@ import de.justify87.ladiesexplorer.core.LocalVisibility
 import de.justify87.ladiesexplorer.core.SourceFilterGroup
 import kotlin.math.roundToInt
 
-private val categoryLabels = mapOf(
+internal val categoryLabels = mapOf(
     "" to "Alle Rubriken",
     "huren-hostessen" to "Huren & Hostessen",
     "bordelle-laufhaeuser" to "Bordelle & Laufhäuser",
@@ -39,7 +39,7 @@ private val categoryLabels = mapOf(
     "onlineservice" to "Online-Service",
 )
 
-private val groupLabels = mapOf(
+internal val groupLabels = mapOf(
     "figur" to "Figur", "typ" to "Typ", "geschlecht" to "Geschlecht",
     "busen" to "Busen", "intimbereich" to "Intimbereich", "hautton" to "Hautton",
     "haarfarbe" to "Haarfarbe", "haarlaenge" to "Haarlänge",

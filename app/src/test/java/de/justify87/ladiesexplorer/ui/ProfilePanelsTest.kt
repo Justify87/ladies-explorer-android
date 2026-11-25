@@ -191,19 +191,35 @@ class ProfilePanelsTest {
         assertEquals(listOf(second, other), traits)
     }
 
-    @Test fun serviceProjectionRetainsSourceGroupsAllValuesAndFilterEvidence() {
+    @Test fun serviceProjectionRetainsSourceGroupsAndAllValues() {
         val raw = ProfileField("Service", (1..10).map { "v$it" })
         val other = ProfileField("Treffpunkt", listOf("Fixture"))
         val empty = ProfileField("Leer", emptyList())
-        val filters = (1..6).map { FilterEvidence("fixture", "f$it",
-            if (it % 2 == 0) EvidenceStatus.UNKNOWN else EvidenceStatus.NO) }
-        val all = ProfileFacts(emptyList(), listOf(raw, other, empty), emptyList(), filters, emptyList()).serviceRows()
-        assertEquals(listOf(raw, other), all.source)
-        assertEquals(listOf("Nein", "Unbekannt", "Nein", "Unbekannt", "Nein", "Unbekannt"),
-            all.filters.map { it.second })
+        val all = ProfileFacts(emptyList(), listOf(raw, other, empty), emptyList(), emptyList(), emptyList()).serviceRows()
+        assertEquals(listOf(raw, other), all)
         val (overview, traits) = ProfileFacts(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()).overviewAndTraits()
         assertEquals(emptyList<Pair<String, String>>(), overview)
         assertEquals(emptyList<ProfileField>(), traits)
+    }
+
+    @Test fun matchSummaryCountsGroupsInsteadOfAlternativesAndOpensByDefault() {
+        val groups = listOf(
+            FilterMatchGroup("haarfarbe", EvidenceStatus.YES, listOf(
+                FilterEvidence("haarfarbe", "blond", EvidenceStatus.YES),
+                FilterEvidence("haarfarbe", "schwarz", EvidenceStatus.UNKNOWN))),
+            FilterMatchGroup("age", EvidenceStatus.NO,
+                listOf(FilterEvidence("age", "25–30 Jahre", EvidenceStatus.NO))),
+            FilterMatchGroup("radius", EvidenceStatus.UNKNOWN,
+                listOf(FilterEvidence("radius", "20 km", EvidenceStatus.UNKNOWN))),
+        )
+        assertEquals("1 von 3 belegt · 1 nicht erfüllt · 1 unbekannt", matchSummary(groups))
+        val sections = ProfileSections()
+        assertTrue(sections.expanded(ProfileSection.Match))
+        sections.toggle(ProfileSection.Match)
+        assertFalse(sections.expanded(ProfileSection.Match))
+        assertFalse(ProfileSections(sections.entries).expanded(ProfileSection.Match))
+        sections.restore(emptyList())
+        assertTrue(sections.expanded(ProfileSection.Match))
     }
 
     @Test fun progressiveSectionsKeepStableLazyRowsAndSeparateReadDemand() {

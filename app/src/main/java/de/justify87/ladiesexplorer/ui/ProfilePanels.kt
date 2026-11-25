@@ -22,8 +22,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-internal enum class ProfileSection(val label: String) {
-    Description("Über das Profil"), OpeningTimes("Öffnungszeiten"), Traits("Merkmale"), Services("Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), Prices("Manuelle Angebotspreise"), History("Verlauf / verknüpfte Anzeigen")
+internal enum class ProfileSection(val label: String, val defaultExpanded: Boolean = false) {
+    Match("Übereinstimmung mit deiner Suche", defaultExpanded = true),
+    Description("Über das Profil"), OpeningTimes("Öffnungszeiten"), Traits("Merkmale"), Services("Dienste"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), Prices("Manuelle Angebotspreise"), History("Verlauf / verknüpfte Anzeigen")
 }
 
 @Stable
@@ -33,9 +34,10 @@ internal class ProfileSections(initial: List<String> = emptyList()) {
     fun restore(values: List<String>) {
         entries = values.distinct().filter { name -> name == "history-description" || ProfileSection.entries.any { it.name == name } }
     }
-    fun expanded(section: ProfileSection) = section.name in entries
+    // Entries store deviations from each section's default, including a collapsed Match.
+    fun expanded(section: ProfileSection) = section.defaultExpanded != (section.name in entries)
     fun toggle(section: ProfileSection) {
-        entries = if (expanded(section)) entries - section.name else entries + section.name
+        entries = if (section.name in entries) entries - section.name else entries + section.name
     }
 
     // A history filter is presentation state, not part of a replaceable read.
@@ -345,15 +347,59 @@ internal fun ProfileFacts.overviewAndTraits(): Pair<List<Pair<String, String>>, 
     return overview to traits.filterIndexed { index, _ -> index != promoted }
 }
 
-internal data class ProfileServiceRows(
-    val source: List<ProfileField>,
-    val filters: List<Pair<String, String>>,
-)
+internal fun ProfileFacts.serviceRows(): List<ProfileField> = services.filter { it.values.isNotEmpty() }
 
-internal fun ProfileFacts.serviceRows(): ProfileServiceRows = ProfileServiceRows(
-    source = services.filter { it.values.isNotEmpty() },
-    filters = filters.map { "${it.label} (${it.group})" to evidenceLabel(it.status) },
-)
+internal fun matchSummary(groups: List<FilterMatchGroup>): String {
+    val yes = groups.count { it.status == EvidenceStatus.YES }
+    val no = groups.count { it.status == EvidenceStatus.NO }
+    val unknown = groups.count { it.status == EvidenceStatus.UNKNOWN }
+    return "$yes von ${groups.size} belegt · $no nicht erfüllt · $unknown unbekannt"
+}
+
+private fun matchGroupLabel(group: String): String = when (group) {
+    "radius" -> "Suchumkreis"
+    "category" -> "Rubrik"
+    "age" -> "Alter"
+    "height" -> "Größe"
+    "local_video", "local_photo", "local_likes", "local_dislikes", "local_image" -> "Lokaler Filter"
+    else -> groupLabels[group] ?: group
+}
+
+@Composable
+private fun MatchEvidenceText(label: String, status: EvidenceStatus) {
+    val color = when (status) {
+        EvidenceStatus.YES -> MaterialTheme.colorScheme.primary
+        EvidenceStatus.NO -> MaterialTheme.colorScheme.error
+        EvidenceStatus.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text("$label · ${evidenceLabel(status)}", color = color,
+        style = MaterialTheme.typography.bodyMedium)
+}
+
+@Composable
+internal fun ProfileMatchSection(groups: List<FilterMatchGroup>, sections: ProfileSections) {
+    if (groups.isEmpty()) return
+    val section = ProfileSection.Match
+    ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) },
+        hint = matchSummary(groups)) {
+        groups.forEach { group ->
+            val title = matchGroupLabel(group.group)
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (group.options.size > 1) {
+                    MatchEvidenceText("$title (Alternativen)", group.status)
+                } else {
+                    Text(title, style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                group.options.forEach { option ->
+                    val label = if (group.group == "category") categoryLabels[option.label] ?: option.label
+                        else option.label
+                    MatchEvidenceText(label, option.status)
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun ProfileDescription(profile: ProfileResponse, sections: ProfileSections) {
@@ -489,6 +535,7 @@ private fun ProfileFlowRows.profileContent(
             val listingFields = listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() })
             if (panels.facts == null && listingFields.isNotEmpty()) FieldGrid(listingFields)
             FactsContent(panels, actionsBusy, isCurrent) { facts ->
+                ProfileMatchSection(facts.filters, sections)
                 FieldGrid(facts.overviewAndTraits().first + listingFields)
             }
         }
@@ -507,14 +554,13 @@ private fun ProfileFlowRows.profileContent(
     }
     if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile, sections) }
     val serviceRows = facts?.serviceRows()
-    if (serviceRows == null || serviceRows.source.isNotEmpty() || serviceRows.filters.isNotEmpty())
+    if (serviceRows == null || serviceRows.isNotEmpty())
         item(key = "profile-services", read = ProfileRowRead.Facts) {
             val section = ProfileSection.Services
             ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) },
                 hint = panels.factsError, hintError = panels.factsError != null) {
                 FactsContent(panels, actionsBusy, isCurrent) { loaded ->
-                    val all = loaded.serviceRows()
-                    all.source.forEach { field ->
+                    loaded.serviceRows().forEach { field ->
                         ProfileGroup(field.label) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -522,7 +568,6 @@ private fun ProfileFlowRows.profileContent(
                             }
                         }
                     }
-                    if (all.filters.isNotEmpty()) ProfileGroup("Filterbelege") { FieldGrid(all.filters) }
                 }
             }
         }
