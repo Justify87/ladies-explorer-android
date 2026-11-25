@@ -180,7 +180,8 @@ internal fun SearchScreen(
                         ScreenGroup("${state.activeCards.size} lokal sichtbare Treffer") {
                             Text("Quellzahl: ${response.serverCount?.takeIf { response.radiusVerified } ?: "unbekannt"}", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                "${response.fetchedPages} von ${response.totalPages} Seiten · ${response.city} · ${response.requestedRadiusKm} km",
+                                (if (response.partial || !response.radiusVerified) "${response.fetchedPages} Seiten geladen" else "${response.fetchedPages} von ${response.totalPages} Seiten") +
+                                    " · ${response.city} · ${response.requestedRadiusKm} km",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                             if (response.partial || !response.radiusVerified) {

@@ -598,7 +598,6 @@ fn preview_search_using<T: Transport>(
     request: &SearchRequest,
     control: Option<&RequestControl>,
 ) -> Result<super::SearchPreview, CoreError> {
-    filter::validate_request(request)?;
     let result = fetch_search_mode(client, request, control, true)?;
     if let Some(control) = control {
         control.check()?;
@@ -819,6 +818,7 @@ fn fetch_search_mode<T: Transport>(
                 break;
             };
             fetched_pages += 1;
+            total_pages = total_pages.max(page);
             match payload.get("distanceSearched") {
                 None => {
                     radius_verified = false;
@@ -871,16 +871,18 @@ fn fetch_search_mode<T: Transport>(
             )? == AppendPageOutcome::RadiusTransition
             {
                 boundary_stopped = true;
-                total_pages = total_pages.max(page);
                 client.log_event(
                     "SEARCH",
                     format!("Stopped at page={page} radius transition placeholder"),
                 );
                 break;
             }
-            total_pages = total_pages.max(page);
             let previous_unique = seen.len();
-            seen.extend(cards[previous_len..].iter().map(|card| card.advert_id.clone()));
+            seen.extend(
+                cards[previous_len..]
+                    .iter()
+                    .map(|card| card.advert_id.clone()),
+            );
             if seen.len() == previous_unique {
                 partial = true;
                 client.log_event("SEARCH", format!("No new listing IDs at page={page}"));
@@ -1558,23 +1560,24 @@ mod tests {
     }
 
     #[test]
-    fn regular_search_loads_more_than_ten_source_pages() {
+    fn regular_search_loads_more_than_fifty_source_pages() {
         let first = format!(
-            "{} totalPages: Number.parseInt(replaceWithDefault(\"12\", 1)), advertCount: Number.parseInt(replaceWithDefault(\"12\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"55\", 1)), advertCount: Number.parseInt(replaceWithDefault(\"55\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
             card(1)
         );
         let mut mock = Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, &first);
-        for page in 2..=12 {
+        for page in 2..=55 {
             mock = mock.with(
                 &search_url("leipzig", 20, page, "", true),
                 200,
                 &json!({"content": card(page), "distanceSearched":20,
-                    "pagination":{"currentPage":page,"totalPages":12}}).to_string(),
+                    "pagination":{"currentPage":page,"totalPages":55}})
+                .to_string(),
             );
         }
         let result = fetch_search_using(&with_city(mock), &SearchRequest::for_test()).unwrap();
-        assert_eq!(result.cards.len(), 12);
-        assert_eq!(result.fetched_pages, 12);
+        assert_eq!(result.cards.len(), 55);
+        assert_eq!(result.fetched_pages, 55);
         assert!(!result.partial);
     }
 
@@ -1599,6 +1602,28 @@ mod tests {
             assert_eq!(found.cards.len(), 1);
             assert_eq!(found.fetched_pages, 2);
         }
+    }
+
+    #[test]
+    fn incorrect_current_page_is_not_ingested() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"3\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":card(2),"distanceSearched":20,
+                        "pagination":{"currentPage":1,"totalPages":3}})
+                    .to_string(),
+                ),
+        );
+        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+        assert!(result.partial);
+        assert_eq!(result.cards.len(), 1);
     }
 
     #[test]
@@ -1682,7 +1707,8 @@ mod tests {
                         &search_url("leipzig", 20, 2, "", true),
                         200,
                         &json!({"content":card(2),"distanceSearched":20,
-                            "pagination":{"totalPages":pages}}).to_string(),
+                            "pagination":{"totalPages":pages}})
+                        .to_string(),
                     ),
             );
             let found = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();

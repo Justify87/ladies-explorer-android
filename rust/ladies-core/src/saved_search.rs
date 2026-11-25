@@ -959,6 +959,7 @@ mod tests {
         let before = definition(&core, &id).unwrap();
         let mut query = SearchRequest::for_test();
         query.radius_km = 70;
+        query.filters_json = r#"{"figur":["schlank"]}"#.into();
         let local = LocalVisibility {
             hide_likes: true,
             ..LocalVisibility::default()
@@ -990,8 +991,14 @@ mod tests {
             .unwrap();
         let decoded = load_definition(&core, id.clone()).unwrap();
         assert_eq!(encode_definition(&decoded).unwrap(), raw);
-        update_with_local(&core, id.clone(), "Renamed".into(), decoded.query, decoded.local)
-            .unwrap();
+        update_with_local(
+            &core,
+            id.clone(),
+            "Renamed".into(),
+            decoded.query,
+            decoded.local,
+        )
+        .unwrap();
         assert_eq!(definition(&core, &id).unwrap(), (legacy, version));
     }
 

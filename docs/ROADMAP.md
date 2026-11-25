@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.7 sind abgeschlossen. M09.8 ist ausdrücklich freigegeben und in Arbeit; nächste abhängige Aufgabe nach Integration: M09.9 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.7 sind abgeschlossen. M09.8 ist ausdrücklich freigegeben und im Review; nächste abhängige Aufgabe nach Integration: M09.9 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,7 +18,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.8 — Suche: Aktionsleiste und automatische Pagination
 
-**Status:** DOING — Branch `m09-8-search-pagination-default`; Nutzerfreigabe erteilt.
+**Status:** REVIEW — [PR #109](https://github.com/Justify87/ladies-explorer-android/pull/109), Branch `m09-8-search-pagination-default`; vollständige [PR-Prüfungen](https://github.com/Justify87/ladies-explorer-android/pull/109/checks) vor Merge bestätigen. Geräteprüfungen nach Merge-Regel, keine tatsächliche Geräteausführung behauptet.
 
 **Abhängigkeit:** M09.7 integriert; gesonderter Nutzerauftrag erteilt.
 
