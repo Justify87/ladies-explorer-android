@@ -156,6 +156,8 @@ internal data class HeroIdentity(
     val hasVideo: Boolean = false,
     val preference: Preference? = null,
     val favorite: Boolean? = null,
+    val personNew: Boolean = false,
+    val listingNew: Boolean = false,
 ) {
     val title get() = listOfNotNull(name.ifBlank { "Unbekannt" }, age?.takeIf { it.isNotBlank() }).joinToString(", ")
     val subtitle get() = listOfNotNull(place.ifBlank { "Ort unbekannt" }, status).joinToString(" · ")
@@ -181,4 +183,4 @@ internal fun heroIdentity(profile: ProfileResponse, identity: ProfileIdentity?, 
             val status = statusLabel(it.status)
             if (archived) "Zuletzt bekannter Quellenstatus: $status" else "Quellenstatus: $status"
         },
-        hasVideo, preference, favorite)
+        hasVideo, preference, favorite, identity?.personNew == true, identity?.listingNew == true)
