@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
@@ -34,6 +35,7 @@ class DiscoveryDesignDeviceTest {
             MaterialTheme {
                 pxPerDp = LocalDensity.current.density
                 val list = rememberLazyListState()
+                var measuredContext by remember { mutableIntStateOf(0) }
                 val deck = SwipeDeckToken(null, 1)
                 val context = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1),
                     SwipeActionToken(null, 1, 4, 1, 11, 1, Preference.NONE, false, emptyList()),
@@ -41,7 +43,7 @@ class DiscoveryDesignDeviceTest {
                 Column(Modifier.fillMaxSize()) {
                     ProfileShell(Modifier.weight(1f), list, "hero", rootHeight = 64.dp,
                         hasRail = true, notices = emptyList(), noticeOwner = context,
-                        heroLeadingHeight = discoveryLeadingHeight(LocalDensity.current.fontScale).dp,
+                        heroLeadingHeight = with(LocalDensity.current) { measuredContext.toDp() },
                         header = { _, _, _ -> Row(Modifier.fillMaxSize().testTag("header")) {
                             Text("Entdecken", Modifier.weight(1f))
                             AvailabilityQuickChoice(AvailabilityMode.All, true, deck, {})
@@ -52,9 +54,11 @@ class DiscoveryDesignDeviceTest {
                             }
                         }) { presentation ->
                         LazyColumn(Modifier.fillMaxSize(), state = list,
-                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ) {
                             item(key = "discover-context") {
-                                Box(Modifier.padding(horizontal = ShellMetrics.inset).testTag("context")) {
+                                Box(Modifier.onSizeChanged { measuredContext = it.height }
+                                    .padding(bottom = ShellMetrics.inset)
+                                    .padding(horizontal = ShellMetrics.inset).testTag("context")) {
                                     DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
                                 }
                             }
@@ -83,7 +87,8 @@ class DiscoveryDesignDeviceTest {
         val nav = rule.onNodeWithTag("root-nav").fetchSemanticsNode().boundsInRoot
         assertTrue(context.top >= header.bottom - 1f)
         assertTrue(hero.top >= context.bottom - 1f)
-        assertTrue(hero.height > 0f && hero.bottom <= rail.top + 1f)
+        assertTrue(hero.height > 0f)
+        assertEquals(rail.top, hero.bottom, 1f)
         assertTrue(rail.bottom <= nav.top + 1f)
         val favorite = rule.onNodeWithContentDescription("Als Favorit speichern").fetchSemanticsNode().boundsInRoot
         assertTrue(favorite.width >= 48 * pxPerDp - 1f && favorite.height >= 48 * pxPerDp - 1f)
