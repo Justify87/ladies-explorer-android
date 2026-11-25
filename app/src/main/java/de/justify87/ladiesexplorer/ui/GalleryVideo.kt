@@ -259,24 +259,14 @@ private class MpvSurfaceOwner(
     }
 
     private fun publishVideoSize() {
-        // Read the local player's actual output margins when available, not the coded pixel ratio.
+        // The display dimensions include pixel aspect correction. Use a stable ratio
+        // rather than feeding rounded surface margins back into the next surface resize.
         val dimensions = runCatching {
-            val w = player.getPropertyInt("osd-dimensions/w")
-            val h = player.getPropertyInt("osd-dimensions/h")
-            val left = player.getPropertyInt("osd-dimensions/ml")
-            val right = player.getPropertyInt("osd-dimensions/mr")
-            val top = player.getPropertyInt("osd-dimensions/mt")
-            val bottom = player.getPropertyInt("osd-dimensions/mb")
-            if (w != null && h != null && left != null && right != null && top != null && bottom != null &&
-                minOf(left, right, top, bottom) >= 0 && w > left + right && h > top + bottom) {
-                IntSize(w - left - right, h - top - bottom)
-            } else {
-                val dw = player.getPropertyInt("dwidth") ?: 0
-                val dh = player.getPropertyInt("dheight") ?: 0
-                val rotation = player.getPropertyInt("video-out-params/rotate") ?: 0
-                if (dw <= 0 || dh <= 0) IntSize.Zero
-                else if (rotation % 180 != 0) IntSize(dh, dw) else IntSize(dw, dh)
-            }
+            val dw = player.getPropertyInt("dwidth") ?: 0
+            val dh = player.getPropertyInt("dheight") ?: 0
+            val rotation = player.getPropertyInt("video-out-params/rotate") ?: 0
+            if (dw <= 0 || dh <= 0) IntSize.Zero
+            else if (rotation % 180 != 0) IntSize(dh, dw) else IntSize(dw, dh)
         }.getOrDefault(IntSize.Zero)
         if (dimensions.width > 0 && dimensions.height > 0) onSize(dimensions)
     }
