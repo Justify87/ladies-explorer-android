@@ -25,6 +25,21 @@ import org.junit.Test
 class ProfileRestoreDeviceTest {
     @get:Rule val rule = createComposeRule()
 
+    @Test fun profileMatchContextEncodesNativeContract() {
+        val local = defaultLocalVisibility().copy(videoOnly = true, imageMode = "AI")
+        val run = org.json.JSONObject(ProfileMatchContext.Run(11L, 7L, local).encode())
+        assertEquals("run", run.getString("kind"))
+        assertEquals(11L, run.getLong("run_id"))
+        assertEquals(7L, run.getLong("owner_id"))
+        assertTrue(run.getJSONObject("local").getBoolean("video_only"))
+        assertEquals("AI", run.getJSONObject("local").getString("image_mode"))
+        val saved = org.json.JSONObject(ProfileMatchContext.Saved("fixture", 8L).encode())
+        assertEquals("saved", saved.getString("kind"))
+        assertEquals("fixture", saved.getString("saved_id"))
+        assertEquals(8L, saved.getLong("owner_id"))
+        assertEquals("{}", (null as ProfileMatchContext?).encode())
+    }
+
     private fun profile(snapshot: Long = 11, phone: String? = null) = ProfileReadModel(
         NativeProfileProjection(
             ProfileResponse(listingId = 4, snapshotId = snapshot, newSnapshot = false, advertId = "fixture",

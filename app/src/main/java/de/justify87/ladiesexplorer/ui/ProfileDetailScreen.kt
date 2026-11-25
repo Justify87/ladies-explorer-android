@@ -33,7 +33,7 @@ internal fun ProfileDetailScreen(
     prices: PriceEditor? = null,
 ) {
     val profile = state.profile
-    val filters = profileMatchContextForOwner(state.profileMatchContext, state.profileIdentity?.personId)
+    val filters = profileMatchContextForOwner(state.profileMatchContext, state.profileIdentity?.personId).encode()
     val renderedToken = state.detailIdentityToken()
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val detailListState = rememberLazyListState()

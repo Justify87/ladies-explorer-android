@@ -131,12 +131,26 @@ internal fun searchResultOpenMatches(
         search.activeCards.any { it == action.card }
 
 // The native projection resolves criteria from the persisted run or saved result, never the draft.
-internal fun executedProfileMatchContext(response: SearchResponse?, ownerId: Long?): String {
-    if (response == null || ownerId == null) return "{}"
-    val local = response.local
-    return JSONObject().apply {
+sealed interface ProfileMatchContext {
+    data class Run(val runId: Long, val ownerId: Long, val local: LocalVisibility) : ProfileMatchContext
+    data class Saved(val savedId: String, val ownerId: Long) : ProfileMatchContext
+}
+
+internal fun executedProfileMatchContext(response: SearchResponse?, ownerId: Long?): ProfileMatchContext? =
+    if (response == null || ownerId == null) null
+    else ProfileMatchContext.Run(response.searchRunId, ownerId, response.local)
+
+internal fun profileMatchContextForOwner(context: ProfileMatchContext?, ownerId: Long?): ProfileMatchContext? =
+    if (ownerId == null) null else when (context) {
+        is ProfileMatchContext.Run -> context.copy(ownerId = ownerId)
+        is ProfileMatchContext.Saved -> context.copy(ownerId = ownerId)
+        null -> null
+    }
+
+internal fun ProfileMatchContext?.encode(): String = when (this) {
+    is ProfileMatchContext.Run -> JSONObject().apply {
         put("kind", "run")
-        put("run_id", response.searchRunId)
+        put("run_id", runId)
         put("owner_id", ownerId)
         put("local", JSONObject().apply {
             put("video_only", local.videoOnly)
@@ -146,17 +160,13 @@ internal fun executedProfileMatchContext(response: SearchResponse?, ownerId: Lon
             put("image_mode", local.imageMode)
         })
     }.toString()
+    is ProfileMatchContext.Saved -> JSONObject().apply {
+        put("kind", "saved")
+        put("saved_id", savedId)
+        put("owner_id", ownerId)
+    }.toString()
+    null -> "{}"
 }
-
-internal fun savedProfileMatchContext(id: String, ownerId: Long): String = JSONObject().apply {
-    put("kind", "saved")
-    put("saved_id", id)
-    put("owner_id", ownerId)
-}.toString()
-
-internal fun profileMatchContextForOwner(context: String, ownerId: Long?): String =
-    if (context == "{}" || ownerId == null) "{}"
-    else JSONObject(context).put("owner_id", ownerId).toString()
 
 internal fun defaultLocalVisibility() = LocalVisibility(
     videoOnly = false, photosOnly = false, hideDislikes = true,
