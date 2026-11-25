@@ -1,6 +1,8 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -153,6 +155,8 @@ internal fun DiscoveryGridScreen(
                         thumbnailUrl = card.thumbnailUrl,
                         localPath = card.localPath,
                         preference = card.preference,
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = tween(160), placementSpec = spring(stiffness = 500f), fadeOutSpec = tween(140)),
                         decisionOwner = action,
                         touchGate = touchGate,
                         enabled = enabled,
@@ -224,8 +228,7 @@ internal fun ProfileGridCard(
     PhotoGestureSurface(owner = decisionOwner, modifier = modifier.fillMaxWidth(),
         galleryEnabled = enabled, onSwipe = onDecision.takeIf { enabled }, onDrag = { drag = it },
         touchGate = touchGate) { hit ->
-        key(decisionOwner) {
-            val actions = Modifier.semantics {
+        val actions = Modifier.semantics {
                 contentDescription = name.ifBlank { "Inserat" }
                 stateDescription = gridPreferenceLabel(preference)
                 if (enabled) customActions = listOf(
@@ -233,10 +236,10 @@ internal fun ProfileGridCard(
                     CustomAccessibilityAction("Gefällt nicht") { onDecision(Preference.DISLIKE); true },
                     CustomAccessibilityAction("Bewertung entfernen") { onDecision(Preference.NONE); true },
                 )
-            }
-            GridCardContent(name, age, null, thumbnailUrl, localPath, enabled, onOpen,
-                Modifier.then(hit.photo).then(hit.previous).then(actions), preference, shift, drag)
         }
+        GridCardContent(name, age, null, thumbnailUrl, localPath, enabled, onOpen,
+            Modifier.then(hit.photo), preference, shift, drag,
+            decisionOwner = decisionOwner, interaction = Modifier.then(hit.previous).then(actions))
     }
 }
 
@@ -245,17 +248,21 @@ private fun GridCardContent(
     name: String, age: String?, place: String?, thumbnailUrl: String?, localPath: String?,
     enabled: Boolean, onOpen: () -> Unit, modifier: Modifier, preference: Preference? = null,
     shift: Float = 0f, drag: Float = 0f,
+    decisionOwner: Any? = null, interaction: Modifier = Modifier,
 ) {
     val largeText = LocalDensity.current.fontScale >= 1.5f
     Box(
         modifier.fillMaxWidth().heightIn(min = if (largeText) 220.dp else 0.dp)
             .clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceVariant)
-            .shellFocus().clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen),
+            .then(if (preference == null) Modifier.shellFocus()
+                .clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen) else Modifier),
     ) {
         Spacer(Modifier.fillMaxWidth().aspectRatio(1.03f))
         ProfileImage(thumbnailUrl, localPath, Modifier.matchParentSize().graphicsLayer { translationX = shift },
             description = "$name – Profilbild")
         if (preference != null) {
+            if (preference == Preference.DISLIKE)
+                Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .28f)))
             age?.takeIf { it.isNotBlank() }?.let {
                 Text(it, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
                     .background(Color.Black.copy(alpha = .78f), MaterialTheme.shapes.small).padding(horizontal = 7.dp, vertical = 3.dp),
@@ -267,6 +274,11 @@ private fun GridCardContent(
                     modifier = Modifier.align(Alignment.Center)
                         .background(Color.Black.copy(alpha = .82f), MaterialTheme.shapes.small).padding(6.dp),
                     color = Color.White, style = MaterialTheme.typography.bodySmall)
+            }
+            // Revoke presses with their action snapshot without restarting the image request.
+            key(decisionOwner) {
+                Box(Modifier.matchParentSize().then(interaction).shellFocus()
+                    .clickable(enabled = enabled, onClickLabel = "$name öffnen", onClick = onOpen))
             }
         } else {
             Box(Modifier.matchParentSize().background(Brush.verticalGradient(
