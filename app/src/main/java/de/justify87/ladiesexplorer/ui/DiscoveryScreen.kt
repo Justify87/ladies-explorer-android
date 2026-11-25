@@ -339,9 +339,10 @@ internal fun DiscoverScreen(
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
                     }
                     item {
-                        if (state.loading || searchLoading || search.activeProjectionPending) CircularProgressIndicator()
+                        val emptyState = discoveryEmptyState(state, search)
+                        if (emptyState == DiscoveryEmptyState.Loading) CircularProgressIndicator()
                         else {
-                            if (state.error != null || search.activeProjectionError != null) {
+                            if (emptyState == DiscoveryEmptyState.Unknown) {
                                 Text("Lokale Treffer unbekannt.", style = MaterialTheme.typography.titleLarge)
                             } else {
                                 Text("Deck beendet", style = MaterialTheme.typography.titleLarge)

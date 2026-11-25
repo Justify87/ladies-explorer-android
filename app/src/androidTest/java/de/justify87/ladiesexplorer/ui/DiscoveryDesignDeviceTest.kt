@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.Preference
+import de.justify87.ladiesexplorer.core.SearchRequest
+import de.justify87.ladiesexplorer.core.SearchResponse
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -136,8 +138,16 @@ class DiscoveryDesignDeviceTest {
     }
 
     @Test fun gridDistinguishesUnknownFromConfirmedEmptyAfterLocalProjectionFailure() {
-        var discovery by mutableStateOf(DiscoverUiState(loading = false, error = "Synthetischer Lesefehler"))
-        var search by mutableStateOf(SearchUiState(activeProjectionError = "Synthetischer Lesefehler"))
+        val run = SearchResponse(
+            query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
+            local = defaultLocalVisibility(), searchRunId = 7L, city = "Leipzig",
+            requestedRadiusKm = 20u, serverCount = 0u, totalPages = 1u, fetchedPages = 1u,
+            partial = false, radiusBoundaryStopped = false, radiusVerified = true, profiles = emptyList(),
+        )
+        var discovery by mutableStateOf(DiscoverUiState(activeRunId = 7L, loading = false,
+            error = "Synthetischer Lesefehler"))
+        var search by mutableStateOf(SearchUiState().acceptRun(run, emptyList())
+            .copy(activeProjectionError = "Synthetischer Lesefehler"))
         rule.setContent {
             LadiesTheme {
                 DiscoveryGridScreen(discovery, search, onLoadMore = {},
@@ -153,7 +163,8 @@ class DiscoveryDesignDeviceTest {
         }
         rule.onNodeWithText("Keine Treffer.").assertDoesNotExist()
         rule.onNodeWithText("Lokale Treffer unbekannt.").assertDoesNotExist()
-        rule.runOnIdle { search = search.copy(activeProjectionPending = false) }
+        rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).assertExists()
+        rule.runOnIdle { search = search.acceptRun(run, emptyList()) }
         rule.onNodeWithText("Keine Treffer.").assertExists()
     }
 

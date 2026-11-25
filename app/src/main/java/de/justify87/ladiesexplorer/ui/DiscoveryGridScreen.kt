@@ -52,13 +52,14 @@ internal fun DiscoveryGridScreen(
 ) {
     val cards = gridCards(discovery, search)
     val active = search.response != null
-    val loadingResults = discovery.loading || search.loading || search.activeProjectionPending
-    val unknownResults = discovery.error != null || search.activeProjectionError != null
+    val emptyState = discoveryEmptyState(discovery, search)
+    val loadingResults = emptyState == DiscoveryEmptyState.Loading
     val enabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy
     val undoAction = discovery.gridUndo?.let { GridUndoAction(it, discovery.actionGeneration) }
     val canUndo = undoAction != null && gridUndoMatches(discovery, search, undoAction)
     val pageAction = if (active) null else discovery.nextCursor?.let { GridPageAction(it, discovery.actionGeneration) }
     val canPage = pageAction != null && gridPageMatches(discovery, search, pageAction)
+    val showPage = pageAction != null && (cards.isNotEmpty() || !loadingResults)
     var anchorKey by rememberSaveable { mutableStateOf<String?>(null) }
     var anchorIndex by rememberSaveable { mutableIntStateOf(0) }
     var anchorOffset by rememberSaveable { mutableIntStateOf(0) }
@@ -73,7 +74,7 @@ internal fun DiscoveryGridScreen(
             if (discovery.error != null) add("error")
             if (cards.isEmpty()) add(if (loadingResults) "loading" else "empty")
             cards.forEach { add(gridAnchorKey(it.listingId)) }
-            if (pageAction != null) add("more")
+            if (showPage) add("more")
         }
         val listState = remember {
             val (index, offset) = gridRestorePosition(keys, anchorKey, anchorIndex, anchorOffset)
@@ -139,7 +140,7 @@ internal fun DiscoveryGridScreen(
                     }
                 } else if (cards.isEmpty()) {
                     item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                        Text(if (unknownResults) "Lokale Treffer unbekannt." else "Keine Treffer.",
+                        Text(if (emptyState == DiscoveryEmptyState.Unknown) "Lokale Treffer unbekannt." else "Keine Treffer.",
                             style = MaterialTheme.typography.bodyLarge)
                     }
                 }
@@ -161,7 +162,7 @@ internal fun DiscoveryGridScreen(
                         onDecision = { target -> onDecision(action, target) },
                     )
                 }
-                if (pageAction != null) {
+                if (showPage && pageAction != null) {
                     item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
                         if (discovery.loadingMore) {
                             Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
