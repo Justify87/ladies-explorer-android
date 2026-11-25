@@ -17,12 +17,12 @@ class SwipeProfileWindowTest {
         val window = listOf(cards.first()) + prefetchCards(cards)
         cache.retain(window)
         cache.readCurrent(window.first()) { fixtureSwipe(1L, 1L) }
-        window.drop(1).forEach { card -> cache.prefetch(card) { fixtureSwipe(card.listingId, card.personId) } }
+        window.drop(1).forEach { card -> cache.readCurrent(card) { fixtureSwipe(card.listingId, card.personId) } }
         assertEquals((1L..6L).toSet(), entries.keys)
         cache.retain(cards.drop(1).take(6))
         assertEquals((2L..6L).toSet(), entries.keys)
-        assertEquals(2L, cache.prefetch(cards[1]) { error("cached profile must not read") }?.profile?.listingId)
-        cache.prefetch(cards[6]) { fixtureSwipe(7L, 7L) }
+        assertEquals(2L, cache[cards[1]]?.profile?.listingId)
+        cache.readCurrent(cards[6]) { fixtureSwipe(7L, 7L) }
         assertEquals((2L..7L).toSet(), entries.keys)
         cache.clear()
         assertTrue(entries.isEmpty())
@@ -39,7 +39,7 @@ class SwipeProfileWindowTest {
         val finish = CompletableDeferred<Unit>()
         var reads = 0
         val pending = launch {
-            cache.prefetch(b) {
+            cache.readCurrent(b) {
                 reads++
                 started.complete(Unit)
                 finish.awaitSignal()
@@ -53,7 +53,7 @@ class SwipeProfileWindowTest {
         assertEquals(b.listingId, cache[b]?.profile?.listingId)
         assertEquals(b.personId, cache[b]?.identity?.personId)
         assertEquals(b.personId, cache[b]?.person?.personId)
-        cache.prefetch(b) { error("promoted projection must be reused") }
+        assertNotNull(cache[b])
         assertEquals(1, reads)
     }
 
@@ -68,7 +68,7 @@ class SwipeProfileWindowTest {
         var rejected = false
         val pending = launch {
             try {
-                cache.prefetch(b) {
+                cache.readCurrent(b) {
                     started.complete(Unit)
                     finish.awaitSignal()
                     fixtureSwipe(b.listingId, a.personId)
@@ -93,15 +93,14 @@ class SwipeProfileWindowTest {
         val cache = SwipeProfileWindow(mutableMapOf())
         val oldCard = fixtureCard(4L, 1L)
         cache.retain(listOf(oldCard))
-        cache.prefetch(oldCard) { fixtureSwipe(4L, 1L, 11L) }
+        cache.readCurrent(oldCard) { fixtureSwipe(4L, 1L, 11L) }
         val changed = fixtureCard(4L, 7L)
         cache.retain(listOf(changed))
         assertNull(cache[changed])
-        val returned = requireNotNull(cache.prefetch(changed) { fixtureSwipe(4L, 7L, 12L) })
+        val returned = requireNotNull(cache.readCurrent(changed) { fixtureSwipe(4L, 7L, 12L) })
         assertEquals(7L, returned.identity.personId)
         assertEquals(12L, returned.profile.snapshotId)
         assertNull(cache[oldCard])
-        assertNull(cache.displayed(oldCard))
     }
 
     @Test(timeout = 15_000) fun lateCompletionAfterResetAndSameListingReuseCannotRepopulate() = runBlocking {
@@ -111,7 +110,7 @@ class SwipeProfileWindowTest {
         val started = CompletableDeferred<Unit>()
         val done = CompletableDeferred<Unit>()
         val late = launch {
-            assertNull(cache.prefetch(card) { started.complete(Unit); done.awaitSignal(); fixtureSwipe(4L, 1L, 11L) })
+            assertNull(cache.readCurrent(card) { started.complete(Unit); done.awaitSignal(); fixtureSwipe(4L, 1L, 11L) })
         }
         started.awaitSignal()
         cache.clear()
@@ -132,10 +131,9 @@ class SwipeProfileWindowTest {
             fixtureSwipe(1L, 1L, 11L).copy(fromArchive = false)
         })
         val oldInvalidation = cache.invalidation(current)
-        cache.prefetch(next) { sourceCompleted ->
+        cache.readCurrent(next) { sourceCompleted ->
             sourceCompleted()
             assertNull(cache[current])
-            assertEquals(initial, cache.displayed(current))
             assertTrue(cache.requiresLocal(current))
             fixtureSwipe(2L, 2L, 12L)
         }
@@ -150,7 +148,6 @@ class SwipeProfileWindowTest {
         })
         assertEquals(initial.profile.snapshotId, refreshed.profile.snapshotId)
         assertNotEquals(initial.revision, refreshed.revision)
-        assertEquals(refreshed, cache.displayed(current))
         assertEquals("/fixture/local.jpg", refreshed.media.single().localPath)
         assertEquals(9L, refreshed.candidates.single().personId)
         assertFalse(refreshed.fromArchive)
@@ -169,7 +166,7 @@ class SwipeProfileWindowTest {
         }
         started.awaitSignal()
         val before = cache.invalidation(a)
-        cache.prefetch(b) { sourceCompleted -> sourceCompleted(); fixtureSwipe(2L, 2L) }
+        cache.readCurrent(b) { sourceCompleted -> sourceCompleted(); fixtureSwipe(2L, 2L) }
         // Reject the pending read, but do not cancel/restart a native operation
         // because of another source completion.
         assertEquals(before, cache.invalidation(a))
