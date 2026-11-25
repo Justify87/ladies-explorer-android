@@ -2,7 +2,7 @@ package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -21,8 +21,8 @@ internal fun ProgressiveSectionHeader(
 ) {
     TextButton(onClick = onToggle, enabled = enabled, shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = if (compact) 4.dp else 8.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).shellFocus().semantics {
+        contentPadding = PaddingValues(horizontal = ShellMetrics.inset, vertical = if (compact) ShellMetrics.gap else ShellMetrics.small),
+        modifier = Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch).shellFocus().semantics {
             stateDescription = if (expanded) "Ausgeklappt" else "Eingeklappt"
         }) {
         Column(Modifier.weight(1f)) {
@@ -30,7 +30,7 @@ internal fun ProgressiveSectionHeader(
             hint?.let { Text(it, style = MaterialTheme.typography.bodySmall,
                 color = if (hintError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(ShellMetrics.small))
         Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
             contentDescription = null, modifier = Modifier.size(20.dp))
     }
@@ -42,14 +42,18 @@ internal fun ProgressiveSectionFrame(
     first: Boolean, last: Boolean, header: Boolean, compact: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val top = if (first) 16.dp else 0.dp
-    val bottom = if (last) 16.dp else 0.dp
+    val shape = MaterialTheme.shapes.medium
+    val square = CornerSize(0.dp)
     Column(Modifier.fillMaxWidth()
-        .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(
-            topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom))
-        .padding(horizontal = if (header) 0.dp else if (compact) 8.dp else 12.dp)
-        .padding(top = if (header || compact) 0.dp else 4.dp, bottom = if (header) 0.dp else if (compact) 4.dp else 12.dp),
-        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp), content = content)
+        .background(MaterialTheme.colorScheme.surfaceContainerHigh, shape.copy(
+            topStart = if (first) shape.topStart else square,
+            topEnd = if (first) shape.topEnd else square,
+            bottomStart = if (last) shape.bottomStart else square,
+            bottomEnd = if (last) shape.bottomEnd else square))
+        .padding(horizontal = if (header) 0.dp else if (compact) ShellMetrics.small else ShellMetrics.inset)
+        .padding(top = if (header || compact) 0.dp else ShellMetrics.gap,
+            bottom = if (header) 0.dp else if (compact) ShellMetrics.gap else ShellMetrics.inset),
+        verticalArrangement = Arrangement.spacedBy(if (compact) ShellMetrics.gap else ShellMetrics.small), content = content)
 }
 
 @Composable

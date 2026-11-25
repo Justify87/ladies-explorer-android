@@ -1,5 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -8,11 +9,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import de.justify87.ladiesexplorer.core.Preference
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -98,7 +101,8 @@ class AppShellDeviceTest {
                 val fittedDensity = minOf(outer.density,
                     maxWidth.value * outer.density / widths[index],
                     maxHeight.value * outer.density / heights[index])
-                CompositionLocalProvider(LocalDensity provides Density(fittedDensity, scale)) {
+                val configuration = Configuration(LocalConfiguration.current).apply { screenWidthDp = widths[index] }
+                CompositionLocalProvider(LocalDensity provides Density(fittedDensity, scale), LocalConfiguration provides configuration) {
                     LadiesTheme(darkTheme = dark) {
                         pixelsPerDp = fittedDensity
                         Column(Modifier.size(widths[index].dp, heights[index].dp)) {
@@ -107,8 +111,14 @@ class AppShellDeviceTest {
                                     Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
                                 }
                             }
-                            DiscoverModeSwitcher(DiscoverMode.Grid, {}, Modifier)
+                            DiscoverModeSwitcher(DiscoverMode.Grid, {})
                             Spacer(Modifier.weight(1f))
+                            val deck = SwipeDeckToken(null, 1)
+                            val context = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1),
+                                SwipeActionToken(null, 1, 4, 1, 11, 1, Preference.NONE, false, emptyList()),
+                                true, true, AvailabilityMode.All, false, true)
+                            SwipeDecisionControls(context, "Fixture", {}, {}, {},
+                                Modifier.fillMaxWidth().height(if (scale < 1.3f) ShellMetrics.decisionRail else ShellMetrics.touch))
                             RootNavigation(RootDestination.Discover, true, false, {})
                         }
                     }
@@ -136,6 +146,24 @@ class AppShellDeviceTest {
             }
             assertTrue(back.bottom <= modes.first().top + 1f)
             assertTrue(modes.first().bottom <= destinations.first().top + 1f)
+            val labels = listOf("Rückgängig", "Nein", "Später", "Gefällt")
+            val decisions = labels.map { rule.onNodeWithContentDescription(it).fetchSemanticsNode().boundsInRoot }
+            val visible = labels.map { rule.onNodeWithTag("decision-surface-$it", useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot }
+            decisions.forEach { assertTrue(it.width >= min && it.height >= min) }
+            decisions.zipWithNext().forEach { (left, right) ->
+                assertTrue(left.right <= right.left + 1f)
+                assertEquals(left.top, right.top, 1f)
+            }
+            assertTrue(decisions.last().bottom <= destinations.first().top + 1f)
+            assertEquals(modes.first().left, destinations.first().left, 1f)
+            assertEquals(modes.last().right, destinations.last().right, 1f)
+            decisions.zip(destinations).forEach { (action, destination) ->
+                assertEquals(action.center.x, destination.center.x, 1.5f)
+            }
+            assertTrue(visible[0].width < visible[1].width && visible[2].width < visible[3].width)
+            assertEquals(visible[0].width, visible[2].width, 1f)
+            assertEquals(visible[1].width, visible[3].width, 1f)
         }
     }
 }

@@ -16,7 +16,7 @@ class ProfileHeroLayoutTest {
             val previousHero = minOf(height * .63f, width * 1.55f, budget.body - 116f - 24f)
             assertTrue("More room for the hero", hero > previousHero)
             assertTrue(hero + discoveryLeadingHeight(1f) + 24f <= budget.body + .01f)
-            assertEquals(80f, budget.rail, .01f)
+            assertEquals(ShellMetrics.decisionRail.value, budget.rail, .01f)
             assertFalse(budget.compactGallery)
         }
     }
@@ -28,7 +28,7 @@ class ProfileHeroLayoutTest {
                 assertEquals(height, plan.header + plan.notice + plan.rail + plan.body, .01f)
                 assertTrue(plan.body >= minOf(96f, height - plan.header))
                 assertTrue(plan.notice == 0f || plan.notice == 48f)
-                assertTrue(plan.rail in setOf(0f, 48f, 80f))
+                assertTrue(plan.rail in setOf(0f, ShellMetrics.touch.value, ShellMetrics.decisionRail.value))
                 if (height < 240f) {
                     assertTrue(plan.railInContent)
                     assertTrue(plan.noticeInHeader)

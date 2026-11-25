@@ -9,7 +9,7 @@ internal enum class RootDestination(val title: String) {
 
 internal enum class DiscoverMode(val title: String) {
     Swipe("Swipe"),
-    Grid("Grid"),
+    Grid("Raster"),
     Map("Karte"),
 }
 

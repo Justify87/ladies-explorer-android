@@ -99,7 +99,8 @@ internal fun SearchScreen(
         val inlineFooter = maxHeight < 360.dp || (maxHeight < 460.dp && LocalDensity.current.fontScale > 1.3f)
         val footer: @Composable () -> Unit = {
             Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = if (inlineFooter) 0.dp else shellContentInset(),
+                    vertical = ShellMetrics.gap),
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface,
@@ -154,8 +155,8 @@ internal fun SearchScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(if (editorVisible) 4.dp else 12.dp),
+                contentPadding = PaddingValues(horizontal = shellContentInset(), vertical = ShellMetrics.small),
+                verticalArrangement = Arrangement.spacedBy(if (editorVisible) ShellMetrics.gap else ShellMetrics.inset),
             ) {
                 if (!editorVisible) item {
                     TextButton(onClick = { resultsVisible = false }, modifier = Modifier.heightIn(min = 48.dp)) {

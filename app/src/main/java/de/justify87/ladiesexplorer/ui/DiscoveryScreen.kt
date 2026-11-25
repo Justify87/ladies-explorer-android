@@ -12,10 +12,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -44,7 +43,6 @@ internal fun DiscoverScreen(
     noteActions: NoteEditorActions,
     search: SearchUiState,
     rootBarHeight: Dp,
-    onOpenSearch: () -> Unit,
     onSelectMode: (DiscoverMode) -> Unit,
     availabilityEnabled: Boolean,
     onAvailability: (SwipeDeckToken, AvailabilityMode) -> Unit,
@@ -76,6 +74,7 @@ internal fun DiscoverScreen(
     val deckToken = state.deckToken()
     val cardToken = state.cardToken().takeIf { card != null }
     val context = LocalContext.current
+    val contentInset = shellContentInset()
     val core = (context.applicationContext as LadiesApplication).coreStore
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     val started = lifecycle.isAtLeast(Lifecycle.State.STARTED)
@@ -323,20 +322,20 @@ internal fun DiscoverScreen(
             heroLeadingHeight = discoveryLeadingHeight(LocalDensity.current.fontScale).dp,
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(presentation, sourceContext, controls, compactNotice,
-                    onNotice, onOpenSearch, { onAvailability(deckToken, it) })
+                    onNotice, { onAvailability(deckToken, it) })
             },
             rail = { SwipeDecisionControls(controls, identity?.title, undo, skip, choose) },
         ) { presentation ->
             Box(Modifier.fillMaxSize().clipToBounds()) {
             if (card == null) {
-                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = contentInset, vertical = ShellMetrics.small),
+                    verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
                     item(key = "discover-context") {
                         DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode, Modifier)
                     }
                     if (presentation.budget.railInContent) item {
                         SwipeDecisionControls(controls, identity?.title, undo, skip, choose,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
+                            modifier = Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch), horizontalInset = 0.dp)
                     }
                     item {
                         val emptyState = discoveryEmptyState(state, search)
@@ -388,10 +387,10 @@ internal fun DiscoverScreen(
                     }
                     if (presentation.budget.railInContent) item(key = "compact-decisions") {
                         SwipeDecisionControls(controls, identity?.title, undo, skip, choose,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp))
+                            modifier = Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch), horizontalInset = 0.dp)
                     }
                     item(key = "hero") {
-                        Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                        Box(Modifier.fillMaxWidth().padding(horizontal = contentInset)) {
                             ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
                             onSwipe = if (actions) ({ decision ->
@@ -419,7 +418,7 @@ internal fun DiscoverScreen(
             val oldMedia = old?.media
             if (old != null && oldMedia != null && old.size.width > 0 && old.size.height > 0) {
                 val density = LocalDensity.current
-                Box(Modifier.offset { IntOffset(12.dp.roundToPx(), old.top) }
+                Box(Modifier.offset { IntOffset(contentInset.roundToPx(), old.top) }
                     .size(with(density) { old.size.width.toDp() }, with(density) { old.size.height.toDp() })
                     .graphicsLayer {
                         translationX = motion.value
@@ -444,14 +443,12 @@ fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: Str
 private fun SwipeShellHeader(
     presentation: ProfileShellPresentation, sourceContext: String, context: SwipeControlsContext,
     compactNotice: ProfileNoticeIndicator?, onNotice: () -> Unit,
-    onSearch: () -> Unit, onAvailability: (AvailabilityMode) -> Unit,
+    onAvailability: (AvailabilityMode) -> Unit,
 ) {
-    Row(Modifier.fillMaxSize().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        ProfileShellTitle("Entdecken", sourceContext, "", presentation.budget.shortHeader, Modifier.weight(1f))
+    Row(Modifier.fillMaxSize().padding(horizontal = shellContentInset()), verticalAlignment = Alignment.CenterVertically) {
+        ProfileShellTitle("Entdecken", sourceContext, "", presentation.budget.shortHeader, Modifier.weight(1f),
+            titleStyle = MaterialTheme.typography.titleLarge)
         if (compactNotice != null) ProfileStatusButton(compactNotice, onNotice)
-        if (!presentation.budget.narrowHeader) ShellIconButton(onClick = onSearch) {
-            Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
-        }
         AvailabilityQuickChoice(context.availability, context.availabilityEnabled, context.deck, onAvailability)
     }
 }
@@ -469,39 +466,47 @@ private fun SwipeDeckActions(context: SwipeControlsContext, onRefresh: () -> Uni
 
 @Composable
 internal fun SwipeDecisionControls(context: SwipeControlsContext, profileTitle: String?, onUndo: () -> Unit,
-    onSkip: () -> Unit, onChoose: (Preference) -> Unit, modifier: Modifier = Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface)) {
-        val compact = maxHeight < 72.dp || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
+    onSkip: () -> Unit, onChoose: (Preference) -> Unit, modifier: Modifier = Modifier.fillMaxSize(),
+    horizontalInset: Dp = shellContentInset()) {
+    BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+        val compact = maxHeight < ShellMetrics.decisionRail || maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.3f
         val scheme = MaterialTheme.colorScheme
-        val dark = scheme.surface.luminance() < .5f
-        val reject = if (dark) Color(0xFFF72F49) else scheme.error
-        val like = if (dark) Color(0xFF4CDA36) else scheme.tertiary
-        FlowRow(Modifier.fillMaxSize().semantics { contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen" },
-            horizontalArrangement = Arrangement.SpaceEvenly, verticalArrangement = Arrangement.Center) {
-            DecisionAction("Undo", Icons.Default.Undo, context.deckEnabled && context.canUndo, compact,
-                scheme.surfaceContainerHigh, scheme.onSurface, onUndo)
+        val inset = if (maxWidth >= ShellMetrics.touch * 4 + horizontalInset * 2) horizontalInset else 0.dp
+        FlowRow(Modifier.fillMaxWidth().padding(horizontal = inset).semantics {
+            contentDescription = profileTitle?.let { "Entscheidungen für $it" } ?: "Deckentscheidungen"
+        }, horizontalArrangement = Arrangement.Center, verticalArrangement = Arrangement.Center,
+            maxItemsInEachRow = ((maxWidth - inset * 2) / ShellMetrics.touch).toInt().coerceIn(1, 4)) {
+            val actionCell = Modifier.weight(1f).widthIn(min = ShellMetrics.touch)
+            DecisionAction("Rückgängig", Icons.Default.Undo, context.deckEnabled && context.canUndo, compact,
+                scheme.surfaceContainer, scheme.onSurfaceVariant, false, actionCell, onUndo)
             DecisionAction("Nein", Icons.Default.Close, context.profile != null, compact,
-                reject, if (dark) Color(0xFF1E160F) else scheme.onError) { onChoose(Preference.DISLIKE) }
-            DecisionAction("Später", Icons.Default.SkipNext, context.deckEnabled && context.card != null, compact,
-                scheme.surfaceContainerHigh, scheme.onSurface, onSkip)
+                scheme.errorContainer, scheme.onErrorContainer, true, actionCell) { onChoose(Preference.DISLIKE) }
+            DecisionAction("Später", Icons.Default.Schedule, context.deckEnabled && context.card != null, compact,
+                scheme.surfaceContainer, scheme.onSurfaceVariant, false, actionCell, onSkip)
             DecisionAction("Gefällt", Icons.Default.Favorite, context.profile != null, compact,
-                like, if (dark) Color(0xFF153A0C) else scheme.onTertiary) { onChoose(Preference.LIKE) }
+                scheme.tertiaryContainer, scheme.onTertiaryContainer, true, actionCell) { onChoose(Preference.LIKE) }
         }
     }
 }
 
 @Composable
 private fun DecisionAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector,
-    enabled: Boolean, compact: Boolean, background: Color, foreground: Color, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    enabled: Boolean, compact: Boolean, background: Color, foreground: Color,
+    primary: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(onClick = onClick, enabled = enabled,
-            modifier = Modifier.size(48.dp).shellFocus().background(
-                if (enabled) background else MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)) {
-            Icon(icon, contentDescription = label,
-                tint = if (enabled) foreground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .38f))
+            modifier = Modifier.size(ShellMetrics.touch).shellFocus()) {
+            Box(Modifier.size(if (primary) ShellMetrics.touch else ShellMetrics.secondaryAction)
+                .testTag("decision-surface-$label")
+                .background(if (enabled) background else MaterialTheme.colorScheme.surfaceContainer,
+                    MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = label, modifier = Modifier.size(if (primary) ShellMetrics.icon else 20.dp),
+                    tint = if (enabled) foreground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .38f))
+            }
         }
         if (!compact) Text(label, style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.clearAndSetSemantics {},
-            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1)
     }
 }

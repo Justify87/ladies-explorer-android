@@ -59,8 +59,8 @@ internal val ladiesDarkColors = darkColorScheme(
 private val ladiesShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(17.dp),
-    large = RoundedCornerShape(24.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
     extraLarge = RoundedCornerShape(24.dp),
 )
 
@@ -68,10 +68,11 @@ private val baseType = Typography()
 private val ladiesTypography = Typography(
     headlineMedium = baseType.headlineMedium.copy(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
     headlineSmall = baseType.headlineSmall.copy(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
-    titleLarge = baseType.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
+    titleLarge = baseType.titleLarge.copy(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold),
     titleMedium = baseType.titleMedium.copy(fontSize = 19.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold),
     bodyLarge = baseType.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
     bodyMedium = baseType.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp),
+    bodySmall = baseType.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
     labelLarge = baseType.labelLarge.copy(fontSize = 13.sp, lineHeight = 18.sp),
     labelMedium = baseType.labelMedium.copy(fontSize = 12.sp, lineHeight = 16.sp),
 )

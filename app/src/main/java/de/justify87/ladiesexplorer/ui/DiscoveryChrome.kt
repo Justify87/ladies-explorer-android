@@ -8,7 +8,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -21,15 +26,22 @@ internal fun AvailabilityQuickChoice(availability: AvailabilityMode, enabled: Bo
     val latestEnabled by rememberUpdatedState(enabled)
     val latestAction by rememberUpdatedState(onAvailability)
     DisposableEffect(Unit) { onDispose { opened = false } }
+    val style = MaterialTheme.typography.labelLarge
+    val measurer = rememberTextMeasurer()
+    val labelWidth = with(LocalDensity.current) {
+        AvailabilityMode.entries.maxOf { measurer.measure(AnnotatedString(it.label + " ▾"), style).size.width }.toDp()
+    }
     Box(modifier) {
         TextButton(onClick = { opened = true }, enabled = enabled,
-            modifier = Modifier.heightIn(min = ShellMetrics.touch).shellFocus(),
-            contentPadding = PaddingValues(horizontal = 8.dp)) {
-            Text(availability.label + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            modifier = Modifier.sizeIn(minWidth = maxOf(ShellMetrics.touch, labelWidth + ShellMetrics.small * 2),
+                minHeight = ShellMetrics.touch).shellFocus(),
+            contentPadding = PaddingValues(horizontal = ShellMetrics.small)) {
+            Text(availability.label + " ▾", style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         DropdownMenu(expanded = opened && enabled, onDismissRequest = { opened = false }) {
             AvailabilityMode.entries.forEach { mode ->
                 DropdownMenuItem(text = { Text(if (mode == availability) "✓ ${mode.label}" else mode.label) },
+                    modifier = Modifier.semantics { selected = mode == availability },
                     onClick = {
                         if (opened && latestEnabled && latestOwner == owner) {
                             opened = false
@@ -43,23 +55,25 @@ internal fun AvailabilityQuickChoice(availability: AvailabilityMode, enabled: Bo
 
 @Composable
 internal fun DiscoverModeSwitcher(active: DiscoverMode, onSelect: (DiscoverMode) -> Unit,
-    modifier: Modifier = Modifier.padding(horizontal = 16.dp)) {
+    modifier: Modifier = Modifier.padding(horizontal = shellContentInset())) {
     val scheme = MaterialTheme.colorScheme
-    Surface(modifier.fillMaxWidth(), color = scheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) {
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp),
+    Surface(modifier.fillMaxWidth(), color = scheme.surfaceContainer, shape = MaterialTheme.shapes.small) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup(),
             verticalAlignment = Alignment.CenterVertically) {
             DiscoverMode.entries.forEach { mode ->
                 val selected = mode == active
-                Surface(Modifier.weight(1f).heightIn(min = 48.dp).fillMaxHeight().shellFocus()
+                Surface(Modifier.weight(1f).heightIn(min = ShellMetrics.touch).fillMaxHeight().shellFocus()
                     .selectable(selected = selected, role = Role.Tab, onClick = { if (!selected) onSelect(mode) }),
                     color = Color.Transparent,
-                    shape = MaterialTheme.shapes.medium) {
-                    Box(Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
-                        Surface(color = if (selected) scheme.primaryContainer else Color.Transparent,
-                            shape = MaterialTheme.shapes.medium) {
-                            Text(mode.title, Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp),
-                                textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge,
-                                color = if (selected) scheme.onPrimaryContainer else scheme.onSurface)
+                    shape = MaterialTheme.shapes.small) {
+                    Box(Modifier.fillMaxSize().padding(ShellMetrics.gap), contentAlignment = Alignment.Center) {
+                        Surface(Modifier.fillMaxSize(), color = if (selected) scheme.primaryContainer else Color.Transparent,
+                            shape = MaterialTheme.shapes.extraSmall) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(mode.title, Modifier.padding(ShellMetrics.gap),
+                                    textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge,
+                                    color = if (selected) scheme.onPrimaryContainer else scheme.onSurface)
+                            }
                         }
                     }
                 }

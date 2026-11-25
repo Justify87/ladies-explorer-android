@@ -280,7 +280,7 @@ fun LadiesApp(
                             enabled = gridRefreshMatches(discovery, search, refreshAction)) {
                             Icon(Icons.Default.Refresh, contentDescription = "Aktualisieren")
                         }
-                    } else if (route.root != RootDestination.Search) {
+                    } else if (route.root != RootDestination.Search && route.root != RootDestination.Discover) {
                         ShellIconButton(onClick = { selectRoot(RootDestination.Search) },
                             enabled = !saved.blockingNavigation && !viewModel.hasProfileEditor) {
                             Icon(Icons.Default.Search, contentDescription = "Suche öffnen")
@@ -350,10 +350,6 @@ fun LadiesApp(
                                 search = search,
                                 rootBarHeight = (padding.calculateBottomPadding() -
                                     WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()).coerceAtLeast(0.dp),
-                                onOpenSearch = {
-                                    if (route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe)
-                                        selectRoot(RootDestination.Search)
-                                },
                                 onSelectMode = { mode ->
                                     if (!viewModel.hasProfileEditor && route.root == RootDestination.Discover && route.discovery == DiscoverMode.Swipe &&
                                         mode != DiscoverMode.Swipe) {
@@ -556,8 +552,9 @@ internal fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = modifier.verticalScroll(rememberScrollState())
+            .padding(horizontal = shellContentInset(), vertical = ShellMetrics.section),
+        verticalArrangement = Arrangement.spacedBy(ShellMetrics.section),
     ) {
         when (pane) {
             SettingsPane.Main -> {

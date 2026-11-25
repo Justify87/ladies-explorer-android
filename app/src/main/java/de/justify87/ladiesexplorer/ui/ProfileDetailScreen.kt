@@ -65,7 +65,8 @@ internal fun ProfileDetailScreen(
     ProfileShell(modifier, detailListState, "media", hasRail = false, notices = notices,
         noticeOwner = Triple(state.profileSessionId, renderedToken, state.retryProfileListingId),
         header = { presentation, compactNotice, onNotice ->
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxSize().padding(start = ShellMetrics.gap, end = shellContentInset()),
+                verticalAlignment = Alignment.CenterVertically) {
                 ShellIconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Zurück") }
                 val shown = identity.takeIf { presentation.identityInHeader }
                 ProfileShellTitle(shown?.title ?: "Profil", shown?.compactSubtitle ?: "Profilansicht",
@@ -112,7 +113,7 @@ internal fun ProfileDetailScreen(
             }) {
             if (profile != null) {
                 item(key = "media") {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                    Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) {
                         ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
                             selection = mediaSelection,
                             actionToken = renderedToken, actionsEnabled = !busy,

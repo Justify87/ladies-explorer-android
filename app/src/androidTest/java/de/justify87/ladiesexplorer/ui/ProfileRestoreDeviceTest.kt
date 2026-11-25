@@ -362,12 +362,12 @@ class ProfileRestoreDeviceTest {
         }
         rule.onNode(hasText("Gefällt") or hasContentDescription("Gefällt")).performClick()
         rule.onNodeWithText("Deck beendet").assertExists()
-        rule.onNode(hasText("Undo") or hasContentDescription("Undo")).performClick()
+        rule.onNode(hasText("Rückgängig") or hasContentDescription("Rückgängig")).performClick()
         rule.runOnIdle { assertEquals(saved, receipt); assertNull(model) }
         // Skip must remain available with a failed/missing projection without replacing the receipt.
         rule.onNode(hasText("Später") or hasContentDescription("Später")).performClick()
         rule.onNodeWithText("Deck beendet").assertExists()
-        rule.onNode(hasText("Undo") or hasContentDescription("Undo")).performClick()
+        rule.onNode(hasText("Rückgängig") or hasContentDescription("Rückgängig")).performClick()
         rule.runOnIdle { assertEquals(saved, receipt); model = original }
         rule.waitUntil(5_000) { receipt == null }
         rule.runOnIdle {

@@ -54,7 +54,7 @@ class DiscoveryDesignDeviceTest {
                         LazyColumn(Modifier.fillMaxSize(), state = list,
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             item(key = "discover-context") {
-                                Box(Modifier.padding(horizontal = 16.dp).testTag("context")) {
+                                Box(Modifier.padding(horizontal = ShellMetrics.inset).testTag("context")) {
                                     DiscoverModeSwitcher(DiscoverMode.Swipe, {}, Modifier)
                                 }
                             }
@@ -89,10 +89,15 @@ class DiscoveryDesignDeviceTest {
         assertTrue(favorite.width >= 48 * pxPerDp - 1f && favorite.height >= 48 * pxPerDp - 1f)
         assertTrue(favorite.top >= hero.top - 1f && favorite.right <= hero.right + 1f)
         rule.onNodeWithText("Fixture").assertDoesNotExist()
-        listOf("Undo", "Nein", "Später", "Gefällt").forEach { label ->
-            val bounds = rule.onNodeWithContentDescription(label).fetchSemanticsNode().boundsInRoot
+        val decisions = listOf("Rückgängig", "Nein", "Später", "Gefällt").map { label ->
+            rule.onNodeWithContentDescription(label).fetchSemanticsNode().boundsInRoot
+        }
+        decisions.forEach { bounds ->
             assertTrue(bounds.width >= 48 * pxPerDp - 1f)
             assertTrue(bounds.height >= 48 * pxPerDp - 1f)
+        }
+        decisions.zipWithNext().forEach { (left, right) ->
+            assertTrue(left.right <= right.left + 1f)
         }
     }
 
@@ -214,18 +219,48 @@ class DiscoveryDesignDeviceTest {
                 }
             }
         }
+        val initial = rule.onNodeWithText("Alle ▾").fetchSemanticsNode().boundsInRoot
         rule.onNodeWithText("Alle ▾").performClick()
         rule.onNodeWithText("Heute").performClick()
-        rule.onNodeWithText("Heute ▾").assertExists()
+        val changed = rule.onNodeWithText("Heute ▾").fetchSemanticsNode().boundsInRoot
+        assertEquals(initial.left, changed.left, 1f)
+        assertEquals(initial.right, changed.right, 1f)
         rule.onNodeWithText("Heute ▾").performClick()
         rule.runOnIdle { owner++ }
         rule.onNodeWithText("Jetzt").assertDoesNotExist()
         rule.runOnIdle { dark = false }
-        rule.onNodeWithText("Grid").performClick().assertIsSelected()
+        rule.onNodeWithText(DiscoverMode.Grid.title).performClick().assertIsSelected()
         rule.onNodeWithText("Karte").performClick().assertIsSelected()
         rule.onNodeWithText("Heute ▾").performClick()
         rule.onNodeWithText("Jetzt").performClick()
         rule.runOnIdle { assertEquals(listOf(AvailabilityMode.Today, AvailabilityMode.Now), choices) }
+    }
+
+    @Test fun narrowInlineRailWrapsWithoutLosingActions() {
+        val actions = mutableListOf<String>()
+        rule.setContent {
+            LadiesTheme {
+                val deck = SwipeDeckToken(null, 1)
+                val context = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1),
+                    SwipeActionToken(null, 1, 4, 1, 11, 1, Preference.NONE, false, emptyList()),
+                    true, true, AvailabilityMode.All, false, true)
+                LazyColumn(Modifier.width(168.dp).height(200.dp)) {
+                    item {
+                        SwipeDecisionControls(context, "Fixture", { actions.add("undo") },
+                            { actions.add("skip") }, { actions.add(it.name) },
+                            Modifier.fillMaxWidth().heightIn(min = ShellMetrics.touch), horizontalInset = 0.dp)
+                    }
+                }
+            }
+        }
+        val labels = listOf("Rückgängig", "Nein", "Später", "Gefällt")
+        val nodes = labels.map { rule.onNodeWithContentDescription(it) }
+        val bounds = nodes.map { it.fetchSemanticsNode().boundsInRoot }
+        val minimum = with(rule.density) { ShellMetrics.touch.toPx() } - 1f
+        bounds.forEach { assertTrue(it.width >= minimum && it.height >= minimum) }
+        assertTrue(bounds.last().top >= bounds.first().bottom - 1f)
+        nodes.forEach { it.assertIsDisplayed().performClick() }
+        rule.runOnIdle { assertEquals(listOf("undo", "DISLIKE", "skip", "LIKE"), actions) }
     }
 
     @Test fun shortGridScrollsPastChromeAndBackToModeSelection() {

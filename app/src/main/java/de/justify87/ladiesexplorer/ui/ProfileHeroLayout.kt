@@ -46,8 +46,9 @@ internal fun profileShellBudget(
     val header = preferredHeader.coerceAtMost(available)
     val minBody = minOf(96f, (available - header).coerceAtLeast(0f))
     var remainder = (available - header - minBody).coerceAtLeast(0f)
-    val rail = if (hasRail && remainder >= 48f && !short && width >= 192f) {
-        if (remainder >= 80f && width >= 320f && fontScale < 1.3f) 80f else 48f
+    val rail = if (hasRail && remainder >= ShellMetrics.touch.value && !short && width >= ShellMetrics.touch.value * 4) {
+        if (remainder >= ShellMetrics.decisionRail.value && width >= 320f && fontScale < 1.3f)
+            ShellMetrics.decisionRail.value else ShellMetrics.touch.value
     } else 0f
     remainder -= rail
     val notice = if (hasNotice && remainder >= 48f && !short) 48f else 0f
