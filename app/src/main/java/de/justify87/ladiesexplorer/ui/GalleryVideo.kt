@@ -54,14 +54,18 @@ private fun localVideo(file: File): LocalGalleryVideo? {
 internal data class LocalGalleryVideo(val file: File, val demuxer: String)
 
 /** Cache hits never queue behind network I/O. Window pins and playback leases have separate lifetimes. */
-internal class GalleryVideoFiles(private val core: CoreStore) {
+internal class GalleryVideoFiles(
+    private val downloadBytes: suspend (String) -> ByteArray,
+    private val createFile: () -> File,
+    private val budget: Long = 256L * 1024 * 1024,
+    private val warmBudget: Long = budget - 48L * 1024 * 1024,
+) {
+    constructor(core: CoreStore) : this({ url -> core.loadDisplayVideo(url).bytes }, core::createDisplayVideoFile)
     private data class Entry(val video: LocalGalleryVideo, val bytes: Long, var users: Int = 0,
         val pins: MutableSet<Any> = mutableSetOf())
     private val gate = Mutex()
     private val downloadGate = Mutex()
     private val files = LinkedHashMap<String, Entry>(16, 0.75f, true)
-    private val budget = 256L * 1024 * 1024
-    private val warmBudget = budget - 48L * 1024 * 1024
 
     private fun discard(url: String, entry: Entry): Boolean {
         if (entry.video.file.exists() && !entry.video.file.delete()) return false
@@ -119,17 +123,17 @@ internal class GalleryVideoFiles(private val core: CoreStore) {
             if (lease == null) downloadGate.withLock {
                 reuse()
                 if (lease == null) {
-                    val download = core.loadDisplayVideo(item.url)
+                    val download = downloadBytes(item.url)
                     withContext(Dispatchers.IO) {
                         gate.withLock {
-                            val bytes = download.bytes.size.toLong()
+                            val bytes = download.size.toLong()
                             if (pinOwner != null) check(
                                 files.values.filter { it.pins.isNotEmpty() }.sumOf { it.bytes } + bytes <= warmBudget
                             ) { "Video-Prefetch-Budget erreicht" }
                             check(makeRoom(bytes)) { "Video-Cache-Budget erreicht" }
-                            val destination = core.createDisplayVideoFile()
+                            val destination = createFile()
                             try {
-                                destination.writeBytes(download.bytes)
+                                destination.writeBytes(download)
                                 val video = checkNotNull(localVideo(destination)) { "Unsupported local video" }
                                 val entry = Entry(video, destination.length(), users = 1)
                                 pin(entry, pinOwner)
@@ -173,11 +177,11 @@ internal fun GalleryVideo(
     val mediaKey = item.presentationKey()
     var retry by remember(mediaKey) { mutableIntStateOf(0) }
     var paused by remember(mediaKey) { mutableStateOf(false) }
-    var file by remember(mediaKey, retry, visible) { mutableStateOf<LocalGalleryVideo?>(null) }
     val unavailable = prepared == PreparedMedium.Unavailable
+    var file by remember(mediaKey, retry, visible, unavailable) { mutableStateOf<LocalGalleryVideo?>(null) }
     var failure by remember(mediaKey, retry, visible, unavailable) { mutableStateOf(unavailable && retry == 0) }
     var ready by remember(mediaKey, retry, playing) { mutableStateOf(false) }
-    var videoSize by remember(item, retry) { mutableStateOf(IntSize.Zero) }
+    var videoSize by remember(mediaKey, retry) { mutableStateOf(IntSize.Zero) }
     SideEffect { onVideoSize(if (failure) IntSize.Zero else videoSize) }
     LaunchedEffect(mediaKey, retry, visible, unavailable) {
         if (!visible || (unavailable && retry == 0)) return@LaunchedEffect
@@ -211,7 +215,7 @@ internal fun GalleryVideo(
             failure -> IconButton(onClick = { if (canInteract()) { paused = false; retry++ } }) {
                 Icon(Icons.Default.PlayArrow, "Video erneut laden")
             }
-            !ready -> CircularProgressIndicator(Modifier.size(28.dp))
+            !ready || videoSize.width <= 0 || videoSize.height <= 0 -> CircularProgressIndicator(Modifier.size(28.dp))
             else -> FilledIconButton(onClick = { if (canInteract()) paused = !paused }) {
                 Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
                     if (paused) "Video abspielen" else "Video pausieren")
