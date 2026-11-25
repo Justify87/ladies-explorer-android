@@ -410,11 +410,17 @@ internal fun DiscoverScreen(
                             }) { Text("Originalprofil öffnen") } }
                             if (token != null && token.preference != Preference.NONE)
                                 TextButton(enabled = actions, onClick = { choose(Preference.NONE) }) { Text("Präferenz zurücksetzen") }
-                            SwipeDeckActions(controls, { onRefresh(deckToken) }, { onReset(deckToken) },
-                                { onReplayLikes(deckToken, !state.replayLikes) })
                         }
                     }
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
+                    }, afterDetails = {
+                        item(key = "deck-actions") {
+                            Column {
+                                Text("Deck verwalten", style = MaterialTheme.typography.titleMedium)
+                                SwipeDeckActions(controls, { onRefresh(deckToken) }, { onReset(deckToken) },
+                                    { onReplayLikes(deckToken, !state.replayLikes) })
+                            }
+                        }
                     }) {
                     item(key = "discover-context") {
                         DiscoverModeSwitcher(DiscoverMode.Swipe, onSelectMode, Modifier)
@@ -501,7 +507,7 @@ private fun SwipeShellHeader(
 @Composable
 private fun SwipeDeckActions(context: SwipeControlsContext, onRefresh: () -> Unit, onReset: () -> Unit, onReplay: () -> Unit) {
     FlowRow {
-        TextButton(onClick = onRefresh, enabled = context.deckEnabled) { Text("Aktualisieren") }
+        TextButton(onClick = onRefresh, enabled = context.deckEnabled) { Text("Deck aktualisieren") }
         TextButton(onClick = onReset, enabled = context.deckEnabled) { Text("Deck neu beginnen") }
         if (context.deck.runId != null) TextButton(onClick = onReplay, enabled = context.deckEnabled) {
             Text(if (context.replay) "Likes nicht erneut zeigen" else "Likes erneut zeigen")

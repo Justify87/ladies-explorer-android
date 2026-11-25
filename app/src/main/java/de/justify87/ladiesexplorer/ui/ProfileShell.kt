@@ -75,7 +75,7 @@ internal fun ProfileShell(
             }
             val leading = heroLeadingMeasure?.let { measure ->
                 val width = constraints.maxWidth.coerceAtMost(ShellMetrics.maxProfileWidth.roundToPx())
-                subcompose("leading") { Box { measure() } }.single().measure(
+                subcompose("leading") { Box(Modifier.clearAndSetSemantics {}) { measure() } }.single().measure(
                     constraints.copy(minWidth = width, maxWidth = width, minHeight = 0))
             }
             val rootPixels = root?.height ?: 0
