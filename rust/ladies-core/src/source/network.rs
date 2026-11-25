@@ -19,6 +19,8 @@ use super::{Card, SearchRequest, filter, parse};
 
 const BASE: &str = "https://www.ladies.de";
 const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
+// An untrusted page count must not authorize unbounded requests; normal runs use the source total.
+const MAX_PAGINATION_PAGES: u32 = 1024;
 
 struct Response {
     status: u16,
@@ -597,9 +599,7 @@ fn preview_search_using<T: Transport>(
     control: Option<&RequestControl>,
 ) -> Result<super::SearchPreview, CoreError> {
     filter::validate_request(request)?;
-    let mut first_page = request.clone();
-    first_page.max_pages = 1;
-    let result = fetch_search_controlled(client, &first_page, control)?;
+    let result = fetch_search_mode(client, request, control, true)?;
     if let Some(control) = control {
         control.check()?;
     }
@@ -634,6 +634,15 @@ fn fetch_search_controlled<T: Transport>(
     request: &SearchRequest,
     control: Option<&RequestControl>,
 ) -> Result<DownloadedSearch, CoreError> {
+    fetch_search_mode(client, request, control, false)
+}
+
+fn fetch_search_mode<T: Transport>(
+    client: &T,
+    request: &SearchRequest,
+    control: Option<&RequestControl>,
+    preview_only: bool,
+) -> Result<DownloadedSearch, CoreError> {
     let check = || -> Result<(), CoreError> {
         if let Some(control) = control {
             control.check()?;
@@ -648,8 +657,8 @@ fn fetch_search_controlled<T: Transport>(
     client.log_event(
         "SEARCH",
         format!(
-            "Resolved location={} slug={} radius={} max_pages={} filter_path={}",
-            city, city_slug, request.radius_km, request.max_pages, filter_path
+            "Resolved location={} slug={} radius={} preview={} filter_path={}",
+            city, city_slug, request.radius_km, preview_only, filter_path
         ),
     );
     let first = client.get_cancellable(
@@ -769,68 +778,21 @@ fn fetch_search_controlled<T: Transport>(
         });
     }
 
-    let mut total_pages = total_from_html.unwrap_or(1).max(1);
+    let mut known_total = total_from_html.filter(|&total| total > 0);
+    if total_from_html == Some(0) {
+        partial = true;
+    }
+    let mut total_pages = known_total.unwrap_or(1);
     let mut fetched_pages = 1u32;
     let mut boundary_stopped = false;
-    let mut next_page = 2;
-    if total_from_html.is_none() {
-        if request.max_pages == 1 {
-            // Do not fetch beyond the caller's limit just to discover pagination.
-            partial = true;
-        } else {
-            check()?;
-            client.wait_between_pages();
-            check()?;
-            let probe = parse_api(
-                client.get_cancellable(
-                    &search_url(&city_slug, request.radius_km, 2, &filter_path, true),
-                    control,
-                )?,
-                client.diagnostics(),
-            )?;
-            if let Some(payload) = probe {
-                fetched_pages += 1;
-                match payload.get("distanceSearched") {
-                    None => {
-                        radius_verified = false;
-                        partial = true;
-                    }
-                    Some(_) if !distance_matches(&payload, request.radius_km) => {
-                        radius_verified = false;
-                        partial = true;
-                        boundary_stopped = true;
-                    }
-                    _ => {}
-                }
-                if !boundary_stopped {
-                    total_pages = number(payload.pointer("/pagination/totalPages"))
-                        .unwrap_or(2)
-                        .max(2);
-                    if let Some(count) = number(payload.get("advertCount")) {
-                        server_count = Some(count);
-                    }
-                    if append_page(
-                        &mut cards,
-                        &payload,
-                        request.radius_km,
-                        2,
-                        client.diagnostics(),
-                    )? == AppendPageOutcome::RadiusTransition
-                    {
-                        boundary_stopped = true;
-                        client
-                            .log_event("SEARCH", "Stopped at page=2 radius transition placeholder");
-                    }
-                }
-            } else {
-                total_pages = 1;
-            }
-        }
-        next_page = 3;
-    }
-
-    if !boundary_stopped {
-        for page in next_page..=total_pages.min(request.max_pages) {
+    let mut seen: HashSet<String> = cards.iter().map(|card| card.advert_id.clone()).collect();
+    let mut page = 2u32;
+    // Without a first-page total, one API probe can establish it; never chase an unknown end.
+    let mut target = known_total.unwrap_or(2);
+    if preview_only {
+        partial |= known_total != Some(1);
+    } else {
+        while page <= target && page <= MAX_PAGINATION_PAGES {
             check()?;
             client.wait_between_pages();
             check()?;
@@ -859,6 +821,36 @@ fn fetch_search_controlled<T: Transport>(
                 }
                 _ => {}
             }
+            if let Some(current) = payload.pointer("/pagination/currentPage")
+                && number(Some(current)) != Some(page)
+            {
+                partial = true;
+                client.log_event("SEARCH", format!("Unexpected currentPage at page={page}"));
+                break;
+            }
+            if let Some(value) = payload.get("advertCount") {
+                match number(Some(value)) {
+                    Some(count) if server_count.is_none() => server_count = Some(count),
+                    Some(count) if server_count == Some(count) => {}
+                    _ => partial = true,
+                }
+            }
+            if let Some(value) = payload.pointer("/pagination/totalPages") {
+                match number(Some(value)).filter(|&total| total >= page) {
+                    Some(total) if known_total.is_none() => {
+                        known_total = Some(total);
+                        total_pages = total;
+                        target = total;
+                    }
+                    Some(total) if known_total == Some(total) => {}
+                    Some(total) => {
+                        partial = true;
+                        target = target.min(total);
+                    }
+                    None => partial = true,
+                }
+            }
+            let previous_len = cards.len();
             if append_page(
                 &mut cards,
                 &payload,
@@ -868,14 +860,28 @@ fn fetch_search_controlled<T: Transport>(
             )? == AppendPageOutcome::RadiusTransition
             {
                 boundary_stopped = true;
+                total_pages = total_pages.max(page);
                 client.log_event(
                     "SEARCH",
                     format!("Stopped at page={page} radius transition placeholder"),
                 );
                 break;
             }
+            total_pages = total_pages.max(page);
+            let previous_unique = seen.len();
+            seen.extend(cards[previous_len..].iter().map(|card| card.advert_id.clone()));
+            if seen.len() == previous_unique {
+                partial = true;
+                client.log_event("SEARCH", format!("No new listing IDs at page={page}"));
+                break;
+            }
+            if known_total.is_none() {
+                partial = true;
+                break;
+            }
+            page += 1;
         }
-        if total_pages > request.max_pages {
+        if !boundary_stopped && (page <= target || known_total.is_none()) {
             partial = true;
         }
     }
@@ -1117,8 +1123,7 @@ mod tests {
 
     #[test]
     fn recovers_first_page_from_recorded_api_contract_if_html_has_no_cards() {
-        let mut request = SearchRequest::for_test();
-        request.max_pages = 1;
+        let request = SearchRequest::for_test();
         let payload = json!({
             "pagination":{"currentPage":1,"totalPages":2},
             "advertCount":2,
@@ -1138,7 +1143,7 @@ mod tests {
                     &payload.to_string(),
                 ),
         );
-        let result = fetch_search_using(&client, &request).unwrap();
+        let result = fetch_search_mode(&client, &request, None, true).unwrap();
         assert_eq!(result.cards.len(), 1);
         assert!(result.radius_verified);
         assert!(result.partial);
@@ -1542,20 +1547,70 @@ mod tests {
     }
 
     #[test]
-    fn pagination_limit_marks_partial_response() {
+    fn regular_search_loads_more_than_ten_source_pages() {
         let first = format!(
-            "{} totalPages: Number.parseInt(replaceWithDefault(\"4\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"12\", 1)), advertCount: Number.parseInt(replaceWithDefault(\"12\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
             card(1)
         );
-        let client =
-            with_city(Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, &first));
-        let mut req = SearchRequest::for_test();
-        req.max_pages = 1;
-        let found = fetch_search_using(&client, &req).unwrap();
-        assert_eq!(found.cards.len(), 1);
-        assert!(found.radius_verified);
-        assert_eq!(found.total_pages, 4);
-        assert_eq!(found.fetched_pages, 1);
-        assert!(found.partial);
+        let mut mock = Mock::default().with(&search_url("leipzig", 20, 1, "", false), 200, &first);
+        for page in 2..=12 {
+            mock = mock.with(
+                &search_url("leipzig", 20, page, "", true),
+                200,
+                &json!({"content": card(page), "distanceSearched":20,
+                    "pagination":{"currentPage":page,"totalPages":12}}).to_string(),
+            );
+        }
+        let result = fetch_search_using(&with_city(mock), &SearchRequest::for_test()).unwrap();
+        assert_eq!(result.cards.len(), 12);
+        assert_eq!(result.fetched_pages, 12);
+        assert!(!result.partial);
+    }
+
+    #[test]
+    fn repeated_or_empty_page_stops_with_partial_results() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"4294967295\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        for content in [card(1), String::new()] {
+            let client = with_city(
+                Mock::default()
+                    .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                    .with(
+                        &search_url("leipzig", 20, 2, "", true),
+                        200,
+                        &json!({"content":content,"distanceSearched":20}).to_string(),
+                    ),
+            );
+            let found = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+            assert!(found.partial);
+            assert_eq!(found.cards.len(), 1);
+            assert_eq!(found.fetched_pages, 2);
+        }
+    }
+
+    #[test]
+    fn missing_or_invalid_page_total_remains_partial_after_single_probe() {
+        for pages in [json!(null), json!(0), json!("invalid")] {
+            let first = format!(
+                "{} distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+                card(1)
+            );
+            let client = with_city(
+                Mock::default()
+                    .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                    .with(
+                        &search_url("leipzig", 20, 2, "", true),
+                        200,
+                        &json!({"content":card(2),"distanceSearched":20,
+                            "pagination":{"totalPages":pages}}).to_string(),
+                    ),
+            );
+            let found = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+            assert!(found.partial);
+            assert_eq!(found.cards.len(), 2);
+            assert_eq!(found.fetched_pages, 2);
+        }
     }
 }

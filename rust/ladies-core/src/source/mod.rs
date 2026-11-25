@@ -31,7 +31,6 @@ pub struct SearchRequest {
     pub height_min: u32,
     pub height_max: u32,
     pub filters_json: String,
-    pub max_pages: u32,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -153,8 +152,8 @@ pub(crate) fn search(
     core.diagnostics.event(
         "SEARCH",
         format!(
-            "Search requested city={} radius={} category={} max_pages={}",
-            request.city, request.radius_km, request.category, request.max_pages
+            "Search requested city={} radius={} category={}",
+            request.city, request.radius_km, request.category
         ),
     );
     filter::validate_request(&request)?;
@@ -322,7 +321,6 @@ impl SearchRequest {
             height_min: 140,
             height_max: 200,
             filters_json: "{}".into(),
-            max_pages: 10,
         }
     }
 }
