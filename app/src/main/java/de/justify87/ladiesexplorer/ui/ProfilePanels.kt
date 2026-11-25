@@ -710,6 +710,15 @@ internal fun profileAnalysisFields(imageCount: Int, data: PersonDetail?): List<P
         }
     }
 
+internal fun identityCandidateFields(candidate: IdentityCandidate): List<Pair<String, String>> =
+    buildList {
+        add("Telefonübereinstimmung" to if (candidate.phoneMatch) "Ja" else "Nein")
+        add("Quellprofilübereinstimmung" to if (candidate.sourceProfileMatch) "Ja" else "Nein")
+        add("Bildtreffer" to candidate.imageMatches.toString())
+        add("Starke Bildtreffer" to candidate.strongImageMatches.toString())
+        candidate.bestImageDistance?.let { add("Geringste Bildhash-Distanz" to it.toString()) }
+    }
+
 private fun ProfileFlowRows.profileContent(
     profile: ProfileResponse,
     identity: ProfileIdentity?,
@@ -820,10 +829,7 @@ private fun ProfileFlowRows.profileContent(
             }
             items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
                 ProfileGroup("Person #${candidate.personId} · ${candidate.decision}") {
-                    Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
-                        "Quellprofil".takeIf { candidate.sourceProfileMatch },
-                        "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
-                        .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
+                    CompactFieldRows(identityCandidateFields(candidate))
                     OutlinedButton(onClick = { if (isCurrent()) onConfirm(candidate.personId) },
                         enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
                 }
