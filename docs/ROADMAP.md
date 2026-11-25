@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 / G10-Pure (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) einschließlich M10.1–M10.3 und der ergänzenden Qualitätskorrektur M10.4 ist abgeschlossen. M11.1 ist abgeschlossen. Nächste Entwicklungsaufgabe: M11.2 / Kartendock, native Cluster und Profilbildmarker (in Arbeit auf dem Aufgabenbranch; vollständiges CI-Gate und Abschlussreview ausstehend). L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 / G10-Pure (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) einschließlich M10.1–M10.3 und der ergänzenden Qualitätskorrektur M10.4 ist abgeschlossen. M11.1 ist abgeschlossen. M11.2 / Kartendock, native Cluster und Profilbildmarker befindet sich nach integriertem Abschlussreview und erfolgreichem Code-CI zur abschließenden PR-Prüfung; M11 ist noch nicht integriert. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M11 — Korrekturen aus praktischer Geräteerprobung
 
@@ -16,11 +16,13 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M11.2 — Kartendock, native Cluster und Profilbildmarker
 
-**Status:** DOING.
+**Status:** REVIEW.
 
 **Abhängigkeit:** M11.1 auf `main` abgeschlossen; PR [#120](https://github.com/Justify87/ladies-explorer-android/pull/120), [Merge-Commit](https://github.com/Justify87/ladies-explorer-android/commit/f072c7eca7a4eb062a84f06f32f6a37552f7981c), abschließendes [CI-Gate](https://github.com/Justify87/ladies-explorer-android/actions/runs/45649348334) erfolgreich. Bereitschaft verifiziert.
 
-**Arbeitsstand:** Branch [`fix/m11-2-map-markers-dock`](https://github.com/Justify87/ladies-explorer-android/tree/fix/m11-2-map-markers-dock), Basis `f072c7eca7a4eb062a84f06f32f6a37552f7981c`. Gemessener Dockabstand, exakte native Cluster mit lokalen Zählsprites, Gleichortrepräsentant, native Expansion, begrenzte sichtbare Coil-Thumbnail-Sprites und synthetische JVM-/Instrumentierungsproben implementiert; Produkt-, Architektur- und Designvertrag konsolidiert. Nächster Schritt: vollständiges CI-Gate des Aufgaben-PRs verifizieren, Befunde beheben und integrierten M11-Abschlussreview durchführen; keine weitere Aufgabe und kein Merge ohne Freigabe. Geräteausführung und historische Reproduktion nicht belegt.
+**Arbeitsstand und Prüfbeleg:** PR [#121](https://github.com/Justify87/ladies-explorer-android/pull/121), Branch `fix/m11-2-map-markers-dock`, Basis `f072c7eca7a4eb062a84f06f32f6a37552f7981c`. Integrierter semantischer M11-Abschlussreview auf [Code-Stand](https://github.com/Justify87/ladies-explorer-android/commit/1a655b6aa33081b622756afb841a9f0100623213) abgeschlossen. Galerie: atomare erfolgreiche Painter-/Geometriepublikation und mediengebundener Drag; Raster: bestätigte DISLIKE-Darstellung, native Fade-/Placement-Animation, gültige Aktionsidentität und Scrollanker bei Kontextwechsel. Karte: gemessener Dockabstand und kompakter Offline-/Statusdialog, native exakte Cluster und Expansion, gezählter Gleichortrepräsentant mit aktueller Listing-/Owner-/Ortsprüfung, lokale Zählsprites, Coil-Thumbnails mit Fallback und 64 sichtbaren Sprite-Slots. Reviewkorrektur: vier gleichzeitige Decodes auch beim Drain abgebrochener Generationen und Controllerwechsel; synthetische Regression ergänzt. Produkt-, Architektur- und Designverträge abgeglichen; keine neue Quellen-, FFI-, DB- oder Archivpipeline, keine abgeschwächten Prüfverträge. Keine weiteren konkreten mergeblockierenden In-Scope-Befunde im statischen Review.
+
+**CI und Beleggrenzen:** [CI #889](https://github.com/Justify87/ladies-explorer-android/actions/runs/45664339065) vollständig erfolgreich: Rust- und JVM-Tests, synthetische Datenbankregression, Rust-Format/Clippy, Android Lint, Quell-/Paketarchitekturprüfungen, ARM64-Debug- und Instrumentierungs-APK-Build. Native Cluster-/Marker-/Dock-/Thumbnail-/Parallelitäts- sowie Galerie-/Raster-Instrumentierungsproben gebaut, nicht ausgeführt; tatsächliche Gerätewiedergabe, Framefolge, Pinch-/Tap-Interaktion, Attribution-Bounds im nativen Gerätelayout, TalkBack und historische Reproduktion nicht verifiziert. Keine separate Geräteabnahme gemäß Merge-Regel. Nächster Schritt: Gate des Registercommits verifizieren und PR zur Mergefreigabe bereitstellen; kein Merge ohne Nutzerfreigabe, keine weitere Aufgabe.
 
 **Befunde und Codeanker:**
 
