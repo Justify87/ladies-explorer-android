@@ -39,6 +39,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineStart
 import androidx.compose.ui.unit.IntOffset
 
 @Composable
@@ -99,9 +102,11 @@ internal fun DiscoverScreen(
     val failures = remember(decks) { mutableStateMapOf<Pair<Long, Long>, SwipeReadFailure>() }
     val localRetries = remember(decks) { mutableStateMapOf<Pair<Long, Long>, Boolean>() }
     var activeRead by remember(decks) { mutableStateOf<Pair<Pair<Long, Long>, RequestControl>?>(null) }
+    var activeWork by remember(decks) { mutableStateOf<Pair<Pair<Long, Long>, Job>?>(null) }
     DisposableEffect(decks) {
         onDispose {
             activeRead?.second?.cancel()
+            activeWork?.second?.cancel()
             decks.close()
             preparation.clear()
         }
@@ -113,7 +118,7 @@ internal fun DiscoverScreen(
     val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
         ?.let { decks[it] }?.takeIf { prepared?.model == it }
     val displayed = prepared?.model
-    val readError = cardKey?.let { failures[it] }?.takeIf { it.current && it.invalidation == decks.invalidation(card) }?.message
+    val readError = cardKey?.let { failures[it] }?.takeIf { it.current }?.message
     val projectedToken = state.swipeToken(current)
     val token = projectedToken?.takeIf { visible && currentSwipeActionCard(state, searchLoading, it) != null }
     var lastMismatch by remember(state.activeRunId, cardKey) {
@@ -135,6 +140,7 @@ internal fun DiscoverScreen(
             preparation.clear()
             failures.clear()
             activeRead?.second?.cancel()
+            activeWork?.second?.cancel()
         }
         decks.retain(window)
         decks.applyExternalRevision(state.swipeExternalRevision)
@@ -145,6 +151,7 @@ internal fun DiscoverScreen(
         }
         localRetries.keys.toList().filterNot { it in windowKeys }.forEach { localRetries.remove(it) }
         activeRead?.takeIf { it.first !in windowKeys }?.second?.cancel()
+        activeWork?.takeIf { it.first !in windowKeys }?.second?.cancel()
     }
     val latestReadState by rememberUpdatedState(state)
     val latestWindow by rememberUpdatedState(window)
@@ -163,8 +170,7 @@ internal fun DiscoverScreen(
                         val currentRole = sameSwipeCard(candidate, latestWindow.firstOrNull())
                         val failure = failures[key]
                         val model = decks[candidate]
-                        if (model == null) failure == null || failure.invalidation != decks.invalidation(candidate) ||
-                            (currentRole && !failure.current)
+                        if (model == null) swipeReadMayRetry(failure, currentRole)
                         else heroSize.width > 0 && heroSize.height > 0 &&
                             !preparation.ready(model, filtersFor(candidate), heroSize)
                     }
@@ -172,6 +178,7 @@ internal fun DiscoverScreen(
                 val key = target.listingId to target.personId
                 videoFiles.retainPins(preparation, preparation.pinnedVideos())
                 if (!latestReadVisible || latestWindow.none { sameSwipeCard(it, target) }) continue
+                val work = launch(start = CoroutineStart.LAZY) {
                 val model = decks[target]
                 if (model == null) {
                     val live = latestReadState
@@ -202,8 +209,8 @@ internal fun DiscoverScreen(
                     } catch (failure: Exception) {
                         if (latestWindow.any { sameSwipeCard(it, target) }) {
                             if (failure is LocalProfileReadFailure) localRetries[key] = true
-                            failures[key] = SwipeReadFailure(decks.invalidation(target),
-                                currentRole, failure.message ?: "Profil konnte nicht geladen werden")
+                            failures[key] = SwipeReadFailure(currentRole && sameSwipeCard(target, latestWindow.firstOrNull()),
+                                failure.message ?: "Profil konnte nicht geladen werden")
                         }
                     } finally {
                         activeRead = null
@@ -214,8 +221,15 @@ internal fun DiscoverScreen(
                     val size = heroSize
                     preparation.step(model, filters, size,
                         { core.prepareProfilePanels(model, filters) },
-                        { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation) })
+                        { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation) },
+                        accept = { decks[target] == model && latestWindow.any { sameSwipeCard(it, target) } &&
+                            size == heroSize && filters == filtersFor(target) })
                 }
+                }
+                activeWork = key to work
+                work.start()
+                work.join()
+                activeWork = null
                 videoFiles.retainPins(preparation, preparation.pinnedVideos())
             }
         } finally {
