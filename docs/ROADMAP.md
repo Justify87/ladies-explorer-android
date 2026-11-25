@@ -20,7 +20,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 **Status:** REVIEW.
 
-**Arbeitsbranch:** [`feature/m09-11-reactive-map`](https://github.com/Justify87/ladies-explorer-android/tree/feature/m09-11-reactive-map); Ausgangscommit `4022fa239ca9c197787445b1d955b65ec984475b`.
+**Arbeitsbranch:** [`feature/m09-11-reactive-map`](https://github.com/Justify87/ladies-explorer-android/tree/feature/m09-11-reactive-map); [PR #112](https://github.com/Justify87/ladies-explorer-android/pull/112); Ausgangscommit `4022fa239ca9c197787445b1d955b65ec984475b`.
 
 **Abhängigkeit:** M09.1, M09.9, M09.10 integriert; Nutzerauftrag erteilt.
 
