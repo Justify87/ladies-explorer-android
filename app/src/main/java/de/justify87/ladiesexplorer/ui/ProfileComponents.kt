@@ -218,7 +218,6 @@ internal fun ProfileMediaHero(
     onSwipeDrag: (Float) -> Unit = {},
     playbackVisible: Boolean = true,
     galleryNavigationEnabled: Boolean = true,
-    onMediaSettled: (Boolean) -> Unit = {},
     favorite: Boolean? = null,
     onFavorite: (() -> Unit)? = null,
     onVisual: (HeroVisual?) -> Unit = {},
@@ -284,7 +283,6 @@ internal fun ProfileMediaHero(
                 "IMAGE" -> HeroPhotoSurface(item, viewport,
                     "Profilbild ${index + 1}", imageMotion, preparedMedia[item.presentationKey()]) { feedback, geometry ->
                     SideEffect {
-                        onMediaSettled(!feedback.loading)
                         // A resized request is not the settled visual until its own decode succeeds.
                         onVisual(feedback.painter?.takeIf { projectionAvailable && !feedback.failed && geometry.imageBounds != null }
                             ?.let { HeroVisual(item, geometry, it) })
@@ -304,7 +302,7 @@ internal fun ProfileMediaHero(
                 "VIDEO" -> BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                     val geometry = heroMediaGeometry(viewport, videoSize, allowCrop = false)
                     val side = if (galleryTaps) gallerySideFraction(maxWidth.value, true) else 0f
-                    SideEffect { onVisual(null); onMediaSettled(true) } // playback has its own stable loading surface
+                    SideEffect { onVisual(null) }
                     // Once the native aspect is known, the texture occupies only the fitted media
                     // area; the remaining hero is the same neutral surface as a fitted photo.
                     val videoSurface = geometry.imageBounds?.takeIf { it.width > 0f && it.height > 0f }?.let { bounds ->
@@ -326,7 +324,7 @@ internal fun ProfileMediaHero(
                     favoriteControl(geometry)
                 }
                 else -> Box(Modifier.fillMaxSize().then(hit.photo), contentAlignment = Alignment.Center) {
-                    SideEffect { onVisual(null); onMediaSettled(true) }
+                    SideEffect { onVisual(null) }
                     if (preparing) CircularProgressIndicator(Modifier.size(28.dp))
                     else Text("Keine Medien verfügbar")
                     favoriteControl(heroMediaGeometry(viewport, IntSize.Zero))
