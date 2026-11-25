@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.10 sind abgeschlossen. Nächste abhängige Aufgabe: M09.11 nach gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 erfasst die am 24.11.2026 gemeldeten Befunde aus praktischer App-Nutzung. M09.1–M09.10 sind abgeschlossen. M09.11 ist zur Prüfung auf dem Arbeitsbranch `feature/m09-11-reactive-map`; M09.12 / G09 folgt erst nach Integration und gesonderter Nutzerfreigabe. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## Geplante Meilensteine
 
@@ -18,14 +18,18 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 #### M09.11 — Karte: reaktive Darstellung, Cluster und maximale Fläche
 
-**Status:** PLANNED.
+**Status:** REVIEW.
 
-**Abhängigkeit:** M09.1, M09.9, M09.10; gesonderter Nutzerauftrag.
+**Arbeitsbranch:** [`feature/m09-11-reactive-map`](https://github.com/Justify87/ladies-explorer-android/tree/feature/m09-11-reactive-map); Ausgangscommit `4022fa239ca9c197787445b1d955b65ec984475b`.
+
+**Abhängigkeit:** M09.1, M09.9, M09.10 integriert; Nutzerauftrag erteilt.
 
 - Ursache der leeren Karte über SQLite → Rust → UniFFI/Kotlin → GeoJSON/MapLibre-Style/Source/Layer untersuchen und beheben. Karte beim Eintritt automatisch mit geografisch zuordenbaren Profilen des gemeinsamen Suchergebnisses befüllen; kein manueller Reload, kein erneuter Quelllauf. Neue Runs, Standortauflösung, Daten-/Bewertungsänderungen und globale Filter reaktiv übernehmen; lokale Daten und Fehler-/Offline-Fallback bleiben zugänglich.
 - Cluster in niedrigen Zoomstufen sichtbar, beim Hineinzoomen schrittweise in kleinere Cluster und einzelne Marker auflösen; gleiche Koordinaten mit mehreren Profilen zugänglich auswählen. Genauigkeitsstufen sichtbar unterscheidbar ohne fiktive Präzision. Auswahl öffnet reguläres Swipe-Profil gemäß M09.1; Back erhält Kamera, Zoom, Ausrichtung und Auswahl.
 - „Standort auflösen“, „Aktualisieren“, Postleitzahlzentren-/Adress-Erläuterung, Statistik (z. B. 214 von 218, vier ohne Position) und „Ungefähre Ortslagen unabhängig von der Suche“ entfernen. Überflüssige Container/Abstände beseitigen; Karte maximal zwischen gemeinsamem Modusumschalter und unterer Root-Navigation ausdehnen. MapLibre-Logo unten links entfernen, soweit technisch und lizenzrechtlich zulässig; erforderliche Attribution/Quellenangaben erhalten.
 - **Prüfung:** JVM-/native synthetische Cluster-/Marker-/Gleichort-/Style-/Lifecycle-Probes, aktualisierte Mitgliedschaft und Standortgenauigkeit, Back/Kamera, Filter/Undo, Offline-/Fehlerfall, sichtbare Fläche und Attribution; tatsächliche Provider-/Geräteausführung nur bei belegtem Test behaupten.
+
+**Umsetzungs-/Prüfstand:** Vorabread vorbereiteter Ortslagen vor Backfill, erneuter lokaler Read bei Profiländerung, keine leere persistierte Startkamera, neuer Run mit eigener Kamera, vollständige Kartenfläche mit kompakten Overlays, clusterzentrierter Zoom, Listing-/Owner-gebundene Markerauswahl, PLZ-/Stadtmarker, gleichortige Auswahl und sichtbare Attribution. Manueller Bestandsrefresh entfernt; Style-Retry und Cancel erhalten. Regressionen: Rust-Ortswechsel bei gleicher Listing-Mitgliedschaft, JVM-GeoJSON-/Owner-/Cancel-/Mitgliedschaftsprobes und synthetischer nativer Offline-Style-Cluster-/Source-Probe sowie zugängliche Fehler-/Auswahloberfläche. CI-Gate und tatsächliche Geräteausführung noch nicht belegt; historischer leerer Gerätebildschirm ohne Originaldaten nicht reproduziert. Abschluss nach Prüfung und ausdrücklicher Mergefreigabe.
 
 #### M09.12 / G09 — Gesamtintegration und Abschluss
 
