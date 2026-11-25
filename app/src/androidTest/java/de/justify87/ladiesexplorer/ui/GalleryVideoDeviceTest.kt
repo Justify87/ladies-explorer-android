@@ -5,6 +5,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
+import org.junit.Assert.assertEquals
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -28,8 +33,11 @@ class GalleryVideoDeviceTest {
             instrumentation.context.assets.open("fixture.mp4").use { input ->
                 clip.outputStream().use { output -> input.copyTo(output) }
             }
+            var touchPx = 0
+            var paddingPx = 0
             rule.setContent {
                 MaterialTheme {
+                    with(LocalDensity.current) { touchPx = 48.dp.roundToPx(); paddingPx = 6.dp.roundToPx() }
                     Box(Modifier.width(320.dp)) {
                         ProfileMediaHero(
                             media = listOf(
@@ -38,7 +46,8 @@ class GalleryVideoDeviceTest {
                                 ProfileMediaItem("IMAGE", "", null, 2u)),
                             height = 360.dp, actionsEnabled = true, isCurrent = { true },
                             selection = remember { ProfileMediaSelection() },
-                            actionToken = null, compact = false,
+                            actionToken = null, compact = false, modifier = Modifier.testTag("video-hero"),
+                            favorite = false, onFavorite = {},
                         )
                     }
                 }
@@ -47,8 +56,21 @@ class GalleryVideoDeviceTest {
             rule.waitUntil(15_000) {
                 rule.onAllNodesWithContentDescription("Video pausieren").fetchSemanticsNodes().isNotEmpty()
             }
+            val hero = rule.onNodeWithTag("video-hero")
+            val bounds = hero.fetchSemanticsNode().boundsInRoot
+            val favorite = rule.onNodeWithContentDescription("Als Favorit speichern")
+            val expected = heroMediaGeometry(IntSize(bounds.width.roundToInt(), bounds.height.roundToInt()),
+                IntSize(64, 64), false).favoriteOrigin(touchPx, paddingPx)
+            rule.waitUntil(10_000) {
+                val target = favorite.fetchSemanticsNode().boundsInRoot
+                kotlin.math.abs(target.left - bounds.left - expected.x) <= 1f &&
+                    kotlin.math.abs(target.top - bounds.top - expected.y) <= 1f
+            }
+            favorite.performTouchInput { click(center) }
+            rule.onNodeWithContentDescription("Video pausieren").assertExists()
             rule.onNodeWithContentDescription("Video pausieren").performClick()
             rule.onNodeWithContentDescription("Video abspielen").assertExists()
+            assertEquals(bounds, hero.fetchSemanticsNode().boundsInRoot)
             rule.onNodeWithContentDescription("Nächstes Medium").performClick()
             rule.onNodeWithTag("gallery-video-control").assertDoesNotExist()
             rule.onNodeWithContentDescription("Vorheriges Medium").performClick()
