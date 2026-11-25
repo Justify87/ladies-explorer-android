@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -33,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
 import de.justify87.ladiesexplorer.core.*
 import java.io.File
 
@@ -98,46 +101,67 @@ private data class ImageFeedback(val loading: Boolean, val failed: Boolean, val 
 private fun ProfileImageSurface(
     url: String?, localPath: String?, modifier: Modifier, scale: ContentScale,
     description: String, allowRetry: Boolean,
-    imageModifier: Modifier = Modifier,
-    decodeSize: IntSize? = null,
-    background: Color = MaterialTheme.colorScheme.surfaceVariant,
-    onDecodedSize: (IntSize) -> Unit = {},
     content: @Composable BoxScope.(ImageFeedback) -> Unit,
 ) {
     key(localPath, url) {
         val models = remember { mediaModels(localPath, url) }
         var retry by remember { mutableIntStateOf(0) }
         var attempt by remember(retry) { mutableIntStateOf(0) }
-        var painter by remember(retry, attempt, decodeSize) { mutableStateOf<Painter?>(null) }
-        val context = LocalContext.current
-        Box(modifier.background(background), contentAlignment = Alignment.Center) {
-            if (attempt < models.size && (decodeSize == null || decodeSize.width > 0 && decodeSize.height > 0)) {
+        var painter by remember(retry, attempt) { mutableStateOf<Painter?>(null) }
+        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+            if (attempt < models.size) {
                 val requested = attempt
-                key(retry, requested, decodeSize) {
-                    val model = remember(models, requested, decodeSize, context) {
-                        val source = models[requested]
-                        if (decodeSize != null && decodeSize.width > 0 && decodeSize.height > 0)
-                            heroImageRequest(context, source, decodeSize) else source
-                    }
-                    AsyncImage(model = model, contentDescription = description, contentScale = scale,
-                        onSuccess = {
-                            if (attempt == requested) {
-                                onDecodedSize(IntSize(it.result.image.width, it.result.image.height))
-                                painter = it.painter
-                            }
-                        },
-                        onError = {
-                            if (attempt == requested) {
-                                onDecodedSize(IntSize.Zero)
-                                attempt = requested + 1
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize().then(imageModifier))
+                key(retry, requested) {
+                    AsyncImage(model = models[requested], contentDescription = description, contentScale = scale,
+                        onSuccess = { if (attempt == requested) painter = it.painter },
+                        onError = { if (attempt == requested) attempt = requested + 1 },
+                        modifier = Modifier.fillMaxSize())
                 }
             }
             content(ImageFeedback(loading = attempt < models.size && painter == null, failed = attempt >= models.size,
                 painter = painter,
-                retry = if (allowRetry && models.isNotEmpty()) ({ onDecodedSize(IntSize.Zero); retry++ }) else null))
+                retry = if (allowRetry && models.isNotEmpty()) ({ retry++ }) else null))
+        }
+    }
+}
+
+@Composable
+private fun HeroPhotoSurface(
+    item: ProfileMediaItem, viewport: IntSize, allowCrop: Boolean, description: String,
+    imageMotion: Modifier, content: @Composable BoxScope.(ImageFeedback, HeroMediaGeometry) -> Unit,
+) {
+    key(item, viewport) {
+        val models = remember { mediaModels(item.localPath, item.url) }
+        var retry by remember { mutableIntStateOf(0) }
+        var attempt by remember(retry) { mutableIntStateOf(0) }
+        val context = LocalContext.current
+        val retryAction: (() -> Unit)? = if (models.isNotEmpty()) ({ retry++ }) else null
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (attempt < models.size && viewport.width > 0 && viewport.height > 0) {
+                val requested = attempt
+                key(retry, requested) {
+                    val request = remember(context, models, requested, viewport) {
+                        heroImageRequest(context, models[requested], viewport)
+                    }
+                    val painter = rememberAsyncImagePainter(model = request, contentScale = ContentScale.Fit)
+                    val state by painter.state.collectAsState()
+                    val success = state as? AsyncImagePainter.State.Success
+                    val decoded = success?.result?.image?.let { IntSize(it.width, it.height) } ?: IntSize.Zero
+                    val geometry = heroMediaGeometry(viewport, decoded, allowCrop)
+                    // Never draw the loading painter at provisional geometry. The successful
+                    // request supplies the pixels and dimensions in the same composition.
+                    if (success != null) Image(painter = success.painter, contentDescription = description,
+                        contentScale = geometry.scale, modifier = Modifier.fillMaxSize().then(imageMotion))
+                    if (state is AsyncImagePainter.State.Error) LaunchedEffect(Unit) {
+                        attempt = requested + 1
+                    }
+                    content(ImageFeedback(success == null, false, success?.painter, retryAction), geometry)
+                }
+            } else {
+                val failed = attempt >= models.size
+                content(ImageFeedback(!failed, failed, null, retryAction),
+                    heroMediaGeometry(viewport, IntSize.Zero, allowCrop))
+            }
         }
     }
 }
@@ -191,7 +215,7 @@ internal fun ProfileMediaHero(
         if (projectionAvailable) selection.select(media, selection.resolve(media, true))
     }
     val item = media.getOrNull(index)
-    var decodedSize by remember(item) { mutableStateOf(IntSize.Zero) }
+    var videoSize by remember(item) { mutableStateOf(IntSize.Zero) }
     val previous = projectionAvailable && index > 0
     val next = projectionAvailable && index < media.lastIndex
     val gestureOwner = Triple(actionToken, media, index)
@@ -211,23 +235,37 @@ internal fun ProfileMediaHero(
             .semantics { if (media.size > 1) stateDescription = "Medium ${index + 1} von ${media.size}" }) {
             val density = LocalDensity.current
             val viewport = with(density) { IntSize(maxWidth.roundToPx(), maxHeight.roundToPx()) }
-            val geometry = heroMediaGeometry(viewport, decodedSize, allowCrop = projectionAvailable && item?.kind == "IMAGE")
             val imageMotion = Modifier.graphicsLayer {
                 translationX = offset
                 rotationZ = if (viewport.width > 0) (offset / viewport.width * 12f).coerceIn(-12f, 12f) else 0f
             }
-            val favoriteOrigin = with(density) {
-                geometry.favoriteOrigin(ShellMetrics.touch.roundToPx(), 6.dp.roundToPx())
+            val favoriteControl: @Composable BoxScope.(HeroMediaGeometry) -> Unit = { geometry ->
+                val favoriteOrigin = with(density) {
+                    geometry.favoriteOrigin(ShellMetrics.touch.roundToPx(), 6.dp.roundToPx())
+                }
+                // Last sibling owns the exact bookmark hit rectangle; the parent gesture resolver
+                // excludes the same measured child, not an entire strip of the gallery.
+                if (favorite != null) key(actionToken) {
+                    IconButton(onClick = { if (actionsEnabled && isCurrent()) onFavorite?.invoke() },
+                        enabled = actionsEnabled && onFavorite != null,
+                        modifier = Modifier.align(Alignment.TopStart).absoluteOffset { favoriteOrigin }
+                            .size(ShellMetrics.touch).then(hit.exclusive).shellFocus()) {
+                        Box(Modifier.size(34.dp).background(Color.Black.copy(alpha = .78f), MaterialTheme.shapes.small),
+                            contentAlignment = Alignment.Center) {
+                            Icon(if (favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = if (favorite) "Favorit entfernen" else "Als Favorit speichern",
+                                tint = Color.White)
+                        }
+                    }
+                }
             }
             when (item?.kind) {
-                "IMAGE" -> key(item) { ProfileImageSurface(item.url, item.localPath, Modifier.fillMaxSize(),
-                    geometry.scale, "Profilbild ${index + 1}", true, imageModifier = imageMotion,
-                    decodeSize = viewport, background = MaterialTheme.colorScheme.surface,
-                    onDecodedSize = { decodedSize = it }) { feedback ->
+                "IMAGE" -> HeroPhotoSurface(item, viewport, projectionAvailable,
+                    "Profilbild ${index + 1}", imageMotion) { feedback, geometry ->
                     SideEffect {
                         onMediaSettled(!feedback.loading)
                         // A resized request is not the settled visual until its own decode succeeds.
-                        onVisual(feedback.painter?.takeIf { !feedback.failed && geometry.imageBounds != null }
+                        onVisual(feedback.painter?.takeIf { projectionAvailable && !feedback.failed && geometry.imageBounds != null }
                             ?.let { HeroVisual(item, geometry, it) })
                     }
                     BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
@@ -240,8 +278,10 @@ internal fun ProfileMediaHero(
                             ImageFeedbackContent(feedback)
                         }
                     }
-                } }
+                    favoriteControl(geometry)
+                }
                 "VIDEO" -> BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
+                    val geometry = heroMediaGeometry(viewport, videoSize, allowCrop = false)
                     val side = if (galleryTaps) gallerySideFraction(maxWidth.value, true) else 0f
                     SideEffect { onVisual(null); onMediaSettled(true) } // playback has its own stable loading surface
                     // Once the native aspect is known, the texture occupies only the fitted media
@@ -254,17 +294,19 @@ internal fun ProfileMediaHero(
                     } ?: Modifier.fillMaxSize()
                     GalleryVideo(item, active = actionsEnabled && projectionAvailable,
                         mediaVisible = playbackVisible, canInteract = isCurrent,
-                        onVideoSize = { decodedSize = it },
+                        onVideoSize = { videoSize = it },
                         modifier = videoSurface.then(imageMotion),
                         controlsModifier = Modifier.align(Alignment.Center),
                         onTargets = {
                             GalleryTargets(side, hit, gestureOwner, previous, next,
                                 { selection.select(media, index - 1) }, { selection.select(media, index + 1) })
                         })
+                    favoriteControl(geometry)
                 }
                 else -> Box(Modifier.fillMaxSize().then(hit.photo), contentAlignment = Alignment.Center) {
                     SideEffect { onVisual(null); onMediaSettled(true) }
                     Text("Keine Medien verfügbar")
+                    favoriteControl(heroMediaGeometry(viewport, IntSize.Zero))
                 }
             }
             if (displayedDrag != 0f) Surface(Modifier.align(Alignment.TopCenter).padding(8.dp),
@@ -272,21 +314,7 @@ internal fun ProfileMediaHero(
                 Text(if (displayedDrag > 0f) "Gefällt" else "Nein", Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     color = MaterialTheme.colorScheme.inverseOnSurface)
             }
-            // Last sibling owns the exact bookmark hit rectangle; the parent gesture resolver
-            // excludes the same measured child, not an entire strip of the gallery.
-            if (favorite != null) key(actionToken) {
-                IconButton(onClick = { if (actionsEnabled && isCurrent()) onFavorite?.invoke() },
-                    enabled = actionsEnabled && onFavorite != null,
-                    modifier = Modifier.align(Alignment.TopStart).absoluteOffset { favoriteOrigin }
-                        .size(ShellMetrics.touch).then(hit.exclusive).shellFocus()) {
-                    Box(Modifier.size(34.dp).background(Color.Black.copy(alpha = .78f), MaterialTheme.shapes.small),
-                        contentAlignment = Alignment.Center) {
-                        Icon(if (favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                            contentDescription = if (favorite) "Favorit entfernen" else "Als Favorit speichern",
-                            tint = Color.White)
-                    }
-                }
-            }
+
         }
     }
 }
