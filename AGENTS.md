@@ -8,7 +8,7 @@ Die betroffenen Verträge gezielt nach der Aufgabe lesen; keine pauschale Vollle
 
 | Dokument | Maßgebliche Zuständigkeit | Wann lesen |
 | --- | --- | --- |
-| [ROADMAP](docs/ROADMAP.md) | Einziges Register für Aufgaben, Status, Abhängigkeiten und Abnahme | Vor Aufgabenwahl: `main`, offene PRs, Status und Akzeptanz prüfen; erledigte Aufgaben nicht wiedereröffnen. Vor Registeränderungen die [dokumentlokalen Pflegekonventionen](docs/ROADMAP.md#pflege) lesen. |
+| [ROADMAP](docs/ROADMAP.md) | Einziges Register für offene Aufgaben, Status, Abhängigkeiten und Abnahme | Vor Aufgabenwahl: `main`, offene PRs, Status und Akzeptanz prüfen; erledigte Aufgaben nicht wiedereröffnen. Vor Registeränderungen die [dokumentlokalen Pflegekonventionen](docs/ROADMAP.md#pflege) lesen. |
 | [PRODUCT](docs/PRODUCT.md) | Verbindliches fachliches Soll und Produktgrenzen | Bei geändertem Fachverhalten |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | Aktuelle technische Architektur, Invarianten und Grenzen | Bei Code-, Schnittstellen- oder Persistenzänderungen |
 | [DESIGN](docs/DESIGN.md) | UI-/UX-Verträge und flexible Richtwerte | Bei sichtbaren oder interaktiven Änderungen |
@@ -28,7 +28,7 @@ Vor Änderungen die jeweils betroffenen Produkt-, Architektur- und Designverträ
 1. Je Arbeitskontext eine Aufgabe. Betroffene Aufgabe (IDs soweit relevant), beobachtbare Kriterien, Code/Testanker und Aufrufer bestimmen. Konkurrierende Änderungen am selben State/API seriell bearbeiten.
 2. Ursache und relevante Folgeeffekte beheben; keine spekulativen Abstraktionen, Abhängigkeiten oder dauerhaften Parallelpfade. Betroffene Schichtengrenzen und Fachverträge erhalten.
 3. Gezielte Tests und vertikale Prüfung der betroffenen Schichten; Fehler, Cancel, Back, Lifecycle und Integrität nach Risiko. Vertragsänderungen explizit reviewen, positive/negative Regressionen. Vor Abschluss Korrektheit, Notwendigkeit und Vereinfachungspotenzial prüfen.
-4. PR mit Aufgabenbezug, Ausgangscommit, Änderungen, konkreten Test-/Reviewbelegen, Resten und Scope-Abweichungen. Status ausschließlich im Arbeitsregister und geänderte Verträge im selben PR pflegen. Geräteprüfaufgaben nach der [Merge-Regel](docs/ROADMAP.md#pflege) abschließen; keine separate Geräteabnahme.
+4. PR mit Aufgabenbezug, Ausgangscommit, Änderungen, konkreten Test-/Reviewbelegen, Resten und Scope-Abweichungen. Offene Aufgaben, Entfernung abgeschlossener Einträge und geänderte Verträge im selben PR gemäß [Pflege](docs/ROADMAP.md#pflege) behandeln. Geräteprüfaufgaben nach der dortigen Merge-Regel abschließen; keine separate Geräteabnahme.
 5. Keine automatische Merge-/Veröffentlichungsfreigabe. Weitere Aufgaben auf integriertem Stand; bei Unterbrechung nächsten Schritt/Blocker im Register festhalten. Historie in Git/PR.
 
 Keine privaten Profile, Bilder, DBs oder HARs in Git. Synthetische Fixtures; keine Browser-Testautomatisierung oder Ersatz-Testserver.
