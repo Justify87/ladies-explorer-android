@@ -216,10 +216,14 @@ class SwipeProfileWindowTest {
         current.join()
         assertNull(cache[card])
         assertTrue(cache.requiresLocal(card))
-        assertTrue(after > before)
-        cache.readCurrent(card) { fixtureSwipe(4L) }
+        val recovered = requireNotNull(cache.readCurrent(card) { fixtureSwipe(4L) })
+        assertFalse(cache.requiresLocal(card))
+        // Reapplying the already observed external revision must preserve the recovered projection.
         cache.applyExternalRevision(6L)
-        assertNotNull(cache[card])
+        assertSame(recovered, cache[card])
+        cache.applyExternalRevision(7L)
+        assertNull(cache[card])
+        assertTrue(cache.requiresLocal(card))
     }
 
     @Test(timeout = 15_000) fun cancelledSuspendingReadCannotWriteIntoCache() = runBlocking {
