@@ -12,6 +12,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import de.justify87.ladiesexplorer.LadiesApplication
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.first
 import de.justify87.ladiesexplorer.core.*
 
 @Composable
@@ -32,26 +41,63 @@ internal fun ProfileDetailScreen(
     encounters: EncounterEditor? = null,
     prices: PriceEditor? = null,
 ) {
-    val profile = state.profile
-    val filters = profileMatchContextForOwner(state.profileMatchContext, state.profileIdentity?.personId).encode()
-    val renderedToken = state.detailIdentityToken()
+    val raw = state.profileRead
+    val owner = raw?.let { it.profile.listingId to it.identity.personId }
+    val filters = profileMatchContextForOwner(state.profileMatchContext, raw?.identity?.personId).encode()
+    val context = LocalContext.current
+    val app = context.applicationContext as LadiesApplication
+    val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    val started = lifecycle.isAtLeast(Lifecycle.State.STARTED)
+    val preparation = remember(state.profileSessionId, started) { ProfilePreparationWindow() }
+    var heroSize by remember(state.profileSessionId) { mutableStateOf(IntSize.Zero) }
+    val latestRaw by rememberUpdatedState(raw)
+    val latestFilters by rememberUpdatedState(filters)
+    SideEffect { preparation.retain(setOfNotNull(owner)) }
+    DisposableEffect(preparation) { onDispose { preparation.clear() } }
+    LaunchedEffect(preparation) {
+        if (!started) return@LaunchedEffect
+        try {
+            while (isActive) {
+                val model = snapshotFlow {
+                    latestRaw?.takeIf { heroSize.width > 0 && heroSize.height > 0 &&
+                        !preparation.ready(it, latestFilters, heroSize) }
+                }.first { it != null } ?: continue
+                val size = heroSize
+                val currentFilters = latestFilters
+                preparation.step(model, currentFilters, size,
+                    { app.coreStore.prepareProfilePanels(model, currentFilters) },
+                    { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation) })
+                app.galleryVideoFiles.retainPins(preparation, preparation.pinnedVideos())
+            }
+        } finally {
+            withContext(NonCancellable) { app.galleryVideoFiles.retainPins(preparation, emptySet()) }
+        }
+    }
+    LaunchedEffect(preparation, owner) {
+        app.galleryVideoFiles.retainPins(preparation, preparation.pinnedVideos())
+    }
+    val prepared = preparation.displayed(owner)
+    val displayed = prepared?.model
+    val profile = displayed?.profile
+    val renderedToken = state.detailIdentityToken().takeIf { displayed != null && displayed == raw }
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val detailListState = rememberLazyListState()
     val heroVisible by remember(detailListState) { derivedStateOf { profileHeroVisible(detailListState, "media") } }
     var photoRequest by remember { mutableIntStateOf(0) }
-    val identity = profile?.let { heroIdentity(it, state.profileIdentity, state.profileFromArchive,
-        state.profileMedia.any { medium -> medium.kind == "VIDEO" } || state.profileIdentity?.hasVideo == true,
-        state.selectedPerson?.preference, state.selectedPerson?.favorite) }
-    val context = LocalContext.current
-    var selectedMedia by remember(state.profileSessionId) { mutableStateOf<ProfileMediaItem?>(null) }
-    var fullImage by remember(renderedToken) { mutableStateOf<ProfileMediaItem?>(null) }
-    var galleryMenu by remember(renderedToken, selectedMedia) { mutableStateOf(false) }
+    val identity = displayed?.let { heroIdentity(it.profile, it.identity, it.fromArchive,
+        it.media.any { medium -> medium.kind == "VIDEO" } || it.identity.hasVideo,
+        it.person.preference, it.person.favorite) }
+    var selectedMedia by remember(state.profileSessionId, owner) { mutableStateOf<ProfileMediaItem?>(null) }
+    var fullImage by remember(state.profileSessionId, owner) { mutableStateOf<ProfileMediaItem?>(null) }
+    var galleryMenu by remember(state.profileSessionId, owner, selectedMedia?.presentationKey()) { mutableStateOf(false) }
     val latestSelected by rememberUpdatedState(selectedMedia)
-    fullImage?.takeIf { !busy }?.let { ProfileImageDialog(it) { fullImage = null } }
-    var info by remember(renderedToken, identity) { mutableStateOf(false) }
+    fullImage?.takeIf { item -> displayed?.media?.any { it.presentationKey() == item.presentationKey() } == true }
+        ?.let { ProfileImageDialog(it) { fullImage = null } }
+    var info by remember(state.profileSessionId, owner) { mutableStateOf(false) }
     if (info && identity != null) IdentityInfoDialog(identity) { info = false }
     val notices = buildList {
-        if (state.loading) add(ProfileNotice("Profil wird geladen", "Profil wird geladen …"))
+        if (state.loading || (raw != null && displayed == null)) add(ProfileNotice("Profil wird geladen", "Profil wird vorbereitet …"))
+        if (prepared?.degraded == true) add(ProfileNotice("Medienhinweis", "Einige Profilinhalte konnten nicht vorbereitet werden.", warning = true))
         state.error?.let { add(ProfileNotice("Profilfehler", it, warning = true)) }
         state.actionError?.let { add(ProfileNotice("Aktionsfehler", it, warning = true)) }
         if (state.retryProfileListingId != null) add(ProfileNotice("Profil erneut laden", "Profil konnte nicht vollständig geladen werden.",
@@ -85,7 +131,7 @@ internal fun ProfileDetailScreen(
                             DropdownMenuItem(text = { Text("Bild groß anzeigen") }, enabled = !busy,
                                 onClick = { galleryMenu = false; if (latestSelected == item && renderedToken?.let(isProfileCurrent) == true) fullImage = item })
                         }
-                        state.profileIdentity?.profileUrl?.let { url ->
+                        displayed?.identity?.profileUrl?.let { url ->
                             DropdownMenuItem(text = { Text("Originalprofil öffnen") }, enabled = !busy,
                                 onClick = { galleryMenu = false; if (renderedToken?.let(isProfileCurrent) == true) openExternal(context, url) })
                         }
@@ -94,14 +140,15 @@ internal fun ProfileDetailScreen(
             }
         },
     ) { presentation ->
-        ProfileFlow(state = detailListState, model = state.profileRead, filters = filters,
+        ProfileFlow(state = detailListState, model = displayed, filters = filters,
             token = renderedToken, actionsBusy = busy, notes = notes, noteActions = noteActions,
             isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
             modifier = Modifier.fillMaxSize(), paddedDetails = true, photoRequest = photoRequest,
             onGallerySelection = { selectedMedia = it }, encounters = encounters, prices = prices,
+            preparedPanels = prepared?.panels,
             afterHeading = {
-                if (profile != null && state.selectedPerson != null) item(key = "actions") {
-                    ProfileActionRail(state.selectedPerson, busy, onFavorite = { renderedToken?.let(onFavorite) },
+                if (profile != null && displayed != null) item(key = "actions") {
+                    ProfileActionRail(displayed.person, busy, onFavorite = { renderedToken?.let(onFavorite) },
                         onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
                 }
                 state.mediaArchive?.takeIf { it.failed > 0u || it.deferred > 0u }?.let { report ->
@@ -111,11 +158,15 @@ internal fun ProfileDetailScreen(
                     }
                 }
             }) {
-            if (profile != null) {
+            if (raw != null) {
                 item(key = "media") {
                     Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) {
-                        ProfileMediaHero(state.profileMedia, height = presentation.heroHeight,
-                            selection = mediaSelection,
+                        ProfileMediaHero(displayed?.media.orEmpty(), height = presentation.heroHeight,
+                            modifier = Modifier.onSizeChanged { heroSize = it }, selection = mediaSelection,
+                            projectionAvailable = displayed != null,
+                            preparedMedia = prepared?.media.orEmpty(), preparing = displayed == null,
+                            presentationOwner = owner,
+                            videoPlaybackEnabled = started && !state.actionBusy && !actionsBusy,
                             actionToken = renderedToken, actionsEnabled = !busy,
                             isCurrent = { renderedToken?.let(isProfileCurrent) == true },
                             compact = presentation.budget.compactGallery,
