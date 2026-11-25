@@ -14,7 +14,7 @@ HEAD = "b" * 40
 MERGE = "c" * 40
 ENV = {
     "GITHUB_EVENT_NAME": "pull_request", "BASE_REF": "main",
-    "BASE_SHA": BASE, "GITHUB_SHA": MERGE, "GITHUB_REPOSITORY": "owner/repo",
+    "BASE_SHA": BASE, "PR_HEAD_SHA": HEAD, "GITHUB_SHA": MERGE, "GITHUB_REPOSITORY": "owner/repo",
 }
 
 
@@ -67,13 +67,25 @@ class CiScopeTest(unittest.TestCase):
 
     @patch("ci_scope.subprocess.check_output")
     def test_unverified_diff_defaults_full(self, command):
-        for outputs in ([f"{MERGE} {HEAD}\n".encode()],
-                        [f"{MERGE} {HEAD} {BASE}\n".encode()],
-                        [f"{MERGE} {BASE} {HEAD}\n".encode(), b"incomplete"],
+        for outputs in ([f"{MERGE} {BASE} {HEAD}\n".encode(), b"incomplete"],
                         [f"{MERGE} {BASE} {HEAD}\n".encode(),
                          subprocess.CalledProcessError(1, "git")]):
             command.side_effect = outputs
             self.assertEqual("full", classify(ENV).mode)
+
+    @patch("ci_scope.subprocess.check_output")
+    def test_unverified_pr_identity_blocks_gate(self, command):
+        for parents in (f"{MERGE} {HEAD}", f"{MERGE} {HEAD} {BASE}",
+                        f"{MERGE} {BASE} {'d' * 40}", f"{'d' * 40} {BASE} {HEAD}"):
+            with self.subTest(parents=parents):
+                command.reset_mock()
+                command.side_effect = [(parents + "\n").encode()]
+                with self.assertRaises(ValueError):
+                    classify(ENV)
+                self.assertEqual(1, command.call_count)
+        command.side_effect = subprocess.CalledProcessError(1, "git")
+        with self.assertRaises(subprocess.CalledProcessError):
+            classify(ENV)
 
     @patch("ci_scope.subprocess.check_output")
     def test_main_manual_and_other_base_are_full(self, command):
@@ -171,13 +183,28 @@ class CiScopeTest(unittest.TestCase):
     @patch("ci_scope.subprocess.check_output")
     def test_missing_invalid_event_evidence(self, command):
         for env in (dict(ENV, BASE_SHA=""), dict(ENV, BASE_SHA="0" * 40),
-                    dict(ENV, GITHUB_SHA="not a commit"),
-                    dict(ENV, GITHUB_EVENT_NAME="push", BEFORE_SHA=""),
+                    dict(ENV, GITHUB_SHA="not a commit"), dict(ENV, PR_HEAD_SHA="")):
+            with self.subTest(env=env), self.assertRaises(ValueError):
+                classify(env)
+        for env in (dict(ENV, GITHUB_EVENT_NAME="push", BEFORE_SHA=""),
                     dict(ENV, GITHUB_EVENT_NAME="push", BEFORE_SHA="0" * 40),
                     dict(ENV, GITHUB_EVENT_NAME="unrecognized")):
             with self.subTest(env=env):
                 self.assert_policy(classify(env), "full", False, False)
         command.assert_not_called()
+
+    @patch("ci_scope.subprocess.check_output")
+    def test_actual_pr_identity_output(self, command):
+        command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(b"README.md")]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            summary = Path(directory) / "summary"
+            env = dict(ENV, GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(summary))
+            with patch.dict(os.environ, env, clear=True):
+                main()
+            for label, sha in (("PR head", HEAD), ("PR base", BASE), ("PR merge", MERGE)):
+                self.assertIn(f"{label}: {sha}", summary.read_text())
+            self.assertIn("mode=docs", output.read_text())
 
     def test_actual_manual_output_files(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -311,7 +338,9 @@ class RealGitPolicyTest(unittest.TestCase):
 
 
     def classify_pr(self):
-        env = dict(ENV, BASE_SHA=self.base, GITHUB_SHA=self.git("rev-parse", "HEAD").decode().strip())
+        env = dict(ENV, BASE_SHA=self.base,
+                   PR_HEAD_SHA=self.git("rev-parse", "HEAD^2").decode().strip(),
+                   GITHUB_SHA=self.git("rev-parse", "HEAD").decode().strip())
         with patch("ci_scope.git", side_effect=self.git):
             return classify(env)
 
@@ -409,9 +438,46 @@ class WorkflowGateTest(unittest.TestCase):
             summary = Path(directory) / "summary"
             result = subprocess.run(
                 ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", body],
-                env=dict(os.environ, **env, GITHUB_STEP_SUMMARY=str(summary)),
+                env=dict(os.environ, **{"PR_READY": "true", **env}, GITHUB_STEP_SUMMARY=str(summary)),
                 capture_output=True, text=True, timeout=10)
             return result, summary.read_text() if summary.exists() else ""
+
+    def test_draft_gate_rejects_even_otherwise_successful_jobs(self):
+        body = self.shell_body("Evaluate required CI gate")
+        for ready in ("false", "", "unknown"):
+            for scope, mode, core, android in (("skipped", "", "skipped", "skipped"),
+                                               ("success", "docs", "skipped", "skipped"),
+                                               ("success", "full", "success", "success")):
+                with self.subTest(ready=ready, mode=mode):
+                    result, summary = self.run_shell(body, dict(
+                        PR_READY=ready, SCOPE_RESULT=scope, MODE=mode,
+                        CORE_RESULT=core, ANDROID_RESULT=android, NATIVE_REQUIRED="false",
+                        PERFORMANCE_REQUIRED="false", NATIVE_OUTCOME="skipped" if mode == "full" else "",
+                        PERFORMANCE_OUTCOME="skipped" if mode == "full" else ""))
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn("not merge evidence", summary)
+
+    def test_pr_trigger_and_draft_gate_wiring(self):
+        trigger = self.workflow.split("permissions:", 1)[0]
+        self.assertIn("branches: [main]", trigger)
+        self.assertIn("types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]", trigger)
+        self.assertNotIn("paths-ignore:", trigger)
+        self.assertNotIn("paths:", trigger)
+        self.assertIn("workflow_dispatch:", trigger)
+        self.assertIn("push:", trigger)  # Unprotected-main migration fallback.
+        ready = "${{ github.event_name != 'pull_request' || (toJSON(github.event.pull_request.draft) == 'false' && github.event.action != 'converted_to_draft') }}"
+        scope = self.workflow.split("  scope:\n", 1)[1].split("  core:\n", 1)[0]
+        self.assertIn("    if: " + ready, scope)
+        self.assertIn("PR_READY: " + ready, self.step("Evaluate required CI gate"))
+        gate = self.workflow.split("  build:\n", 1)[1]
+        self.assertIn("    if: ${{ always() }}", gate)
+        self.assertIn("    needs: [scope, core, android]", gate)
+        self.assertIn("name: ${{ github.event_name == 'pull_request' && 'PR build' || 'build' }}", gate)
+        self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", self.workflow)
+        for job in ("core", "android"):
+            section = self.workflow.split("  " + job + ":\n", 1)[1]
+            self.assertIn("    needs: scope", section.split("    steps:", 1)[0])
+            self.assertIn("needs.scope.outputs.mode == 'full'", section.split("    steps:", 1)[0])
 
     def test_actual_gate_valid_profiles_and_negative_mutations(self):
         body = self.shell_body("Evaluate required CI gate")
@@ -552,6 +618,7 @@ done
                 ("PERFORMANCE_OUTCOME", "android", "performance_measurement")):
             self.assertIn(variable + ": ${{ needs." + job + ".outputs." + field + " }}", gate)
         self.assertIn("BEFORE_SHA: ${{ github.event.before }}", self.step("Classify complete event diff"))
+        self.assertIn("PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}", self.step("Classify complete event diff"))
         self.assertIn("VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}",
                       self.step("Classify complete event diff"))
         self.assertIn("MEASURE_ANDROID_BUILD: ${{ inputs.measure_android_build }}",

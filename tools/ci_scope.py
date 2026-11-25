@@ -89,19 +89,24 @@ def oid(value):
     return value
 
 
-def event_diff(env, event):
+def verified_pr_base(env):
+    """Bind the checked candidate to both event parents, not merely its base."""
+    merge = oid(env.get("GITHUB_SHA", ""))
+    base = oid(env.get("BASE_SHA", ""))
+    head = oid(env.get("PR_HEAD_SHA", ""))
+    parents = git("rev-list", "--parents", "-n", "1", "HEAD").decode().split()
+    if parents != [merge, base, head]:
+        raise ValueError("PR merge candidate/head/base not verified")
+    return base
+
+
+def verified_push_base(env):
     head = oid(env.get("GITHUB_SHA", ""))
-    if event == "pull_request":
-        base = oid(env.get("BASE_SHA", ""))
-        parents = git("rev-list", "--parents", "-n", "1", "HEAD").decode().split()
-        if len(parents) != 3 or parents[0] != head or parents[1] != base:
-            raise ValueError("PR merge head/base not verified")
-    else:
-        base = oid(env.get("BEFORE_SHA", ""))
-        if env.get("GITHUB_REF") != "refs/heads/main" or git("rev-parse", "HEAD").decode().strip() != head:
-            raise ValueError("push head/ref not verified")
-        git("merge-base", "--is-ancestor", base, head)
-    return base, parse_diff(git("diff", "--raw", "-z", "--no-renames", base, "HEAD"))
+    base = oid(env.get("BEFORE_SHA", ""))
+    if env.get("GITHUB_REF") != "refs/heads/main" or git("rev-parse", "HEAD").decode().strip() != head:
+        raise ValueError("push head/ref not verified")
+    git("merge-base", "--is-ancestor", base, head)
+    return base
 
 
 def manual_flag(env, name):
@@ -118,8 +123,12 @@ def classify(env):
                         manual_flag(env, "VERIFY_NATIVE_CACHE"), manual_flag(env, "MEASURE_ANDROID_BUILD"))
     if event not in {"pull_request", "push"}:
         return Decision("full", "Unknown event; conservative full CI.", False, False)
+    # An unknown diff warrants full CI; an unverified PR identity cannot authorize any merge.
+    base = verified_pr_base(env) if event == "pull_request" else None
     try:
-        _, changes = event_diff(env, event)
+        if event == "push":
+            base = verified_push_base(env)
+        changes = parse_diff(git("diff", "--raw", "-z", "--no-renames", base, "HEAD"))
     except DIFF_ERRORS:
         return Decision("full", "Could not verify complete event diff; full CI required.", False, False)
     if is_docs_only(changes) and (event == "push" or env.get("BASE_REF") == "main"):
@@ -131,6 +140,12 @@ def classify(env):
 def main():
     decision = classify(os.environ)
     print(decision.reason)
+    identity = ""
+    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+        identity = (f"PR head: {os.environ['PR_HEAD_SHA']}\n"
+                    f"PR base: {os.environ['BASE_SHA']}\n"
+                    f"PR merge: {os.environ['GITHUB_SHA']}\n")
+        print(identity, end="")
     fields = (('mode', decision.mode),
               ('native_qualification', str(decision.native_qualification).lower()),
               ('performance_measurement', str(decision.performance_measurement).lower()))
@@ -139,6 +154,8 @@ def main():
             output.write(f"{name}={value}\n")
     with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
         summary.write(f"### CI scope: {decision.mode}\n\n{decision.reason}\n\n")
+        if identity:
+            summary.write(f"```text\n{identity}```\n\n")
         for name, value in fields[1:]:
             summary.write(f"- {name}: {value}\n")
 

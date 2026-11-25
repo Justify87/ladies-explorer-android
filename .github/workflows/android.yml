@@ -2,6 +2,9 @@ name: Android and Rust
 
 on:
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  # Migration fallback: remove only after strict main protection is verified.
   push:
     branches:
       - main
@@ -19,7 +22,7 @@ on:
 permissions:
   contents: read
 
-# New commits supersede outdated PR checks, but not main/manual builds.
+# New commits and draft transitions supersede outdated PR checks, not main/manual builds.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -27,6 +30,7 @@ concurrency:
 jobs:
   scope:
     name: CI scope
+    if: ${{ github.event_name != 'pull_request' || (toJSON(github.event.pull_request.draft) == 'false' && github.event.action != 'converted_to_draft') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -45,6 +49,7 @@ jobs:
         id: classify
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           BEFORE_SHA: ${{ github.event.before }}
           VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}
@@ -304,7 +309,8 @@ jobs:
 
   # Keep the required check for all events, including documentation-only changes.
   build:
-    name: build
+    # Keep manual APK consumers stable; only a PR check can satisfy the PR rule.
+    name: ${{ github.event_name == 'pull_request' && 'PR build' || 'build' }}
     needs: [scope, core, android]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
@@ -313,6 +319,7 @@ jobs:
       - name: Evaluate required CI gate
         shell: bash
         env:
+          PR_READY: ${{ github.event_name != 'pull_request' || (toJSON(github.event.pull_request.draft) == 'false' && github.event.action != 'converted_to_draft') }}
           SCOPE_RESULT: ${{ needs.scope.result }}
           MODE: ${{ needs.scope.outputs.mode }}
           CORE_RESULT: ${{ needs.core.result }}
@@ -322,6 +329,10 @@ jobs:
           NATIVE_OUTCOME: ${{ needs.android.outputs.native_qualification }}
           PERFORMANCE_OUTCOME: ${{ needs.android.outputs.performance_measurement }}
         run: |
+          if [ "$PR_READY" != true ]; then
+            echo 'Draft PR: CI deferred; this gate is not merge evidence.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           {
             echo "### Required CI gate"
             echo ""
