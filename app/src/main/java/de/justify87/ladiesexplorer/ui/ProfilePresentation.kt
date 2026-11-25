@@ -164,10 +164,17 @@ internal fun rememberProfileScrollMemory(reset: Boolean): ProfileScrollMemory = 
 internal enum class ProfileRowRead { Facts, Detail, Note, Encounters, Prices }
 
 internal class ProfileFlowRows(val mediaSelection: ProfileMediaSelection) {
-    data class Entry(val key: String, val read: ProfileRowRead?, val content: @Composable () -> Unit)
+    data class Entry(val key: String, val read: ProfileRowRead?, val content: @Composable () -> Unit,
+        val section: ProfileSection? = null)
     private val rows = mutableListOf<Entry>()
+    private var section: ProfileSection? = null
+    fun withSection(value: ProfileSection, block: ProfileFlowRows.() -> Unit) {
+        check(section == null)
+        section = value
+        try { block() } finally { section = null }
+    }
     fun item(key: String, read: ProfileRowRead? = null, content: @Composable () -> Unit) {
-        rows.add(Entry(key, read, content))
+        rows.add(Entry(key, read, content, section))
     }
     fun <T> items(values: List<T>, key: (T) -> String, read: ProfileRowRead? = null, content: @Composable (T) -> Unit) {
         values.forEach { value -> item(key(value), read) { content(value) } }

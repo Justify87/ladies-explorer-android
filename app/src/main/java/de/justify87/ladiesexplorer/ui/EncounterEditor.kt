@@ -153,13 +153,17 @@ internal fun EncounterRow(row: Encounter, enabled: Boolean, onEdit: () -> Unit, 
     val v = row.values
     ProfileRecordCard {
         Text(displayTime(v.occurredAt, ZoneId.systemDefault()), style = MaterialTheme.typography.titleMedium)
-        Text("Dauer: ${v.durationMinutes?.let { "$it Min." } ?: "Unbekannt"} · Bezahlt: ${v.totalPriceCents?.let { "${euro(it)} €" } ?: "Unbekannt"}")
-        Text("Gesamt: ${v.overallRating?.let { "$it/5" } ?: "Unbekannt"} · Sympathie: ${v.sympathyRating?.let { "$it/5" } ?: "Unbekannt"}")
+        listOfNotNull(v.durationMinutes?.let { "Dauer: $it Min." },
+            v.totalPriceCents?.let { "Bezahlt: ${euro(it)} €" }).takeIf { it.isNotEmpty() }
+            ?.let { Text(it.joinToString(" · ")) }
+        listOfNotNull(v.overallRating?.let { "Gesamt: $it/5" },
+            v.sympathyRating?.let { "Sympathie: $it/5" }).takeIf { it.isNotEmpty() }
+            ?.let { Text(it.joinToString(" · ")) }
         v.basePriceCents?.let { Text("Grundpreis: ${euro(it)} €") }
         if (v.services.isNotEmpty()) {
             Text("Persönliche Leistungsdetails", style = MaterialTheme.typography.titleSmall)
             v.services.forEach { service ->
-                Text("${service.name} · ${service.amountCents?.let { "${euro(it)} €" } ?: "Unbekannt"}")
+                Text(listOfNotNull(service.name, service.amountCents?.let { "${euro(it)} €" }).joinToString(" · "))
             }
         }
         v.listingId?.let { Text("Anzeige #$it", style = MaterialTheme.typography.bodySmall) }

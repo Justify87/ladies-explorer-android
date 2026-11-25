@@ -1,10 +1,10 @@
 package de.justify87.ladiesexplorer.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -16,10 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.flow.collect
@@ -27,7 +25,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 internal enum class ProfileSection(val label: String) {
-    Description("Beschreibung"), Services("Alle Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), Prices("Manuelle Angebotspreise"), History("Verlauf / verknüpfte Anzeigen")
+    Description("Über das Profil"), OpeningTimes("Öffnungszeiten"), Traits("Merkmale"), Services("Dienste und Filterbelege"), Analysis("Analyse / Identität"), Notes("Meine Notiz"), Encounters("Meine Begegnungen"), Prices("Manuelle Angebotspreise"), History("Verlauf / verknüpfte Anzeigen")
 }
 
 @Stable
@@ -261,12 +259,17 @@ internal fun ProfileFlow(
         }
     }
     LazyColumn(state = state, modifier = modifier, contentPadding = contentPadding,
-        userScrollEnabled = userScrollEnabled,
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(rows, key = { it.key }) { row ->
-            if (paddedDetails && row.key != "hero" && row.key != "media") {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) { row.content() }
-            } else row.content()
+        userScrollEnabled = userScrollEnabled) {
+        itemsIndexed(rows, key = { _, row -> row.key }) { index, row ->
+            val section = row.section
+            val first = section != null && rows.getOrNull(index - 1)?.section != section
+            val last = section != null && rows.getOrNull(index + 1)?.section != section
+            val gap = if (index == rows.lastIndex || section != null && !last) 0.dp else 12.dp
+            val horizontal = if (paddedDetails && row.key != "hero" && row.key != "media") 16.dp else 0.dp
+            Column(Modifier.fillMaxWidth().padding(horizontal = horizontal).padding(bottom = gap)) {
+                if (section != null) ProgressiveSectionFrame(first, last, header = first) { row.content() }
+                else row.content()
+            }
         }
     }
 }
@@ -275,34 +278,10 @@ internal fun ProfileFlow(
 private fun SectionToggle(
     section: ProfileSection, sections: ProfileSections, hint: String? = null, hintError: Boolean = false,
 ) {
-    val expanded = sections.expanded(section)
-    TextButton(onClick = { sections.toggle(section) },
-        shape = MaterialTheme.shapes.medium,
-        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.medium)
-            .shellFocus().semantics {
-            stateDescription = if (expanded) "Ausgeklappt" else "Eingeklappt"
-        }) {
-        Icon(when (section) {
-            ProfileSection.Analysis -> Icons.Default.Info
-            ProfileSection.Notes, ProfileSection.Description -> Icons.Default.Edit
-            ProfileSection.Encounters, ProfileSection.History -> Icons.Default.DateRange
-            ProfileSection.Prices, ProfileSection.Services -> Icons.Default.List
-        }, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(section.label, modifier = Modifier.semantics { heading() },
-                style = MaterialTheme.typography.titleSmall)
-            hint?.let { Text(it, style = MaterialTheme.typography.bodySmall,
-                color = if (hintError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
-        Spacer(Modifier.width(8.dp))
-        Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-            contentDescription = null, modifier = Modifier.size(20.dp))
-    }
+    ProgressiveSectionHeader(section.label, sections.expanded(section), { sections.toggle(section) },
+        hint = hint, hintError = hintError)
 }
+
 
 internal fun noteSectionHint(note: NoteEditorState): String? = when {
     note.draft?.conflict == true -> "Notizkonflikt"
@@ -315,17 +294,14 @@ internal fun noteSectionHint(note: NoteEditorState): String? = when {
 @Composable
 private fun ProfileGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, modifier = Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+        Text(title, modifier = Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
         content()
     }
 }
 
 @Composable
 private fun FieldGrid(rows: List<Pair<String, String>>) {
-    if (rows.isEmpty()) {
-        Text("Keine Angaben gespeichert.", style = MaterialTheme.typography.bodyMedium)
-        return
-    }
+    if (rows.isEmpty()) return
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val fontScale = LocalDensity.current.fontScale
         val columns = if (maxWidth < 340.dp || fontScale >= 1.5f) 1 else 2
@@ -366,41 +342,27 @@ internal fun ProfileFacts.overviewAndTraits(): Pair<List<Pair<String, String>>, 
         it.label.lowercase() in setOf("busen", "oberweite", "brustgröße", "brustgroesse", "brust")
     }
     val first = traits.getOrNull(promoted)
-    val overview = listOf(if (first == null) "Busen" to "Unbekannt"
-        else first.label to first.values.joinToString(" · ")) +
+    val overview = listOfNotNull(first?.let { it.label to it.values.joinToString(" · ") }) +
         important.map { it.label to evidenceLabel(it.status) }
     return overview to traits.filterIndexed { index, _ -> index != promoted }
 }
 
 internal data class ProfileServiceRows(
-    val source: List<Pair<String, String>>,
+    val source: List<ProfileField>,
     val filters: List<Pair<String, String>>,
-) {
-    val count get() = source.size + filters.size
-    fun preview(expanded: Boolean): ProfileServiceRows =
-        if (expanded) this else copy(source = source.take(4), filters = filters.take(4))
-}
+)
 
 internal fun ProfileFacts.serviceRows(): ProfileServiceRows = ProfileServiceRows(
-    source = services.flatMap { field -> field.values.map { field.label to it } },
+    source = services.filter { it.values.isNotEmpty() },
     filters = filters.map { "${it.label} (${it.group})" to evidenceLabel(it.status) },
 )
 
 @Composable
 private fun ProfileDescription(profile: ProfileResponse, sections: ProfileSections) {
     val expanded = sections.expanded(ProfileSection.Description)
-    var overflow by remember(profile.snapshotId) { mutableStateOf(false) }
-    val text = profile.description.ifBlank { "Keine Beschreibung gespeichert." }
-    ProfileGroup("Über das Profil") {
-        SelectionContainer {
-            Text(text, maxLines = if (expanded) Int.MAX_VALUE else 6,
-                overflow = TextOverflow.Ellipsis, onTextLayout = {
-                    if (!expanded) overflow = it.hasVisualOverflow
-                })
-        }
-        if (expanded || overflow) {
-            TextButton(onClick = { sections.toggle(ProfileSection.Description) }) { Text(if (expanded) "Weniger" else "Mehr anzeigen") }
-        }
+    ProgressiveSection(ProfileSection.Description.label, expanded, { sections.toggle(ProfileSection.Description) },
+        hint = if (expanded) "Weniger anzeigen" else "Mehr anzeigen") {
+        SelectionContainer { Text(profile.description) }
     }
 }
 
@@ -525,74 +487,81 @@ private fun ProfileFlowRows.profileContent(
     onConfirm: (Long) -> Unit,
 ) {
     item(key = "profile-facts", read = ProfileRowRead.Facts) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val listingFields = listOfNotNull(person?.let { "Anzeigen" to it.listingCount.toString() })
             if (panels.facts == null && listingFields.isNotEmpty()) FieldGrid(listingFields)
             FactsContent(panels, actionsBusy, isCurrent) { facts ->
-                val (overview, traits) = facts.overviewAndTraits()
-                if (facts.openingTimes.isNotEmpty()) ProfileGroup("Öffnungszeiten") { FieldValues(facts.openingTimes) }
-                FieldGrid(overview + listingFields)
-                if (traits.isNotEmpty()) ProfileGroup("Merkmale") { FieldValues(traits) }
+                FieldGrid(facts.overviewAndTraits().first + listingFields)
             }
         }
     }
+    val facts = panels.facts
+    if (!facts?.openingTimes.isNullOrEmpty()) item(key = "profile-opening-times", read = ProfileRowRead.Facts) {
+        val section = ProfileSection.OpeningTimes
+        ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) }) {
+            FieldValues(checkNotNull(facts).openingTimes)
+        }
+    }
+    val traits = facts?.overviewAndTraits()?.second.orEmpty()
+    if (traits.isNotEmpty()) item(key = "profile-traits", read = ProfileRowRead.Facts) {
+        val section = ProfileSection.Traits
+        ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) }) { FieldValues(traits) }
+    }
     if (profile.description.isNotBlank()) item(key = "profile-description") { ProfileDescription(profile, sections) }
-    item(key = "profile-services", read = ProfileRowRead.Facts) {
-        ProfileGroup("Dienste und Filterbelege") {
-            FactsContent(panels, actionsBusy, isCurrent) { facts ->
-                val all = facts.serviceRows()
-                val expanded = sections.expanded(ProfileSection.Services)
-                val shown = all.preview(expanded)
-                if (shown.source.isNotEmpty()) FieldGrid(shown.source)
-                if (shown.filters.isNotEmpty()) {
-                    Text("Filterbelege", style = MaterialTheme.typography.labelLarge)
-                    FieldGrid(shown.filters)
-                }
-                if (all.count == 0) Text("Keine Angaben gespeichert.")
-                if (expanded || shown.count < all.count) {
-                    TextButton(onClick = { sections.toggle(ProfileSection.Services) }) {
-                        Text(if (expanded) "Weniger anzeigen" else "Alle ${all.count} Angaben anzeigen")
+    val serviceRows = facts?.serviceRows()
+    if (serviceRows == null || serviceRows.source.isNotEmpty() || serviceRows.filters.isNotEmpty())
+        item(key = "profile-services", read = ProfileRowRead.Facts) {
+            val section = ProfileSection.Services
+            ProgressiveSection(section.label, sections.expanded(section), { sections.toggle(section) }) {
+                FactsContent(panels, actionsBusy, isCurrent) { loaded ->
+                    val all = loaded.serviceRows()
+                    all.source.forEach { field ->
+                        ProfileGroup(field.label) {
+                            field.values.forEach { value -> Text(value, style = MaterialTheme.typography.bodyMedium) }
+                        }
                     }
-                    if (!expanded) Text("${shown.count} von ${all.count} Angaben sichtbar",
+                    if (all.filters.isNotEmpty()) ProfileGroup("Filterbelege") { FieldGrid(all.filters) }
+                }
+            }
+        }
+    withSection(ProfileSection.Analysis) {
+        item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections, panels.detailError, panels.detailError != null) }
+        if (sections.expanded(ProfileSection.Analysis)) {
+            item(key = "profile-analysis", read = ProfileRowRead.Detail) {
+                ProfileGroup("Gespeicherte Evidenz") {
+                    val data = panels.detail
+                    FieldGrid(profileAnalysisFields(media.count { it.kind == "IMAGE" }, person?.listingCount, data))
+                    if (data == null) DetailStatus(panels, actionsBusy, isCurrent)
+                    Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
-        }
-    }
-    item(key = "analysis-toggle") { SectionToggle(ProfileSection.Analysis, sections) }
-    if (sections.expanded(ProfileSection.Analysis)) {
-        item(key = "profile-analysis", read = ProfileRowRead.Detail) {
-            ProfileGroup("Gespeicherte Evidenz") {
-                val data = panels.detail
-                FieldGrid(profileAnalysisFields(media.count { it.kind == "IMAGE" }, person?.listingCount, data))
-                if (data == null) DetailStatus(panels, actionsBusy, isCurrent)
-                Text("Nur gespeicherte Fakten; keine KI-Bewertung oder Affinitätswertung.",
-                    style = MaterialTheme.typography.bodySmall)
+            if (candidates.isNotEmpty()) item(key = "profile-candidate-head") {
+                Text("Mögliche Identitätsübereinstimmungen", style = MaterialTheme.typography.titleSmall)
+                Text("Keine automatische Zusammenführung.", style = MaterialTheme.typography.bodySmall)
             }
-        }
-        item(key = "profile-candidate-head") {
-            Text("Mögliche Identitätsübereinstimmungen", style = MaterialTheme.typography.titleMedium)
-            Text(if (candidates.isEmpty()) "Keine Kandidaten gespeichert." else "Keine automatische Zusammenführung.")
-        }
-        items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
-            ProfileGroup("Person #${candidate.personId} · ${candidate.decision}") {
-                Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
-                    "Quellprofil".takeIf { candidate.sourceProfileMatch },
-                    "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
-                    .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
-                OutlinedButton(onClick = { if (isCurrent()) onConfirm(candidate.personId) },
-                    enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
+            items(candidates, key = { "candidate/${it.personId}" }) { candidate ->
+                ProfileGroup("Person #${candidate.personId} · ${candidate.decision}") {
+                    Text(listOfNotNull("Telefon".takeIf { candidate.phoneMatch },
+                        "Quellprofil".takeIf { candidate.sourceProfileMatch },
+                        "${candidate.strongImageMatches} starke Bildtreffer".takeIf { candidate.imageMatches > 0u })
+                        .joinToString(" · ").ifBlank { "Keine bestätigende Evidenz" })
+                    OutlinedButton(onClick = { if (isCurrent()) onConfirm(candidate.personId) },
+                        enabled = !actionsBusy) { Text("Zusammenführung prüfen") }
+                }
             }
         }
     }
-    item(key = "notes-toggle", read = ProfileRowRead.Note.takeIf { sections.expanded(ProfileSection.Notes) }) {
-        SectionToggle(ProfileSection.Notes, sections, noteSectionHint(note),
-            hintError = note.error != null || note.draft?.conflict == true)
+    withSection(ProfileSection.Notes) {
+        item(key = "notes-toggle", read = ProfileRowRead.Note.takeIf { sections.expanded(ProfileSection.Notes) }) {
+            SectionToggle(ProfileSection.Notes, sections, noteSectionHint(note),
+                hintError = note.error != null || note.draft?.conflict == true)
+        }
+        if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes", read = ProfileRowRead.Note) {
+            NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy, noteDemand, onRetryNote)
+        }
     }
-    if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes", read = ProfileRowRead.Note) {
-        NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy, noteDemand, onRetryNote)
-    }
-    if (encounters != null) {
+    if (encounters != null) withSection(ProfileSection.Encounters) {
         item(key = "encounters-toggle", read = ProfileRowRead.Encounters.takeIf { sections.expanded(ProfileSection.Encounters) }) {
             SectionToggle(ProfileSection.Encounters, sections, encounterPanel?.error, hintError = encounterPanel?.error != null)
         }
@@ -604,7 +573,6 @@ private fun ProfileFlowRows.profileContent(
                 } else if (rows == null) {
                     if (!actionsBusy) CircularProgressIndicator(Modifier.size(24.dp))
                 } else {
-                    if (rows.isEmpty()) Text("Keine Begegnungen gespeichert.")
                     OutlinedButton(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !actionsBusy && isCurrent(),
                         onClick = { encounters.begin(checkNotNull(encounterPanel)) }) { Text("Begegnung hinzufügen") }
                 }
@@ -616,7 +584,7 @@ private fun ProfileFlowRows.profileContent(
             }
         }
     }
-    if (prices != null) {
+    if (prices != null) withSection(ProfileSection.Prices) {
         item(key = "prices-toggle", read = ProfileRowRead.Prices.takeIf { sections.expanded(ProfileSection.Prices) }) {
             SectionToggle(ProfileSection.Prices, sections, pricePanel?.error, hintError = pricePanel?.error != null)
         }
@@ -628,11 +596,9 @@ private fun ProfileFlowRows.profileContent(
                 } else if (data == null) {
                     if (!actionsBusy) CircularProgressIndicator(Modifier.size(24.dp))
                 } else {
-                    Text("Manuell erfasst · keine Aussage über aktuelle Gültigkeit.", style = MaterialTheme.typography.bodySmall)
-                    val paid = data.lastPaid
-                    Text(if (paid == null) "Zuletzt bekannter bezahlter Gesamtbetrag: Unbekannt"
-                        else "Zuletzt bekannter bezahlter Gesamtbetrag: ${euro(paid.amountCents)} € · ${displayTime(paid.occurredAt, java.time.ZoneId.systemDefault())}")
-                    if (data.lists.isEmpty()) Text("Keine Preislisten gespeichert.")
+                    data.lastPaid?.let { paid ->
+                        Text("Zuletzt bekannter bezahlter Gesamtbetrag: ${euro(paid.amountCents)} € · ${displayTime(paid.occurredAt, java.time.ZoneId.systemDefault())}")
+                    }
                     OutlinedButton(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !actionsBusy && isCurrent(),
                         onClick = { prices.begin(checkNotNull(pricePanel)) }) { Text("Preisliste hinzufügen") }
                 }
@@ -645,43 +611,44 @@ private fun ProfileFlowRows.profileContent(
             }
         }
     }
-    item(key = "history-toggle") { SectionToggle(ProfileSection.History, sections) }
-    if (sections.expanded(ProfileSection.History)) {
-        val visibleEvents = if (sections.showDescriptionChanges) history
-            else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }
-        item(key = "profile-history-head", read = ProfileRowRead.Detail) {
-            Text("Profilverlauf", style = MaterialTheme.typography.titleMedium)
-            Text("Bis zu 100 zuletzt gespeicherte Änderungen.", style = MaterialTheme.typography.bodySmall)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(sections.showDescriptionChanges, sections::setShowDescriptionChanges)
-                Text("Beschreibungstexte im Verlauf anzeigen")
+    withSection(ProfileSection.History) {
+        item(key = "history-toggle") { SectionToggle(ProfileSection.History, sections, panels.detailError, panels.detailError != null) }
+        if (sections.expanded(ProfileSection.History)) {
+            val visibleEvents = if (sections.showDescriptionChanges) history
+                else history.filterNot { it.fieldKey.equals("description", ignoreCase = true) }
+            item(key = "profile-history-head", read = ProfileRowRead.Detail) {
+                Text("Profilverlauf", style = MaterialTheme.typography.titleMedium)
+                Text("Bis zu 100 zuletzt gespeicherte Änderungen.", style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(sections.showDescriptionChanges, sections::setShowDescriptionChanges)
+                    Text("Beschreibungstexte im Verlauf anzeigen")
+                }
+                if (panels.detail == null) DetailStatus(panels, actionsBusy, isCurrent)
             }
-            if (panels.detail == null) DetailStatus(panels, actionsBusy, isCurrent)
-            if (visibleEvents.isEmpty()) Text("Keine sichtbaren Änderungen gespeichert.")
-        }
-        items(visibleEvents, key = { "event/${it.changeEventId}" }, read = ProfileRowRead.Detail) { event ->
-            ProfileGroup(historyEventLabel(event.eventType, event.fieldKey)) {
-                Text(historyDate(event.createdAt), style = MaterialTheme.typography.bodySmall)
-                val listing = panels.detail?.listings?.firstOrNull { it.listingId == event.listingId }
-                listing?.let { Text("Anzeige #${it.externalId}", style = MaterialTheme.typography.labelMedium) }
-                if (event.oldDisplay != null || event.newDisplay != null)
-                    HistoryValues(event.oldDisplay, event.newDisplay)
-                val from = event.fromSnapshotId
-                val to = event.toSnapshotId
-                if (from != null && to != null) TextButton(onClick = { if (isCurrent()) panels.compare(from, to) },
-                    enabled = !actionsBusy) { Text("Snapshots vergleichen") }
+            items(visibleEvents, key = { "event/${it.changeEventId}" }, read = ProfileRowRead.Detail) { event ->
+                ProfileGroup(historyEventLabel(event.eventType, event.fieldKey)) {
+                    Text(historyDate(event.createdAt), style = MaterialTheme.typography.bodySmall)
+                    val listing = panels.detail?.listings?.firstOrNull { it.listingId == event.listingId }
+                    listing?.let { Text("Anzeige #${it.externalId}", style = MaterialTheme.typography.labelMedium) }
+                    if (event.oldDisplay != null || event.newDisplay != null)
+                        HistoryValues(event.oldDisplay, event.newDisplay)
+                    val from = event.fromSnapshotId
+                    val to = event.toSnapshotId
+                    if (from != null && to != null) TextButton(onClick = { if (isCurrent()) panels.compare(from, to) },
+                        enabled = !actionsBusy) { Text("Snapshots vergleichen") }
+                }
             }
-        }
-        item(key = "profile-listings-head", read = ProfileRowRead.Detail) {
-            Text("Verknüpfte Anzeigen", style = MaterialTheme.typography.titleMedium)
-            if (panels.detail == null) DetailStatus(panels, actionsBusy, isCurrent)
-        }
-        items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }, read = ProfileRowRead.Detail) { listing ->
-            val context = LocalContext.current
-            ProfileGroup("Anzeige #${listing.externalId}") {
-                Text(statusLabel(listing.status))
-                Text("Zuletzt gesehen: ${historyDate(listing.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
-                listing.url?.let { url -> TextButton(enabled = !actionsBusy, onClick = { if (isCurrent()) openExternal(context, url) }) { Text("Original öffnen") } }
+            if (panels.detail == null || panels.detail?.listings.orEmpty().isNotEmpty()) item(key = "profile-listings-head", read = ProfileRowRead.Detail) {
+                Text("Verknüpfte Anzeigen", style = MaterialTheme.typography.titleMedium)
+                if (panels.detail == null) DetailStatus(panels, actionsBusy, isCurrent)
+            }
+            items(panels.detail?.listings.orEmpty(), key = { "listing/${it.listingId}" }, read = ProfileRowRead.Detail) { listing ->
+                val context = LocalContext.current
+                ProfileGroup("Anzeige #${listing.externalId}") {
+                    Text(statusLabel(listing.status))
+                    Text("Zuletzt gesehen: ${historyDate(listing.lastSeenAt)}", style = MaterialTheme.typography.bodySmall)
+                    listing.url?.let { url -> TextButton(enabled = !actionsBusy, onClick = { if (isCurrent()) openExternal(context, url) }) { Text("Original öffnen") } }
+                }
             }
         }
     }
