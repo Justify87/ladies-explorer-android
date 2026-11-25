@@ -29,7 +29,7 @@ internal fun diagnosticFailure(failure: Throwable): String {
     val causes = generateSequence(failure) { it.cause?.takeUnless { next -> next === it } }
         .take(4).joinToString(">") { it.javaClass.simpleName }
     val frames = failure.stackTrace.filter { it.className.startsWith("de.justify87.") }
-        .take(3).joinToString(",") { "${it.className.substringAfterLast('.')}. ${it.methodName}:${it.lineNumber}" }
+        .take(3).joinToString(",") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
     return "type=$causes frames=$frames"
 }
 
@@ -83,8 +83,14 @@ class CoreStore(context: Context) {
     fun isDebugLoggingEnabled(): Boolean = preferences.getBoolean("debug", false)
 
     suspend fun setDebugLoggingEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
-        preferences.edit().putBoolean("debug", enabled).apply()
-        engine.setDiagnosticDebugEnabled(enabled)
+        if (enabled) {
+            engine.setDiagnosticDebugEnabled(true)
+            preferences.edit().putBoolean("debug", true).apply()
+        } else {
+            preferences.edit().putBoolean("debug", false).apply()
+            logBridge.barrier()
+            engine.setDiagnosticDebugEnabled(false)
+        }
     }
 
     internal fun diagnostic(component: String, level: DiagnosticLevel, message: String, failure: Throwable? = null) {

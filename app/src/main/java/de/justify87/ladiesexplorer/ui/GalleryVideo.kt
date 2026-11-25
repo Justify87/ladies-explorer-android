@@ -57,6 +57,17 @@ internal data class LocalGalleryVideo(val file: File, val demuxer: String)
 
 internal class VideoPreparationDeferred : Exception("Video prefetch budget reached")
 
+private val nativeLogUrl = Regex("""(?i)\b[a-z][a-z0-9+.-]*://[^\s"'<>]+""")
+private val nativeLogPath = Regex("""(?<![A-Za-z0-9])/(?:[^\s"'<>]+)""")
+
+internal fun mpvDiagnosticMessage(prefix: String, text: String, mediaPath: String): String {
+    val safePrefix = prefix.filter { it.isLetterOrDigit() || it in "/._:-" }.take(48)
+    val safeText = text.replace(mediaPath, "[media-file]")
+        .replace(nativeLogUrl, "[url]").replace(nativeLogPath, "[path]")
+        .replace(Regex("""\s+"""), " ").trim().take(512)
+    return "native prefix=$safePrefix message=$safeText"
+}
+
 /** Cache hits never queue behind network I/O. Window pins and playback leases have separate lifetimes. */
 internal class GalleryVideoFiles(
     private val downloadBytes: suspend (String) -> ByteArray,
@@ -297,7 +308,8 @@ private fun LocalMpvPlayer(
         val instance = try {
             MpvSurfaceOwner(context.applicationContext, video, { latestReady() }, { latestFailure() },
                 onSurfaceLost = { surfaceGeneration++ }, onSize = { latestSize(it) },
-                diagnostic = { level, event, failure -> report(level, event, failure) })
+                diagnostic = { level, event, failure -> report(level, event, failure) },
+                debugEnabled = core::isDebugLoggingEnabled)
         } catch (failure: Exception) {
             report(DiagnosticLevel.ERROR, "init_failed", failure)
             latestFailure()
@@ -333,10 +345,11 @@ private class MpvSurfaceOwner(
     private val onSurfaceLost: () -> Unit,
     private val onSize: (IntSize) -> Unit,
     private val diagnostic: (DiagnosticLevel, String, Throwable?) -> Unit,
-) : TextureView.SurfaceTextureListener, MPVLib.EventObserver {
+    private val debugEnabled: () -> Boolean,
+) : TextureView.SurfaceTextureListener, MPVLib.EventObserver, MPVLib.LogObserver {
     private val main = Handler(Looper.getMainLooper())
     private val player = checkNotNull(MPVLib.create(context)) { "libmpv unavailable" }
-    private var closed = false
+    @Volatile private var closed = false
     private var surface: Surface? = null
     private var desiredPause = false
 
@@ -354,14 +367,21 @@ private class MpvSurfaceOwner(
                 "idle" to "yes", "force-window" to "no", "terminal" to "no",
                 "keepaspect" to "yes", "panscan" to "0",
             ).forEach { (name, value) ->
-                check(player.setOptionString(name, value) >= 0) { "libmpv option rejected: $name" }
+                val result = player.setOptionString(name, value)
+                if (result < 0) diagnostic(DiagnosticLevel.ERROR, "option_rejected name=$name code=$result", null)
+                check(result >= 0) { "libmpv option rejected: $name" }
             }
             player.addObserver(this)
+            player.addLogObserver(this)
             player.init()
             diagnostic(DiagnosticLevel.DEBUG, "initialized", null)
         } catch (failure: Throwable) {
+            closed = true
             runCatching { player.removeObserver(this) }
-            runCatching { player.destroy() }
+            runCatching { player.removeLogObserver(this) }
+            runCatching { player.destroy() }.onFailure {
+                diagnostic(DiagnosticLevel.ERROR, "init_cleanup_failed", it)
+            }
             throw failure
         }
     }
@@ -377,6 +397,7 @@ private class MpvSurfaceOwner(
             player.setPropertyBoolean("pause", desiredPause)
             // Pass only a validated local path to libmpv; Rust owns source HTTP.
             player.command(arrayOf("loadfile", source.file.absolutePath, "replace"))
+            diagnostic(DiagnosticLevel.DEBUG, "surface_load_requested width=$width height=$height", null)
         } catch (failure: Exception) {
             diagnostic(DiagnosticLevel.ERROR, "surface_load_failed", failure)
             onFailure()
@@ -405,9 +426,14 @@ private class MpvSurfaceOwner(
         if (closed) return
         closed = true
         player.removeObserver(this)
+        player.removeLogObserver(this)
         main.removeCallbacksAndMessages(null)
         try {
             player.destroy()
+            diagnostic(DiagnosticLevel.DEBUG, "closed", null)
+        } catch (failure: Exception) {
+            diagnostic(DiagnosticLevel.ERROR, "destroy_failed", failure)
+            throw failure
         } finally {
             surface?.release()
             surface = null
@@ -423,7 +449,7 @@ private class MpvSurfaceOwner(
             val rotation = player.getPropertyInt("video-out-params/rotate") ?: 0
             if (dw <= 0 || dh <= 0) IntSize.Zero
             else if (rotation % 180 != 0) IntSize(dh, dw) else IntSize(dw, dh)
-        }.getOrDefault(IntSize.Zero)
+        }.onFailure { diagnostic(DiagnosticLevel.WARN, "video_size_failed", it) }.getOrDefault(IntSize.Zero)
         if (dimensions.width > 0 && dimensions.height > 0) {
             diagnostic(DiagnosticLevel.DEBUG, "video_size width=${dimensions.width} height=${dimensions.height}", null)
             onSize(dimensions)
@@ -446,6 +472,17 @@ private class MpvSurfaceOwner(
             }
         }
     }
+    override fun logMessage(prefix: String, level: Int, text: String) {
+        if (closed || level <= MPVLib.MpvLogLevel.MPV_LOG_LEVEL_NONE) return
+        val severity = when {
+            level <= MPVLib.MpvLogLevel.MPV_LOG_LEVEL_ERROR -> DiagnosticLevel.ERROR
+            level <= MPVLib.MpvLogLevel.MPV_LOG_LEVEL_WARN -> DiagnosticLevel.WARN
+            debugEnabled() -> DiagnosticLevel.DEBUG
+            else -> return
+        }
+        diagnostic(severity, mpvDiagnosticMessage(prefix, text, source.file.absolutePath), null)
+    }
+
     override fun eventProperty(property: String) = Unit
     override fun eventProperty(property: String, value: Long) = Unit
     override fun eventProperty(property: String, value: Double) = Unit
