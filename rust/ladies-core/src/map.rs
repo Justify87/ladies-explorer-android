@@ -42,8 +42,7 @@ fn city_key(value: &str) -> String {
 
 fn postal_code(value: &str) -> Option<String> {
     let value = value.trim();
-    (value.len() == 5 && value.bytes().all(|ch| ch.is_ascii_digit()))
-        .then(|| value.to_owned())
+    (value.len() == 5 && value.bytes().all(|ch| ch.is_ascii_digit())).then(|| value.to_owned())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -55,19 +54,21 @@ struct Evidence {
 impl Evidence {
     fn new(city: &str, postal: Option<&str>) -> Self {
         let city = city.trim();
-        let prefix = city.split_once(char::is_whitespace).and_then(|(first, rest)| {
-            postal_code(first).map(|code| (code, rest.trim()))
+        let prefix = postal_code(city).map(|code| (code, "")).or_else(|| {
+            city.split_once(char::is_whitespace)
+                .and_then(|(first, rest)| postal_code(first).map(|code| (code, rest.trim())))
         });
         let (embedded, city) = match prefix {
             Some((code, rest)) => (Some(code), rest),
             None => (None, city),
         };
+        let postal = match (postal.and_then(postal_code), embedded) {
+            (Some(explicit), Some(embedded)) if explicit != embedded => None,
+            (explicit, embedded) => explicit.or(embedded),
+        };
         Self {
             city: city_key(city),
-            postal: postal
-                .and_then(postal_code)
-                .or(embedded)
-                .unwrap_or_default(),
+            postal: postal.unwrap_or_default(),
         }
     }
 
@@ -89,12 +90,12 @@ impl Evidence {
 #[derive(Default)]
 struct Extent {
     points: Vec<(f64, f64)>,
-    states: HashSet<String>,
+    states: HashMap<String, usize>,
 }
 
 impl Extent {
     fn add(&mut self, state: &str, latitude: f64, longitude: f64) {
-        self.states.insert(state.to_owned());
+        *self.states.entry(state.to_owned()).or_default() += 1;
         self.points.push((latitude, longitude));
     }
 
@@ -111,8 +112,12 @@ impl Extent {
             lat_sum += lat;
             lon_sum += lon;
         }
-        // Homonyms in different regions are not evidence of a unique city.
-        if city && (self.states.len() != 1 || max_lat - min_lat > 0.35 || max_lon - min_lon > 0.6) {
+        // A border postcode can share a city label; widely separated or competing regions cannot.
+        let dominant_state = self
+            .states
+            .values()
+            .any(|&count| count * 20 >= self.points.len() * 19);
+        if city && (!dominant_state || max_lat - min_lat > 0.35 || max_lon - min_lon > 0.6) {
             return None;
         }
         let count = self.points.len() as f64;
@@ -147,7 +152,11 @@ impl Gazetteer {
             let (Ok(lat), Ok(lon)) = (lat.parse::<f64>(), lon.parse::<f64>()) else {
                 continue;
             };
-            if postal_code(postal).is_none() || city.is_empty() || state.is_empty() || !valid_point(lat, lon) {
+            if postal_code(postal).is_none()
+                || city.is_empty()
+                || state.is_empty()
+                || !valid_point(lat, lon)
+            {
                 continue;
             }
             let city = city_key(city);
@@ -322,7 +331,9 @@ fn prepare_one(
             location.as_ref().map(|value| value.latitude),
             location.as_ref().map(|value| value.longitude),
             location.as_ref().map(|value| value.precision.as_str()),
-            location.as_ref().map_or("NONE", |value| value.provenance.as_str()),
+            location
+                .as_ref()
+                .map_or("NONE", |value| value.provenance.as_str()),
             DATA_VERSION,
         ],
     )?;
@@ -382,11 +393,15 @@ fn candidates(
         let city: String = row.get(3)?;
         let snapshot_city: Option<String> = row.get(4)?;
         let snapshot_postal: Option<String> = row.get(5)?;
-        let evidence = Evidence::from_observations(
-            &city,
-            snapshot_city.as_deref(),
-            snapshot_postal.as_deref(),
-        );
+        let evidence = if run_id.is_none() && city.trim().is_empty() {
+            Evidence::new(&city, snapshot_postal.as_deref())
+        } else {
+            Evidence::from_observations(
+                &city,
+                snapshot_city.as_deref(),
+                snapshot_postal.as_deref(),
+            )
+        };
         Ok(Candidate {
             listing_id: row.get(0)?,
             person_id: row.get(1)?,
@@ -455,6 +470,8 @@ pub(crate) fn overview(
         let location_label = if location.precision == "POSTAL" {
             if person.city.is_empty() {
                 person.evidence.postal.clone()
+            } else if person.city.split_whitespace().next() == Some(person.evidence.postal.as_str()) {
+                person.city.clone()
             } else {
                 format!("{} {}", person.evidence.postal, person.city)
             }
@@ -534,7 +551,11 @@ mod tests {
         assert_eq!(city.precision, "CITY");
         assert!((city.latitude - 51.05).abs() < 0.0001);
         for name in ["Doppelort", "Unbekannt", "Ungültig"] {
-            assert!(choose(&db, &Evidence::new(name, None), &data).unwrap().is_none());
+            assert!(
+                choose(&db, &Evidence::new(name, None), &data)
+                    .unwrap()
+                    .is_none()
+            );
         }
     }
 
@@ -554,11 +575,19 @@ mod tests {
         prepare_one(&db, 1, &evidence, &fixture_data()).unwrap();
         let (location, _) = prepared(&db, 1, &evidence).unwrap().unwrap();
         assert_eq!(location.unwrap().provenance, "LEGACY_POSTAL");
-        db.execute("DELETE FROM app_settings WHERE key='map:postal:DE:12345'", [])
-            .unwrap();
+        db.execute(
+            "DELETE FROM app_settings WHERE key='map:postal:DE:12345'",
+            [],
+        )
+        .unwrap();
         prepare_one(&db, 1, &evidence, &fixture_data()).unwrap();
         assert_eq!(
-            prepared(&db, 1, &evidence).unwrap().unwrap().0.unwrap().latitude,
+            prepared(&db, 1, &evidence)
+                .unwrap()
+                .unwrap()
+                .0
+                .unwrap()
+                .latitude,
             51.2
         );
         db.execute(
@@ -569,7 +598,12 @@ mod tests {
         let other = Evidence::new("Teststadt", Some("12346"));
         prepare_one(&db, 1, &other, &fixture_data()).unwrap();
         assert_eq!(
-            prepared(&db, 1, &other).unwrap().unwrap().0.unwrap().provenance,
+            prepared(&db, 1, &other)
+                .unwrap()
+                .unwrap()
+                .0
+                .unwrap()
+                .provenance,
             "GEONAMES"
         );
     }
@@ -600,8 +634,28 @@ mod tests {
         assert_eq!(view.profiles[0].name, "Run fixture");
         assert_eq!(view.profiles[0].precision, "CITY");
         assert_eq!(view.profiles[0].city, "Berlin");
-        assert_eq!(overview(&core, &[1], None).unwrap().profiles[0].precision, "POSTAL");
+        assert_eq!(
+            overview(&core, &[1], None).unwrap().profiles[0].precision,
+            "POSTAL"
+        );
         assert!(overview(&core, &[1], Some(2)).is_err());
+    }
+
+    #[test]
+    fn negative_evidence_is_not_repeated_with_the_same_dataset() {
+        let core = seed();
+        let db = core.connection().unwrap();
+        let evidence = Evidence::new("Unbekannt", None);
+        prepare_one(&db, 1, &evidence, &fixture_data()).unwrap();
+        let before: i64 = db
+            .query_row("SELECT total_changes()", [], |row| row.get(0))
+            .unwrap();
+        prepare_one(&db, 1, &evidence, &fixture_data()).unwrap();
+        let after: i64 = db
+            .query_row("SELECT total_changes()", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(before, after);
+        assert!(prepared(&db, 1, &evidence).unwrap().unwrap().0.is_none());
     }
 
     #[test]
@@ -622,6 +676,12 @@ mod tests {
         assert!(data.postal.contains_key("04229"));
         assert!(data.cities.get("berlin").unwrap().center(true).is_some());
         assert_eq!(Evidence::new("04229 Leipzig", None).postal, "04229");
-        assert_eq!(Evidence::new("Leipzig", Some("Private Str. 04229")).postal, "");
+        assert_eq!(
+            Evidence::new("Leipzig", Some("Private Str. 04229")).postal,
+            ""
+        );
+        assert_eq!(Evidence::new("04229", None).postal, "04229");
+        assert_eq!(Evidence::new("04229 Leipzig", Some("10115")).postal, "");
+        assert!(data.cities.get("hamburg").unwrap().center(true).is_some());
     }
 }

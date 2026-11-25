@@ -655,7 +655,12 @@ pub(super) fn save_observed_profile(
         params![profile.name, person_id],
     )?;
     identity::refresh(&tx, listing_id)?;
-    crate::map::prepare_evidence(&tx, listing_id, &profile.city, profile.postal_code.as_deref())?;
+    crate::map::prepare_evidence(
+        &tx,
+        listing_id,
+        &profile.city,
+        profile.postal_code.as_deref(),
+    )?;
     tx.execute(
         "INSERT INTO listing_observations
          (listing_id, source, status, http_status, snapshot_id, details_json)
@@ -1304,6 +1309,42 @@ mod tests {
     }
 
     #[test]
+    fn regular_ingestion_prepares_location_before_map_read_and_keeps_run_evidence() {
+        let core = core();
+        let first = save_cards(&core, vec![card("101", "Fixture")]);
+        let row = &first.profiles[0];
+        let map = core
+            .map_overview(vec![row.listing_id], Some(first.search_run_id))
+            .unwrap();
+        assert_eq!(map.profiles.len(), 1);
+        assert_eq!(map.profiles[0].precision, "CITY");
+        save_profile(
+            &core,
+            row.listing_id,
+            &row.profile_url,
+            profile("Fixture"),
+        )
+        .unwrap();
+        let map = core
+            .map_overview(vec![row.listing_id], Some(first.search_run_id))
+            .unwrap();
+        assert_eq!(map.profiles[0].precision, "POSTAL");
+
+        let mut moved = card("101", "Fixture");
+        moved.city = "Berlin".into();
+        let second = save_cards(&core, vec![moved]);
+        let map = core
+            .map_overview(vec![row.listing_id], Some(second.search_run_id))
+            .unwrap();
+        assert_eq!(map.profiles[0].city, "Berlin");
+        assert_eq!(map.profiles[0].precision, "CITY");
+        let historical = core
+            .map_overview(vec![row.listing_id], Some(first.search_run_id))
+            .unwrap();
+        assert_eq!(historical.profiles[0].precision, "POSTAL");
+    }
+
+    #[test]
     fn merge_reprojects_existing_run_saved_people_saved_window_and_map_without_source() {
         let core = core();
         let found = save_cards(&core, vec![card("101", "Source"), card("102", "Target")]);
@@ -1450,6 +1491,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(map.total_profiles, 2);
+        assert_eq!(map.profiles.len(), 2);
         assert!(
             map.profiles
                 .iter()

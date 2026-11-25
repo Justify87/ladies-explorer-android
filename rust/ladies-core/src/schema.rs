@@ -580,6 +580,43 @@ mod tests {
     }
 
     #[test]
+    fn version_two_migration_keeps_listings_and_legacy_location_cache() {
+        let mut db = Connection::open_in_memory().unwrap();
+        db.execute_batch(VERSION_1).unwrap();
+        db.execute_batch(VERSION_2).unwrap();
+        db.pragma_update(None, "application_id", APPLICATION_ID)
+            .unwrap();
+        db.pragma_update(None, "user_version", 2).unwrap();
+        db.execute_batch(
+            "INSERT INTO persons(person_id) VALUES (1);
+             INSERT INTO listings(listing_id,person_id,external_listing_id) VALUES (10,1,'fixture');
+             INSERT INTO app_settings(key,value_json) VALUES ('map:city:DE:fixture','{}');",
+        )
+        .unwrap();
+        migrate(&mut db).unwrap();
+        migrate(&mut db).unwrap();
+        let counts: (i64, i64, i64) = db
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM listings),
+                        (SELECT COUNT(*) FROM app_settings),
+                        (SELECT COUNT(*) FROM listing_locations)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(counts, (1, 1, 0));
+        assert!(
+            db.execute(
+                "INSERT INTO listing_locations
+                 (listing_id,city_key,postal_key,latitude,longitude,precision,provenance,dataset_version)
+                 VALUES (10,'fixture','',0,0,'CITY','GEONAMES','fixture')",
+                [],
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn migrating_scaffold_drops_only_scaffold_data() {
         let mut db = Connection::open_in_memory().unwrap();
         db.execute_batch(
