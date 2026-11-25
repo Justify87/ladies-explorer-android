@@ -1,7 +1,6 @@
 package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import de.justify87.ladiesexplorer.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -97,13 +96,10 @@ internal class SwipeProfileWindow(
     private val slots = mutableMapOf<Long, Slot>()
     private val inFlight = mutableMapOf<Long, Slot>()
     private var nextTicket = 0L
-    private val invalidations = mutableStateMapOf<Long, Long>()
     private val staleProvenance = mutableMapOf<Long, Pair<Boolean, String?>>()
     private val externalRevision = mutableLongStateOf(initialExternalRevision)
     var closed = false
         private set
-
-    fun invalidation(card: DiscoveryCard?): Long = card?.let { invalidations[it.listingId] } ?: 0L
 
     fun requiresLocal(card: DiscoveryCard): Boolean = card.listingId in staleProvenance
 
@@ -130,7 +126,6 @@ internal class SwipeProfileWindow(
         entries.clear()
         slots.clear()
         inFlight.clear()
-        invalidations.clear()
         staleProvenance.clear()
     }
 
@@ -144,10 +139,7 @@ internal class SwipeProfileWindow(
         for ((id, slot) in slots.toMap()) {
             if (id == listingId && slot == ticket) continue
             entries.remove(id)?.let { staleProvenance[id] = it.fromArchive to it.warning }
-            val next = ++nextTicket
-            slots[id] = slot.copy(ticket = next)
-            // Revoke now; let the rejected read schedule recovery after drain to avoid recursive cancellation.
-            if (id !in inFlight) invalidations[id] = next
+            slots[id] = slot.copy(ticket = ++nextTicket)
         }
     }
 
@@ -158,7 +150,6 @@ internal class SwipeProfileWindow(
             slots.remove(it)
             inFlight.remove(it)
             entries.remove(it)
-            invalidations.remove(it)
             staleProvenance.remove(it)
         }
         for (card in cards) {
@@ -192,12 +183,7 @@ internal class SwipeProfileWindow(
             entries[listingId] = published
             return published
         } finally {
-            if (inFlight[listingId] == ticket) {
-                inFlight.remove(listingId)
-                slots[listingId]?.takeIf { it.owner == card.personId && it != ticket }?.let {
-                    invalidations[listingId] = it.ticket
-                }
-            }
+            if (inFlight[listingId] == ticket) inFlight.remove(listingId)
         }
     }
 
