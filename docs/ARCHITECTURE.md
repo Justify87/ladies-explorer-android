@@ -41,7 +41,7 @@ Externe Intents ── Dialer / WhatsApp / Originalprofil
 | Persistenz | `schema.rs` verwaltet natives Schema und interne Schemaentwicklung. |
 | Diagnose | `diagnostics.rs`, `http_capture.rs`, `DiagnosticEventQueue`, CoreStore und Diagnoseprovider. |
 
-Codepfade: [Android](../app/src/main/java/de/justify87/ladiesexplorer), [Rust](../rust/ladies-core/src). Herkunft und Lizenzen: [NOTICE](../NOTICE). UI/UX: [DESIGN](DESIGN.md); Anforderungen: [PRODUCT](PRODUCT.md). Aufgaben und Fortschritt: ausschließlich [ROADMAP](ROADMAP.md).
+Codepfade: [Android](../app/src/main/java/de/justify87/ladiesexplorer), [Rust](../rust/ladies-core/src). Herkunft und Lizenzen: [NOTICE](../NOTICE). UI/UX: [DESIGN](DESIGN.md); Anforderungen: [PRODUCT](PRODUCT.md). Offene Aufgaben: ausschließlich [ROADMAP](ROADMAP.md). Abgeschlossene Arbeiten und Prüfbelege verbleiben in Git und den zugehörigen PRs.
 
 ## Domäne und Persistenz
 
