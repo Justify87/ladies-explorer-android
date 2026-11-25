@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import coil3.request.ImageRequest
@@ -109,9 +110,9 @@ private fun ProfileImageSurface(
         var loading by remember(retry, attempt) { mutableStateOf(true) }
         val context = LocalContext.current
         Box(modifier.background(background), contentAlignment = Alignment.Center) {
-            if (attempt < models.size) {
+            if (attempt < models.size && (decodeSize == null || decodeSize.width > 0 && decodeSize.height > 0)) {
                 val requested = attempt
-                key(retry, requested) {
+                key(retry, requested, decodeSize) {
                     val model = remember(models, requested, decodeSize, context) {
                         val source = models[requested]
                         if (decodeSize != null && decodeSize.width > 0 && decodeSize.height > 0)
@@ -202,10 +203,6 @@ internal fun ProfileMediaHero(
     val displayedDrag = heldDrag ?: drag
     val offset by animateFloatAsState(displayedDrag, animationSpec = if (displayedDrag == 0f) spring() else snap(),
         label = "swipe follows finger")
-    val imageMotion = Modifier.graphicsLayer {
-        translationX = offset
-        rotationZ = if (size.width > 0) (offset / size.width * 12f).coerceIn(-12f, 12f) else 0f
-    }
     PhotoGestureSurface(owner = Triple(gestureOwner, compact, projectionAvailable),
         modifier = Modifier.fillMaxWidth(), galleryEnabled = galleryTaps, onSwipe = decision,
         onDrag = { drag = it; onSwipeDrag(it) }, touchGate = touchGate) { hit ->
@@ -216,6 +213,10 @@ internal fun ProfileMediaHero(
             val density = LocalDensity.current
             val viewport = with(density) { IntSize(maxWidth.roundToPx(), maxHeight.roundToPx()) }
             val geometry = heroMediaGeometry(viewport, decodedSize, allowCrop = item?.kind == "IMAGE")
+            val imageMotion = Modifier.graphicsLayer {
+                translationX = offset
+                rotationZ = if (viewport.width > 0) (offset / viewport.width * 12f).coerceIn(-12f, 12f) else 0f
+            }
             val favoriteOrigin = with(density) {
                 geometry.favoriteOrigin(48.dp.roundToPx(), 6.dp.roundToPx())
             }
@@ -228,7 +229,7 @@ internal fun ProfileMediaHero(
                     ?.let { HeroVisual(it, geometry) })
             }
             when (item?.kind) {
-                "IMAGE" -> ProfileImageSurface(item.url, item.localPath, Modifier.fillMaxSize(),
+                "IMAGE" -> key(item) { ProfileImageSurface(item.url, item.localPath, Modifier.fillMaxSize(),
                     geometry.scale, "Profilbild ${index + 1}", true, imageModifier = imageMotion,
                     decodeSize = viewport, background = MaterialTheme.colorScheme.surface,
                     onDecodedSize = { decodedSize = it }) { feedback ->
@@ -244,14 +245,22 @@ internal fun ProfileMediaHero(
                             ImageFeedbackContent(feedback)
                         }
                     }
-                }
+                } }
                 "VIDEO" -> BoxWithConstraints(Modifier.fillMaxSize().then(hit.photo)) {
                     val side = if (galleryTaps) gallerySideFraction(maxWidth.value, true) else 0f
                     SideEffect { onMediaSettled(true) } // playback has its own stable loading surface
+                    // Once the native aspect is known, the texture occupies only the fitted media
+                    // area; the remaining hero is the same neutral surface as a fitted photo.
+                    val videoSurface = geometry.imageBounds?.takeIf { it.width > 0f && it.height > 0f }?.let { bounds ->
+                        with(density) {
+                            Modifier.absoluteOffset { IntOffset(bounds.left.toInt(), bounds.top.toInt()) }
+                                .size(bounds.width.toDp(), bounds.height.toDp())
+                        }
+                    } ?: Modifier.fillMaxSize()
                     GalleryVideo(item, active = actionsEnabled && projectionAvailable,
                         mediaVisible = playbackVisible, canInteract = isCurrent,
                         onVideoSize = { decodedSize = it },
-                        modifier = Modifier.fillMaxSize().then(imageMotion),
+                        modifier = videoSurface.then(imageMotion),
                         controlsModifier = Modifier.align(Alignment.Center),
                         onTargets = {
                             GalleryTargets(side, hit, gestureOwner, previous, next,
