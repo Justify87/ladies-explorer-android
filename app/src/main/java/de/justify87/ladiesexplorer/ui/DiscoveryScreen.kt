@@ -95,7 +95,9 @@ internal fun DiscoverScreen(
     val decks = remember(state.activeRunId, state.swipeProfileRevision, started) {
         SwipeProfileWindow(mutableStateMapOf(), state.swipeExternalRevision)
     }
-    val preparation = remember(decks) { ProfilePreparationWindow() }
+    val preparation = remember(decks) {
+        ProfilePreparationWindow(diagnostic = { core.diagnostic("PREPARE", DiagnosticLevel.INFO, it) })
+    }
     val videoFiles = (context.applicationContext as LadiesApplication).galleryVideoFiles
     val failures = remember(decks) { mutableStateMapOf<Pair<Long, Long>, SwipeReadFailure>() }
     val localRetries = remember(decks) { mutableStateMapOf<Pair<Long, Long>, Boolean>() }
@@ -168,9 +170,11 @@ internal fun DiscoverScreen(
     // Choose again after every profile read, panel read or medium; no speculative mutex queue.
     LaunchedEffect(decks) {
         try {
+            var retainedPins = emptySet<String>()
             while (isActive) {
-                val target = snapshotFlow {
-                    if (!latestReadVisible || decks.closed) null else nextProfileWork(latestWindow) { candidate ->
+                val (pins, target) = snapshotFlow {
+                    val wantedPins = preparation.pinnedVideos()
+                    val candidateWork = if (!latestReadVisible || decks.closed) null else nextProfileWork(latestWindow) { candidate ->
                         val key = candidate.listingId to candidate.personId
                         val currentRole = sameSwipeCard(candidate, latestWindow.firstOrNull())
                         val failure = failures[key]
@@ -180,9 +184,12 @@ internal fun DiscoverScreen(
                         else heroSize.width > 0 && heroSize.height > 0 &&
                             !preparation.ready(model, filtersFor(candidate), heroSize)
                     }
+                    (wantedPins to candidateWork).takeIf { wantedPins != retainedPins || candidateWork != null }
                 }.first { it != null } ?: continue
+                videoFiles.retainPins(preparation, pins)
+                retainedPins = pins
+                if (target == null) continue
                 val key = target.listingId to target.personId
-                videoFiles.retainPins(preparation, preparation.pinnedVideos())
                 if (!latestReadVisible || latestWindow.none { sameSwipeCard(it, target) }) continue
                 val work = launch(start = CoroutineStart.LAZY) {
                     if (!latestReadVisible || latestWindow.none { sameSwipeCard(it, target) }) return@launch
@@ -239,7 +246,8 @@ internal fun DiscoverScreen(
                         val size = heroSize
                         preparation.step(model, filters, size,
                             { core.prepareProfilePanels(model, filters) },
-                            { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation) },
+                            { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation, model,
+                                if (currentRole) "swipe_current" else "swipe_prefetch") },
                             accept = { decks[target] == model && latestWindow.any { sameSwipeCard(it, target) } &&
                                 size == heroSize && filters == filtersFor(target) })
                     }
@@ -248,14 +256,12 @@ internal fun DiscoverScreen(
                 work.start()
                 work.join()
                 activeWork = null
-                videoFiles.retainPins(preparation, preparation.pinnedVideos())
+                retainedPins = preparation.pinnedVideos()
+                videoFiles.retainPins(preparation, retainedPins)
             }
         } finally {
             withContext(NonCancellable) { videoFiles.retainPins(preparation, emptySet()) }
         }
-    }
-    LaunchedEffect(preparation, windowKeys) {
-        videoFiles.retainPins(preparation, preparation.pinnedVideos())
     }
 
     val matchingRun = search.response?.searchRunId == state.activeRunId
@@ -477,6 +483,8 @@ internal fun DiscoverScreen(
                             playbackVisible = heroVisible,
                             galleryNavigationEnabled = !transitioning,
                             preparedMedia = prepared?.media.orEmpty(),
+                            onMediaRecovered = { key -> prepared?.let { preparation.recovered(it, key) } },
+                            mediaRevision = prepared?.publicationToken,
                             preparing = profile == null && readError == null,
                             videoPlaybackEnabled = started && !state.busy && !searchLoading && !transitioning,
                             presentationOwner = cardIdentity,

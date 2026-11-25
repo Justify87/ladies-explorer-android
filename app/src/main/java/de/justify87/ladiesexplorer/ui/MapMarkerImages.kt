@@ -17,6 +17,9 @@ import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.size.Scale
 import coil3.toBitmap
+import de.justify87.ladiesexplorer.LadiesApplication
+import de.justify87.ladiesexplorer.core.DiagnosticLevel
+import de.justify87.ladiesexplorer.core.mediaDiagnosticKey
 import de.justify87.ladiesexplorer.core.DiscoveryCard
 import de.justify87.ladiesexplorer.core.MapProfile
 import kotlinx.coroutines.CancellationException
@@ -210,7 +213,9 @@ internal class MapMarkerImages(
                             }
                         } catch (cancel: CancellationException) {
                             throw cancel
-                        } catch (_: Exception) {
+                        } catch (failure: Exception) {
+                            (view.context.applicationContext as LadiesApplication).coreStore.diagnostic("MAP_MEDIA", DiagnosticLevel.WARN,
+                                "thumbnail_failed media=${mediaDiagnosticKey(thumbnail.url)}", failure)
                             null
                         }
                         ensureActive()
@@ -249,7 +254,8 @@ internal class MapMarkerImages(
 internal suspend fun loadMapThumbnail(context: Context, url: String, localPath: String? = null): Bitmap? {
     for (model in mediaModels(localPath, url)) {
         val request = ImageRequest.Builder(context).data(model)
-            .size(PHOTO_PIXELS, PHOTO_PIXELS).scale(Scale.FILL).allowHardware(false).build()
+            .size(PHOTO_PIXELS, PHOTO_PIXELS).scale(Scale.FILL).allowHardware(false)
+            .mediaContext("map", url.ifBlank { localPath.orEmpty() }).build()
         val result = SingletonImageLoader.get(context).execute(request) as? SuccessResult ?: continue
         return mapPhotoBitmap(result.image.toBitmap())
     }

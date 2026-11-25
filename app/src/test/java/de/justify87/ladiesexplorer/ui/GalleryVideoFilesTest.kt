@@ -74,6 +74,117 @@ class GalleryVideoFilesTest {
         assertEquals(16L, folder.root.listFiles()!!.sumOf { it.length() })
     }
 
+    @Test(timeout = 15_000) fun prefetchBudgetDoesNotPreventOnDemandPlayback() = runBlocking {
+        var downloads = 0
+        val cache = cache(32L, 16L) { downloads++; bytes }
+        val owner = Any()
+        assertTrue(cache.warm(medium("a"), owner))
+        assertTrue(runCatching { cache.warm(medium("b"), owner) }.exceptionOrNull() is VideoPreparationDeferred)
+        assertEquals(1, downloads)
+        cache.withVideo(medium("b")) { assertTrue(it.file.isFile) }
+        assertEquals(2, downloads)
+    }
+
+    @Test(timeout = 15_000) fun corruptedCacheEntryIsDownloadedAgain() = runBlocking {
+        var downloads = 0
+        val cache = cache { downloads++; bytes }
+        val original = cache.withVideo(medium("a")) { it.file }
+        original.writeBytes(ByteArray(16))
+        cache.withVideo(medium("a")) {
+            assertTrue(it.file.isFile)
+            assertTrue(it.file.readBytes().contentEquals(bytes))
+        }
+        assertEquals(2, downloads)
+    }
+
+    @Test(timeout = 15_000) fun replacementRetainsPinsAndNormalReuseDoesNotRefreshAgain() = runBlocking {
+        var downloads = 0
+        val cache = cache(16L, 16L) { downloads++; bytes }
+        val owner = Any()
+        val a = medium("a")
+        assertTrue(cache.warm(a, owner))
+        val original = cache.withVideo(a) { it.file }
+        val replacement = cache.withVideo(a, refresh = true) { it.file }
+        assertFalse(original.exists())
+        assertEquals(2, downloads)
+        assertEquals(replacement, cache.withVideo(a) { it.file })
+        assertEquals(2, downloads)
+        assertTrue(runCatching { cache.withVideo(medium("b")) {} }.isFailure)
+        assertTrue(replacement.exists())
+    }
+
+    @Test(timeout = 15_000) fun corruptPinnedEntryRetainsPinAfterRecovery() = runBlocking {
+        val cache = cache(16L, 16L)
+        val owner = Any()
+        val a = medium("a")
+        cache.warm(a, owner)
+        cache.withVideo(a) { it.file }.writeBytes(ByteArray(16))
+        val recovered = cache.withVideo(a) { it.file }
+        assertTrue(runCatching { cache.withVideo(medium("b")) {} }.isFailure)
+        assertTrue(recovered.isFile)
+    }
+
+    @Test(timeout = 15_000) fun refreshWaitsForOldLeaseAndPreservesArchive() = runBlocking {
+        val cache = cache()
+        val a = medium("a")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val lease = launch {
+            cache.withVideo(a) { entered.complete(Unit); release.await() }
+        }
+        entered.await()
+        val refreshed = CompletableDeferred<File>()
+        val retry = launch { cache.withVideo(a, refresh = true) { refreshed.complete(it.file) } }
+        release.complete(Unit)
+        lease.join()
+        assertTrue(withTimeout(3_000) { refreshed.await() }.isFile)
+        retry.join()
+        val archive = File(folder.root, "archive.mp4").apply { writeBytes(bytes) }
+        val archived = a.copy(localPath = archive.absolutePath)
+        assertEquals(archive.canonicalFile, cache.withVideo(archived) { it.file })
+        val recovered = cache.withVideo(archived, refresh = true) { it.file }
+        assertNotEquals(archive.canonicalFile, recovered)
+        assertEquals(recovered, cache.withVideo(archived) { it.file })
+        assertTrue(archive.isFile)
+        archive.appendBytes(byteArrayOf(1))
+        assertEquals(archive.canonicalFile, cache.withVideo(archived) { it.file })
+    }
+
+    @Test(timeout = 15_000) fun pruningDuringReplacementDoesNotResurrectPins() = runBlocking {
+        var downloads = 0
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val cache = cache(16L, 16L) {
+            if (++downloads == 2) { started.complete(Unit); release.await() }
+            bytes
+        }
+        val owner = Any()
+        val a = medium("a")
+        cache.warm(a, owner)
+        val refreshed = CompletableDeferred<File>()
+        val retry = launch { cache.withVideo(a, refresh = true) { refreshed.complete(it.file) } }
+        started.await()
+        cache.retainPins(owner, emptySet())
+        release.complete(Unit)
+        retry.join()
+        val replacement = refreshed.await()
+        cache.withVideo(medium("b")) { assertTrue(it.file.isFile) }
+        assertFalse(replacement.exists())
+    }
+
+    @Test(timeout = 15_000) fun failedReplacementKeepsOldPinnedEntry() = runBlocking {
+        var downloads = 0
+        val cache = cache(16L, 16L) { if (++downloads == 2) ByteArray(16) else bytes }
+        val owner = Any()
+        val a = medium("a")
+        cache.warm(a, owner)
+        val original = cache.withVideo(a) { it.file }
+        assertTrue(runCatching { cache.withVideo(a, refresh = true) {} }.isFailure)
+        assertTrue(original.isFile)
+        assertEquals(original, cache.withVideo(a) { it.file })
+        assertTrue(runCatching { cache.withVideo(medium("b")) {} }.isFailure)
+    }
+
     @Test(timeout = 15_000) fun rejectedVideoDoesNotLeaveUnvalidatedFile() = runBlocking {
         val cache = cache { ByteArray(16) }
         assertTrue(runCatching { cache.warm(medium("invalid"), Any()) }.isFailure)

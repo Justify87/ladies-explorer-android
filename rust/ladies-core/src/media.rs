@@ -102,7 +102,9 @@ impl Fetcher for HttpFetcher {
             .timeout(timeout)
             .header("Referer", "https://www.ladies.de/")
             .build()
-            .map_err(|error| CoreError::Media(format!("Media request failed: {error}")))?;
+            .map_err(|error| {
+                CoreError::Media(format!("Media request failed: {}", error.without_url()))
+            })?;
         let (capture_mode, capture_epoch) = self.recorder.mode_epoch();
         let mut observation = (capture_mode != CaptureMode::Off).then(|| HttpObservation {
             method: request.method().to_string(),
@@ -131,7 +133,10 @@ impl Fetcher for HttpFetcher {
                     obs.error = Some(error.to_string());
                     self.recorder.record_for_epoch(obs, capture_epoch);
                 }
-                return Err(CoreError::Media(format!("Media request failed: {error}")));
+                return Err(CoreError::Media(format!(
+                    "Media request failed: {}",
+                    error.without_url()
+                )));
             }
         };
         if let Some(obs) = observation.as_mut() {
@@ -206,7 +211,10 @@ impl Fetcher for HttpFetcher {
                         obs.response_size = Some(bytes.len() as u64);
                         self.recorder.record_for_epoch(obs, capture_epoch);
                     }
-                    return Err(CoreError::Media(format!("Media response failed: {error}")));
+                    return Err(CoreError::Media(format!(
+                        "Media response failed: {:?}",
+                        error.kind()
+                    )));
                 }
             };
             if read == 0 {
@@ -618,7 +626,16 @@ pub(crate) fn display_image(
     url: &str,
     control: &RequestControl,
 ) -> Result<DisplayImage, CoreError> {
-    display_image_with(url, &core.media_http, control)
+    let result = display_image_with(url, &core.media_http, control)?;
+    core.diagnostics.debug(
+        "MEDIA",
+        format!(
+            "transport_result bytes={} mime={}",
+            result.bytes.len(),
+            result.mime
+        ),
+    );
+    Ok(result)
 }
 
 /// Bounded display-only video; never creates archive assets or profile observations.
@@ -667,7 +684,16 @@ pub(crate) fn display_video(
     url: &str,
     control: &RequestControl,
 ) -> Result<DisplayVideo, CoreError> {
-    display_video_with(url, &core.media_http, control)
+    let result = display_video_with(url, &core.media_http, control)?;
+    core.diagnostics.debug(
+        "MEDIA",
+        format!(
+            "transport_result bytes={} mime={}",
+            result.bytes.len(),
+            result.mime
+        ),
+    );
+    Ok(result)
 }
 
 pub(crate) fn archive(

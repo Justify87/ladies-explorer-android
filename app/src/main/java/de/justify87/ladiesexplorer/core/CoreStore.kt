@@ -9,6 +9,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.security.MessageDigest
+import kotlinx.coroutines.CancellationException
 
 /** Global result policy is independent of stored search definitions and replay. */
 data class GlobalResultVisibility(val hideLikes: Boolean = false, val hideDislikes: Boolean = false) {
@@ -16,6 +18,43 @@ data class GlobalResultVisibility(val hideLikes: Boolean = false, val hideDislik
         hideLikes = local.hideLikes || hideLikes,
         hideDislikes = local.hideDislikes || hideDislikes,
     )
+}
+
+/** Session correlation without exporting the source URL or local path. */
+internal fun mediaDiagnosticKey(value: String): String =
+    MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+        .take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+// Reference tokens are data, not error evidence (e.g. example.invalid or token=timeout).
+private val diagnosticReference = Regex("""[^\s"'<>]*[/=][^\s"'<>]+""")
+
+/** Classify external diagnostics without persisting arbitrary paths, tokens or metadata. */
+internal fun mediaDiagnosticReason(text: String): String {
+    val value = diagnosticReference.replace(text.take(4096), " ").lowercase(java.util.Locale.ROOT)
+    return when {
+        "timeout" in value || "timed out" in value -> "timeout"
+        "permission denied" in value -> "permission_denied"
+        "no space" in value -> "storage_full"
+        "not found" in value || "no such file" in value -> "missing_source"
+        "unsupported" in value -> "unsupported"
+        "invalid" in value || "corrupt" in value || "truncated" in value -> "invalid_data"
+        "decode" in value || "decoder" in value -> "decode"
+        "demux" in value || "container" in value -> "container"
+        "surface" in value || "render" in value -> "surface"
+        "memory" in value || "allocation" in value -> "memory"
+        "network" in value || "connection" in value -> "transport"
+        "cancel" in value -> "cancelled"
+        else -> "other"
+    }
+}
+
+internal fun diagnosticFailure(failure: Throwable, includeMessage: Boolean = false): String {
+    val chain = generateSequence(failure) { it.cause?.takeUnless { next -> next === it } }.take(4).toList()
+    val causes = chain.joinToString(">") { it.javaClass.simpleName }
+    val frames = failure.stackTrace.filter { it.className.startsWith("de.justify87.") }
+        .take(3).joinToString(",") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+    val reasons = if (includeMessage) chain.mapNotNull { it.message }.map(::mediaDiagnosticReason).distinct().joinToString(",") else ""
+    return "type=$causes frames=$frames" + if (reasons.isNotBlank()) " reason=$reasons" else ""
 }
 
 class CoreStore(context: Context) {
@@ -40,6 +79,7 @@ class CoreStore(context: Context) {
     private val logger = Logger.withTag("LadiesExplorer")
     private val logBridge = DiagnosticEventQueue()
     private val captureControls = Mutex()
+    private val debugControls = Mutex()
     private val database = File(appFiles, "ladies.sqlite")
     private val engine: LadiesCore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         LadiesCore(database.absolutePath).also {
@@ -58,25 +98,58 @@ class CoreStore(context: Context) {
         diagnosticExports.listFiles()
             ?.filter { it.isFile && it.name.startsWith("ladies-debug-") && it.lastModified() < oldestAllowed }
             ?.forEach(File::delete)
+        logBridge.barrier()
+        val (dropped, failed) = logBridge.lossSummary()
+        if (dropped != 0L || failed != 0L) engine.recordKotlinEvent("DIAGNOSTICS",
+            "bridge_loss dropped=$dropped failed=$failed", DiagnosticLevel.WARN)
         File(engine.exportDiagnosticSnapshot(diagnosticExports.absolutePath))
     }
 
     fun isDebugLoggingEnabled(): Boolean = preferences.getBoolean("debug", false)
 
     suspend fun setDebugLoggingEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
-        preferences.edit().putBoolean("debug", enabled).apply()
-        engine.setDiagnosticDebugEnabled(enabled)
+        debugControls.withLock {
+            if (enabled) {
+                engine.setDiagnosticDebugEnabled(true)
+                preferences.edit().putBoolean("debug", true).apply()
+            } else {
+                synchronized(logBridge) { preferences.edit().putBoolean("debug", false).apply() }
+                try {
+                    logBridge.barrier()
+                } finally {
+                    engine.setDiagnosticDebugEnabled(false)
+                }
+            }
+        }
+    }
+
+    internal fun diagnostic(component: String, level: DiagnosticLevel, message: String, failure: Throwable? = null) {
+        if (level == DiagnosticLevel.DEBUG && !isDebugLoggingEnabled()) return
+        val mediaFailure = component in setOf("COIL", "PREPARE", "VIDEO_CACHE", "VIDEO", "MAP_MEDIA", "MPV")
+        val occurred = "event_epoch_ms=${System.currentTimeMillis()} event_elapsed_ms=${SystemClock.elapsedRealtime()}"
+        val safe = "$occurred $message" + if (failure == null) "" else " ${diagnosticFailure(failure, mediaFailure)}"
+        when (level) {
+            DiagnosticLevel.DEBUG -> logger.d { "$component $safe" }
+            DiagnosticLevel.INFO -> logger.i { "$component $safe" }
+            DiagnosticLevel.WARN -> logger.w { "$component $safe" }
+            DiagnosticLevel.ERROR -> logger.e { "$component $safe" }
+        }
+        val critical = level == DiagnosticLevel.WARN || level == DiagnosticLevel.ERROR
+        val admitted = synchronized(logBridge) {
+            // Serialize the final admission check with disabling DEBUG and the export fence.
+            if (level == DiagnosticLevel.DEBUG && !isDebugLoggingEnabled()) return
+            logBridge.offer(critical) { engine.recordKotlinEvent(component, safe, level) }
+        }
+        if (!admitted && critical) {
+            logger.w { "Diagnostic bridge saturated; loss reported in export" }
+        }
     }
 
     private fun event(operation: String, durationMs: Long, failure: Exception? = null) {
-        val message = if (failure == null) {
-            "$operation completed duration_ms=$durationMs"
-        } else {
-            "$operation failed duration_ms=$durationMs type=${failure.javaClass.simpleName}"
-        }
-        if (failure == null) logger.i { message } else logger.e(failure) { message }
-        logBridge.offer {
-            runCatching { engine.recordKotlinEvent("ANDROID", message, false) }
+        when (failure) {
+            null -> diagnostic("ANDROID", DiagnosticLevel.INFO, "$operation completed duration_ms=$durationMs")
+            is CancellationException -> diagnostic("ANDROID", DiagnosticLevel.DEBUG, "$operation cancelled duration_ms=$durationMs")
+            else -> diagnostic("ANDROID", DiagnosticLevel.ERROR, "$operation failed duration_ms=$durationMs", failure)
         }
     }
 

@@ -26,6 +26,8 @@ class DiagnosticEventQueueTest {
             val secondRan = CountDownLatch(1)
             assertTrue(queue.offer { secondRan.countDown() })
             assertFalse(queue.offer { error("This event must be rejected") })
+            assertTrue(queue.offer(critical = true) { })
+            assertEquals(1L to 0L, queue.lossSummary())
 
             val barrierStarted = CountDownLatch(1)
             val barrier = awaiting.submit {
@@ -44,6 +46,48 @@ class DiagnosticEventQueueTest {
             awaiting.shutdownNow()
             queue.shutdown()
         }
+    }
+
+    @Test(timeout = 10_000)
+    fun bridgeFailureIsCountedWithoutBlockingLaterEvents() {
+        val queue = DiagnosticEventQueue()
+        try {
+            assertTrue(queue.offer { error("synthetic bridge failure") })
+            val delivered = CountDownLatch(1)
+            assertTrue(queue.offer(critical = true) { delivered.countDown() })
+            queue.barrier()
+            assertEquals(0L, delivered.count)
+            assertEquals(0L to 1L, queue.lossSummary())
+        } finally {
+            queue.shutdown()
+        }
+    }
+
+    @Test fun mediaFailureDetailsAreBoundedAndMaskSourcePaths() {
+        val failure = IllegalStateException("decode failed https://example.invalid/private /data/private", IllegalArgumentException("bad image"))
+        val result = diagnosticFailure(failure, includeMessage = true)
+        assertTrue(result.contains("IllegalStateException>IllegalArgumentException"))
+        assertTrue(result.contains("reason=decode,other"))
+        assertFalse(result.contains("example.invalid"))
+        assertFalse(result.contains("/data/private"))
+    }
+
+    @Test fun arbitraryExternalTextNeverSurvivesReasonClassification() {
+        val text = "decode failed /data/private name.jpg relative/media.jpg token=synthetic-secret\u0000"
+        val result = diagnosticFailure(IllegalStateException(text), includeMessage = true)
+        assertTrue(result.contains("reason=decode"))
+        assertFalse(result.contains("private"))
+        assertFalse(result.contains("synthetic-secret"))
+        assertFalse(result.contains('\u0000'))
+    }
+
+    @Test fun referenceTokensDoNotOverrideTheActualFailureReason() {
+        assertEquals("decode", mediaDiagnosticReason("decode failed https://example.invalid/timeout.jpg"))
+        assertEquals("decode", mediaDiagnosticReason("decode failed /data/unsupported.jpg token=timeout"))
+        assertEquals("other", mediaDiagnosticReason("https://example.invalid/corrupt.jpg relative/decoder.jpg token=timeout"))
+        assertEquals("invalid_data", mediaDiagnosticReason("invalid image data https://example.invalid/file.jpg"))
+        assertEquals("timeout", mediaDiagnosticReason("connection timed out"))
+        assertEquals("permission_denied", mediaDiagnosticReason("permission denied /data/private"))
     }
 
     @Test(timeout = 10_000)

@@ -104,7 +104,7 @@ class ProfilePreparationWindowTest {
         window.retain(setOf(key))
         repeat(3) {
             window.step(initial, "{}", size, { panelData }, { item, _ ->
-                if (item.kind == "VIDEO") PreparedMedium.Video else PreparedMedium.Unavailable
+                if (item.kind == "VIDEO") PreparedMedium.Video else PreparedMedium.Deferred
             })
         }
         val prior = requireNotNull(window.displayed(key))
@@ -156,6 +156,56 @@ class ProfilePreparationWindowTest {
         window.step(model, "{}", size, { error("panels already read") }, { _, _ -> PreparedMedium.Video })
         window.step(model, "{}", size, { error("panels already read") }, { _, _ -> PreparedMedium.Unavailable })
         assertTrue(window.ready(model, "{}", size))
+    }
+
+    @Test(timeout = 15_000) fun failuresRecoverWithoutReplacingProfileOrLeakingAcrossRevisions() = runBlocking {
+        val window = ProfilePreparationWindow(imageBudget = 0)
+        val current = model()
+        val key = 4L to 1L
+        window.retain(setOf(key))
+        repeat(3) {
+            window.step(current, "{}", size, { panelData }, { _, _ -> PreparedMedium.Unavailable })
+        }
+        val prior = requireNotNull(window.displayed(key))
+        assertTrue(prior.hasMediaFailures)
+        assertTrue(window.pinnedVideos().isEmpty())
+        window.recovered(prior, first.presentationKey())
+        val partial = requireNotNull(window.displayed(key))
+        assertSame(prior.model, partial.model)
+        assertTrue(partial.hasMediaFailures)
+        val next = model(2L)
+        window.step(next, "{}", size, { panelData }, { _, _ -> error("panels first") })
+        window.step(next, "{}", size, { panelData }, { item, _ ->
+            assertEquals(second, item)
+            PreparedMedium.Deferred
+        })
+        val published = requireNotNull(window.displayed(key))
+        assertEquals(next, published.model)
+        assertFalse(published.hasMediaFailures)
+        window.recovered(prior, second.presentationKey())
+        assertSame(published, window.displayed(key))
+    }
+
+    @Test(timeout = 15_000) fun recoveryOfPublishedMediaDoesNotDiscardConcurrentPreparation() = runBlocking {
+        val window = ProfilePreparationWindow()
+        val old = model()
+        val key = 4L to 1L
+        window.retain(setOf(key))
+        repeat(3) { window.step(old, "{}", size, { panelData }, { _, _ -> PreparedMedium.Unavailable }) }
+        val published = requireNotNull(window.displayed(key))
+        val next = model(2L)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val job = launch {
+            window.step(next, "{}", size, { entered.complete(Unit); release.await(); panelData },
+                { _, _ -> error("panels first") })
+        }
+        entered.await()
+        window.recovered(published, first.presentationKey())
+        release.complete(Unit)
+        job.join()
+        repeat(2) { window.step(next, "{}", size, { error("panels already read") }, { _, _ -> PreparedMedium.Deferred }) }
+        assertTrue(window.ready(next, "{}", size))
     }
 
     @Test fun priorityIsRecomputedFromCurrentOrderBetweenWorkUnits() {

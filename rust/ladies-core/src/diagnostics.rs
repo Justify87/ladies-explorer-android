@@ -6,9 +6,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use sha2::{Digest, Sha256};
 use tempfile::Builder;
 use tracing::Dispatch;
 use tracing_subscriber::fmt::MakeWriter;
+
+use crate::CoreError;
 
 const MAX_BYTES: usize = 1_500_000;
 const KEEP_BYTES: usize = 700_000;
@@ -157,6 +160,13 @@ impl Diagnostics {
         });
     }
 
+    pub(crate) fn warn(&self, component: &str, message: impl AsRef<str>) {
+        let message = message.as_ref();
+        tracing::dispatcher::with_default(&self.dispatch, || {
+            tracing::warn!(component = %component, message = %message);
+        });
+    }
+
     pub(crate) fn error(&self, component: &str, message: impl AsRef<str>) {
         let message = message.as_ref();
         tracing::dispatcher::with_default(&self.dispatch, || {
@@ -187,8 +197,41 @@ impl Diagnostics {
         operation: &str,
         work: impl FnOnce() -> Result<T, E>,
     ) -> Result<T, E> {
+        self.timed_with_context(component, operation, None, |_| false, work)
+    }
+
+    pub(crate) fn timed_media<T>(
+        &self,
+        operation: &str,
+        url: &str,
+        work: impl FnOnce() -> Result<T, CoreError>,
+    ) -> Result<T, CoreError> {
+        let digest = format!("{:x}", Sha256::digest(url.as_bytes()));
+        self.timed_with_context(
+            "MEDIA",
+            operation,
+            Some(&digest[..16]),
+            |error| {
+                matches!(error, CoreError::Source(reason) if reason == "Operation cancelled")
+                    || matches!(error, CoreError::Media(reason) if reason == "Media request cancelled" || reason == "Media archive cancelled")
+            },
+            work,
+        )
+    }
+
+    fn timed_with_context<T, E: std::fmt::Display>(
+        &self,
+        component: &str,
+        operation: &str,
+        media: Option<&str>,
+        cancelled: impl FnOnce(&E) -> bool,
+        work: impl FnOnce() -> Result<T, E>,
+    ) -> Result<T, E> {
         tracing::dispatcher::with_default(&self.dispatch, || {
-            let span = tracing::info_span!("operation", component = %component, name = %operation);
+            let span = tracing::info_span!("operation", component = %component, name = %operation, media = tracing::field::Empty);
+            if let Some(key) = media {
+                span.record("media", key);
+            }
             let _entered = span.enter();
             let started = Instant::now();
             let result = work();
@@ -200,13 +243,21 @@ impl Diagnostics {
                     elapsed_ms,
                     "operation completed"
                 ),
-                Err(error) => tracing::error!(
-                    component = %component,
-                    operation = %operation,
-                    elapsed_ms,
-                    reason = %error,
-                    "operation failed"
-                ),
+                Err(error) => {
+                    if cancelled(error) {
+                        if self.debug_enabled() {
+                            tracing::debug!(component = %component, operation = %operation, elapsed_ms, "operation cancelled");
+                        }
+                    } else {
+                        tracing::error!(
+                            component = %component,
+                            operation = %operation,
+                            elapsed_ms,
+                            reason = %error,
+                            "operation failed"
+                        );
+                    }
+                }
             };
             result
         })
@@ -336,6 +387,49 @@ mod tests {
             fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
         assert!(!data.contains("hidden"));
         assert!(data.contains("shown"));
+    }
+
+    #[test]
+    fn severity_correlation_and_cancellation_are_preserved() {
+        let directory = tempfile::tempdir().unwrap();
+        let log = logger(directory.path());
+        log.warn("ANDROID", "warn_marker");
+        log.error("ANDROID", "error_marker");
+        log.set_debug(true);
+        let url = "https://example.invalid/synthetic.jpg";
+        let result: Result<(), CoreError> = log.timed_media("display_image", url, || {
+            Err(CoreError::Media("synthetic failure".into()))
+        });
+        assert!(result.is_err());
+        let result: Result<(), CoreError> = log.timed_media("display_image", url, || {
+            Err(CoreError::Media("Media request cancelled".into()))
+        });
+        assert!(result.is_err());
+        let data =
+            fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
+        let digest = format!("{:x}", Sha256::digest(url.as_bytes()));
+        assert!(
+            data.lines()
+                .any(|line| line.contains("WARN") && line.contains("warn_marker"))
+        );
+        assert!(
+            data.lines()
+                .any(|line| line.contains("ERROR") && line.contains("error_marker"))
+        );
+        assert!(
+            data.lines()
+                .any(|line| line.contains(&digest[..16]) && line.contains("synthetic failure"))
+        );
+        assert!(
+            data.lines()
+                .any(|line| line.contains(&digest[..16]) && line.contains("operation cancelled"))
+        );
+        assert!(
+            !data
+                .lines()
+                .any(|line| line.contains("ERROR") && line.contains("Media request cancelled"))
+        );
+        assert!(!data.contains(url));
     }
 
     #[test]
