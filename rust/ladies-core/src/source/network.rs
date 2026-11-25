@@ -735,6 +735,14 @@ fn fetch_search_mode<T: Transport>(
                     "Such-HTML unlesbar ({diagnostic}); API-Seite 1 wurde nicht gefunden"
                 ))
             })?;
+        if first_api
+            .pointer("/pagination/currentPage")
+            .is_some_and(|value| number(Some(value)) != Some(1))
+        {
+            return Err(CoreError::Source(
+                "API-Fallback lieferte nicht Seite 1".into(),
+            ));
+        }
         let api_radius = number(first_api.get("distanceSearched"));
         if api_radius != Some(request.radius_km) {
             return Err(CoreError::Source(format!(
@@ -792,7 +800,10 @@ fn fetch_search_mode<T: Transport>(
     if preview_only {
         partial |= known_total != Some(1);
     } else {
-        while page <= target && page <= MAX_PAGINATION_PAGES {
+        while page <= target
+            && page <= MAX_PAGINATION_PAGES
+            && server_count.is_none_or(|count| page <= count.saturating_add(1))
+        {
             check()?;
             client.wait_between_pages();
             check()?;
@@ -887,8 +898,8 @@ fn fetch_search_mode<T: Transport>(
     }
 
     let parsed_cards = cards.len();
-    let mut ids = HashSet::new();
-    cards.retain(|card| ids.insert(card.advert_id.clone()));
+    seen.clear();
+    cards.retain(|card| seen.insert(card.advert_id.clone()));
     let count_mismatch = server_count.is_some_and(|count| cards.len() as u32 != count);
     if count_mismatch || (boundary_stopped && server_count.is_none()) {
         partial = true;
@@ -1588,6 +1599,73 @@ mod tests {
             assert_eq!(found.cards.len(), 1);
             assert_eq!(found.fetched_pages, 2);
         }
+    }
+
+    #[test]
+    fn contradictory_source_counts_and_missing_followup_are_partial() {
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"3\", 1)), advertCount: Number.parseInt(replaceWithDefault(\"1\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        let client = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":card(2),"distanceSearched":20,"advertCount":3}).to_string(),
+                ),
+        );
+        let result = fetch_search_using(&client, &SearchRequest::for_test()).unwrap();
+        assert!(result.partial);
+        assert_eq!(result.fetched_pages, 2);
+        let missing = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(&search_url("leipzig", 20, 2, "", true), 404, ""),
+        );
+        let result = fetch_search_using(&missing, &SearchRequest::for_test()).unwrap();
+        assert!(result.partial);
+        assert_eq!(result.cards.len(), 1);
+    }
+
+    #[test]
+    fn cancel_during_pagination_never_returns_a_persistable_search() {
+        struct Cancelling<'a> {
+            mock: Mock,
+            control: &'a RequestControl,
+        }
+        impl Transport for Cancelling<'_> {
+            fn get(&self, url: &str) -> Result<Response, CoreError> {
+                let response = self.mock.get(url)?;
+                if url.ends_with("page=2") {
+                    self.control.cancel();
+                }
+                Ok(response)
+            }
+        }
+        let first = format!(
+            "{} totalPages: Number.parseInt(replaceWithDefault(\"3\", 1)), distanceSearched: Number.parseInt(replaceWithDefault(\"20\", 1))",
+            card(1)
+        );
+        let mock = with_city(
+            Mock::default()
+                .with(&search_url("leipzig", 20, 1, "", false), 200, &first)
+                .with(
+                    &search_url("leipzig", 20, 2, "", true),
+                    200,
+                    &json!({"content":card(2),"distanceSearched":20}).to_string(),
+                ),
+        );
+        let control = RequestControl::default();
+        let client = Cancelling {
+            mock,
+            control: &control,
+        };
+        assert!(matches!(
+            fetch_search_controlled(&client, &SearchRequest::for_test(), Some(&control)),
+            Err(CoreError::Source(reason)) if reason == "Operation cancelled"
+        ));
     }
 
     #[test]

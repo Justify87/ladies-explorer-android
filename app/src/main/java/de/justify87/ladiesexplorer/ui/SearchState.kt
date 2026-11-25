@@ -113,7 +113,7 @@ internal fun discoveryAvailabilityMatches(
         discovery.actionSurface == action.surface &&
         discovery.activeRunId == action.runId &&
         search.discoveryAvailabilityAction(discovery.actionGeneration, action.surface) == action &&
-        !discovery.loading && !discovery.busy && !search.loading && !search.actionBusy && !search.profileOpen
+        !discovery.loading && !discovery.busy && search.defaultReady && !search.defaultSaving && !search.loading && !search.actionBusy && !search.profileOpen
 
 internal data class SearchResultOpenAction(
     val card: DiscoveryCard,

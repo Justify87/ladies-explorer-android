@@ -351,7 +351,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     internal val savedSearch = SavedSearchController(
         scope = viewModelScope,
         store = SavedSearchStore(core),
-        canOperate = { !hasProfileEditor && !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
+        canOperate = { !hasProfileEditor && _searchUiState.value.defaultReady && !_searchUiState.value.defaultSaving && !_searchUiState.value.loading && !_uiState.value.loading && !_discoverState.value.busy && !_searchUiState.value.profileOpen },
         ordinaryDraft = { SearchDraft.from(_searchUiState.value) },
         onSourceFinished = { refreshAfterSourceSearch() },
     )
