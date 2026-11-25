@@ -2,10 +2,12 @@ package de.justify87.ladiesexplorer.ui
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -165,5 +167,49 @@ class AppShellDeviceTest {
             assertEquals(visible[0].width, visible[2].width, 1f)
             assertEquals(visible[1].width, visible[3].width, 1f)
         }
+    }
+
+    @Test fun wideProfileShellAndRootNavigationShareTheSameFourAxes() {
+        var pixelsPerDp = 1f
+        rule.setContent {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val outer = LocalDensity.current
+                val fitted = minOf(outer.density, maxWidth.value * outer.density / 740f,
+                    maxHeight.value * outer.density / 500f)
+                val configuration = Configuration(LocalConfiguration.current).apply { screenWidthDp = 740 }
+                CompositionLocalProvider(LocalDensity provides Density(fitted, 1f), LocalConfiguration provides configuration) {
+                    pixelsPerDp = fitted
+                    LadiesTheme {
+                        Box(Modifier.size(740.dp, 500.dp)) {
+                            Scaffold(bottomBar = { RootNavigation(RootDestination.Discover, true, false) {} }) { padding ->
+                                val deck = SwipeDeckToken(null, 1)
+                                val context = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1),
+                                    SwipeActionToken(null, 1, 4, 1, 11, 1, Preference.NONE, false, emptyList()),
+                                    true, true, AvailabilityMode.All, false, true)
+                                ProfileShell(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
+                                    rememberLazyListState(), "hero", hasRail = true, notices = emptyList(),
+                                    noticeOwner = deck, header = { _, _, _ -> Box(Modifier.fillMaxSize()) },
+                                    rail = { SwipeDecisionControls(context, "Fixture", {}, {}, {}) }) {
+                                    DiscoverModeSwitcher(DiscoverMode.Swipe, {})
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val actions = listOf("Rückgängig", "Nein", "Später", "Gefällt").map {
+            rule.onNodeWithContentDescription(it).fetchSemanticsNode().boundsInRoot
+        }
+        val navigation = RootDestination.entries.map { rule.onNodeWithText(it.title).fetchSemanticsNode().boundsInRoot }
+        actions.zip(navigation).forEach { (action, destination) ->
+            assertEquals(action.center.x, destination.center.x, 1.5f)
+            assertTrue(action.bottom <= destination.top + 1f)
+        }
+        val modes = DiscoverMode.entries.map { rule.onNodeWithText(it.title).fetchSemanticsNode().boundsInRoot }
+        assertEquals(modes.first().left, navigation.first().left, 1f)
+        assertEquals(modes.last().right, navigation.last().right, 1f)
+        assertTrue(navigation.last().right - navigation.first().left <=
+            rule.runOnIdle { ShellMetrics.maxProfileWidth.value * pixelsPerDp + 1f })
     }
 }
