@@ -72,10 +72,9 @@ internal data class HeroMediaGeometry(val viewport: IntSize, val imageBounds: Re
 internal fun heroMediaGeometry(viewport: IntSize, source: IntSize, allowCrop: Boolean = true): HeroMediaGeometry {
     if (viewport.width <= 0 || viewport.height <= 0 || source.width <= 0 || source.height <= 0)
         return HeroMediaGeometry(viewport, null, false)
-    val targetRatio = viewport.width.toDouble() / viewport.height
-    val sourceRatio = source.width.toDouble() / source.height
-    val retained = minOf(targetRatio / sourceRatio, sourceRatio / targetRatio)
-    val cropped = allowCrop && retained >= .85
+    val targetCross = viewport.width.toDouble() * source.height
+    val sourceCross = source.width.toDouble() * viewport.height
+    val cropped = allowCrop && minOf(targetCross, sourceCross) * 100 >= maxOf(targetCross, sourceCross) * 85
     if (cropped) return HeroMediaGeometry(viewport,
         Rect(0f, 0f, viewport.width.toFloat(), viewport.height.toFloat()), true)
     val factor = minOf(viewport.width.toDouble() / source.width, viewport.height.toDouble() / source.height)
