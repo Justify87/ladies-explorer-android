@@ -5,6 +5,10 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
@@ -259,6 +263,9 @@ internal fun DiscoverScreen(
         var photoRequest by remember { mutableIntStateOf(0) }
         val profile = current
         var selectedMedia by remember { mutableStateOf<ProfileMediaItem?>(null) }
+        var visual by remember(current?.revision) { mutableStateOf<HeroVisual?>(null) }
+        var heroCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+        var bodyCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         var fullImage by remember(token) { mutableStateOf<ProfileMediaItem?>(null) }
         fullImage?.takeIf { token != null }?.let { ProfileImageDialog(it) { fullImage = null } }
         val identity = profile?.let { heroIdentity(it.profile, it.identity, it.fromArchive,
@@ -297,15 +304,18 @@ internal fun DiscoverScreen(
         }
         fun beginFlight(direction: Float) {
             val id = cardIdentity ?: return
-            val layout = listState.layoutInfo
-            val hero = layout.visibleItemsInfo.firstOrNull { it.key == "hero" }
-            val selected = selectedMedia?.takeIf { it.kind == "IMAGE" }
-                ?: card.takeIf { selectedMedia?.kind != "VIDEO" }?.let { row ->
-                    row.thumbnailUrl?.let { ProfileMediaItem("IMAGE", it, row.localPath, 0u) }
-                }
-            flight = SwipeFlight(id, deckToken.session, direction, liveDrag, heroSize,
-                (hero?.offset ?: 0) - layout.viewportStartOffset,
-                selected.takeIf { heroVisible && hero != null })
+            val body = bodyCoordinates?.takeIf { it.isAttached }
+            val hero = heroCoordinates?.takeIf { it.isAttached }
+            val origin = if (body != null && hero != null) body.localPositionOf(hero, Offset.Zero) else Offset.Zero
+            val size = hero?.size ?: heroSize
+            val fullyVisible = body != null && hero != null && heroVisible &&
+                origin.x >= -1f && origin.y >= -1f &&
+                origin.x + size.width <= body.size.width + 1f &&
+                origin.y + size.height <= body.size.height + 1f
+            val outgoing = visual?.takeIf { fullyVisible && it.geometry.viewport == size &&
+                (profile == null || selectedMedia == it.media) }
+            flight = SwipeFlight(id, deckToken.session, direction, liveDrag, size,
+                origin.y.roundToInt(), outgoing?.media, origin.x.roundToInt(), outgoing?.geometry?.cropped == true)
         }
         val undo = { if (flight == null) onUndo(deckToken) }
         val skip = {
@@ -327,7 +337,7 @@ internal fun DiscoverScreen(
             },
             rail = { SwipeDecisionControls(controls, identity?.title, undo, skip, choose) },
         ) { presentation ->
-            Box(Modifier.fillMaxSize().clipToBounds()) {
+            Box(Modifier.fillMaxSize().clipToBounds().onGloballyPositioned { bodyCoordinates = it }) {
             if (card == null) {
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = contentInset, vertical = ShellMetrics.small),
                     verticalArrangement = Arrangement.spacedBy(ShellMetrics.small)) {
@@ -398,7 +408,8 @@ internal fun DiscoverScreen(
                             onSwipe = if (actions) ({ decision ->
                                 choose(decision)
                             }) else null,
-                            modifier = Modifier.onSizeChanged { heroSize = it }, selection = mediaSelection,
+                            modifier = Modifier.onSizeChanged { heroSize = it }
+                                .onGloballyPositioned { heroCoordinates = it }, selection = mediaSelection,
                             heldDrag = flight?.takeIf { it.card == cardIdentity }?.offset,
                             onSwipeDrag = { liveDrag = it },
                             playbackVisible = heroVisible,
@@ -406,7 +417,7 @@ internal fun DiscoverScreen(
                             onMediaSettled = { settledMedia = it },
                             actionToken = token,
                             favorite = identity?.favorite, onFavorite = { token?.takeIf(isProfileCurrent)?.let(onFavorite) },
-                            imageScale = androidx.compose.ui.layout.ContentScale.Fit,
+                            onVisual = { visual = it },
                             projectionAvailable = profile != null, actionsEnabled = actions,
                             isCurrent = { token?.let(isProfileCurrent) == true },
                             compact = presentation.budget.compactGallery,
@@ -420,15 +431,16 @@ internal fun DiscoverScreen(
             val oldMedia = old?.media
             if (old != null && oldMedia != null && old.size.width > 0 && old.size.height > 0) {
                 val density = LocalDensity.current
-                Box(Modifier.offset { IntOffset(contentInset.roundToPx(), old.top) }
+                Box(Modifier.absoluteOffset { IntOffset(old.left, old.top) }
                     .size(with(density) { old.size.width.toDp() }, with(density) { old.size.height.toDp() })
                     .graphicsLayer {
                         translationX = motion.value
                         rotationZ = (motion.value / size.width.coerceAtLeast(1f) * 12f).coerceIn(-12f, 12f)
                         alpha = 1f - (kotlin.math.abs(motion.value) / kotlin.math.abs(old.destination)).coerceIn(0f, 1f) * .2f
-                    }.clip(MaterialTheme.shapes.large).clearAndSetSemantics {}) {
+                    }.clip(MaterialTheme.shapes.medium).clearAndSetSemantics {}) {
                     ProfileImage(oldMedia.url, oldMedia.localPath, Modifier.fillMaxSize(),
-                        scale = androidx.compose.ui.layout.ContentScale.Fit, allowRetry = false)
+                        scale = if (old.cropped) androidx.compose.ui.layout.ContentScale.Crop else androidx.compose.ui.layout.ContentScale.Fit,
+                        allowRetry = false, decodeSize = old.size)
                 }
             }
             }
