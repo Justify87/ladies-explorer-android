@@ -414,31 +414,32 @@ fun LadiesApp(
                         } else {
                             val cancelAction = SearchCancelAction(ProfileActionSurface.MAP,
                                 discovery.actionGeneration, search.searchAttemptId)
-                            MapScreen(
-                                state = map,
-                                searchStatus = {
-                                    if (hasDiscoverySearchStatus(search)) DiscoverySearchRunStatus(search) {
-                                        viewModel.cancelActiveSearch(cancelAction)
-                                    }
-                                },
-                                onRefresh = viewModel::refreshRenderedMap,
-                                onCancel = viewModel::cancelRenderedMapResolution,
-                                membershipCurrent = map.membership != null &&
-                                    map.membership == currentMapMembership(discovery, search),
-                                generation = discovery.actionGeneration,
-                                onProfile = { action ->
-                                    if (route == renderedRoute && viewModel.openMapProfile(action)) {
-                                        profileTouchGate.invalidate()
-                                        route = route.openSwipe()
-                                    }
-                                },
-                                onMode = { mode ->
-                                    viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
-                                    route = route.select(mode)
-                                },
-                                profileEnabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy,
-                                modifier = Modifier.weight(1f),
-                            )
+                            key(search.response?.searchRunId) {
+                                MapScreen(
+                                    state = map,
+                                    searchStatus = {
+                                        if (hasDiscoverySearchStatus(search)) DiscoverySearchRunStatus(search) {
+                                            viewModel.cancelActiveSearch(cancelAction)
+                                        }
+                                    },
+                                    onCancel = viewModel::cancelRenderedMapResolution,
+                                    membershipCurrent = map.membership != null &&
+                                        map.membership == currentMapMembership(discovery, search),
+                                    generation = discovery.actionGeneration,
+                                    onProfile = { action ->
+                                        if (route == renderedRoute && viewModel.openMapProfile(action)) {
+                                            profileTouchGate.invalidate()
+                                            route = route.openSwipe()
+                                        }
+                                    },
+                                    onMode = { mode ->
+                                        viewModel.setProfileActionSurface(ProfileActionSurface.NONE)
+                                        route = route.select(mode)
+                                    },
+                                    profileEnabled = !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
                         }
                     }
                     RootDestination.Search -> searchStateHolder.SaveableStateProvider(
