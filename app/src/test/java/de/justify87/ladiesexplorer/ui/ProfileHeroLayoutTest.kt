@@ -25,6 +25,13 @@ class ProfileHeroLayoutTest {
         }
     }
 
+    @Test fun initialHeroWaitsForMeasuredContextButRestoredRowsNeverDependOnIt() {
+        assertTrue(awaitDiscoveryContext(0, 0))
+        assertFalse(awaitDiscoveryContext(60, 0))
+        assertFalse(awaitDiscoveryContext(0, 1))
+        assertFalse(awaitDiscoveryContext(0, 4))
+    }
+
     @Test fun measuredContextAndShortViewportHaveNoIntentionalPeek() {
         for (context in listOf(48f, 60f, 76f, 108f)) {
             assertEquals(500f - context, profileHeroHeight(390f, 844f, 500f, context), .01f)

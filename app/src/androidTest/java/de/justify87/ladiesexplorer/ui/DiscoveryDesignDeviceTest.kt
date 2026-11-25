@@ -60,6 +60,7 @@ class DiscoveryDesignDeviceTest {
                     pxPerDp = LocalDensity.current.density
                     list = rememberLazyListState()
                     var measuredContext by remember { mutableIntStateOf(0) }
+                    val appliedContextHeight = measuredContext
                     val deck = SwipeDeckToken(null, 1)
                     val token = SwipeActionToken(null, 1, 4, 1, 11, model.revision, Preference.NONE, false, emptyList())
                     val controls = SwipeControlsContext(deck, SwipeCardToken(deck, 4, 1), token,
@@ -67,7 +68,7 @@ class DiscoveryDesignDeviceTest {
                     Column(Modifier.fillMaxSize()) {
                         ProfileShell(Modifier.weight(1f), list, "hero", rootHeight = 64.dp,
                             hasRail = true, notices = emptyList(), noticeOwner = controls,
-                            heroLeadingHeight = with(LocalDensity.current) { measuredContext.toDp() },
+                            heroLeadingHeight = with(LocalDensity.current) { appliedContextHeight.toDp() },
                             header = { _, _, _ -> Row(Modifier.fillMaxSize().testTag("header")) {
                                 Text("Entdecken", Modifier.weight(1f))
                                 AvailabilityQuickChoice(AvailabilityMode.All, true, deck, {})
@@ -87,10 +88,15 @@ class DiscoveryDesignDeviceTest {
                                 }
                                 item("hero") {
                                     Box(Modifier.fillMaxWidth().padding(horizontal = shellContentInset())) {
-                                        ProfileMediaHero(model.media, presentation.heroHeight, Modifier.testTag("hero"),
+                                        if (awaitDiscoveryContext(appliedContextHeight, list.firstVisibleItemIndex))
+                                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
+                                        else ProfileMediaHero(model.media, presentation.heroHeight, Modifier.testTag("hero"),
                                             actionsEnabled = true, isCurrent = { true }, selection = mediaSelection,
                                             favorite = false, onFavorite = {}, actionToken = token,
-                                            compact = presentation.budget.compactGallery, onVisual = { visual = it })
+                                            compact = presentation.budget.compactGallery, onVisual = {
+                                                if (it != null) assertTrue(appliedContextHeight > 0 || list.firstVisibleItemIndex > 0)
+                                                visual = it
+                                            })
                                     }
                                 }
                             }

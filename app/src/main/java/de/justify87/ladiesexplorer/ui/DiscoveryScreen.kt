@@ -315,7 +315,7 @@ internal fun DiscoverScreen(
             val outgoing = visual?.takeIf { fullyVisible && it.geometry.viewport == size &&
                 (profile == null || selectedMedia == it.media) }
             flight = SwipeFlight(id, deckToken.session, direction, liveDrag, size,
-                origin.y.roundToInt(), outgoing?.media, origin.x.roundToInt(), outgoing?.geometry?.cropped == true)
+                origin.y.roundToInt(), outgoing?.painter, origin.x.roundToInt(), outgoing?.geometry?.cropped == true)
         }
         val undo = { if (flight == null) onUndo(deckToken) }
         val skip = {
@@ -328,9 +328,11 @@ internal fun DiscoverScreen(
                 onChoose(it, preference, capture.read())
             }
         }
+        // Keep admission and the hero budget on the same measured-context snapshot.
+        val measuredContextHeight = discoveryContextHeight
         ProfileShell(modifier = modifier, listState = listState, heroKey = "hero", rootHeight = rootBarHeight,
             hasRail = true, notices = notices, noticeOwner = controls, fixedNoticeSlot = true,
-            heroLeadingHeight = with(LocalDensity.current) { discoveryContextHeight.toDp() },
+            heroLeadingHeight = with(LocalDensity.current) { measuredContextHeight.toDp() },
             header = { presentation, compactNotice, onNotice ->
                 SwipeShellHeader(presentation, sourceContext, controls, compactNotice,
                     onNotice, { onAvailability(deckToken, it) })
@@ -403,7 +405,10 @@ internal fun DiscoverScreen(
                     }
                     item(key = "hero") {
                         Box(Modifier.fillMaxWidth().padding(horizontal = contentInset)) {
-                            ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
+                            if (awaitDiscoveryContext(measuredContextHeight, listState.firstVisibleItemIndex)) {
+                                // Do not decode against the provisional viewport on a cold start.
+                                Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
+                            } else ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
                             height = presentation.heroHeight,
                             onSwipe = if (actions) ({ decision ->
                                 choose(decision)
@@ -428,8 +433,8 @@ internal fun DiscoverScreen(
                 }
             }
             val old = flight?.takeIf { it.card != cardIdentity }
-            val oldMedia = old?.media
-            if (old != null && oldMedia != null && old.size.width > 0 && old.size.height > 0) {
+            val oldPainter = old?.painter
+            if (old != null && oldPainter != null && old.size.width > 0 && old.size.height > 0) {
                 val density = LocalDensity.current
                 Box(Modifier.absoluteOffset { IntOffset(old.left, old.top) }
                     .size(with(density) { old.size.width.toDp() }, with(density) { old.size.height.toDp() })
@@ -438,9 +443,7 @@ internal fun DiscoverScreen(
                         rotationZ = (motion.value / size.width.coerceAtLeast(1f) * 12f).coerceIn(-12f, 12f)
                         alpha = 1f - (kotlin.math.abs(motion.value) / kotlin.math.abs(old.destination)).coerceIn(0f, 1f) * .2f
                     }.clip(MaterialTheme.shapes.medium).clearAndSetSemantics {}) {
-                    ProfileImage(oldMedia.url, oldMedia.localPath, Modifier.fillMaxSize(),
-                        scale = if (old.cropped) androidx.compose.ui.layout.ContentScale.Crop else androidx.compose.ui.layout.ContentScale.Fit,
-                        allowRetry = false, decodeSize = old.size)
+                    SwipeFlightImage(oldPainter, old.cropped, Modifier.fillMaxSize())
                 }
             }
             }

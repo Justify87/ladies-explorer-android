@@ -97,7 +97,7 @@ internal fun DiscoverySearchRunStatus(state: SearchUiState, onCancel: () -> Unit
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Suche läuft …", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = onCancel, enabled = !state.searchCancelling,
-                    modifier = Modifier.heightIn(min = 48.dp)) {
+                    modifier = Modifier.heightIn(min = ShellMetrics.touch)) {
                     Text(if (state.searchCancelling) "Wird beendet …" else "Abbrechen")
                 }
             }

@@ -40,7 +40,7 @@ Für klein gesetzten Akzenttext ist der **dunkle** Vordergrund vorgesehen (ca. 5
 | Rolle | Referenz | Anwendung |
 | --- | --- | --- |
 | Abstandsleiter | 4 / 8 / 12 / 16 / 24 / 32 dp | konsistente Innen- und Außenabstände |
-| Außen / Karten / Abschnitte | 16 / 12 / 16 dp | gemeinsame Screen-Raster |
+| Außen / Karten / Abschnitte | 12 dp, ab 600 dp 16 dp / 12 dp / 16 dp | gemeinsames adaptives Screen-Raster |
 | Hero-/Kartenradius | 12–16 dp | durchgehende Medienkontur, keine separate Rahmenrundung |
 | Gruppierung / Segment / kleine Icon-Flächen | 8–12 dp | gemeinsame Shape-Rollen; Kreise nur bei bewusst kreisförmigen Aktionen |
 | Header / Root-Navigation | ca. 56 / 64 dp ohne Systeminsets | kompakte gemeinsame App-Shell; tatsächliche Höhe nach Inhalt und Zugänglichkeit |
@@ -146,7 +146,7 @@ Benannte Typografierollen mit passenden Zeilenhöhen verwenden; native `sp`-Metr
 
 **Verbindlich – Galerie, Video und Handlungsvorrang:**
 - Medien in Quellreihenfolge; verfügbare lokale Archivdatei bevorzugen, dann zulässigen Remote-Fallback, bei Fehler Platzhalter mit Retry. Foto-Vollbild mit vollständiger Fit-Darstellung ist in Swipe im Detailfluss und in Standalone im Profilmenü ausdrücklich erreichbar, nicht als dauerhafte Galerie-Chrome.
-- Seitliche Tapzonen wechseln Bilder, am Rand ohne Überlauf. Bei Video mittiges Play/Pause mit Vorrang vor Tapzonen; Wiedergabe eingebettet und stumm, Autoplay/Loop nur bei sichtbarem Medium und gültigem Lifecycle. Stop/Surface-/Tempfile-/Retry-Grenzen gemäß [ARCHITECTURE](ARCHITECTURE.md#persistentes-archiv-und-anzeige). Keine Medienarchivierung durch reines Anzeigen.
+- Seitliche Tapzonen wechseln Bilder, am Rand ohne Überlauf. Das separate Favoritenziel besitzt Vorrang ausschließlich innerhalb seiner tatsächlichen Touchfläche; die restliche seitliche Fläche bleibt bedienbar. Bei Video mittiges Play/Pause mit Vorrang vor Tapzonen; Wiedergabe eingebettet und stumm, Autoplay/Loop nur bei sichtbarem Medium und gültigem Lifecycle. Stop/Surface-/Tempfile-/Retry-Grenzen gemäß [ARCHITECTURE](ARCHITECTURE.md#persistentes-archiv-und-anzeige). Keine Medienarchivierung durch reines Anzeigen.
 - Kindinteraktionen (Favorit, Video, Menü in Standalone, Zurück, Vollbild, Retry, Kontakt, Editor, Rail) gehen Gesten vor. Standalone besitzt Galerie-Taps, aber keine Entscheidungs-Swipe-Geste.
 
 **Verbindlich – Entscheidungsgeste:**
