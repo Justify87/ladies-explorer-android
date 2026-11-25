@@ -4,6 +4,8 @@ import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.res.Configuration
 import android.view.Gravity
+import android.view.View
+import android.widget.ImageView
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +31,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.viewinterop.AndroidView
@@ -51,9 +54,9 @@ import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
-import org.maplibre.android.style.layers.PropertyFactory.textColor
-import org.maplibre.android.style.layers.PropertyFactory.textField
-import org.maplibre.android.style.layers.PropertyFactory.textSize
+import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
+import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.iconImage
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -65,6 +68,9 @@ private const val MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"
 internal const val MAP_SOURCE = "ladies-coarse-profiles"
 internal const val MAP_CLUSTERS = "ladies-clusters"
 internal const val MAP_SINGLE = "ladies-single"
+internal const val MAP_PHOTOS = "ladies-marker-photos"
+internal const val MAP_CLUSTER_COUNTS = "ladies-cluster-count"
+internal const val MAP_GROUP_COUNTS = "ladies-group-count"
 
 internal enum class MapTileState { Loading, Ready, Failed }
 private enum class MapPickerScope { All, Location }
@@ -108,9 +114,17 @@ internal fun MapScreen(
     var tileState by remember { mutableStateOf(MapTileState.Loading) }
     var picker by rememberSaveable { mutableStateOf<MapPickerScope?>(null) }
     var focusRequest by remember { mutableStateOf<Long?>(null) }
+    var nativeAttribution by remember { mutableStateOf(IntSize.Zero) }
+    var geoNamesHeight by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val attributionInset = with(density) { maxOf(nativeAttribution.height, geoNamesHeight).toDp() }
+    val attributionEnd = with(density) { nativeAttribution.width.toDp() }
     val controls = MapControlAction(state, generation)
     val overview = state.overview.takeIf { membershipCurrent }
     val points = overview?.profiles.orEmpty()
+    val thumbnailPaths = remember(points, state.membership) {
+        mapThumbnailPaths(points, state.membership?.cards.orEmpty())
+    }
     val active = mapSelectedProfile(points, selectedListingId, selectedOwnerId)
     val selection = remember(points, active?.listingId) { mapSelection(points, active?.listingId) }
     val latestPoints by rememberUpdatedState(points)
@@ -148,6 +162,7 @@ internal fun MapScreen(
         hasPanel = hasDiscoverySearchStatus(search) || hasMapDetails(visibleState, tileState, active),
         statusLabel = summary,
         warning = warning,
+        attributionInset = attributionInset,
         modeSwitcher = {
             DiscoverModeSwitcher(DiscoverMode.Map, { mode ->
                 cameraReader?.invoke()?.let { camera = it }
@@ -161,6 +176,7 @@ internal fun MapScreen(
             key(mapAttempt, marker, markerInk, selectionRing, cityMarker) {
                 NativeProfileMap(
                     points = points,
+                    thumbnailPaths = thumbnailPaths,
                     fitReady = mapInitialFitReady(overview, state.resolving),
                     selectedListingId = active?.listingId,
                     savedCamera = camera,
@@ -181,11 +197,14 @@ internal fun MapScreen(
                     selectionRing = selectionRing,
                     cityMarker = cityMarker,
                     onTileState = { tileState = it },
+                    onAttributionInset = { nativeAttribution = it },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
             Surface(
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 4.dp),
+                modifier = Modifier.align(Alignment.BottomStart)
+                    .onSizeChanged { geoNamesHeight = it.height }
+                    .padding(start = 4.dp, bottom = 4.dp, end = attributionEnd + 4.dp),
                 color = scheme.surface,
                 shape = MaterialTheme.shapes.small,
             ) {
@@ -198,6 +217,7 @@ internal fun MapScreen(
                 state = visibleState,
                 tileState = tileState,
                 active = active,
+                activeLocalPath = active?.listingId?.let(thumbnailPaths::get),
                 selectionCount = selection.size,
                 profileEnabled = membershipCurrent && profileEnabled && !state.loading,
                 onCancel = { onCancel(controls) },
@@ -243,6 +263,7 @@ internal fun DiscoveryMapLayout(
     hasPanel: Boolean,
     statusLabel: String,
     warning: Boolean,
+    attributionInset: Dp = 0.dp,
     modeSwitcher: @Composable () -> Unit,
     searchStatus: @Composable () -> Unit,
     mapContent: @Composable BoxScope.() -> Unit,
@@ -269,10 +290,12 @@ internal fun DiscoveryMapLayout(
             }
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                 mapContent()
+                val dockBottom = attributionInset + ShellMetrics.small
                 if (!compact) details(
                     Modifier.align(Alignment.BottomCenter).padding(start = ShellMetrics.small,
-                        end = ShellMetrics.small, bottom = ShellMetrics.touch)
-                        .widthIn(max = 420.dp).fillMaxWidth().heightIn(max = maxHeight * .65f)
+                        end = ShellMetrics.small, bottom = dockBottom)
+                        .widthIn(max = 420.dp).fillMaxWidth()
+                        .heightIn(max = minOf(maxHeight * .65f, (maxHeight - dockBottom).coerceAtLeast(0.dp)))
                         .verticalScroll(rememberScrollState()),
                     {},
                 )
@@ -315,6 +338,7 @@ internal fun MapDetails(
     onClear: () -> Unit,
     onOpen: (MapProfile) -> Unit,
     modifier: Modifier = Modifier,
+    activeLocalPath: String? = null,
 ) {
     val overview = state.overview
     val scheme = MaterialTheme.colorScheme
@@ -362,8 +386,7 @@ internal fun MapDetails(
                     Column(Modifier.padding(ShellMetrics.inset), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            // Only the selected profile uses the existing image adapter, never every marker.
-                            ProfileImage(active.thumbnailUrl, null,
+                            ProfileImage(active.thumbnailUrl, activeLocalPath,
                                 Modifier.size(56.dp).clip(MaterialTheme.shapes.small),
                                 description = "Profilbild von ${active.name}")
                             Column(Modifier.weight(1f)) {
@@ -424,21 +447,60 @@ internal fun MapProfilePicker(
     )
 }
 
-internal fun asFeatures(points: List<MapProfile>, selectedListingId: Long?): FeatureCollection {
-    val selected = mapSelection(points, selectedListingId).mapTo(HashSet()) { it.listingId }
+private data class MapMarkerGroup(
+    val representativeId: Long,
+    val count: Int,
+    val city: Boolean,
+    val selected: Boolean,
+)
+
+internal fun asFeatures(
+    points: List<MapProfile>, selectedListingId: Long?, thumbnailPaths: Map<Long, String> = emptyMap(),
+): FeatureCollection {
+    val groups = points.groupBy { it.latitude to it.longitude }.mapValues { (_, members) ->
+        MapMarkerGroup(members.minOf { it.listingId }, members.size,
+            members.any { it.precision != "POSTAL" }, members.any { it.listingId == selectedListingId })
+    }
     val features = points.map { item ->
+        val group = groups.getValue(item.latitude to item.longitude)
         val properties = JsonObject().apply {
             addProperty("listing_id", item.listingId)
             addProperty("owner_id", item.personId)
-            addProperty("selected", item.listingId in selected)
+            addProperty("selected", group.selected)
+            addProperty("latitude", item.latitude)
+            addProperty("longitude", item.longitude)
             addProperty("precision", item.precision)
+            addProperty("representative", item.listingId == group.representativeId)
+            addProperty("group_precision", if (group.city) "CITY" else "POSTAL")
+            addProperty("group_count", group.count)
+            addProperty("group_image", MAP_COUNT_PREFIX + group.count + if (group.city) "-city" else "")
+            addProperty("photo_id", if (group.count == 1) mapThumbnailId(item, thumbnailPaths[item.listingId]) else MAP_FALLBACK_IMAGE)
         }
+        // Keep one native source point per listing so native point_count stays exact.
         Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude), properties)
     }
     return FeatureCollection.fromFeatures(features.toTypedArray())
 }
 
+internal fun mapRenderedSelection(points: List<MapProfile>, feature: Feature): MapProfile? {
+    if (!listOf("listing_id", "owner_id", "latitude", "longitude", "group_count", "representative")
+            .all(feature::hasProperty) || !feature.getBooleanProperty("representative")) return null
+    val profile = mapSelectedProfile(points, feature.getNumberProperty("listing_id").toLong(),
+        feature.getNumberProperty("owner_id").toLong()) ?: return null
+    // Rendered geometry is tile-quantized; the original source coordinates are the identity evidence.
+    return profile.takeIf {
+        it.latitude == feature.getNumberProperty("latitude").toDouble() &&
+            it.longitude == feature.getNumberProperty("longitude").toDouble() &&
+            mapSelection(points, it.listingId).size == feature.getNumberProperty("group_count").toInt()
+    }
+}
+
+internal fun mapClusterZoom(source: GeoJsonSource, cluster: Feature, current: Double, maximum: Double): Double? =
+    runCatching { source.getClusterExpansionZoom(cluster).toDouble() }.getOrNull()
+        ?.coerceAtMost(maximum)?.takeIf { it > current }
+
 internal fun installMapProfileLayers(
+    view: LifecycleMapView,
     style: Style,
     features: FeatureCollection,
     marker: Int,
@@ -452,30 +514,32 @@ internal fun installMapProfileLayers(
         GeoJsonOptions().withCluster(true).withClusterRadius(48).withClusterMaxZoom(15),
     )
     style.addSource(source)
-    style.addLayer(
-        CircleLayer(MAP_CLUSTERS, MAP_SOURCE)
-            .withFilter(Expression.has("point_count"))
-            .withProperties(circleColor(marker), circleRadius(24f),
-                circleStrokeWidth(2f), circleStrokeColor(markerInk)),
-    )
-    style.addLayer(
-        SymbolLayer("ladies-cluster-count", MAP_SOURCE)
-            .withFilter(Expression.has("point_count"))
-            .withProperties(
-                textField(Expression.get("point_count_abbreviated")),
-                textColor(markerInk), textSize(14f),
-            ),
-    )
+    style.addImage(MAP_FALLBACK_IMAGE, mapFallbackBitmap())
+    // The count is a local sprite, not a provider glyph or a collision-prone label.
+    view.addOnStyleImageMissingListener { id ->
+        if (!view.released && id.startsWith(MAP_COUNT_PREFIX)) {
+            val key = id.removePrefix(MAP_COUNT_PREFIX)
+            val count = key.removeSuffix("-city").toIntOrNull()
+            if (count != null && count > 1) {
+                style.addImage(id, mapCountBitmap(count,
+                    if (key.endsWith("-city")) mapCountInk(cityMarker) else markerInk))
+            }
+        }
+    }
+    view.addOnCanRemoveUnusedStyleImageListener { true }
+
+    val singles = Expression.all(Expression.not(Expression.has("point_count")),
+        Expression.eq(Expression.get("representative"), Expression.literal(true)))
     val selected = Expression.eq(Expression.get("selected"), Expression.literal(true))
+    val postal = Expression.eq(Expression.get("group_precision"), Expression.literal("POSTAL"))
+    val one = Expression.eq(Expression.get("group_count"), Expression.literal(1))
     style.addLayer(
         CircleLayer(MAP_SINGLE, MAP_SOURCE)
-            .withFilter(Expression.not(Expression.has("point_count")))
+            .withFilter(singles)
             .withProperties(
-                circleColor(Expression.switchCase(
-                    Expression.eq(Expression.get("precision"), Expression.literal("POSTAL")),
+                circleColor(Expression.switchCase(postal,
                     Expression.color(marker), Expression.color(cityMarker))),
-                circleRadius(Expression.switchCase(
-                    Expression.eq(Expression.get("precision"), Expression.literal("POSTAL")),
+                circleRadius(Expression.switchCase(postal,
                     Expression.literal(24f), Expression.literal(28f))),
                 circleStrokeWidth(Expression.switchCase(selected,
                     Expression.literal(5f), Expression.literal(2f))),
@@ -483,11 +547,40 @@ internal fun installMapProfileLayers(
                     Expression.color(selectionRing), Expression.color(markerInk))),
             ),
     )
+    style.addLayer(
+        SymbolLayer(MAP_PHOTOS, MAP_SOURCE)
+            .withFilter(Expression.all(singles, one))
+            .withProperties(iconImage(Expression.coalesce(
+                Expression.image(Expression.get("photo_id")),
+                Expression.image(Expression.literal(MAP_FALLBACK_IMAGE)))),
+                iconAllowOverlap(true), iconIgnorePlacement(true)),
+    )
+    style.addLayer(
+        SymbolLayer(MAP_GROUP_COUNTS, MAP_SOURCE)
+            .withFilter(Expression.all(singles, Expression.not(one)))
+            .withProperties(iconImage(Expression.get("group_image")),
+                iconAllowOverlap(true), iconIgnorePlacement(true)),
+    )
+    // Put clusters above single markers so a picture cannot conceal the group.
+    style.addLayer(
+        CircleLayer(MAP_CLUSTERS, MAP_SOURCE)
+            .withFilter(Expression.has("point_count"))
+            .withProperties(circleColor(marker), circleRadius(24f),
+                circleStrokeWidth(2f), circleStrokeColor(markerInk)),
+    )
+    style.addLayer(
+        SymbolLayer(MAP_CLUSTER_COUNTS, MAP_SOURCE)
+            .withFilter(Expression.has("point_count"))
+            .withProperties(iconImage(Expression.concat(Expression.literal(MAP_COUNT_PREFIX),
+                Expression.toString(Expression.get("point_count")))),
+                iconAllowOverlap(true), iconIgnorePlacement(true)),
+    )
 }
 
 @Composable
 private fun NativeProfileMap(
     points: List<MapProfile>,
+    thumbnailPaths: Map<Long, String>,
     fitReady: Boolean,
     selectedListingId: Long?,
     savedCamera: CameraPosition?,
@@ -501,10 +594,12 @@ private fun NativeProfileMap(
     selectionRing: Int,
     cityMarker: Int,
     onTileState: (MapTileState) -> Unit,
+    onAttributionInset: (IntSize) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val owner = LocalLifecycleOwner.current
     val currentPoints by rememberUpdatedState(points)
+    val currentThumbnailPaths by rememberUpdatedState(thumbnailPaths)
     val currentSelection by rememberUpdatedState(selectedListingId)
     val currentCamera by rememberUpdatedState(savedCamera)
     val saveCamera by rememberUpdatedState(onCameraChanged)
@@ -512,8 +607,10 @@ private fun NativeProfileMap(
     val currentSelect by rememberUpdatedState(onSelect)
     val publishTileState by rememberUpdatedState(onTileState)
     val consumeFocus by rememberUpdatedState(onFocusConsumed)
+    val publishAttribution by rememberUpdatedState(onAttributionInset)
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var nativeView by remember { mutableStateOf<LifecycleMapView?>(null) }
+    var markerImages by remember { mutableStateOf<MapMarkerImages?>(null) }
     var loadError by remember { mutableStateOf(false) }
     var positioned by remember { mutableStateOf(savedCamera != null) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -524,6 +621,7 @@ private fun NativeProfileMap(
                 MapLibre.getInstance(context)
                 val mapView = LifecycleMapView(context, owner.lifecycle)
                 nativeView = mapView
+                mapView.attributionInsetChanged = { publishAttribution(it) }
                 publishTileState(MapTileState.Loading)
                 mapView.addOnDidFailLoadingMapListener {
                     if (!mapView.released) {
@@ -537,8 +635,12 @@ private fun NativeProfileMap(
                         ready.uiSettings.setAttributionGravity(Gravity.BOTTOM or Gravity.END)
                         ready.setStyle(MAP_STYLE) { style ->
                             if (!mapView.released) {
-                                installMapProfileLayers(style, asFeatures(currentPoints, currentSelection),
+                                installMapProfileLayers(mapView, style, asFeatures(currentPoints, currentSelection, currentThumbnailPaths),
                                     marker, markerInk, selectionRing, cityMarker)
+                                val images = MapMarkerImages(mapView, ready, style, owner.lifecycle)
+                                markerImages = images
+                                images.update(currentPoints, currentThumbnailPaths)
+                                mapView.addOnDidBecomeIdleListener { images.refresh() }
                                 val initial = currentCamera
                                 if (initial != null) {
                                     positioned = true
@@ -548,30 +650,39 @@ private fun NativeProfileMap(
                                 }
                                 publishCameraReader { if (mapView.released || !positioned) null else ready.cameraPosition }
                                 ready.addOnCameraMoveStartedListener { reason ->
+                                    if (!mapView.released) images.cameraMoving()
                                     if (!mapView.released && reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
                                         positioned = true
                                     }
                                 }
                                 ready.addOnCameraIdleListener {
-                                    if (!mapView.released && positioned) saveCamera(ready.cameraPosition)
+                                    if (!mapView.released) {
+                                        images.cameraIdle()
+                                        if (positioned) saveCamera(ready.cameraPosition)
+                                    }
                                 }
                                 ready.addOnMapClickListener { location ->
                                     if (mapView.released) false else {
                                         val screen = ready.projection.toScreenLocation(location)
-                                        val single = ready.queryRenderedFeatures(screen, MAP_SINGLE).firstOrNull()
-                                        if (single != null && single.hasProperty("listing_id") && single.hasProperty("owner_id")) {
-                                            positioned = true
-                                            currentSelect(single.getNumberProperty("listing_id").toLong(),
-                                                single.getNumberProperty("owner_id").toLong())
-                                            true
-                                        } else {
-                                            val cluster = ready.queryRenderedFeatures(screen, MAP_CLUSTERS).firstOrNull()
-                                            val center = cluster?.geometry() as? Point
-                                            if (center != null) {
+                                        val cluster = ready.queryRenderedFeatures(screen, MAP_CLUSTERS).firstOrNull()
+                                        val center = cluster?.geometry() as? Point
+                                        if (cluster != null && center != null) {
+                                            val source = style.getSource(MAP_SOURCE) as? GeoJsonSource
+                                            val zoom = source?.let {
+                                                mapClusterZoom(it, cluster, ready.cameraPosition.zoom, ready.maxZoomLevel)
+                                            }
+                                            if (zoom != null) {
                                                 positioned = true
                                                 ready.animateCamera(CameraUpdateFactory.newLatLngZoom(
-                                                    LatLng(center.latitude(), center.longitude()),
-                                                    (ready.cameraPosition.zoom + 2.0).coerceAtMost(16.0)))
+                                                    LatLng(center.latitude(), center.longitude()), zoom))
+                                                true
+                                            } else false
+                                        } else {
+                                            val single = ready.queryRenderedFeatures(screen, MAP_SINGLE).firstOrNull()
+                                            val profile = single?.let { mapRenderedSelection(currentPoints, it) }
+                                            if (profile != null) {
+                                                positioned = true
+                                                currentSelect(profile.listingId, profile.personId)
                                                 true
                                             } else false
                                         }
@@ -590,6 +701,9 @@ private fun NativeProfileMap(
             onRelease = { view ->
                 if (!view.released && positioned) map?.cameraPosition?.let(saveCamera)
                 publishCameraReader { null }
+                markerImages?.close()
+                markerImages = null
+                publishAttribution(IntSize.Zero)
                 map = null
                 nativeView = null
                 view.releaseMap()
@@ -604,11 +718,12 @@ private fun NativeProfileMap(
         }
     }
 
-    LaunchedEffect(points, selectedListingId, map) {
+    LaunchedEffect(points, thumbnailPaths, selectedListingId, map) {
         val ready = map ?: return@LaunchedEffect
         ready.getStyle { style ->
             if (map === ready && nativeView?.released == false) {
-                (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(currentPoints, currentSelection))
+                markerImages?.update(currentPoints, currentThumbnailPaths)
+                (style.getSource(MAP_SOURCE) as? GeoJsonSource)?.setGeoJson(asFeatures(currentPoints, currentSelection, currentThumbnailPaths))
             }
         }
     }
@@ -645,6 +760,23 @@ internal class LifecycleMapView(
         private set
     private var started = false
     private var resumed = false
+    private var attributionControl: ImageView? = null
+    var attributionInsetChanged: (IntSize) -> Unit = {}
+
+    override fun initialiseAttributionView(): ImageView = super.initialiseAttributionView().also {
+        attributionControl = it
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        val control = attributionControl?.takeIf { it.visibility == View.VISIBLE }
+        val inset = control?.let {
+            val end = if (layoutDirection == View.LAYOUT_DIRECTION_RTL) it.right else width - it.left
+            IntSize(end.coerceAtLeast(0), (height - it.top).coerceAtLeast(0))
+        } ?: IntSize.Zero
+        attributionInsetChanged(inset)
+    }
+
     private val memoryCallbacks = object : ComponentCallbacks {
         override fun onConfigurationChanged(newConfig: Configuration) = Unit
         override fun onLowMemory() {

@@ -1,10 +1,16 @@
 package de.justify87.ladiesexplorer.ui
 
+import android.graphics.Bitmap
+import android.graphics.Color as BitmapColor
+import android.graphics.RectF
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -12,6 +18,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import java.io.File
 import androidx.compose.ui.viewinterop.AndroidView
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -23,6 +35,8 @@ import de.justify87.ladiesexplorer.core.MapOverview
 import de.justify87.ladiesexplorer.core.MapProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 
@@ -80,28 +94,59 @@ class MapDesignDeviceTest {
         rule.runOnIdle { assertEquals(b, chosen) }
     }
 
-    @Test fun nativeStyleClustersThenShowsIndividualAndUpdatedMembers() {
+    @Test fun nativeStyleCountsSplitAndRegroupWithoutProviderGlyphsAndRejectStalePhotos() {
         val a = MapProfile(1L, 1L, "Fixture A", "Leipzig", "Leipzig", 51.34, 12.37, "CITY", false, null)
         val b = a.copy(listingId = 2L, personId = 2L, precision = "POSTAL")
+        val c = a.copy(listingId = 3L, personId = 3L, longitude = a.longitude + .015)
+        val d = a.copy(listingId = 4L, personId = 4L, longitude = a.longitude + .09,
+            thumbnailUrl = "fixture-visible")
+        val points = listOf(a, b, c, d)
         val center = LatLng(a.latitude, a.longitude)
         var map: MapLibreMap? = null
         var source: GeoJsonSource? = null
+        var style: Style? = null
+        var view: LifecycleMapView? = null
+        var images: MapMarkerImages? = null
+        var testLifecycle: androidx.lifecycle.Lifecycle? = null
+        val decoded = mutableListOf<String>()
+        val delayed = CompletableDeferred<Unit>()
+        val old = b.copy(thumbnailUrl = "fixture-delayed")
+        val fresh = old.copy(personId = 22L, thumbnailUrl = "fixture-fresh")
+        fun rendered(layer: String) = map?.let { ready ->
+            val native = requireNotNull(view)
+            ready.queryRenderedFeatures(RectF(0f, 0f, native.width.toFloat(), native.height.toFloat()), layer)
+        }.orEmpty()
+        fun photo() = mapPhotoBitmap(Bitmap.createBitmap(120, 80, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(BitmapColor.GREEN)
+        })
         rule.setContent {
             val lifecycle = LocalLifecycleOwner.current.lifecycle
+            testLifecycle = lifecycle
             AndroidView(
                 factory = { context ->
                     MapLibre.getInstance(context)
-                    LifecycleMapView(context, lifecycle).also { view ->
-                        view.getMapAsync { ready ->
-                            if (!view.released) ready.setStyle(
+                    LifecycleMapView(context, lifecycle).also { native ->
+                        view = native
+                        native.getMapAsync { ready ->
+                            if (!native.released) ready.setStyle(
                                 Style.Builder().fromJson("""{"version":8,"sources":{},"layers":[{"id":"bg","type":"background","paint":{"background-color":"#222222"}}]}""")
-                            ) { style ->
-                                if (!view.released) {
-                                    installMapProfileLayers(style, asFeatures(listOf(a, b), null),
-                                        android.graphics.Color.RED, android.graphics.Color.WHITE,
-                                        android.graphics.Color.BLACK, android.graphics.Color.BLUE)
-                                    source = style.getSource(MAP_SOURCE) as GeoJsonSource
-                                    ready.moveCamera(CameraUpdateFactory.newLatLngZoom(center, 5.0))
+                            ) { loaded ->
+                                if (!native.released) {
+                                    installMapProfileLayers(native, loaded, asFeatures(points, null),
+                                        BitmapColor.RED, BitmapColor.WHITE, BitmapColor.BLACK, BitmapColor.BLUE)
+                                    style = loaded
+                                    source = loaded.getSource(MAP_SOURCE) as GeoJsonSource
+                                    val controller = MapMarkerImages(native, ready, loaded, lifecycle) { _, url, _ ->
+                                        decoded.add(url)
+                                        if (url == old.thumbnailUrl) withContext(NonCancellable) { delayed.await() }
+                                        photo()
+                                    }
+                                    images = controller
+                                    controller.update(points)
+                                    native.addOnDidBecomeIdleListener { controller.refresh() }
+                                    ready.addOnCameraMoveStartedListener { controller.cameraMoving() }
+                                    ready.addOnCameraIdleListener { controller.cameraIdle() }
+                                    ready.moveCamera(CameraUpdateFactory.newLatLngZoom(center, 4.0))
                                     map = ready
                                 }
                             }
@@ -109,37 +154,218 @@ class MapDesignDeviceTest {
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
-                onRelease = { it.releaseMap() },
+                onRelease = { images?.close(); it.releaseMap() },
             )
         }
-        rule.waitUntil(timeoutMillis = 20_000) {
+        try {
+            rule.waitUntil(timeoutMillis = 20_000) {
+                rule.runOnIdle {
+                    rendered(MAP_CLUSTER_COUNTS).any { it.getNumberProperty("point_count").toInt() == 4 }
+                }
+            }
             rule.runOnIdle {
-                map?.let { ready ->
-                    ready.queryRenderedFeatures(ready.projection.toScreenLocation(center), MAP_CLUSTERS)
-                        .any { it.getNumberProperty("point_count").toInt() == 2 }
-                } == true
+                assertTrue(decoded.isEmpty())
+                val cluster = rendered(MAP_CLUSTERS).first { it.getNumberProperty("point_count").toInt() == 4 }
+                val ready = requireNotNull(map)
+                val zoom = requireNotNull(mapClusterZoom(requireNotNull(source), cluster, 4.0, ready.maxZoomLevel))
+                assertTrue(zoom > 4.0 && zoom <= 16.0)
+                assertNull(mapClusterZoom(requireNotNull(source), cluster, zoom, ready.maxZoomLevel))
+                val point = cluster.geometry() as org.maplibre.geojson.Point
+                ready.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(point.latitude(), point.longitude()), zoom))
+            }
+            rule.waitUntil(timeoutMillis = 20_000) {
+                rule.runOnIdle {
+                    rendered(MAP_CLUSTER_COUNTS).any { it.getNumberProperty("point_count").toInt() == 3 } &&
+                        rendered(MAP_PHOTOS).any { it.getNumberProperty("listing_id").toLong() == d.listingId } &&
+                        style?.getImage(mapThumbnailId(d)) != null
+                }
+            }
+            rule.runOnIdle {
+                assertEquals(listOf("fixture-visible"), decoded)
+                requireNotNull(map).moveCamera(CameraUpdateFactory.newLatLngZoom(center, 16.0))
+            }
+            rule.waitUntil(timeoutMillis = 20_000) {
+                rule.runOnIdle {
+                    val group = rendered(MAP_GROUP_COUNTS).singleOrNull()
+                    group?.getNumberProperty("group_count")?.toInt() == 2 &&
+                        group != null && mapRenderedSelection(points, group) == a &&
+                        style?.getImage(mapThumbnailId(d)) == null
+                }
+            }
+            rule.runOnIdle {
+                requireNotNull(map).moveCamera(CameraUpdateFactory.newLatLngZoom(center, 4.0))
+            }
+            rule.waitUntil(timeoutMillis = 20_000) {
+                rule.runOnIdle {
+                    rendered(MAP_CLUSTER_COUNTS).any { it.getNumberProperty("point_count").toInt() == 4 }
+                }
+            }
+            rule.runOnIdle {
+                images?.update(listOf(old))
+                requireNotNull(source).setGeoJson(asFeatures(listOf(old), old.listingId))
+                requireNotNull(map).moveCamera(CameraUpdateFactory.newLatLngZoom(center, 16.0))
+            }
+            rule.waitUntil(timeoutMillis = 20_000) {
+                rule.runOnIdle {
+                    decoded.contains(old.thumbnailUrl) && rendered(MAP_PHOTOS).isNotEmpty() &&
+                        style?.getImage(mapThumbnailId(old)) == null
+                }
+            }
+            rule.runOnIdle {
+                images?.update(listOf(fresh))
+                requireNotNull(source).setGeoJson(asFeatures(listOf(fresh), fresh.listingId))
+            }
+            rule.waitUntil(timeoutMillis = 20_000) {
+                rule.runOnIdle {
+                    style?.getImage(mapThumbnailId(fresh)) != null &&
+                        rendered(MAP_PHOTOS).any { it.getNumberProperty("owner_id").toLong() == fresh.personId }
+                }
+            }
+            delayed.complete(Unit)
+            rule.waitForIdle()
+            rule.runOnIdle {
+                assertNull(style?.getImage(mapThumbnailId(old)))
+                val visible = rendered(MAP_SINGLE).single()
+                assertEquals(fresh, mapRenderedSelection(listOf(fresh), visible))
+                assertEquals("POSTAL", visible.getStringProperty("group_precision"))
+                assertTrue(visible.getBooleanProperty("selected"))
+                images?.update(emptyList())
+                requireNotNull(source).setGeoJson(asFeatures(emptyList(), null))
+                assertNull(style?.getImage(mapThumbnailId(fresh)))
+            }
+            rule.waitUntil(timeoutMillis = 20_000) {
+                rule.runOnIdle { rendered(MAP_SINGLE).isEmpty() && rendered(MAP_CLUSTERS).isEmpty() }
+            }
+            // Replacing controllers and cancelling camera generations must not free a
+            // permit while a non-cooperative decode is still draining.
+            val drain = CompletableDeferred<Unit>()
+            var activeDecodes = 0
+            var peakDecodes = 0
+            var startedDecodes = 0
+            val controllers = mutableListOf<MapMarkerImages>()
+            try {
+                rule.runOnIdle {
+                    images?.close()
+                    requireNotNull(source).setGeoJson(asFeatures(listOf(fresh), null))
+                }
+                rule.waitUntil(timeoutMillis = 20_000) {
+                    rule.runOnIdle {
+                        rendered(MAP_SINGLE).any {
+                            it.getNumberProperty("owner_id").toLong() == fresh.personId
+                        }
+                    }
+                }
+                repeat(4) { index ->
+                    rule.runOnIdle {
+                        val native = requireNotNull(view)
+                        val controller = MapMarkerImages(native, requireNotNull(map),
+                            requireNotNull(style),
+                            requireNotNull(testLifecycle)) { _, _, _ ->
+                            startedDecodes++
+                            activeDecodes++
+                            peakDecodes = maxOf(peakDecodes, activeDecodes)
+                            try {
+                                withContext(NonCancellable) { drain.await() }
+                                null
+                            } finally {
+                                activeDecodes--
+                            }
+                        }
+                        controllers.add(controller)
+                        controller.update(listOf(fresh))
+                        controller.refresh()
+                    }
+                    rule.waitUntil(timeoutMillis = 10_000) {
+                        rule.runOnIdle { startedDecodes == index + 1 }
+                    }
+                    rule.runOnIdle {
+                        if (index < 3) controllers.last().close()
+                        else controllers.last().cameraMoving()
+                    }
+                }
+                rule.runOnIdle {
+                    assertEquals(4, activeDecodes)
+                    controllers.last().cameraIdle()
+                }
+                rule.waitForIdle()
+                rule.runOnIdle {
+                    assertEquals(4, startedDecodes)
+                    assertEquals(4, activeDecodes)
+                }
+                drain.complete(Unit)
+                rule.waitUntil(timeoutMillis = 10_000) {
+                    rule.runOnIdle { startedDecodes == 5 && activeDecodes == 0 }
+                }
+                rule.runOnIdle { assertEquals(4, peakDecodes) }
+            } finally {
+                drain.complete(Unit)
+                rule.runOnIdle { controllers.forEach { it.close() } }
+            }
+        } finally {
+            delayed.complete(Unit)
+        }
+    }
+
+    @Test fun thumbnailDecodeUsesExistingLoaderForSyntheticLocalFileAndFallsBackOnMissingFile() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File.createTempFile("map-thumbnail-fixture", ".png", context.cacheDir)
+        try {
+            val bitmap = Bitmap.createBitmap(160, 80, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(BitmapColor.GREEN)
+            }
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val decoded = requireNotNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString(), file.path) })
+            assertEquals(80, decoded.width)
+            assertEquals(80, decoded.height)
+            assertEquals(BitmapColor.GREEN, decoded.getPixel(40, 40))
+            assertEquals(BitmapColor.TRANSPARENT, decoded.getPixel(0, 0))
+            assertNotNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(file).toString(), file.path + ".missing") })
+            assertNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString()) })
+            assertEquals(BitmapColor.TRANSPARENT, mapFallbackBitmap().getPixel(0, 0))
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test fun dockTracksMeasuredAttributionInsteadOfFixedTouchHeight() {
+        var attributionHeight by mutableStateOf(20.dp)
+        var pixelsPerDp = 1f
+        rule.setContent {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val outer = LocalDensity.current
+                val fitted = minOf(outer.density, maxWidth.value * outer.density / 320f,
+                    maxHeight.value * outer.density / 560f)
+                CompositionLocalProvider(LocalDensity provides Density(fitted, 2f)) {
+                    pixelsPerDp = fitted
+                    var measured by remember { mutableIntStateOf(0) }
+                    LadiesTheme {
+                        Box(Modifier.size(320.dp, 560.dp)) {
+                            DiscoveryMapLayout(hasPanel = true, statusLabel = "Profile", warning = false,
+                                attributionInset = with(LocalDensity.current) { measured.toDp() },
+                                modeSwitcher = { DiscoverModeSwitcher(DiscoverMode.Map, {}, Modifier) },
+                                searchStatus = {},
+                                mapContent = {
+                                    Box(Modifier.fillMaxSize().testTag("viewport"))
+                                    Box(Modifier.align(Alignment.BottomStart).size(160.dp, attributionHeight)
+                                        .onSizeChanged { measured = it.height }.testTag("attribution"))
+                                },
+                                details = { modifier, _ -> Box(modifier.height(48.dp).testTag("dock")) })
+                        }
+                    }
+                }
             }
         }
-        rule.runOnIdle { requireNotNull(map).moveCamera(CameraUpdateFactory.newLatLngZoom(center, 16.0)) }
-        rule.waitUntil(timeoutMillis = 20_000) {
-            rule.runOnIdle {
-                map?.let { ready ->
-                    ready.queryRenderedFeatures(ready.projection.toScreenLocation(center), MAP_SINGLE)
-                        .map { it.getNumberProperty("listing_id").toLong() }.toSet() == setOf(1L, 2L)
-                } == true
-            }
+        fun checkBounds() {
+            val dock = rule.onNodeWithTag("dock").fetchSemanticsNode().boundsInRoot
+            val attribution = rule.onNodeWithTag("attribution").fetchSemanticsNode().boundsInRoot
+            val viewport = rule.onNodeWithTag("viewport").fetchSemanticsNode().boundsInRoot
+            val gap = attribution.top - dock.bottom
+            assertTrue(gap >= 0f && gap <= rule.runOnIdle { (ShellMetrics.small.value + 1f) * pixelsPerDp })
+            assertTrue(attribution.bottom <= viewport.bottom + 1f)
         }
-        rule.runOnIdle { requireNotNull(source).setGeoJson(asFeatures(listOf(b), b.listingId)) }
-        rule.waitUntil(timeoutMillis = 20_000) {
-            rule.runOnIdle {
-                map?.let { ready ->
-                    val visible = ready.queryRenderedFeatures(ready.projection.toScreenLocation(center), MAP_SINGLE)
-                    visible.size == 1 && visible.first().getNumberProperty("listing_id").toLong() == 2L &&
-                        visible.first().getStringProperty("precision") == "POSTAL" &&
-                        visible.first().getBooleanProperty("selected") == true
-                } == true
-            }
-        }
+        checkBounds()
+        rule.runOnIdle { attributionHeight = 36.dp }
+        checkBounds()
     }
 
     @Test fun shortMapKeepsViewportAndAllStatusActionsReachable() {
