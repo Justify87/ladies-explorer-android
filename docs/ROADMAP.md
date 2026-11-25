@@ -4,7 +4,7 @@ Einzige operative Quelle für Aufgaben, Reihenfolge, Status und Abnahme. Maßgeb
 
 ## Entwicklungsstand
 
-M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 / G10-Pure (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) einschließlich M10.1–M10.3 und der ergänzenden Qualitätskorrektur M10.4 ist abgeschlossen. Nächste Entwicklungsaufgabe: M11.1 / Stabiler Galeriewechsel und bestätigte Rasterentscheidungsanimation (READY). L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolidierung) sind abgeschlossen. M09 / G09 (Praxiskonsolidierung nach G08) einschließlich M09.1–M09.12 ist abgeschlossen. M10 / G10-Pure (Pure-UI-Konsolidierung nach tatsächlichem Nutzer-Screenshot) einschließlich M10.1–M10.3 und der ergänzenden Qualitätskorrektur M10.4 ist abgeschlossen. Nächste Entwicklungsaufgabe: M11.1 / Stabiler Galeriewechsel und bestätigte Rasterentscheidungsanimation (DOING). L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M11 — Korrekturen aus praktischer Geräteerprobung
 
@@ -16,7 +16,7 @@ M07 / G07 (initialer lokaler Produktumfang) und M08 / G08 (native Designkonsolid
 
 ### M11.1 — Stabiler Galeriewechsel und bestätigte Rasterentscheidungsanimation
 
-**Status:** READY.
+**Status:** DOING — Branch `fix/m11-1-gallery-grid`. Implementierung und synthetische Geräte-Testproben vorbereitet; Abschlussreview und vollständiges CI-Gate noch ausstehend. Keine tatsächliche Geräte-/Frameprüfung belegt.
 
 **Abhängigkeit:** M10.4 integriert. Keine Abhängigkeit von L01.
 
