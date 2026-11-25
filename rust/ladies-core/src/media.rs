@@ -102,7 +102,9 @@ impl Fetcher for HttpFetcher {
             .timeout(timeout)
             .header("Referer", "https://www.ladies.de/")
             .build()
-            .map_err(|error| CoreError::Media(format!("Media request failed: {error}")))?;
+            .map_err(|error| {
+                CoreError::Media(format!("Media request failed: {}", error.without_url()))
+            })?;
         let (capture_mode, capture_epoch) = self.recorder.mode_epoch();
         let mut observation = (capture_mode != CaptureMode::Off).then(|| HttpObservation {
             method: request.method().to_string(),
@@ -131,7 +133,10 @@ impl Fetcher for HttpFetcher {
                     obs.error = Some(error.to_string());
                     self.recorder.record_for_epoch(obs, capture_epoch);
                 }
-                return Err(CoreError::Media(format!("Media request failed: {error}")));
+                return Err(CoreError::Media(format!(
+                    "Media request failed: {}",
+                    error.without_url()
+                )));
             }
         };
         if let Some(obs) = observation.as_mut() {
@@ -206,7 +211,10 @@ impl Fetcher for HttpFetcher {
                         obs.response_size = Some(bytes.len() as u64);
                         self.recorder.record_for_epoch(obs, capture_epoch);
                     }
-                    return Err(CoreError::Media(format!("Media response failed: {error}")));
+                    return Err(CoreError::Media(format!(
+                        "Media response failed: {:?}",
+                        error.kind()
+                    )));
                 }
             };
             if read == 0 {

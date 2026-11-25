@@ -341,7 +341,7 @@ impl LadiesCore {
         url: String,
         control: Arc<RequestControl>,
     ) -> Result<DisplayImage, CoreError> {
-        self.diagnostics.timed_media("display_image", &url, &control, || {
+        self.diagnostics.timed_media("display_image", &url, || {
             media::display_image(self, &url, &control)
         })
     }
@@ -351,7 +351,7 @@ impl LadiesCore {
         url: String,
         control: Arc<RequestControl>,
     ) -> Result<DisplayVideo, CoreError> {
-        self.diagnostics.timed_media("display_video", &url, &control, || {
+        self.diagnostics.timed_media("display_video", &url, || {
             media::display_video(self, &url, &control)
         })
     }

@@ -254,7 +254,8 @@ internal class MapMarkerImages(
 internal suspend fun loadMapThumbnail(context: Context, url: String, localPath: String? = null): Bitmap? {
     for (model in mediaModels(localPath, url)) {
         val request = ImageRequest.Builder(context).data(model)
-            .size(PHOTO_PIXELS, PHOTO_PIXELS).scale(Scale.FILL).allowHardware(false).build()
+            .size(PHOTO_PIXELS, PHOTO_PIXELS).scale(Scale.FILL).allowHardware(false)
+            .mediaContext("map", url.ifBlank { localPath.orEmpty() }).build()
         val result = SingletonImageLoader.get(context).execute(request) as? SuccessResult ?: continue
         return mapPhotoBitmap(result.image.toBitmap())
     }

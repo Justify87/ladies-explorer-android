@@ -59,25 +59,29 @@ internal fun ProfileDetailScreen(
     LaunchedEffect(preparation) {
         if (!started) return@LaunchedEffect
         try {
+            var retainedPins = emptySet<String>()
             while (isActive) {
-                val model = snapshotFlow {
-                    latestRaw?.takeIf { heroSize.width > 0 && heroSize.height > 0 &&
+                val (pins, model) = snapshotFlow {
+                    val wantedPins = preparation.pinnedVideos()
+                    val candidate = latestRaw?.takeIf { heroSize.width > 0 && heroSize.height > 0 &&
                         !preparation.ready(it, latestFilters, heroSize) }
+                    (wantedPins to candidate).takeIf { wantedPins != retainedPins || candidate != null }
                 }.first { it != null } ?: continue
+                app.galleryVideoFiles.retainPins(preparation, pins)
+                retainedPins = pins
+                if (model == null) continue
                 val size = heroSize
                 val currentFilters = latestFilters
                 preparation.step(model, currentFilters, size,
                     { app.coreStore.prepareProfilePanels(model, currentFilters) },
                     { medium, remaining -> prepareProfileMedium(context, medium, size, remaining, preparation, model, "detail") },
                     accept = { latestRaw == model && size == heroSize && currentFilters == latestFilters })
-                app.galleryVideoFiles.retainPins(preparation, preparation.pinnedVideos())
+                retainedPins = preparation.pinnedVideos()
+                app.galleryVideoFiles.retainPins(preparation, retainedPins)
             }
         } finally {
             withContext(NonCancellable) { app.galleryVideoFiles.retainPins(preparation, emptySet()) }
         }
-    }
-    LaunchedEffect(preparation, owner) {
-        app.galleryVideoFiles.retainPins(preparation, preparation.pinnedVideos())
     }
     val prepared = preparation.displayed(owner)
     val displayed = prepared?.model
@@ -172,7 +176,8 @@ internal fun ProfileDetailScreen(
                             selection = mediaSelection,
                             projectionAvailable = displayed != null,
                             preparedMedia = prepared?.media.orEmpty(), preparing = displayed == null,
-                             onMediaRecovered = { key -> prepared?.let { preparation.recovered(it, key) } },
+                            onMediaRecovered = { key -> prepared?.let { preparation.recovered(it, key) } },
+                            mediaRevision = prepared?.publicationToken,
                             presentationOwner = owner,
                             videoPlaybackEnabled = started && !state.actionBusy && !actionsBusy,
                             actionToken = renderedToken, actionsEnabled = !busy,

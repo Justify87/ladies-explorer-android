@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import coil3.request.ImageRequest
+import coil3.request.CachePolicy
+import coil3.Extras
 import coil3.size.Scale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -92,8 +94,22 @@ internal fun openExternal(context: Context, link: String, dial: Boolean = false)
     }
 }
 
-internal fun heroImageRequest(context: Context, model: Any, size: IntSize): ImageRequest =
-    ImageRequest.Builder(context).data(model).size(size.width, size.height).scale(Scale.FIT).build()
+internal val mediaRole = Extras.Key("other")
+internal val mediaIdentity = Extras.Key("")
+
+internal fun ImageRequest.Builder.mediaContext(role: String, identity: String, refresh: Boolean = false): ImageRequest.Builder = apply {
+    extras[mediaRole] = role
+    extras[mediaIdentity] = mediaDiagnosticKey(identity)
+    if (refresh) {
+        memoryCachePolicy(CachePolicy.WRITE_ONLY)
+        diskCachePolicy(CachePolicy.WRITE_ONLY)
+    }
+}
+
+internal fun heroImageRequest(context: Context, model: Any, size: IntSize,
+    refresh: Boolean = false, role: String = "hero", identity: String = model.toString()): ImageRequest =
+    ImageRequest.Builder(context).data(model).size(size.width, size.height).scale(Scale.FIT)
+        .mediaContext(role, identity, refresh).build()
 
 internal data class HeroVisual(val media: ProfileMediaItem, val geometry: HeroMediaGeometry, val painter: Painter)
 
@@ -102,11 +118,12 @@ private data class ImageFeedback(val loading: Boolean, val failed: Boolean, val 
 @Composable
 private fun ProfileImageSurface(
     url: String?, localPath: String?, modifier: Modifier, scale: ContentScale,
-    description: String, allowRetry: Boolean,
+    description: String, allowRetry: Boolean, role: String,
     content: @Composable BoxScope.(ImageFeedback) -> Unit,
 ) {
     key(localPath, url) {
         val models = remember { mediaModels(localPath, url) }
+        val context = LocalContext.current
         var retry by remember { mutableIntStateOf(0) }
         var attempt by remember(retry) { mutableIntStateOf(0) }
         var loaded by remember(retry, attempt) { mutableStateOf(false) }
@@ -114,7 +131,11 @@ private fun ProfileImageSurface(
             if (attempt < models.size) {
                 val requested = attempt
                 key(retry, requested) {
-                    AsyncImage(model = models[requested], contentDescription = description, contentScale = scale,
+                    val request = remember(context, retry, requested) {
+                        ImageRequest.Builder(context).data(models[requested])
+                            .mediaContext(role, url.orEmpty().ifBlank { localPath.orEmpty() }, retry > 0).build()
+                    }
+                    AsyncImage(model = request, contentDescription = description, contentScale = scale,
                         onSuccess = { if (attempt == requested) loaded = true },
                         onError = { if (attempt == requested) attempt = requested + 1 },
                         modifier = Modifier.fillMaxSize())
@@ -130,16 +151,27 @@ private fun ProfileImageSurface(
 @Composable
 private fun HeroPhotoSurface(
     item: ProfileMediaItem, viewport: IntSize, description: String,
-    imageMotion: Modifier, prepared: PreparedMedium?, onRecovered: () -> Unit,
+    imageMotion: Modifier, prepared: PreparedMedium?, revision: Any?, onRecovered: () -> Unit,
     content: @Composable BoxScope.(ImageFeedback, HeroMediaGeometry) -> Unit,
 ) {
     // Archiving the same URL must not replace an already decoded painter. Retry can use the new local path.
     key(item.kind, item.url, item.localPath.takeIf { item.url.isBlank() }, viewport) {
         var retry by remember { mutableIntStateOf(0) }
-        val models = remember(retry) { mediaModels(item.localPath, item.url) }
+        var models by remember(retry) { mutableStateOf(mediaModels(item.localPath, item.url)) }
         var attempt by remember(retry) { mutableIntStateOf(0) }
+        var attemptedRevision by remember(retry) { mutableStateOf(revision) }
         val context = LocalContext.current
-        val retryAction: (() -> Unit)? = if (models.isNotEmpty()) ({ retry++ }) else null
+        val latestRecovered by rememberUpdatedState(onRecovered)
+        val latestModels = mediaModels(item.localPath, item.url)
+        val retryAction: (() -> Unit)? = if (latestModels.isNotEmpty()) ({ retry++ }) else null
+        // Only failed requests adopt changed sources/revisions; never restart a successful painter.
+        LaunchedEffect(latestModels, revision, attempt) {
+            if (attempt >= models.size && (models != latestModels || attemptedRevision != revision)) {
+                models = latestModels
+                attemptedRevision = revision
+                attempt = 0
+            }
+        }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             val bitmap = (prepared as? PreparedMedium.Photo)?.bitmap?.takeIf { retry == 0 }
             val (feedback, geometry) = if (bitmap != null) {
@@ -151,7 +183,7 @@ private fun HeroPhotoSurface(
                 val requested = attempt
                 key(retry, requested) {
                     val request = remember(context, models, requested, viewport) {
-                        heroImageRequest(context, models[requested], viewport)
+                        heroImageRequest(context, models[requested], viewport, retry > 0, "hero", item.url.ifBlank { item.localPath.orEmpty() })
                     }
                     val painter = rememberAsyncImagePainter(model = request, contentScale = ContentScale.Fit)
                     val state by painter.state.collectAsState()
@@ -164,9 +196,9 @@ private fun HeroPhotoSurface(
                     if (success != null && settled != null) {
                         Image(painter = success.painter, contentDescription = description,
                             contentScale = geometry.scale, modifier = Modifier.fillMaxSize().then(imageMotion))
-                        if (prepared == PreparedMedium.Unavailable) LaunchedEffect(success) { onRecovered() }
+                        if (prepared == PreparedMedium.Unavailable) LaunchedEffect(success, revision) { latestRecovered() }
                     }
-                    if (state is AsyncImagePainter.State.Error) LaunchedEffect(Unit) {
+                    if (state is AsyncImagePainter.State.Error) LaunchedEffect(state) {
                         attempt = requested + 1
                     }
                     ImageFeedback(settled == null, false, success?.painter?.takeIf { settled != null }, retryAction) to geometry
@@ -194,9 +226,9 @@ private fun ImageFeedbackContent(feedback: ImageFeedback) {
 @Composable
 internal fun ProfileImage(
     url: String?, localPath: String?, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop,
-    description: String = "Profilbild", allowRetry: Boolean = false,
+    description: String = "Profilbild", allowRetry: Boolean = false, role: String = "thumbnail",
 ) {
-    ProfileImageSurface(url, localPath, modifier, scale, description, allowRetry) { feedback ->
+    ProfileImageSurface(url, localPath, modifier, scale, description, allowRetry, role) { feedback ->
         ImageFeedbackContent(feedback)
     }
 }
@@ -225,6 +257,7 @@ internal fun ProfileMediaHero(
     preparedMedia: Map<String, PreparedMedium> = emptyMap(),
     preparing: Boolean = false,
     onMediaRecovered: (String) -> Unit = {},
+    mediaRevision: Any? = null,
     videoPlaybackEnabled: Boolean = actionsEnabled,
     presentationOwner: Any? = actionToken?.let { it.listingId to it.ownerId },
 ) {
@@ -283,7 +316,7 @@ internal fun ProfileMediaHero(
             }
             when (item?.kind) {
                 "IMAGE" -> HeroPhotoSurface(item, viewport,
-                    "Profilbild ${index + 1}", imageMotion, preparedMedia[item.presentationKey()],
+                    "Profilbild ${index + 1}", imageMotion, preparedMedia[item.presentationKey()], mediaRevision,
                     { onMediaRecovered(item.presentationKey()) }) { feedback, geometry ->
                     SideEffect {
                         // A resized request is not the settled visual until its own decode succeeds.
@@ -317,6 +350,7 @@ internal fun ProfileMediaHero(
                     GalleryVideo(item, active = videoPlaybackEnabled && projectionAvailable,
                         mediaVisible = playbackVisible, canInteract = { videoPlaybackEnabled && projectionAvailable },
                         prepared = preparedMedia[item.presentationKey()],
+                        revision = mediaRevision,
                         onRecovered = { onMediaRecovered(item.presentationKey()) },
                         onVideoSize = { videoSize = it },
                         modifier = videoSurface.then(imageMotion),
@@ -369,7 +403,7 @@ internal fun ProfileImageDialog(item: ProfileMediaItem, onDismiss: () -> Unit) {
                     Icon(Icons.Default.Close, contentDescription = "Vollbild schließen", tint = Color.White)
                 }
             }
-            ProfileImage(item.url, item.localPath, Modifier.fillMaxWidth().weight(1f), ContentScale.Fit, allowRetry = true)
+            ProfileImage(item.url, item.localPath, Modifier.fillMaxWidth().weight(1f), ContentScale.Fit, allowRetry = true, role = "fullscreen")
         }
     }
 }

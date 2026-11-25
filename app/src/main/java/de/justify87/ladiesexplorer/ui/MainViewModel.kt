@@ -1389,7 +1389,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setDebugLoggingEnabled(enabled: Boolean) {
         viewModelScope.launch {
             runCatching { core.setDebugLoggingEnabled(enabled) }
-                .onSuccess { _uiState.update { it.copy(debugLoggingEnabled = enabled) } }
+                .onSuccess { _uiState.update { it.copy(debugLoggingEnabled = core.isDebugLoggingEnabled()) } }
                 .onFailure { failure -> _uiState.update { state -> state.copy(error = failure.message) } }
         }
     }

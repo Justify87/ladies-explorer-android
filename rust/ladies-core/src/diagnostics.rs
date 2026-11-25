@@ -11,7 +11,7 @@ use tempfile::Builder;
 use tracing::Dispatch;
 use tracing_subscriber::fmt::MakeWriter;
 
-use crate::operation::RequestControl;
+use crate::CoreError;
 
 const MAX_BYTES: usize = 1_500_000;
 const KEEP_BYTES: usize = 700_000;
@@ -197,22 +197,24 @@ impl Diagnostics {
         operation: &str,
         work: impl FnOnce() -> Result<T, E>,
     ) -> Result<T, E> {
-        self.timed_with_context(component, operation, None, || false, work)
+        self.timed_with_context(component, operation, None, |_| false, work)
     }
 
-    pub(crate) fn timed_media<T, E: std::fmt::Display>(
+    pub(crate) fn timed_media<T>(
         &self,
         operation: &str,
         url: &str,
-        control: &RequestControl,
-        work: impl FnOnce() -> Result<T, E>,
-    ) -> Result<T, E> {
+        work: impl FnOnce() -> Result<T, CoreError>,
+    ) -> Result<T, CoreError> {
         let digest = format!("{:x}", Sha256::digest(url.as_bytes()));
         self.timed_with_context(
             "MEDIA",
             operation,
             Some(&digest[..16]),
-            || control.is_cancelled(),
+            |error| {
+                matches!(error, CoreError::Source(reason) if reason == "Operation cancelled")
+                    || matches!(error, CoreError::Media(reason) if reason == "Media request cancelled" || reason == "Media archive cancelled")
+            },
             work,
         )
     }
@@ -222,7 +224,7 @@ impl Diagnostics {
         component: &str,
         operation: &str,
         media: Option<&str>,
-        cancelled: impl FnOnce() -> bool,
+        cancelled: impl FnOnce(&E) -> bool,
         work: impl FnOnce() -> Result<T, E>,
     ) -> Result<T, E> {
         tracing::dispatcher::with_default(&self.dispatch, || {
@@ -242,7 +244,7 @@ impl Diagnostics {
                     "operation completed"
                 ),
                 Err(error) => {
-                    if cancelled() {
+                    if cancelled(error) {
                         if self.debug_enabled() {
                             tracing::debug!(component = %component, operation = %operation, elapsed_ms, "operation cancelled");
                         }
@@ -394,14 +396,14 @@ mod tests {
         log.warn("ANDROID", "warn_marker");
         log.error("ANDROID", "error_marker");
         log.set_debug(true);
-        let control = RequestControl::default();
         let url = "https://example.invalid/synthetic.jpg";
-        let result: Result<(), &str> =
-            log.timed_media("display_image", url, &control, || Err("synthetic failure"));
+        let result: Result<(), CoreError> = log.timed_media("display_image", url, || {
+            Err(CoreError::Media("synthetic failure".into()))
+        });
         assert!(result.is_err());
-        control.cancel();
-        let result: Result<(), &str> =
-            log.timed_media("display_image", url, &control, || Err("cancel marker"));
+        let result: Result<(), CoreError> = log.timed_media("display_image", url, || {
+            Err(CoreError::Media("Media request cancelled".into()))
+        });
         assert!(result.is_err());
         let data =
             fs::read_to_string(directory.path().join("diagnostics/ladies-debug.log")).unwrap();
@@ -422,7 +424,11 @@ mod tests {
             data.lines()
                 .any(|line| line.contains(&digest[..16]) && line.contains("operation cancelled"))
         );
-        assert!(!data.contains("cancel marker"));
+        assert!(
+            !data
+                .lines()
+                .any(|line| line.contains("ERROR") && line.contains("Media request cancelled"))
+        );
         assert!(!data.contains(url));
     }
 

@@ -26,7 +26,9 @@ import de.justify87.ladiesexplorer.core.ProfileMediaItem
 import de.justify87.ladiesexplorer.core.CoreStore
 import de.justify87.ladiesexplorer.core.DiagnosticLevel
 import de.justify87.ladiesexplorer.core.mediaDiagnosticKey
-import de.justify87.ladiesexplorer.core.sanitizeMediaDiagnosticText
+import de.justify87.ladiesexplorer.core.mediaDiagnosticReason
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import dev.jdtech.mpv.MPVLib
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -58,10 +60,13 @@ internal data class LocalGalleryVideo(val file: File, val demuxer: String)
 
 internal class VideoPreparationDeferred : Exception("Video prefetch budget reached")
 
-internal fun mpvDiagnosticMessage(prefix: String, text: String, mediaPath: String): String {
-    val safePrefix = prefix.filter { it.isLetterOrDigit() || it in "/._:-" }.take(48)
-    val safeText = sanitizeMediaDiagnosticText(text.replace(mediaPath, "[media-file]"))
-    return "native prefix=$safePrefix message=$safeText"
+internal fun mpvDiagnosticMessage(prefix: String, text: String): String {
+    val subsystem = when (prefix.substringBefore('/')) {
+        "ffmpeg" -> "ffmpeg"
+        "vd", "vo", "demux", "cplayer", "gpu", "lavf", "stream" -> prefix.substringBefore('/')
+        else -> "other"
+    }
+    return "native subsystem=$subsystem reason=${mediaDiagnosticReason(text)}"
 }
 
 /** Cache hits never queue behind network I/O. Window pins and playback leases have separate lifetimes. */
@@ -77,8 +82,11 @@ internal class GalleryVideoFiles(
     private fun report(level: DiagnosticLevel, url: String, event: String, error: Throwable? = null) =
         diagnostic(level, "$event media=${mediaDiagnosticKey(url)}", error)
     private fun pinnedBytes(): Long = files.values.filter { it.pins.isNotEmpty() }.sumOf { it.bytes }
+    private data class ArchiveVersion(val path: String, val bytes: Long, val modified: Long)
     private data class Entry(val video: LocalGalleryVideo, val bytes: Long, var users: Int = 0,
-        val pins: MutableSet<Any> = mutableSetOf())
+        val rejectedArchive: ArchiveVersion? = null,
+        val pins: MutableSet<Any> = mutableSetOf(), var replacing: Boolean = false,
+        var idle: CompletableDeferred<Unit> = CompletableDeferred<Unit>().apply { if (users == 0) complete(Unit) })
     private val gate = Mutex()
     private val downloadGate = Mutex()
     private val files = LinkedHashMap<String, Entry>(16, 0.75f, true)
@@ -93,12 +101,13 @@ internal class GalleryVideoFiles(
         return true
     }
 
-    private fun makeRoom(bytes: Long): Boolean {
+    private fun makeRoom(bytes: Long, replacing: Entry? = null): Boolean {
+        fun required() = files.values.sumOf { it.bytes } - (replacing?.bytes ?: 0L) + bytes
         for ((url, entry) in files.toList()) {
-            if (files.values.sumOf { it.bytes } + bytes <= budget) break
-            if (entry.users == 0 && entry.pins.isEmpty()) discard(url, entry)
+            if (required() <= budget) break
+            if (entry !== replacing && entry.users == 0 && entry.pins.isEmpty() && !entry.replacing) discard(url, entry)
         }
-        return files.values.sumOf { it.bytes } + bytes <= budget
+        return required() <= budget
     }
 
     private fun pin(entry: Entry, owner: Any?) {
@@ -118,8 +127,14 @@ internal class GalleryVideoFiles(
 
     suspend fun <T> withVideo(item: ProfileMediaItem, refresh: Boolean = false,
         pinOwner: Any? = null, use: suspend (LocalGalleryVideo) -> T): T {
+        val archiveVersion = withContext(Dispatchers.IO) {
+            item.localPath?.let { path -> File(path).let { ArchiveVersion(path, it.length(), it.lastModified()) } }
+        }
         val archived = withContext(Dispatchers.IO) {
-            item.localPath?.let { path ->
+            val rejected = gate.withLock { files[item.url]?.rejectedArchive }
+            item.localPath?.takeUnless {
+                item.url.isNotBlank() && (refresh || (archiveVersion != null && rejected == archiveVersion))
+            }?.let { path ->
                 try {
                     localVideo(File(path)).also {
                         if (it == null) report(DiagnosticLevel.WARN, item.url.ifBlank { item.localPath.orEmpty() }, "archive_invalid")
@@ -136,59 +151,97 @@ internal class GalleryVideoFiles(
         }
         check(item.url.isNotBlank()) { "No video source" }
         var lease: Entry? = null
-        suspend fun reuse() = withContext(Dispatchers.IO) {
+        var replacement: Entry? = null
+        suspend fun reuse(claimReplacement: Boolean) = withContext(Dispatchers.IO) {
             gate.withLock {
                 val entry = files[item.url] ?: return@withLock
+                if (entry.replacing && replacement !== entry) return@withLock
                 val valid = try {
-                    localVideo(entry.video.file) != null
+                    entry.video.file.length() == entry.bytes && localVideo(entry.video.file) == entry.video
                 } catch (failure: Exception) {
                     report(DiagnosticLevel.WARN, item.url, "cache_read_failed", failure)
                     false
                 }
-                if (!valid || (refresh && entry.users == 0 && entry.pins.isEmpty())) {
+                if (!valid || refresh) {
                     if (!valid) report(DiagnosticLevel.WARN, item.url, "cache_invalid")
-                    check(entry.users == 0) { "Invalid leased video cache file" }
-                    check(discard(item.url, entry)) { "Video-Cache-Datei nicht entfernbar" }
+                    // Keep the old entry and its pins until replacement under the same gate.
+                    if (claimReplacement) {
+                        replacement = entry
+                        entry.replacing = true
+                    }
                     return@withLock
                 }
                 report(DiagnosticLevel.DEBUG, item.url, "hit source=cache bytes=${entry.bytes}")
                 pin(entry, pinOwner)
-                entry.users++
+                if (entry.users++ == 0) entry.idle = CompletableDeferred()
                 lease = entry
             }
         }
         try {
-            reuse()
+            reuse(false)
             if (lease == null) downloadGate.withLock {
-                reuse()
-                if (lease == null) {
-                    if (pinOwner != null) gate.withLock {
-                        if (pinnedBytes() >= warmBudget) throw VideoPreparationDeferred()
-                    }
-                    report(DiagnosticLevel.DEBUG, item.url, "miss")
-                    val download = downloadBytes(item.url)
-                    withContext(Dispatchers.IO) {
-                        gate.withLock {
-                            val bytes = download.size.toLong()
-                            if (pinOwner != null && pinnedBytes() + bytes > warmBudget) throw VideoPreparationDeferred()
-                            if (!makeRoom(bytes)) {
-                                if (pinOwner != null) throw VideoPreparationDeferred()
-                                error("Video cache budget reached")
-                            }
-                            val destination = createFile()
-                            try {
-                                destination.writeBytes(download)
-                                val video = checkNotNull(localVideo(destination)) { "Unsupported local video" }
-                                val entry = Entry(video, destination.length(), users = 1)
-                                pin(entry, pinOwner)
-                                files[item.url] = entry
-                                lease = entry
-                                report(DiagnosticLevel.DEBUG, item.url, "stored bytes=${entry.bytes}")
-                            } catch (failure: Exception) {
-                                if (!destination.delete() && destination.exists()) report(DiagnosticLevel.WARN, item.url, "cleanup_failed")
-                                throw failure
+                try {
+                    reuse(true)
+                    if (lease == null) {
+                        val idle = gate.withLock { replacement?.idle }
+                        if (idle != null && !idle.isCompleted) {
+                            report(DiagnosticLevel.DEBUG, item.url, "replacement_waiting_for_lease")
+                            check(withTimeoutOrNull(2_000) { idle.await(); true } == true) {
+                                "Video cache replacement blocked by active playback"
                             }
                         }
+                        if (pinOwner != null) gate.withLock {
+                            if (replacement == null && pinnedBytes() >= warmBudget) throw VideoPreparationDeferred()
+                        }
+                        report(DiagnosticLevel.DEBUG, item.url, "miss")
+                        val download = downloadBytes(item.url)
+                        withContext(Dispatchers.IO) {
+                            gate.withLock {
+                                val bytes = download.size.toLong()
+                                val old = replacement
+                                check(old == null || (files[item.url] === old && old.users == 0)) {
+                                    "Video cache replacement superseded or leased"
+                                }
+                                val inherited = old?.pins?.toMutableSet() ?: mutableSetOf()
+                                if (pinOwner != null) inherited.add(pinOwner)
+                                val otherPinned = pinnedBytes() - (old?.takeIf { it.pins.isNotEmpty() }?.bytes ?: 0L)
+                                if (inherited.isNotEmpty() && otherPinned + bytes > warmBudget) {
+                                    if (pinOwner != null) throw VideoPreparationDeferred()
+                                    // Foreground playback may use the reserved space; do not exceed the pin budget.
+                                    inherited.clear()
+                                    report(DiagnosticLevel.DEBUG, item.url, "replacement_unpinned reason=budget")
+                                }
+                                check(videoDemuxer(download) != null && bytes in 1L..(48L * 1024 * 1024)) {
+                                    "Unsupported local video"
+                                }
+                                if (!makeRoom(bytes, old)) {
+                                    if (pinOwner != null) throw VideoPreparationDeferred()
+                                    error("Video cache budget reached")
+                                }
+                                // Retain the old metadata/pins if writing the replacement fails.
+                                if (old != null && old.video.file.exists()) check(old.video.file.delete()) {
+                                    "Video cache replacement failed"
+                                }
+                                val destination = createFile()
+                                try {
+                                    destination.writeBytes(download)
+                                    val video = checkNotNull(localVideo(destination)) { "Unsupported local video" }
+                                    val entry = Entry(video, destination.length(), users = 1,
+                                        rejectedArchive = if (refresh) archiveVersion ?: old?.rejectedArchive else old?.rejectedArchive)
+                                    entry.pins.addAll(inherited)
+                                    files[item.url] = entry
+                                    lease = entry
+                                    report(DiagnosticLevel.DEBUG, item.url, "stored bytes=${entry.bytes}")
+                                } catch (failure: Exception) {
+                                    if (!destination.delete() && destination.exists()) report(DiagnosticLevel.WARN, item.url, "cleanup_failed")
+                                    throw failure
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    withContext(NonCancellable + Dispatchers.IO) {
+                        gate.withLock { replacement?.replacing = false }
                     }
                 }
             }
@@ -204,7 +257,9 @@ internal class GalleryVideoFiles(
             throw failure
         } finally {
             if (lease != null) withContext(NonCancellable + Dispatchers.IO) {
-                gate.withLock { checkNotNull(lease).users-- }
+                gate.withLock {
+                    lease?.let { if (--it.users == 0) it.idle.complete(Unit) }
+                }
             }
         }
     }
@@ -222,6 +277,7 @@ internal fun GalleryVideo(
     onTargets: @Composable () -> Unit,
     onVideoSize: (IntSize) -> Unit = {},
     prepared: PreparedMedium? = null,
+    revision: Any? = null,
     onRecovered: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -231,6 +287,12 @@ internal fun GalleryVideo(
     val playbackAllowed by rememberUpdatedState(active)
     val mediaKey = item.presentationKey()
     var retry by remember(mediaKey) { mutableIntStateOf(0) }
+    var refreshPending by remember(mediaKey) { mutableStateOf(false) }
+    var mediaFailed by remember(mediaKey) { mutableStateOf(false) }
+    var attemptedSource by remember(mediaKey, retry) { mutableStateOf(item.localPath to revision) }
+    val latestItem by rememberUpdatedState(item)
+    val latestRevision by rememberUpdatedState(revision)
+    val latestRecovered by rememberUpdatedState(onRecovered)
     var paused by remember(mediaKey) { mutableStateOf(false) }
     val unavailable = prepared == PreparedMedium.Unavailable
     var file by remember(mediaKey, retry, visible) { mutableStateOf<LocalGalleryVideo?>(null) }
@@ -238,13 +300,26 @@ internal fun GalleryVideo(
     var ready by remember(mediaKey, retry, playing) { mutableStateOf(false) }
     var videoSize by remember(mediaKey, retry) { mutableStateOf(IntSize.Zero) }
     SideEffect { onVideoSize(if (failure) IntSize.Zero else videoSize) }
+    LaunchedEffect(failure, item.localPath, revision) {
+        if (failure && attemptedSource != (item.localPath to revision)) {
+            refreshPending = false
+            retry++
+        }
+    }
+    LaunchedEffect(ready, videoSize, unavailable, revision, failure) {
+        if (!failure && ready && videoSize.width > 0 && videoSize.height > 0 && unavailable) latestRecovered()
+    }
     LaunchedEffect(mediaKey, retry, visible) {
         if (!visible) return@LaunchedEffect
         snapshotFlow { playbackAllowed }.first { it }
         // Transient action locks must not trigger another download.
         try {
             val app = context.applicationContext as LadiesApplication
-            app.galleryVideoFiles.withVideo(item, refresh = retry > 0) { prepared ->
+            val refresh = refreshPending
+            attemptedSource = latestItem.localPath to latestRevision
+            app.galleryVideoFiles.withVideo(latestItem, refresh = refresh) { prepared ->
+                refreshPending = false
+                mediaFailed = false
                 file = prepared
                 awaitCancellation()
             }
@@ -253,6 +328,8 @@ internal fun GalleryVideo(
         } catch (error: Exception) {
             (context.applicationContext as LadiesApplication).coreStore.diagnostic("VIDEO", DiagnosticLevel.WARN,
                 "playback_file_failed media=${mediaDiagnosticKey(item.url.ifBlank { item.localPath.orEmpty() })}", error)
+            refreshPending = false
+            mediaFailed = true
             failure = true
         }
     }
@@ -261,15 +338,15 @@ internal fun GalleryVideo(
         key(video, retry) {
             LocalMpvPlayer(video, mediaDiagnosticKey(item.url.ifBlank { item.localPath.orEmpty() }), paused, modifier.graphicsLayer {
                 alpha = if (ready && videoSize.width > 0 && videoSize.height > 0) 1f else 0f
-            }, onLoading = { ready = false },
-                onReady = { ready = true; if (unavailable) onRecovered() }, onFailure = { failure = true }, onSize = { videoSize = it })
+            }, onLoading = { ready = false; videoSize = IntSize.Zero },
+                onReady = { ready = true }, onFailure = { badMedia -> mediaFailed = badMedia; failure = true }, onSize = { videoSize = it })
         }
     } else Box(modifier)
     onTargets()
     Box(controlsModifier.testTag("gallery-video-control"), contentAlignment = Alignment.Center) {
         when {
             !playing -> IconButton(onClick = {}, enabled = false) { Icon(Icons.Default.PlayArrow, "Video abspielen") }
-            failure -> IconButton(onClick = { if (canInteract()) { paused = false; retry++ } }) {
+            failure -> IconButton(onClick = { if (canInteract()) { paused = false; refreshPending = mediaFailed; retry++ } }) {
                 Icon(Icons.Default.PlayArrow, "Video erneut laden")
             }
             !ready || videoSize.width <= 0 || videoSize.height <= 0 -> CircularProgressIndicator(Modifier.size(28.dp))
@@ -285,7 +362,7 @@ internal fun GalleryVideo(
 @Composable
 private fun LocalMpvPlayer(
     video: LocalGalleryVideo, mediaKey: String, paused: Boolean, modifier: Modifier,
-    onLoading: () -> Unit, onReady: () -> Unit, onFailure: () -> Unit,
+    onLoading: () -> Unit, onReady: () -> Unit, onFailure: (Boolean) -> Unit,
     onSize: (IntSize) -> Unit,
 ) {
     val context = LocalContext.current
@@ -302,17 +379,17 @@ private fun LocalMpvPlayer(
         // Wait for the new instance's FILE_LOADED before exposing controls.
         latestLoading()
         val instance = try {
-            MpvSurfaceOwner(context.applicationContext, video, { latestReady() }, { latestFailure() },
+            MpvSurfaceOwner(context.applicationContext, video, { latestReady() }, { latestFailure(it) },
                 onSurfaceLost = { surfaceGeneration++ }, onSize = { latestSize(it) },
                 diagnostic = { level, event, failure -> report(level, event, failure) },
                 debugEnabled = core::isDebugLoggingEnabled)
         } catch (failure: Exception) {
             report(DiagnosticLevel.ERROR, "init_failed", failure)
-            latestFailure()
+            latestFailure(false)
             null
         } catch (failure: LinkageError) {
             report(DiagnosticLevel.ERROR, "native_link_failed", failure)
-            latestFailure()
+            latestFailure(false)
             null
         }
         owner = instance
@@ -337,7 +414,7 @@ private class MpvSurfaceOwner(
     context: android.content.Context,
     private val source: LocalGalleryVideo,
     private val onReady: () -> Unit,
-    private val onFailure: () -> Unit,
+    private val onFailure: (Boolean) -> Unit,
     private val onSurfaceLost: () -> Unit,
     private val onSize: (IntSize) -> Unit,
     private val diagnostic: (DiagnosticLevel, String, Throwable?) -> Unit,
@@ -396,12 +473,17 @@ private class MpvSurfaceOwner(
             diagnostic(DiagnosticLevel.DEBUG, "surface_load_requested width=$width height=$height", null)
         } catch (failure: Exception) {
             diagnostic(DiagnosticLevel.ERROR, "surface_load_failed", failure)
-            onFailure()
+            onFailure(false)
         }
     }
 
     override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
-        if (!closed && surface != null) player.setPropertyString("android-surface-size", "${width}x$height")
+        if (!closed && surface != null) try {
+            player.setPropertyString("android-surface-size", "${width}x$height")
+        } catch (failure: Exception) {
+            diagnostic(DiagnosticLevel.ERROR, "surface_resize_failed", failure)
+            onFailure(false)
+        }
     }
     override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
         // Join native event/render work before releasing the Surface; never reuse the old wid.
@@ -415,7 +497,12 @@ private class MpvSurfaceOwner(
 
     fun pause(value: Boolean) {
         desiredPause = value
-        if (!closed && surface != null) player.setPropertyBoolean("pause", value)
+        if (!closed && surface != null) try {
+            player.setPropertyBoolean("pause", value)
+        } catch (failure: Exception) {
+            diagnostic(DiagnosticLevel.ERROR, "pause_failed", failure)
+            onFailure(false)
+        }
     }
 
     fun close() {
@@ -429,7 +516,6 @@ private class MpvSurfaceOwner(
             diagnostic(DiagnosticLevel.DEBUG, "closed", null)
         } catch (failure: Exception) {
             diagnostic(DiagnosticLevel.ERROR, "destroy_failed", failure)
-            throw failure
         } finally {
             surface?.release()
             surface = null
@@ -454,7 +540,13 @@ private class MpvSurfaceOwner(
 
     override fun event(eventId: Int) {
         main.post {
-            if (closed || surface == null) return@post
+            if (closed) return@post
+            if (eventId == MPVLib.MpvEvent.MPV_EVENT_QUEUE_OVERFLOW) {
+                diagnostic(DiagnosticLevel.WARN, "native_event_queue_overflow", null)
+                if (surface != null) onFailure(false)
+                return@post
+            }
+            if (surface == null) return@post
             when (eventId) {
                 MPVLib.MpvEvent.MPV_EVENT_FILE_LOADED -> {
                     diagnostic(DiagnosticLevel.DEBUG, "file_loaded", null)
@@ -463,7 +555,7 @@ private class MpvSurfaceOwner(
                 MPVLib.MpvEvent.MPV_EVENT_VIDEO_RECONFIG -> publishVideoSize()
                 MPVLib.MpvEvent.MPV_EVENT_END_FILE -> {
                     diagnostic(DiagnosticLevel.WARN, "end_file_while_active", null)
-                    onFailure()
+                    onFailure(true)
                 }
             }
         }
@@ -476,7 +568,7 @@ private class MpvSurfaceOwner(
             debugEnabled() -> DiagnosticLevel.DEBUG
             else -> return
         }
-        diagnostic(severity, mpvDiagnosticMessage(prefix, text, source.file.absolutePath), null)
+        diagnostic(severity, mpvDiagnosticMessage(prefix, text), null)
     }
 
     override fun eventProperty(property: String) = Unit

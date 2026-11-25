@@ -67,10 +67,18 @@ class DiagnosticEventQueueTest {
         val failure = IllegalStateException("decode failed https://example.invalid/private /data/private", IllegalArgumentException("bad image"))
         val result = diagnosticFailure(failure, includeMessage = true)
         assertTrue(result.contains("IllegalStateException>IllegalArgumentException"))
-        assertTrue(result.contains("decode failed"))
-        assertTrue(result.contains("bad image"))
+        assertTrue(result.contains("reason=decode,other"))
         assertFalse(result.contains("example.invalid"))
         assertFalse(result.contains("/data/private"))
+    }
+
+    @Test fun arbitraryExternalTextNeverSurvivesReasonClassification() {
+        val text = "decode failed /data/private name.jpg relative/media.jpg token=synthetic-secret\u0000"
+        val result = diagnosticFailure(IllegalStateException(text), includeMessage = true)
+        assertTrue(result.contains("reason=decode"))
+        assertFalse(result.contains("private"))
+        assertFalse(result.contains("synthetic-secret"))
+        assertFalse(result.contains('\u0000'))
     }
 
     @Test(timeout = 10_000)

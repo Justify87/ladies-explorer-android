@@ -186,6 +186,28 @@ class ProfilePreparationWindowTest {
         assertSame(published, window.displayed(key))
     }
 
+    @Test(timeout = 15_000) fun recoveryOfPublishedMediaDoesNotDiscardConcurrentPreparation() = runBlocking {
+        val window = ProfilePreparationWindow()
+        val old = model()
+        val key = 4L to 1L
+        window.retain(setOf(key))
+        repeat(3) { window.step(old, "{}", size, { panelData }, { _, _ -> PreparedMedium.Unavailable }) }
+        val published = requireNotNull(window.displayed(key))
+        val next = model(2L)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val job = launch {
+            window.step(next, "{}", size, { entered.complete(Unit); release.await(); panelData },
+                { _, _ -> error("panels first") })
+        }
+        entered.await()
+        window.recovered(published, first.presentationKey())
+        release.complete(Unit)
+        job.join()
+        repeat(2) { window.step(next, "{}", size, { error("panels already read") }, { _, _ -> PreparedMedium.Deferred }) }
+        assertTrue(window.ready(next, "{}", size))
+    }
+
     @Test fun priorityIsRecomputedFromCurrentOrderBetweenWorkUnits() {
         val pending = mutableSetOf(2, 3, 4)
         assertEquals(2, nextProfileWork(listOf(1, 2, 3, 4)) { it in pending })

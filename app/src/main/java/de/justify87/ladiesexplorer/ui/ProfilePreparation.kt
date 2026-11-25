@@ -134,8 +134,9 @@ internal class ProfilePreparationWindow(
             }
         }
         currentCoroutineContext().ensureActive()
-        if (slots[key] !== ticket || !accept()) return
-        slots[key] = if (next.complete) Slot(published = next) else ticket.copy(working = next)
+        val current = slots[key] ?: return
+        if (current.working !== ticket.working || !accept()) return
+        slots[key] = if (next.complete) Slot(published = next) else current.copy(working = next)
         if (next.complete) {
             val media = next.media.values
             diagnostic("published listing=${model.profile.listingId} snapshot=${model.profile.snapshotId} " +
@@ -187,7 +188,7 @@ internal suspend fun prepareProfileMedium(
                 val loader = SingletonImageLoader.get(context)
                 for (source in mediaModels(item.localPath, item.url)) {
                     currentCoroutineContext().ensureActive()
-                    val result = loader.execute(heroImageRequest(context, source, size))
+                    val result = loader.execute(heroImageRequest(context, source, size, role = role, identity = item.url.ifBlank { item.localPath.orEmpty() }))
                     if (result is ErrorResult) {
                         record(DiagnosticLevel.WARN, "source_failed source=${if (source is java.io.File) "archive" else "url"}", result.throwable)
                         continue
