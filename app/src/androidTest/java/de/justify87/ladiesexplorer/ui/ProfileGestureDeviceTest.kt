@@ -203,6 +203,7 @@ class ProfileGestureDeviceTest {
         }
     }
 
+    @OptIn(ExperimentalTestApi::class)
     @Test fun cropAndFitSwitchPublishOnlyTheirFinalGeometry() {
         val files = listOf(300, 160).mapIndexed { index, width ->
             File.createTempFile("synthetic-geometry-", ".png", rule.activity.cacheDir).also { file ->
@@ -215,13 +216,15 @@ class ProfileGestureDeviceTest {
         try {
             val media = files.mapIndexed { i, file -> ProfileMediaItem("IMAGE", "", file.absolutePath, i.toUInt()) }
             var visual by mutableStateOf<HeroVisual?>(null)
+            var projected by mutableStateOf(false)
+            var heroWidth by mutableIntStateOf(320)
             rule.setContent {
                 MaterialTheme {
-                    Box(Modifier.requiredWidth(320.dp)) {
+                    Box(Modifier.requiredWidth(heroWidth.dp)) {
                         ProfileMediaHero(media, 360.dp, Modifier.testTag("hero"),
                             actionsEnabled = true, isCurrent = { true }, selection = remember { ProfileMediaSelection() },
-                            actionToken = null, compact = false, onVisual = {
-                                if (it != null) assertEquals(it.media == media[0], it.geometry.cropped)
+                            actionToken = null, compact = false, projectionAvailable = projected, onVisual = {
+                                if (it != null) assertEquals(it.media == media[0] && heroWidth == 320, it.geometry.cropped)
                                 visual = it
                             })
                     }
@@ -241,6 +244,16 @@ class ProfileGestureDeviceTest {
                     assertTrue(edge != center)
                 }
             }
+            rule.waitUntil(10_000) {
+                val pixels = hero.captureToImage().toPixelMap()
+                val edge = pixels[(pixels.width * .03f).toInt(), pixels.height / 2]
+                edge.blue > .95f && edge.green < .05f
+            }
+            rule.runOnIdle { assertNull(visual); projected = true }
+            verify(0)
+            rule.runOnIdle { heroWidth = 200 }
+            rule.waitUntil(10_000) { visual?.geometry?.cropped == false }
+            rule.runOnIdle { heroWidth = 320 }
             verify(0)
             val bounds = hero.fetchSemanticsNode().boundsInRoot
             repeat(3) {
