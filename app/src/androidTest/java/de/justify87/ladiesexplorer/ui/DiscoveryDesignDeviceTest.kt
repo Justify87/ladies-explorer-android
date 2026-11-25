@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.platform.LocalDensity
@@ -345,6 +346,87 @@ class DiscoveryDesignDeviceTest {
         grid.performScrollToIndex(0)
         rule.onNodeWithText(DiscoverMode.Swipe.title).performClick()
         rule.runOnIdle { assertEquals(listOf(DiscoverMode.Swipe), actions) }
+    }
+
+    @Test fun visibleDislikeDimsOnlyConfirmedPreferenceAndRestoresNeutral() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val image = File.createTempFile("synthetic-grid-", ".png", context.cacheDir)
+        val bitmap = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.BLUE)
+        image.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        try {
+            var preference by mutableStateOf(Preference.NONE)
+            var owner by mutableIntStateOf(1)
+            var requested by mutableStateOf<Preference?>(null)
+            rule.setContent {
+                LadiesTheme {
+                    ProfileGridCard("Fixture", "30", null, image.absolutePath, true, {},
+                        modifier = Modifier.width(160.dp).testTag("dim-card"),
+                        preference = preference, decisionOwner = owner,
+                        onDecision = { requested = it })
+                }
+            }
+            val card = rule.onNodeWithTag("dim-card")
+            fun centerBlue(): Float {
+                val pixels = card.captureToImage().toPixelMap()
+                return pixels[pixels.width / 2, pixels.height / 2].blue
+            }
+            rule.waitUntil(10_000) { centerBlue() > .95f }
+            val original = centerBlue()
+            val action = rule.onNodeWithContentDescription("Fixture").fetchSemanticsNode()
+                .config[SemanticsActions.CustomActions].single { it.label == "Gefällt nicht" }
+            rule.runOnIdle { action.action(); owner++ }
+            assertEquals(Preference.DISLIKE, requested)
+            assertEquals(original, centerBlue(), .05f)
+            rule.runOnIdle { preference = Preference.DISLIKE; owner++ }
+            assertTrue(centerBlue() < original - .15f)
+            rule.runOnIdle { preference = Preference.LIKE; owner++ }
+            assertEquals(original, centerBlue(), .05f)
+            rule.runOnIdle { preference = Preference.NONE; owner++ }
+            assertEquals(original, centerBlue(), .05f)
+        } finally {
+            image.delete()
+        }
+    }
+
+    @Test fun gridMembershipChangeAnimatesPlacementAndUndoRestoresListing() {
+        val initial = (1L..6L).map { id ->
+            DiscoveryCard(id, id, "Fixture $id", "Ort", null, null, null, Preference.NONE,
+                false, false, false, false, null)
+        }
+        var rows by mutableStateOf(initial)
+        rule.setContent {
+            LadiesTheme {
+                DiscoveryGridScreen(
+                    discovery = DiscoverUiState(localCards = rows, loading = false),
+                    search = SearchUiState(), onLoadMore = {}, onDecision = { _, _ -> }, onUndo = {},
+                    onProfile = {}, chrome = {}, onCancelSearch = {},
+                    modifier = Modifier.width(360.dp).height(480.dp),
+                )
+            }
+        }
+        val moved = rule.onNodeWithContentDescription("Fixture 3")
+        val first = rule.onNodeWithContentDescription("Fixture 1")
+        val original = moved.fetchSemanticsNode().boundsInRoot.top
+        val destination = first.fetchSemanticsNode().boundsInRoot.top
+        assertTrue(original > destination)
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.runOnIdle { rows = initial.filterNot { it.listingId == 2L } }
+            rule.mainClock.advanceTimeByFrame()
+            rule.mainClock.advanceTimeBy(64)
+            val intermediate = moved.fetchSemanticsNode().boundsInRoot.top
+            assertTrue(intermediate > destination && intermediate < original)
+            rule.mainClock.advanceTimeBy(1000)
+            assertEquals(destination, moved.fetchSemanticsNode().boundsInRoot.top, 2f)
+            rule.runOnIdle { rows = initial }
+            rule.mainClock.advanceTimeBy(1000)
+            assertEquals(original, moved.fetchSemanticsNode().boundsInRoot.top, 2f)
+            rule.onNodeWithContentDescription("Fixture 2").assertIsDisplayed()
+        } finally {
+            rule.mainClock.autoAdvance = true
+        }
     }
 
     @Test fun gridReturnKeepsVisibleListingWhenEarlierMembersDisappear() {
