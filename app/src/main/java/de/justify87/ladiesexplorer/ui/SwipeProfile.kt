@@ -79,29 +79,22 @@ internal fun swipeFailureNeedsDemotion(startedCurrent: Boolean, stillCurrent: Bo
 
 internal data class SwipeReadPolicy(val refresh: Boolean, val allowNetwork: Boolean)
 
-/** Active-run freshness is explicit; speculation prefers cache and strict recovery is local-only. */
+/** Active-run freshness is resolved before promotion; strict recovery is local-only. */
 internal fun swipeReadPolicy(
     current: Boolean, runId: Long?, listingId: Long,
     localOnly: Boolean, preferLocal: Boolean,
 ): SwipeReadPolicy {
     require(listingId > 0)
     return SwipeReadPolicy(
-        refresh = current && runId != null && !localOnly && !preferLocal,
+        refresh = runId != null && !localOnly && !preferLocal,
         allowNetwork = !localOnly && (current || runId != null),
     )
 }
 
-/** Cache-only speculation needs one current-source attempt, never a redo after refresh failure. */
-internal fun shouldRefreshPromotedCurrent(
-    policy: SwipeReadPolicy,
-    model: ProfileReadModel?,
-    alreadyAttempted: Boolean,
-): Boolean = policy.refresh && model?.fromArchive == true && model.warning == null && !alreadyAttempted
-
 internal suspend fun warmSwipeImages(context: Context, card: DiscoveryCard, profile: ProfileReadModel?, size: IntSize) {
     if (size.width <= 0 || size.height <= 0) return
     val media = profile?.media.orEmpty().filter { it.kind == "IMAGE" }
-        .map { mediaModels(it.localPath, it.url) }.filter { it.isNotEmpty() }.take(2)
+        .map { mediaModels(it.localPath, it.url) }.filter { it.isNotEmpty() }
         .ifEmpty { listOf(mediaModels(card.localPath, card.thumbnailUrl)) }
     val loader = SingletonImageLoader.get(context)
     for (models in media) for (model in models) {
@@ -119,6 +112,8 @@ internal class SwipeProfileWindow(
     private data class Slot(val owner: Long, val ticket: Long)
     private val slots = mutableMapOf<Long, Slot>()
     private val inFlight = mutableMapOf<Long, Slot>()
+    // Presentation survives internal reprojection; action admission still requires a valid entry.
+    private val presentation = mutableStateMapOf<Long, ProfileReadModel>()
     private var nextTicket = 0L
     private val invalidations = mutableStateMapOf<Long, Long>()
     private val staleProvenance = mutableMapOf<Long, Pair<Boolean, String?>>()
@@ -135,6 +130,7 @@ internal class SwipeProfileWindow(
     /** A disposed window's late commit revokes replacement data, not its native execution. */
     fun applyExternalRevision(revision: Long) {
         if (isCurrent(revision) || closed) return
+        presentation.clear()
         invalidateSlots()
         externalRevision.longValue = revision
     }
@@ -144,13 +140,19 @@ internal class SwipeProfileWindow(
             it.person.personId == card.personId
     }
 
+    fun displayed(card: DiscoveryCard): ProfileReadModel? = presentation[card.listingId]?.takeIf {
+        it.identity.personId == card.personId && it.person.personId == card.personId && it.profile.listingId == card.listingId
+    }
+
     fun remove(listingId: Long) {
         entries.remove(listingId)
+        presentation.remove(listingId)
         slots[listingId]?.let { slots[listingId] = it.copy(ticket = ++nextTicket) }
     }
 
     fun clear() {
         entries.clear()
+        presentation.clear()
         slots.clear()
         inFlight.clear()
         invalidations.clear()
@@ -181,6 +183,7 @@ internal class SwipeProfileWindow(
             slots.remove(it)
             inFlight.remove(it)
             entries.remove(it)
+            presentation.remove(it)
             invalidations.remove(it)
             staleProvenance.remove(it)
         }
@@ -213,6 +216,7 @@ internal class SwipeProfileWindow(
             val published = if (provenance == null) profile.copy(revision = ticket.ticket)
                 else profile.copy(revision = ticket.ticket, fromArchive = provenance.first, warning = provenance.second)
             entries[listingId] = published
+            presentation[listingId] = published
             return published
         } finally {
             if (inFlight[listingId] == ticket) {
