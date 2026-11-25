@@ -209,7 +209,7 @@ internal fun DiscoverScreen(
                 return@LaunchedEffect
             snapshotFlow { latestReadVisible }.first { it }
             try {
-                warmSwipeImages(context, target, model, heroSize)
+                warmSwipeMedia(context, model, heroSize)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (_: Exception) {
