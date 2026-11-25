@@ -289,34 +289,42 @@ class ProfileShellDeviceTest {
         lateinit var jump: () -> Unit
         lateinit var clear: () -> Unit
         val actions = mutableListOf<String>()
+        var pixelsPerDp = 1f
         rule.setContent {
-            MaterialTheme {
-                val list = rememberLazyListState()
-                val scope = rememberCoroutineScope()
-                var empty by remember { mutableStateOf(false) }
-                clear = { empty = true }
-                jump = { scope.launch { list.scrollToItem(2) } }
-                val deck = SwipeDeckToken(null, 1)
-                val context = SwipeControlsContext(deck, if (empty) null else SwipeCardToken(deck, 4, 1),
-                    if (empty) null else SwipeActionToken(null, 1, 4, 1, 11, 1,
-                        Preference.NONE, false, emptyList()),
-                    true, true, AvailabilityMode.All, true, true)
-                ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero", hasRail = true,
-                    notices = emptyList(), noticeOwner = context,
-                    header = { presentation, _, _ -> Text(if (presentation.identityInHeader) "B" else "A") },
-                    rail = { presentation -> SwipeDecisionControls(context, if (empty) null else "Fixture",
-                        { actions.add("undo") }, { actions.add("skip") }, { actions.add(it.name) },
-                        reading = presentation.reading) },
-                    rootNavigation = { Box(Modifier.height(64.dp).fillMaxWidth().testTag("rail-root")) },
-                    heroLeadingMeasure = { Box(Modifier.height(48.dp)) },
-                ) { presentation ->
-                    LazyColumn(Modifier.fillMaxSize(), state = list,
-                        contentPadding = PaddingValues(bottom = presentation.readingExtraSpace)) {
-                        item(key = "discover-context") { Box(Modifier.height(48.dp)) }
-                        item(key = "hero") {
-                            Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val density = LocalDensity.current
+                val fitted = with(density) { minOf(maxWidth.toPx() / 361f, maxHeight.toPx() / 601f, density.density) }
+                SideEffect { pixelsPerDp = fitted }
+                CompositionLocalProvider(LocalDensity provides Density(fitted, 1f)) {
+                    MaterialTheme {
+                        val list = rememberLazyListState()
+                        val scope = rememberCoroutineScope()
+                        var empty by remember { mutableStateOf(false) }
+                        clear = { empty = true }
+                        jump = { scope.launch { list.scrollToItem(2) } }
+                        val deck = SwipeDeckToken(null, 1)
+                        val context = SwipeControlsContext(deck, if (empty) null else SwipeCardToken(deck, 4, 1),
+                            if (empty) null else SwipeActionToken(null, 1, 4, 1, 11, 1,
+                                Preference.NONE, false, emptyList()),
+                            true, true, AvailabilityMode.All, true, true)
+                        ProfileShell(Modifier.size(360.dp, 600.dp), list, "hero", hasRail = true,
+                            notices = emptyList(), noticeOwner = context,
+                            header = { presentation, _, _ -> Text(if (presentation.identityInHeader) "B" else "A") },
+                            rail = { presentation -> SwipeDecisionControls(context, if (empty) null else "Fixture",
+                                { actions.add("undo") }, { actions.add("skip") }, { actions.add(it.name) },
+                                reading = presentation.reading) },
+                            rootNavigation = { Box(Modifier.height(64.dp).fillMaxWidth().testTag("rail-root")) },
+                            heroLeadingMeasure = { Box(Modifier.height(48.dp)) },
+                        ) { presentation ->
+                            LazyColumn(Modifier.fillMaxSize(), state = list,
+                                contentPadding = PaddingValues(bottom = presentation.readingExtraSpace)) {
+                                item(key = "discover-context") { Box(Modifier.height(48.dp)) }
+                                item(key = "hero") {
+                                    Box(Modifier.fillMaxWidth().height(presentation.heroHeight))
+                                }
+                                items(20) { Text("Detail $it", Modifier.height(48.dp)) }
+                            }
                         }
-                        items(20) { Text("Detail $it", Modifier.height(48.dp)) }
                     }
                 }
             }
@@ -327,7 +335,7 @@ class ProfileShellDeviceTest {
         rule.runOnIdle { jump() }
         rule.onNodeWithText("B").assertExists()
         rule.onNodeWithTag("rail-root").assertIsNotDisplayed()
-        val density = rule.density.density
+        val density = rule.runOnIdle { pixelsPerDp }
         val buttons = listOf("Rückgängig", "Nein", "Später", "Gefällt").map {
             rule.onNodeWithText(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         }
