@@ -31,14 +31,14 @@ pub struct CaptureStatus {
     pub last_error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
-pub struct HttpHeader {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct HttpHeader {
     pub name: String,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
-pub struct HttpObservation {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct HttpObservation {
     pub method: String,
     pub url: String,
     pub final_url: String,

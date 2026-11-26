@@ -132,7 +132,7 @@ pub use discovery::{
 };
 pub use encounters::{Encounter, EncounterService, EncounterValues};
 pub use history::ChangeRecord;
-pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
+pub use http_capture::{CaptureMode, CaptureStatus};
 pub use identity::IdentityCandidate;
 pub use map::{MapOverview, MapProfile};
 pub use media::{DisplayImage, DisplayVideo, MediaArchiveReport};

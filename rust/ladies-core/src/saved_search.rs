@@ -398,36 +398,6 @@ pub struct SavedSearchCard {
     pub age: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-struct SavedResultCursor {
-    pub position: i64,
-    pub result_key: String,
-    pub search_id: String,
-    pub revision: i64,
-}
-
-#[derive(Debug, Clone)]
-struct SavedSearchResultPage {
-    pub cards: Vec<SavedSearchCard>,
-    pub next_cursor: Option<SavedResultCursor>,
-}
-
-#[cfg(test)]
-fn results(
-    core: &LadiesCore,
-    id: String,
-    limit: u32,
-    cursor: Option<SavedResultCursor>,
-) -> Result<SavedSearchResultPage, CoreError> {
-    if !(1..=200).contains(&limit) {
-        return Err(CoreError::InvalidInput(
-            "Saved-result page size must be between 1 and 200".into(),
-        ));
-    }
-    let db = core.connection()?;
-    results_using(core, &db, &id, limit, cursor)
-}
-
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SavedSearchWindow {
     pub cards: Vec<SavedSearchCard>,
@@ -447,10 +417,10 @@ pub(crate) fn window(
         ));
     }
     let db = core.connection()?;
-    let page = results_using(core, &db, &id, limit, None)?;
+    let (cards, has_more) = results_using(core, &db, &id, limit)?;
     Ok(SavedSearchWindow {
-        cards: page.cards,
-        has_more: page.next_cursor.is_some(),
+        cards,
+        has_more,
         searches: list_using(&db)?,
     })
 }
@@ -460,17 +430,7 @@ fn results_using(
     db: &rusqlite::Connection,
     id: &str,
     limit: u32,
-    cursor: Option<SavedResultCursor>,
-) -> Result<SavedSearchResultPage, CoreError> {
-    let revision = revision(db)?;
-    if cursor
-        .as_ref()
-        .is_some_and(|c| c.search_id != id || c.revision != revision)
-    {
-        return Err(CoreError::InvalidInput(
-            "Saved result cursor expired; reload the window".into(),
-        ));
-    }
+) -> Result<(Vec<SavedSearchCard>, bool), CoreError> {
     let exists: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM saved_searches WHERE saved_search_id=?1)",
         [&id],
@@ -480,7 +440,7 @@ fn results_using(
         return Err(CoreError::InvalidInput("Saved search not found".into()));
     }
     let mut query = db.prepare(
-        "SELECT r.position,r.result_key,r.snapshot_json,r.first_seen_at,
+        "SELECT r.result_key,r.snapshot_json,r.first_seen_at,
                 l.listing_id,l.person_id,s.traits_json,s.name,s.city,
                 image.remote_url,a.local_path,image.snapshot_media_id
          FROM saved_search_results r
@@ -496,36 +456,30 @@ fn results_using(
               ORDER BY julianday(old.captured_at) DESC,old.snapshot_id DESC,m.position,m.snapshot_media_id LIMIT 1))
          LEFT JOIN media_assets a ON a.media_asset_id=image.media_asset_id
          WHERE r.saved_search_id=?1 AND r.present=1 AND r.visible=1
-           AND (?2 IS NULL OR r.position > ?2
-                OR (r.position=?2 AND r.result_key > ?3))
          ORDER BY r.position ASC,r.result_key ASC
-         LIMIT ?4",
+         LIMIT ?2",
     )?;
-    let cursor_position = cursor.as_ref().map(|c| c.position);
-    let cursor_key = cursor.as_ref().map(|c| c.result_key.as_str());
     let rows = query.query_map(
-        params![id, cursor_position, cursor_key, i64::from(limit) + 1],
+        params![id, i64::from(limit) + 1],
         |row| {
             Ok((
-                row.get::<_, i64>(0)?,
+                row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
+                row.get::<_, Option<i64>>(3)?,
                 row.get::<_, Option<i64>>(4)?,
-                row.get::<_, Option<i64>>(5)?,
+                row.get::<_, Option<String>>(5)?,
                 row.get::<_, Option<String>>(6)?,
                 row.get::<_, Option<String>>(7)?,
                 row.get::<_, Option<String>>(8)?,
                 row.get::<_, Option<String>>(9)?,
-                row.get::<_, Option<String>>(10)?,
-                row.get::<_, Option<i64>>(11)?,
+                row.get::<_, Option<i64>>(10)?,
             ))
         },
     )?;
-    let mut records = rows
+    let mut cards = rows
         .map(|row| {
             let (
-                position,
                 result_key,
                 snapshot,
                 first_seen_at,
@@ -539,61 +493,45 @@ fn results_using(
                 media_id,
             ) = row?;
             let value = serde_json::from_str::<serde_json::Value>(&snapshot).unwrap_or_default();
-            Ok((
-                SavedSearchCard {
-                    name: current_name.filter(|v| !v.is_empty()).unwrap_or_else(|| {
-                        value
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or(&result_key)
-                            .to_owned()
-                    }),
-                    city: current_city.filter(|v| !v.is_empty()).unwrap_or_else(|| {
-                        value
-                            .get("city")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_owned()
-                    }),
-                    // Both URLs must refer to the same selected image.
-                    thumbnail_url: if media_id.is_some() {
-                        remote.filter(|v| !v.is_empty())
-                    } else {
-                        value
-                            .get("thumbnail_url")
-                            .and_then(|v| v.as_str())
-                            .map(str::to_owned)
-                    },
-                    result_key,
-                    listing_id,
-                    person_id,
-                    first_seen_at,
-                    age: source::known_age(traits.as_deref()),
-                    local_path: relative.and_then(|relative| {
-                        let path = core.media_root.as_ref()?.join(relative);
-                        path.is_file().then(|| path.to_string_lossy().into_owned())
-                    }),
+            Ok(SavedSearchCard {
+                name: current_name.filter(|v| !v.is_empty()).unwrap_or_else(|| {
+                    value
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(&result_key)
+                        .to_owned()
+                }),
+                city: current_city.filter(|v| !v.is_empty()).unwrap_or_else(|| {
+                    value
+                        .get("city")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_owned()
+                }),
+                // Both URLs must refer to the same selected image.
+                thumbnail_url: if media_id.is_some() {
+                    remote.filter(|v| !v.is_empty())
+                } else {
+                    value
+                        .get("thumbnail_url")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned)
                 },
-                position,
-            ))
+                result_key,
+                listing_id,
+                person_id,
+                first_seen_at,
+                age: source::known_age(traits.as_deref()),
+                local_path: relative.and_then(|relative| {
+                    let path = core.media_root.as_ref()?.join(relative);
+                    path.is_file().then(|| path.to_string_lossy().into_owned())
+                }),
+            })
         })
         .collect::<Result<Vec<_>, CoreError>>()?;
-    let has_more = records.len() > limit as usize;
-    records.truncate(limit as usize);
-    let next_cursor = if has_more {
-        records.last().map(|(card, position)| SavedResultCursor {
-            position: *position,
-            result_key: card.result_key.clone(),
-            search_id: id.to_owned(),
-            revision,
-        })
-    } else {
-        None
-    };
-    Ok(SavedSearchResultPage {
-        cards: records.into_iter().map(|(card, _)| card).collect(),
-        next_cursor,
-    })
+    let has_more = cards.len() > limit as usize;
+    cards.truncate(limit as usize);
+    Ok((cards, has_more))
 }
 
 // Rename must preserve imported definition bytes and result baseline.
@@ -1066,7 +1004,7 @@ mod tests {
     }
 
     #[test]
-    fn changed_baseline_rejects_cursor_and_stale_acknowledgement() {
+    fn changed_baseline_reloads_window_and_rejects_stale_acknowledgement() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "Window".into(), SearchRequest::for_test()).unwrap();
         let other = save(&core, "Other".into(), SearchRequest::for_test()).unwrap();
@@ -1082,14 +1020,11 @@ mod tests {
             )
             .unwrap();
         }
-        let page = results(&core, id.clone(), 2, None).unwrap();
-        let cursor = page.next_cursor.unwrap();
-        assert!(matches!(
-            results(&core, other, 2, Some(cursor.clone())),
-            Err(CoreError::InvalidInput(reason))
-                if reason == "Saved result cursor expired; reload the window"
-        ));
+        assert!(window(&core, other, 2).unwrap().cards.is_empty());
         let window_before = window(&core, id.clone(), 2).unwrap();
+        assert!(window_before.has_more);
+        assert_eq!(window_before.cards[0].result_key, "a");
+        assert_eq!(window_before.cards[1].result_key, "b");
         let version = window_before
             .searches
             .iter()
@@ -1103,13 +1038,9 @@ mod tests {
                 [&id],
             )
             .unwrap();
-        assert!(matches!(
-            results(&core, id.clone(), 2, Some(cursor)),
-            Err(CoreError::InvalidInput(reason))
-                if reason == "Saved result cursor expired; reload the window"
-        ));
         assert!(!acknowledge_revision(&core, id.clone(), version).unwrap());
         let fresh = window(&core, id.clone(), 4).unwrap();
+        assert!(!fresh.has_more);
         assert_eq!(
             fresh
                 .cards
@@ -1397,7 +1328,7 @@ mod tests {
         result.profiles = vec![card(lb, b, "102"), card(lc, c, "103")];
         let (stored_definition, version) = definition(&core, &id).unwrap();
         persist_results(&core, &id, &result, &stored_definition, version).unwrap();
-        let stored = results(&core, id.clone(), 100, None).unwrap().cards;
+        let stored = window(&core, id.clone(), 100).unwrap().cards;
         assert_eq!(stored.len(), 2);
         assert_eq!(stored[0].listing_id, Some(lb));
         let db = core.connection().unwrap();
@@ -1525,7 +1456,7 @@ mod tests {
             assert_eq!(response.partial, partial);
             assert_eq!(response.radius_verified, radius_verified);
             let info = list(&core).unwrap().remove(0);
-            let cards = results(&core, id.clone(), 100, None).unwrap().cards;
+            let cards = window(&core, id.clone(), 100).unwrap().cards;
             let delta = info.delta.unwrap();
             assert!(info.unread_new_results);
             if partial || !radius_verified {
@@ -1600,7 +1531,7 @@ mod tests {
             let info = list(&core).unwrap().remove(0);
             assert_eq!(info.last_run_at.as_deref(), Some("2000-01-01"));
             assert!(info.unread_new_results);
-            let cards = results(&core, id.clone(), 100, None).unwrap().cards;
+            let cards = window(&core, id.clone(), 100).unwrap().cards;
             assert_eq!(cards.len(), 1);
             assert_eq!(cards[0].result_key, "old");
         };
@@ -1700,7 +1631,7 @@ mod tests {
     }
 
     #[test]
-    fn saved_results_can_be_paged_beyond_the_previous_fixed_limit() {
+    fn saved_result_windows_can_grow_beyond_the_previous_fixed_limit() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "Paging".into(), SearchRequest::for_test()).unwrap();
         let db = core.connection().unwrap();
@@ -1714,19 +1645,23 @@ mod tests {
             .unwrap();
         }
         drop(db);
-        let mut cursor = None;
-        let mut keys = Vec::new();
-        loop {
-            let page = results(&core, id.clone(), 100, cursor).unwrap();
-            assert!(!page.cards.is_empty());
-            assert!(page.cards.len() <= 100);
-            keys.extend(page.cards.into_iter().map(|card| card.result_key));
-            assert!(keys.len() <= 1105);
-            match page.next_cursor {
-                Some(next) => cursor = Some(next),
-                None => break,
-            }
-        }
+        let first = window(&core, id.clone(), 100).unwrap();
+        assert_eq!(first.cards.len(), 100);
+        assert!(first.has_more);
+        let larger = window(&core, id.clone(), 1100).unwrap();
+        assert_eq!(larger.cards.len(), 1100);
+        assert!(larger.has_more);
+        assert!(larger.cards[..100]
+            .iter()
+            .zip(&first.cards)
+            .all(|(a, b)| a.result_key == b.result_key));
+        let complete = window(&core, id, 1200).unwrap();
+        assert!(!complete.has_more);
+        let keys: Vec<_> = complete
+            .cards
+            .into_iter()
+            .map(|card| card.result_key)
+            .collect();
         let expected: Vec<_> = (0..1105)
             .map(|position| format!("item-{position:04}"))
             .collect();
