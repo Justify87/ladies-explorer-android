@@ -4,7 +4,7 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M13.3 — Aktive Redundanz und semantisches Refactoring. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M13.4 — Testcode und Fixtures. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M13 — Dead Code & Refactoring Cleanup
 
@@ -15,17 +15,9 @@ Ziel: die integrierte Codebasis repositoryweit auf entbehrliche, abgelöste und 
 - Statische Referenzen und Compiler-/Lint-/Clippy-Diagnosen sind Hinweise, keine alleinigen Löschbeweise. Auch indirekte Aufrufer, Framework-, Manifest-, Ressourcen-, Reflection-, JNI-/FFI- und Serialisierungsverträge, Feature-Konfiguration, Skripte und Testtargets berücksichtigen. Vertikal über die betroffenen Schichten und horizontal über gemeinsame Zustände und alternative Einstiegspunkte prüfen. Abgelöste Pfade mit exklusiven Helfern, Records, Fehlern, Tests, Ressourcen und Verweisen vollständig entfernen. Gültige Produkt-, Design-, Daten-, Architektur- und Schutzverträge erhalten; insbesondere interne Schemaentwicklung, Parser-/Netzwerk-/Mediengrenzen, Cursor-/Revisions-/Owner-Verträge, Cancel-/Drain-/Epoch-Schutz und notwendige Diagnose.
 - Je Aufgabe Inventarfortschritt, konkrete Kandidaten mit Codeankern, Beleg, Aufrufern, Risiko und Entscheidung im PR festhalten. Zu Beginn die integrierten Vorgänger-PRs des Meilensteins gezielt auswerten und übernommene offene Befunde am aktuellen Stand verifizieren. Vor Abschluss jeden noch offenen Befund mit zuständiger verbleibender Aufgaben-ID, Codeanker und Grund im PR übergeben; Umfang bzw. dauerhafte Blocker der zuständigen offenen Aufgabe bei Bedarf im selben Roadmap-Diff präzisieren. Spätere Aufgaben übernehmen diese Befunde ausdrücklich und dokumentieren ihre Entscheidung. Bestätigte Befunde im eigenen Umfang ursächlich beheben; nicht einfach zur Abschlussaufgabe verschieben. Bei bereits entfernten Aufgaben keine IDs wiedereröffnen; neu belegte Folgefehler einer sachlich zuständigen noch offenen Aufgabe zuordnen, gegebenenfalls M13.6. Unabhängige konkrete Fehler nach [Pflege](#pflege) erfassen. Keine zusätzlichen Register oder historischen Einträge in der Roadmap.
 
-### M13.3 — Aktive Redundanz und semantisches Refactoring
-
-**Status:** READY.
-
-Verbleibende aktive Duplikate, unnötige Abstraktionen/Delegationen, redundante Daten- und Zustandsprojektionen, Übergangsimplementierungen und konkurrierende Verantwortlichkeiten in UI, Operations-/Lifecycle-Orchestrierung, CoreStore und Rust prüfen. Nur nachgewiesen gleichwertige Pfade vereinheitlichen, Verantwortlichkeiten am vorhandenen fachlichen Owner bündeln, vereinfachbare Pfade direkt ersetzen und abgelöste Implementierungen entfernen. Unterschiede zwischen Listing-/Person-Identität, CAS-/Owner-Prüfungen, Saved-/Discovery-/Standalone-Kontexten, Suchfenstern, Medienvorbereitung und Fehler-/Cancel-Semantik nicht als Duplikate behandeln, sofern fachlich verschieden.
-
-**Akzeptanz/Prüfung:** Jede Konsolidierung durch konkrete Redundanz und Verhaltensäquivalenz begründet; keine zusätzlichen Parallelpfade oder spekulativen Abstraktionen. Betroffene horizontale Einstiegspunkte und vertikale Verträge einschließlich Integrität und Nebenläufigkeit mit angemessenen Regressionen und erforderlichem Gate geprüft; bei fehlendem Beleg Pfad erhalten und begründen.
-
 ### M13.4 — Testcode und Fixtures
 
-**Status:** PLANNED. Abhängig von M13.3.
+**Status:** READY.
 
 Sämtliche eigenen Rust-, JVM-, Instrumentierungs- und Python-Testdateien samt Fixtures, Helfern und Testkonfiguration semantisch prüfen: obsolete API-Wrapper, redundante oder wirkungslose Assertions, tote Fixtures, mehrfach abgesicherte identische Verträge, unproduktive Mock-/Roundtrip-Tests und unnötige Kopplung. Test-Discovery, Filter, Ignore-/Skip-Bedingungen und tatsächlich ausgeführte Tests anhand vorhandener Berichte prüfen; bewusst separat ausgeführte Tests und nicht automatisch ausgeführte Instrumentierung unterscheiden. Sicherstellen, dass behauptete Fehlerfälle tatsächlich ausgelöst und beobachtet werden, positive und negative Kontrollfälle den realen Produktionsvertrag prüfen und keine unbeabsichtigten No-ops, Selbst-Joins oder unbeschränkten Wartepfade bestehen. Belegte Redundanzen konsolidieren, nützliche Regressionen auf aktive Produktionspfade übertragen; minimale testexklusive SQL-/Datenfixtures und deterministische Synchronisationshilfen beibehalten. Fehler-, Owner-/Cursor-/Zeitstempel-/Schema-/Revisions-/Cancel- und Integritätsregressionen nicht mit entfernten Produktionswrappers verlieren. Testschichten nach [AGENTS](../AGENTS.md#laufende-bereinigung); keine künstlichen Coverage-Ziele, neue Testframeworks oder realen Quellenzugriffe.
 

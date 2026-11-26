@@ -1,6 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
-use crate::{CoreError, LadiesCore};
+use crate::{CoreError, LadiesCore, identity::require_listing_owner};
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct EncounterService {
@@ -53,25 +53,11 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<Encounter> {
     })
 }
 
-fn require_owner(db: &Connection, listing_id: i64, person_id: i64) -> Result<(), CoreError> {
-    let owner = db
-        .query_row(
-            "SELECT person_id FROM listings WHERE listing_id=?1",
-            [listing_id],
-            |row| row.get::<_, i64>(0),
-        )
-        .optional()?;
-    if owner != Some(person_id) {
-        return Err(CoreError::IdentityConflict(
-            "Encounter owner changed; reopen profile".into(),
-        ));
-    }
-    Ok(())
-}
+const OWNER_CHANGED: &str = "Encounter owner changed; reopen profile";
 
 fn validate(db: &Connection, person_id: i64, values: &EncounterValues) -> Result<(), CoreError> {
     if let Some(listing) = values.listing_id {
-        require_owner(db, listing, person_id)?;
+        require_listing_owner(db, listing, person_id, OWNER_CHANGED)?;
     }
     // Canonical UTC milliseconds make textual chronology deterministic.
     let canonical: Option<String> = db.query_row(
@@ -158,7 +144,7 @@ fn require_current(db: &Connection, person_id: i64, expected: &Encounter) -> Res
         ));
     }
     if let Some(listing) = expected.values.listing_id {
-        require_owner(db, listing, person_id)?;
+        require_listing_owner(db, listing, person_id, OWNER_CHANGED)?;
     }
     Ok(())
 }
@@ -169,7 +155,7 @@ pub(crate) fn list(
     person_id: i64,
 ) -> Result<Vec<Encounter>, CoreError> {
     let db = core.connection()?;
-    require_owner(&db, listing_id, person_id)?;
+    require_listing_owner(&db, listing_id, person_id, OWNER_CHANGED)?;
     let mut stmt = db.prepare(&format!(
         "SELECT {COLUMNS} FROM encounters WHERE person_id=?1
          ORDER BY occurred_at DESC, encounter_id DESC"
@@ -191,7 +177,7 @@ pub(crate) fn create(
 ) -> Result<Encounter, CoreError> {
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    require_owner(&tx, listing_id, person_id)?;
+    require_listing_owner(&tx, listing_id, person_id, OWNER_CHANGED)?;
     validate(&tx, person_id, &values)?;
     // Random nonnegative IDs avoid recycling a deleted row's editor identity.
     tx.execute(
@@ -228,7 +214,7 @@ pub(crate) fn update(
 ) -> Result<Encounter, CoreError> {
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    require_owner(&tx, listing_id, person_id)?;
+    require_listing_owner(&tx, listing_id, person_id, OWNER_CHANGED)?;
     require_current(&tx, person_id, &expected)?;
     validate(&tx, person_id, &values)?;
     // Even identical edits within one clock tick invalidate an older editor.
@@ -267,7 +253,7 @@ pub(crate) fn delete(
 ) -> Result<(), CoreError> {
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    require_owner(&tx, listing_id, person_id)?;
+    require_listing_owner(&tx, listing_id, person_id, OWNER_CHANGED)?;
     require_current(&tx, person_id, &expected)?;
     tx.execute(
         "DELETE FROM encounters WHERE encounter_id=?1",
@@ -303,6 +289,12 @@ mod tests {
         let listing = core
             .add_listing(person, None, "LADIES".into(), "1".into(), None)
             .unwrap();
+        for (invalid_listing, invalid_owner) in [(listing, other), (i64::MAX, person)] {
+            assert!(matches!(
+                list(&core, invalid_listing, invalid_owner),
+                Err(CoreError::IdentityConflict(message)) if message == OWNER_CHANGED
+            ));
+        }
         let second = core
             .add_listing(person, None, "LADIES".into(), "2".into(), None)
             .unwrap();

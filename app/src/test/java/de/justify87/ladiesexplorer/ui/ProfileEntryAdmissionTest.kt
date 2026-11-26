@@ -180,7 +180,7 @@ class ProfileEntryAdmissionTest {
         val search = SearchUiState().acceptRun(response(7), rows)
         val discovery = DiscoverUiState(activeRunId = 7, loading = false)
         val scope = requireNotNull(currentMapMembership(discovery, search))
-        assertTrue(scope.cards == gridCards(discovery, search))
+        assertTrue(scope.cards == discoveryMembership(discovery, search))
         assertTrue(scope == currentMapMembership(discovery, search.copy(city = "Berlin")))
         for (mode in listOf(DiscoverMode.Grid, DiscoverMode.Map)) {
             val origin = ShellRoute().select(mode)

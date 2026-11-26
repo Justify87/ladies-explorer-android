@@ -1,6 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
-use crate::{CoreError, LadiesCore};
+use crate::{CoreError, LadiesCore, identity::require_listing_owner};
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct PriceItem {
@@ -36,25 +36,11 @@ pub struct PriceOverview {
     pub last_paid: Option<PaidEncounter>,
 }
 
-fn require_owner(db: &Connection, listing_id: i64, person_id: i64) -> Result<(), CoreError> {
-    let owner = db
-        .query_row(
-            "SELECT person_id FROM listings WHERE listing_id=?1",
-            [listing_id],
-            |row| row.get::<_, i64>(0),
-        )
-        .optional()?;
-    if owner != Some(person_id) {
-        return Err(CoreError::IdentityConflict(
-            "Price list owner changed; reopen profile".into(),
-        ));
-    }
-    Ok(())
-}
+const OWNER_CHANGED: &str = "Price list owner changed; reopen profile";
 
 fn validate(db: &Connection, person_id: i64, values: &PriceListValues) -> Result<(), CoreError> {
     if let Some(listing) = values.listing_id {
-        require_owner(db, listing, person_id)?;
+        require_listing_owner(db, listing, person_id, OWNER_CHANGED)?;
     }
     let canonical: Option<String> = db.query_row(
         "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', ?1, '+0 seconds')",
@@ -137,7 +123,7 @@ fn require_current(db: &Connection, person_id: i64, expected: &PriceList) -> Res
         ));
     }
     if let Some(listing) = expected.values.listing_id {
-        require_owner(db, listing, person_id)?;
+        require_listing_owner(db, listing, person_id, OWNER_CHANGED)?;
     }
     Ok(())
 }
@@ -164,7 +150,7 @@ pub(crate) fn overview(
     person_id: i64,
 ) -> Result<PriceOverview, CoreError> {
     let db = core.connection()?;
-    require_owner(&db, listing_id, person_id)?;
+    require_listing_owner(&db, listing_id, person_id, OWNER_CHANGED)?;
     let mut stmt = db.prepare(
         "SELECT price_list_id,person_id,listing_id,observed_at FROM price_lists
          WHERE person_id=?1 AND source='USER_ENTERED' AND currency='EUR'
@@ -201,7 +187,7 @@ pub(crate) fn create(
 ) -> Result<PriceList, CoreError> {
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    require_owner(&tx, listing_id, person_id)?;
+    require_listing_owner(&tx, listing_id, person_id, OWNER_CHANGED)?;
     validate(&tx, person_id, &values)?;
     // Preserve insertion order even when lists are recorded within the same clock tick.
     tx.execute(
@@ -229,7 +215,7 @@ pub(crate) fn update(
 ) -> Result<PriceList, CoreError> {
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    require_owner(&tx, listing_id, person_id)?;
+    require_listing_owner(&tx, listing_id, person_id, OWNER_CHANGED)?;
     require_current(&tx, person_id, &expected)?;
     validate(&tx, person_id, &values)?;
     if expected.values != values {
@@ -261,7 +247,7 @@ pub(crate) fn delete(
 ) -> Result<(), CoreError> {
     let mut db = core.connection()?;
     let tx = db.transaction()?;
-    require_owner(&tx, listing_id, person_id)?;
+    require_listing_owner(&tx, listing_id, person_id, OWNER_CHANGED)?;
     require_current(&tx, person_id, &expected)?;
     tx.execute(
         "DELETE FROM price_lists WHERE price_list_id=?1",
@@ -295,6 +281,12 @@ mod tests {
         let listing = core
             .add_listing(person, None, "LADIES".into(), "1".into(), None)
             .unwrap();
+        for (invalid_listing, invalid_owner) in [(listing, other), (i64::MAX, person)] {
+            assert!(matches!(
+                overview(&core, invalid_listing, invalid_owner),
+                Err(CoreError::IdentityConflict(message)) if message == OWNER_CHANGED
+            ));
+        }
         let foreign = core
             .add_listing(other, None, "LADIES".into(), "2".into(), None)
             .unwrap();

@@ -53,7 +53,7 @@ internal fun DiscoveryGridScreen(
     touchGate: ProfileTouchGate? = null,
 ) {
     val contentInset = shellContentInset()
-    val cards = gridCards(discovery, search)
+    val cards = discoveryMembership(discovery, search)
     val active = search.response != null
     val emptyState = discoveryEmptyState(discovery, search)
     val loadingResults = emptyState == DiscoveryEmptyState.Loading

@@ -94,6 +94,25 @@ pub(crate) fn record_image_hash(
     Ok(())
 }
 
+pub(crate) fn require_listing_owner(
+    db: &Connection,
+    listing_id: i64,
+    person_id: i64,
+    conflict: &str,
+) -> Result<(), CoreError> {
+    let owner = db
+        .query_row(
+            "SELECT person_id FROM listings WHERE listing_id=?1",
+            [listing_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?;
+    if owner != Some(person_id) {
+        return Err(CoreError::IdentityConflict(conflict.into()));
+    }
+    Ok(())
+}
+
 fn current_owner(db: &Connection, listing: i64) -> Result<(i64, Option<i64>, String), CoreError> {
     db.query_row(
         "SELECT person_id, current_snapshot_id, match_decision FROM listings WHERE listing_id=?1",

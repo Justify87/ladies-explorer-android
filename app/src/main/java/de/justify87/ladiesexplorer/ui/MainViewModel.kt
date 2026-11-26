@@ -135,7 +135,6 @@ data class SearchUiState(
 ) {
     val profile get() = profileRead?.profile
     val profileFromArchive get() = profileRead?.fromArchive ?: profileRetryFromArchive
-    val selectedPersonId get() = profileRead?.identity?.personId
     val identityCandidates get() = profileRead?.candidates.orEmpty()
 }
 
@@ -283,39 +282,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 presentation?.takeIf { it.snapshotId == token.snapshotId }, card))
     }
 
-    private fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference, presentation: SwipePresentation?) {
+    private fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference, presentation: SwipePresentation?) =
+        mutateRenderedProfile(token, "Entscheidung nicht gespeichert",
+            // A successful swipe preserves other owners' projections; failure or source/identity changes revoke them.
+            refreshProfileWindow = token !is SwipeActionToken || preference == Preference.NONE,
+        ) {
+            commitProfilePreference(token, preference, core::setSwipePreference, swipeSession::visit, presentation)
+        }
+
+    internal fun toggleProfileFavorite(token: ProfileIdentityToken) =
+        mutateRenderedProfile(token, "Favorit konnte nicht geändert werden") {
+            core.setListingFavorite(token.listingId, token.ownerId, token.favorite, !token.favorite)
+        }
+
+    private fun mutateRenderedProfile(
+        token: ProfileIdentityToken,
+        failureLabel: String,
+        refreshProfileWindow: Boolean = true,
+        write: suspend () -> Unit,
+    ) {
         if (!isProfileActionCurrent(token)) return
         _searchUiState.update { it.copy(actionError = null) }
         suspend fun refreshDetail() {
             if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
         }
-        mutateDiscovery("Entscheidung nicht gespeichert", write = {
-            commitProfilePreference(token, preference, core::setSwipePreference, swipeSession::visit, presentation)
-        }, afterWrite = { refreshDetail() },
-            // A successful swipe preserves other owners' projections; failure or source/identity changes revoke them.
-            refreshProfileWindow = token !is SwipeActionToken || preference == Preference.NONE,
+        mutateDiscovery(failureLabel, write = write, afterWrite = { refreshDetail() },
+            refreshProfileWindow = refreshProfileWindow,
             recoverWriteFailure = { refreshDetail() },
             onFailure = { message ->
                 if (token is DetailIdentityToken) _searchUiState.update {
                     if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it
                 }
             })
-    }
-
-    internal fun toggleProfileFavorite(token: ProfileIdentityToken) {
-        if (!isProfileActionCurrent(token)) return
-        _searchUiState.update { it.copy(actionError = null) }
-        mutateDiscovery("Favorit konnte nicht geändert werden", write = {
-            core.setListingFavorite(token.listingId, token.ownerId, token.favorite, !token.favorite)
-        }, afterWrite = {
-            if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
-        }, recoverWriteFailure = {
-            if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
-        }, onFailure = { message ->
-            if (token is DetailIdentityToken) _searchUiState.update {
-                if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it
-            }
-        })
     }
 
     private fun admittedDeck(token: SwipeDeckToken): Boolean =
@@ -425,15 +423,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _searchUiState.update { it.copy(searchCancelling = true) }
     }
 
-    private fun invalidateProfileRequest() = profileOperations.invalidateProfileRequest()
-
     override fun onCleared() {
         savedStatusControl?.cancel()
         savedSearch.cancelCheck()
         cancelMapResolution()
         clearPreview()
         invalidateActiveSearch()
-        invalidateProfileRequest()
+        profileOperations.invalidateProfileRequest()
         super.onCleared()
     }
 
@@ -608,7 +604,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         cancelPreview()
         val control = RequestControl()
         val ticket = checkNotNull(searchOwner.start(control))
-        invalidateProfileRequest()
+        profileOperations.invalidateProfileRequest()
         _searchUiState.update { it.beginRun(ticket) }
         viewModelScope.launch {
             var acceptedRun = false
@@ -1097,16 +1093,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }, retainGridUndo = true)
     }
 
-    private suspend fun refreshSelectedPerson(personId: Long) =
-        profileOperations.refreshLocalProfileForOwner(personId)
-
     internal fun checkAllSavedStatus(action: SavedStatusBatchAction) {
         if (!savedStatusBatchMatches(_discoverState.value, action) || _searchUiState.value.profileOpen) return
         checkSavedStatus(null)
     }
 
     internal fun checkSingleSavedStatus(action: SavedPersonAction) {
-        if (!admittedSavedPersonRow(action)) return
+        if (!savedActionMatches(_discoverState.value, _searchUiState.value, action)) return
         val listingId = action.row.card?.listingId ?: return
         checkSavedStatus(listingId)
     }
@@ -1161,39 +1154,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }, afterWrite = { refreshMap() }, recoverWriteFailure = { refreshMap() })
     }
 
-    private fun admittedSavedPersonRow(action: SavedPersonAction): Boolean =
-        !_searchUiState.value.profileOpen && !_searchUiState.value.loading &&
-            !_searchUiState.value.actionBusy && savedActionMatches(_discoverState.value, action)
-
     internal fun choosePreference(action: SavedPersonAction, preference: Preference) {
-        if (!admittedSavedPersonRow(action) || action.row.preference == preference) return
+        if (!savedActionMatches(_discoverState.value, _searchUiState.value, action) || action.row.preference == preference) return
         val row = action.row
-        _searchUiState.update { it.copy(actionError = null) }
         mutateDiscovery("Entscheidung nicht gespeichert", write = {
             val listing = row.card?.listingId
             if (listing != null) core.setSwipePreference(listing, row.personId, row.preference, preference)
             else core.setPersonPreferenceIf(row.personId, row.preference, preference)
-        }, afterWrite = {
-            refreshSelectedPerson(row.personId)
-        }, recoverWriteFailure = { refreshSelectedPerson(row.personId) }, onFailure = { message ->
-            _searchUiState.update { if (it.selectedPersonId == row.personId) it.copy(actionError = message) else it }
         })
     }
 
     internal fun toggleFavorite(action: SavedPersonAction) {
-        if (!admittedSavedPersonRow(action)) return
+        if (!savedActionMatches(_discoverState.value, _searchUiState.value, action)) return
         val row = action.row
-        _searchUiState.update { it.copy(actionError = null) }
         mutateDiscovery("Favorit konnte nicht geändert werden", write = {
             val listing = row.card?.listingId
             if (listing != null) core.setListingFavorite(listing, row.personId, row.favorite, !row.favorite)
             else core.setPersonFavoriteIf(row.personId, row.favorite, !row.favorite)
-        }, afterWrite = {
-            refreshMap()
-            refreshSelectedPerson(row.personId)
-        }, recoverWriteFailure = { refreshMap(); refreshSelectedPerson(row.personId) }, onFailure = { message ->
-            _searchUiState.update { if (it.selectedPersonId == row.personId) it.copy(actionError = message) else it }
-        })
+        }, afterWrite = { refreshMap() }, recoverWriteFailure = { refreshMap() })
     }
 
     private fun updateNote(personId: Long, transform: (NoteEditorState) -> NoteEditorState) {
@@ -1279,7 +1257,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     internal fun openSavedPersonProfile(action: SavedPersonAction) {
-        if (!admittedSavedPersonRow(action)) return
+        if (!savedActionMatches(_discoverState.value, _searchUiState.value, action)) return
         action.row.card?.let { loadProfile(it.listingId, action.row.personId) }
     }
 

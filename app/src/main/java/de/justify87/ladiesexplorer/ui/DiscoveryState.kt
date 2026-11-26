@@ -110,7 +110,7 @@ internal fun gridActionMatches(discovery: DiscoverUiState, search: SearchUiState
         discovery.actionGeneration == action.generation &&
         !discovery.busy && !discovery.loading && !search.loading && !search.actionBusy && !search.profileOpen &&
         discovery.activeRunId == action.runId && search.response?.searchRunId == action.runId &&
-        gridCards(discovery, search).firstOrNull { it.listingId == action.card.listingId } == action.card
+        discoveryMembership(discovery, search).firstOrNull { it.listingId == action.card.listingId } == action.card
 
 internal data class GridRefreshAction(val runId: Long?, val generation: Long)
 
@@ -136,9 +136,6 @@ internal fun gridPageMatches(discovery: DiscoverUiState, search: SearchUiState, 
 internal fun discoveryMembership(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
     if (search.activeProjectionPending) emptyList()
     else if (search.response != null) search.activeCards else discovery.localCards
-
-internal fun gridCards(discovery: DiscoverUiState, search: SearchUiState): List<DiscoveryCard> =
-    discoveryMembership(discovery, search)
 
 internal enum class DiscoveryEmptyState { Loading, Unknown, Empty }
 

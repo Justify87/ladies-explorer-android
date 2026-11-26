@@ -46,11 +46,11 @@ internal data class SavedPersonAction(
     val generation: Long,
 )
 
-internal fun savedActionMatches(state: DiscoverUiState, action: SavedPersonAction): Boolean {
+internal fun savedActionMatches(state: DiscoverUiState, search: SearchUiState, action: SavedPersonAction): Boolean {
     if (state.actionSurface != ProfileActionSurface.SAVED ||
         state.actionGeneration != action.generation ||
         state.savedKind != action.kind || state.savedSort != action.sort ||
-        state.loading || state.busy) return false
+        state.loading || state.busy || search.profileOpen || search.loading || search.actionBusy) return false
     val current = state.savedPage?.rows?.firstOrNull { it.personId == action.row.personId }
         ?: state.savedRecent?.rows?.firstOrNull { it.personId == action.row.personId }
     return current == action.row

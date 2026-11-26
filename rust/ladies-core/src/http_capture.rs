@@ -4,7 +4,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -57,6 +57,27 @@ pub(crate) struct HttpObservation {
     pub body_omitted: Option<String>,
 }
 
+impl HttpObservation {
+    pub(crate) fn receive_headers(
+        &mut self,
+        response: &reqwest::blocking::Response,
+        elapsed: Duration,
+        missing_mime: Option<&str>,
+    ) {
+        self.headers_elapsed_ms = elapsed.as_millis() as u64;
+        self.status = Some(response.status().as_u16());
+        self.http_version = format!("{:?}", response.version());
+        self.response_headers = headers(response.headers());
+        self.mime = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|header| header.to_str().ok())
+            .or(missing_mime)
+            .map(ToOwned::to_owned);
+        self.response_size = response.content_length();
+    }
+}
+
 #[derive(Debug)]
 struct State {
     mode: CaptureMode,
@@ -72,14 +93,14 @@ pub(crate) struct HttpRecorder {
     state: Mutex<State>,
 }
 
-pub(crate) fn started_ms() -> u64 {
+fn started_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or_default()
 }
 
-pub(crate) fn headers(map: &reqwest::header::HeaderMap) -> Vec<HttpHeader> {
+fn headers(map: &reqwest::header::HeaderMap) -> Vec<HttpHeader> {
     map.iter()
         .map(|(name, value)| HttpHeader {
             name: name.to_string(),
@@ -230,7 +251,48 @@ impl HttpRecorder {
         }
     }
 
-    pub(crate) fn mode_epoch(&self) -> (CaptureMode, u64) {
+    pub(crate) fn begin_request(
+        &self,
+        request: &reqwest::blocking::Request,
+        is_media: bool,
+    ) -> (Option<HttpObservation>, u64) {
+        let (mode, epoch) = self.mode_epoch();
+        let observation = (mode != CaptureMode::Off).then(|| HttpObservation {
+            method: request.method().to_string(),
+            url: request.url().to_string(),
+            final_url: request.url().to_string(),
+            status: None,
+            http_version: "unknown".into(),
+            request_headers: headers(request.headers()),
+            response_headers: Vec::new(),
+            mime: None,
+            response_size: None,
+            started_ms: started_ms(),
+            headers_elapsed_ms: 0,
+            body_elapsed_ms: 0,
+            body: None,
+            is_media,
+            error: None,
+            body_omitted: None,
+        });
+        (observation, epoch)
+    }
+
+    pub(crate) fn record_send_failure(
+        &self,
+        observation: Option<HttpObservation>,
+        epoch: u64,
+        started: Instant,
+        error: &impl std::fmt::Display,
+    ) {
+        if let Some(mut obs) = observation {
+            obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
+            obs.error = Some(error.to_string());
+            self.record_for_epoch(obs, epoch);
+        }
+    }
+
+    fn mode_epoch(&self) -> (CaptureMode, u64) {
         self.state
             .lock()
             .map(|state| (state.mode, state.epoch))
@@ -559,6 +621,94 @@ mod tests {
             is_media: false,
             error: None,
             body_omitted: None,
+        }
+    }
+
+    #[test]
+    fn request_observation_preserves_media_kind_and_capture_epoch() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("db.sqlite").to_string_lossy());
+        let request = reqwest::blocking::Client::new()
+            .get("https://example.invalid/fixture")
+            .header("Accept", "text/plain")
+            .build()
+            .unwrap();
+        assert!(recorder.begin_request(&request, false).0.is_none());
+        recorder.set_mode(CaptureMode::Text);
+        let (source, epoch) = recorder.begin_request(&request, false);
+        let source = source.unwrap();
+        assert!(!source.is_media);
+        assert_eq!(source.method, "GET");
+        assert_eq!(source.url, request.url().as_str());
+        assert_eq!(source.final_url, source.url);
+        assert!(
+            source
+                .request_headers
+                .iter()
+                .any(|header| header.name == "accept" && header.value == "text/plain")
+        );
+        assert!(source.status.is_none() && source.body.is_none());
+        let (media, media_epoch) = recorder.begin_request(&request, true);
+        let media = media.unwrap();
+        assert!(media.is_media);
+        assert_eq!(media_epoch, epoch);
+        recorder.clear().unwrap();
+        recorder.set_mode(CaptureMode::Text);
+        recorder.record_for_epoch(source, epoch);
+        recorder.record_for_epoch(media, media_epoch);
+        assert_eq!(recorder.status().entries, 0);
+        let (media, new_epoch) = recorder.begin_request(&request, true);
+        let mut media = media.unwrap();
+        media.body = Some("never captured".into());
+        recorder.record_for_epoch(media, new_epoch);
+        assert_eq!(recorder.status().entries, 1);
+        let entry = fs::read_to_string(root.path().join("diagnostics/ladies-http.jsonl")).unwrap();
+        let captured: HttpObservation = serde_json::from_str(&entry).unwrap();
+        assert!(captured.body.is_none());
+        assert_eq!(
+            captured.body_omitted.as_deref(),
+            Some("media_body_disabled")
+        );
+    }
+
+    #[test]
+    fn send_failure_records_only_the_current_enabled_epoch_and_redacts_error() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("db.sqlite").to_string_lossy());
+        let request = reqwest::blocking::Client::new()
+            .get("https://example.invalid/fixture")
+            .build()
+            .unwrap();
+        let error = "send failed: token=fixture-secret";
+        let started = Instant::now();
+        let (off, epoch) = recorder.begin_request(&request, false);
+        recorder.record_send_failure(off, epoch, started, &error);
+        recorder.set_mode(CaptureMode::Text);
+        let (stale, epoch) = recorder.begin_request(&request, false);
+        recorder.clear().unwrap();
+        recorder.set_mode(CaptureMode::Text);
+        recorder.record_send_failure(stale, epoch, started, &error);
+        assert_eq!(recorder.status().entries, 0);
+        for is_media in [false, true] {
+            let (current, epoch) = recorder.begin_request(&request, is_media);
+            recorder.record_send_failure(current, epoch, started, &error);
+        }
+        assert_eq!(recorder.status().entries, 2);
+        let entries =
+            fs::read_to_string(root.path().join("diagnostics/ladies-http.jsonl")).unwrap();
+        let captured: Vec<HttpObservation> = entries
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(captured.len(), 2);
+        assert!(!captured[0].is_media && captured[1].is_media);
+        for entry in captured {
+            assert_eq!(
+                entry.error.as_deref(),
+                Some("send failed: token=[REDACTED]")
+            );
+            assert!(entry.status.is_none() && entry.body.is_none());
+            assert_eq!(entry.body_elapsed_ms, 0);
         }
     }
 

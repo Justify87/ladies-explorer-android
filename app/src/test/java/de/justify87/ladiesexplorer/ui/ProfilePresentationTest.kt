@@ -111,6 +111,21 @@ class ProfilePresentationTest {
         assertEquals(0, selection.resolve(listOf(a), true))
     }
 
+    @Test fun mediaSelectionKeepsUrlIdentityAcrossArchivingAndDistinguishesLocalMedia() {
+        val remote = ProfileMediaItem("IMAGE", "https://example.invalid/a", null, 0u)
+        val archived = ProfileMediaItem("IMAGE", remote.url, "/archive/a", 1u)
+        val video = ProfileMediaItem("VIDEO", remote.url, null, 2u)
+        val local = ProfileMediaItem("IMAGE", "", "/archive/b", 3u)
+        val otherLocal = ProfileMediaItem("IMAGE", "", "/archive/c", 4u)
+        val selection = ProfileMediaSelection()
+        selection.select(listOf(video, remote), 1)
+        assertEquals("IMAGE:https://example.invalid/a", selection.id)
+        assertEquals(2, selection.resolve(listOf(video, local, archived), true))
+        selection.select(listOf(otherLocal, local), 1)
+        assertEquals("IMAGE:/archive/b", selection.id)
+        assertEquals(0, selection.resolve(listOf(local, otherLocal), true))
+    }
+
     @Test fun undoReferenceRestoresStableMediaAndRowWithSafeFallbacks() {
         val position = SwipePresentation(4, 1, 11, "{}", "IMAGE:b", "profile-services", 60,
             listOf("Services"), mediaIndex = 7)

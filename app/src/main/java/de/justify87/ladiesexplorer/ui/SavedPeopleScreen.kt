@@ -240,8 +240,8 @@ private fun SavedPersonCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ProfileThumbnail(card?.thumbnailUrl, Modifier.size(64.dp, 80.dp).clip(MaterialTheme.shapes.medium),
-                    card?.localPath)
+                ProfileImage(card?.thumbnailUrl, card?.localPath,
+                    Modifier.size(64.dp, 80.dp).clip(MaterialTheme.shapes.medium))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
                     Text(listOfNotNull(row.name, card?.age).joinToString(" · "),
                         style = MaterialTheme.typography.titleSmall)

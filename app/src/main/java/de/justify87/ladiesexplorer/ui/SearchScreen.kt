@@ -251,7 +251,7 @@ private fun SearchResultRow(action: SearchResultOpenAction, onProfile: (SearchRe
             horizontalArrangement=Arrangement.spacedBy(12.dp),
             verticalAlignment=Alignment.CenterVertically,
         ) {
-            ProfileThumbnail(
+            ProfileImage(
                 url=card.thumbnailUrl,
                 localPath=card.localPath,
                 modifier=Modifier.size(90.dp).clip(RoundedCornerShape(12.dp)),
