@@ -518,11 +518,6 @@ internal fun DiscoverScreen(
 }
 
 @Composable
-fun ProfileThumbnail(url: String?, modifier: Modifier = Modifier, localPath: String? = null) {
-    ProfileImage(url = url, localPath = localPath, modifier = modifier)
-}
-
-@Composable
 private fun SwipeShellHeader(
     presentation: ProfileShellPresentation, sourceContext: String, context: SwipeControlsContext,
     compactNotice: ProfileNoticeIndicator?, onNotice: () -> Unit,

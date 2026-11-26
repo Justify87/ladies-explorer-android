@@ -80,7 +80,7 @@ class SearchRunStateTest {
         for (rows in listOf(listOf(neutral, liked, disliked), listOf(neutral, disliked),
             listOf(neutral, liked), listOf(neutral))) {
             val search = SearchUiState().acceptRun(run, rows)
-            assertEquals(rows, gridCards(state, search))
+            assertEquals(rows, discoveryMembership(state, search))
             assertEquals(rows, currentMapMembership(state, search)?.cards)
             session.replayLikes = true
             assertEquals(rows, session.queue(discoveryMembership(state, search), true))
@@ -106,7 +106,7 @@ class SearchRunStateTest {
         val draft = SearchDraft.from(run.query, run.local)
         val discovery = DiscoverUiState(activeRunId = 1L, loading = true)
         val pending = before.copy(activeProjectionPending = true)
-        assertTrue(gridCards(discovery, pending).isEmpty())
+        assertTrue(discoveryMembership(discovery, pending).isEmpty())
         assertEquals(null, currentMapMembership(discovery, pending))
         assertEquals("Lokale Treffer werden aktualisiert", searchCountLabel(pending, draft, false))
         val error = pending.copy(activeCards = emptyList(), activeProjectionPending = false, activeProjectionError = "Fixture")
@@ -403,12 +403,12 @@ class SearchRunStateTest {
         }
         val discovery = DiscoverUiState(cards = swipe.queue(rows, true), activeRunId = 1)
         assertEquals(listOf(2L), discovery.cards.map { it.listingId })
-        assertEquals(rows, gridCards(discovery, search))
+        assertEquals(rows, discoveryMembership(discovery, search))
         // Neither a draft edit nor a cancelled replacement changes the grid's source.
-        assertEquals(rows, gridCards(discovery, search.beginRun().endRun()))
-        assertTrue(gridCards(discovery, SearchUiState()).isEmpty())
+        assertEquals(rows, discoveryMembership(discovery, search.beginRun().endRun()))
+        assertTrue(discoveryMembership(discovery, SearchUiState()).isEmpty())
         val local = discovery.copy(activeRunId = null, localCards = rows)
-        assertEquals(rows, gridCards(local, SearchUiState()))
+        assertEquals(rows, discoveryMembership(local, SearchUiState()))
         assertEquals(rows, discoveryMembership(local, SearchUiState()))
     }
 
@@ -419,7 +419,7 @@ class SearchRunStateTest {
         val grid = DiscoverUiState(activeRunId = 1L, actionSurface = ProfileActionSurface.GRID,
             actionGeneration = 7, gridUndo = receipt, loading = false)
         val undo = GridUndoAction(receipt, 7)
-        assertEquals(rows, gridCards(grid, search))
+        assertEquals(rows, discoveryMembership(grid, search))
         assertEquals(rows, currentMapMembership(grid, search)?.cards)
         assertTrue(gridUndoMatches(grid, search, undo))
         assertFalse(gridUndoMatches(grid.copy(actionGeneration = 8), search, undo))
@@ -492,15 +492,15 @@ class SearchRunStateTest {
                 project = project,
             )
             assertEquals(DiscoveryMutationOutcome.Success, result)
-            assertEquals(target, gridCards(discovery, search).last().preference)
-            assertTrue(gridCards(discovery, search).last().favorite)
+            assertEquals(target, discoveryMembership(discovery, search).last().preference)
+            assertTrue(discoveryMembership(discovery, search).last().favorite)
             assertEquals(step, swipe.last)
             val receipt = GridUndoReceipt(1L, old.listingId, old.personId, Preference.NONE, target)
             val undo = writeAndProject(write = {
                 undoSwipeStep(receipt.step(), write, { old.personId }, {})
             }, project = project)
             assertEquals(DiscoveryMutationOutcome.Success, undo)
-            assertEquals(old, gridCards(discovery, search).last())
+            assertEquals(old, discoveryMembership(discovery, search).last())
             assertEquals(step, swipe.last)
         }
         val failed = writeAndProject(
@@ -508,7 +508,7 @@ class SearchRunStateTest {
             project = project,
         )
         assertTrue(failed is DiscoveryMutationOutcome.WriteFailed)
-        assertEquals(old, gridCards(discovery, search).last())
+        assertEquals(old, discoveryMembership(discovery, search).last())
         assertEquals(step, swipe.last)
     }
 

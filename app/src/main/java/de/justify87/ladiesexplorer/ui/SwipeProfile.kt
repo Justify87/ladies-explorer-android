@@ -164,7 +164,7 @@ internal class SwipeProfileWindow(
         }
     }
 
-    private suspend fun obtain(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? {
+    suspend fun readCurrent(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? {
         val slot = slots[card.listingId]?.takeIf { it.owner == card.personId } ?: return null
         val listingId = card.listingId
         val ticket = slot.copy(ticket = ++nextTicket)
@@ -193,8 +193,4 @@ internal class SwipeProfileWindow(
             if (inFlight[listingId] == ticket) inFlight.remove(listingId)
         }
     }
-
-    suspend fun readCurrent(card: DiscoveryCard, read: suspend (() -> Unit) -> ProfileReadModel): ProfileReadModel? =
-        obtain(card, read)
-
 }
