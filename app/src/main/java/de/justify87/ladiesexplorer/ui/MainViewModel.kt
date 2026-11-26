@@ -283,39 +283,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 presentation?.takeIf { it.snapshotId == token.snapshotId }, card))
     }
 
-    private fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference, presentation: SwipePresentation?) {
+    private fun chooseProfilePreference(token: ProfileIdentityToken, preference: Preference, presentation: SwipePresentation?) =
+        mutateRenderedProfile(token, "Entscheidung nicht gespeichert",
+            // A successful swipe preserves other owners' projections; failure or source/identity changes revoke them.
+            refreshProfileWindow = token !is SwipeActionToken || preference == Preference.NONE,
+        ) {
+            commitProfilePreference(token, preference, core::setSwipePreference, swipeSession::visit, presentation)
+        }
+
+    internal fun toggleProfileFavorite(token: ProfileIdentityToken) =
+        mutateRenderedProfile(token, "Favorit konnte nicht geändert werden") {
+            core.setListingFavorite(token.listingId, token.ownerId, token.favorite, !token.favorite)
+        }
+
+    private fun mutateRenderedProfile(
+        token: ProfileIdentityToken,
+        failureLabel: String,
+        refreshProfileWindow: Boolean = true,
+        write: suspend () -> Unit,
+    ) {
         if (!isProfileActionCurrent(token)) return
         _searchUiState.update { it.copy(actionError = null) }
         suspend fun refreshDetail() {
             if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
         }
-        mutateDiscovery("Entscheidung nicht gespeichert", write = {
-            commitProfilePreference(token, preference, core::setSwipePreference, swipeSession::visit, presentation)
-        }, afterWrite = { refreshDetail() },
-            // A successful swipe preserves other owners' projections; failure or source/identity changes revoke them.
-            refreshProfileWindow = token !is SwipeActionToken || preference == Preference.NONE,
+        mutateDiscovery(failureLabel, write = write, afterWrite = { refreshDetail() },
+            refreshProfileWindow = refreshProfileWindow,
             recoverWriteFailure = { refreshDetail() },
             onFailure = { message ->
                 if (token is DetailIdentityToken) _searchUiState.update {
                     if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it
                 }
             })
-    }
-
-    internal fun toggleProfileFavorite(token: ProfileIdentityToken) {
-        if (!isProfileActionCurrent(token)) return
-        _searchUiState.update { it.copy(actionError = null) }
-        mutateDiscovery("Favorit konnte nicht geändert werden", write = {
-            core.setListingFavorite(token.listingId, token.ownerId, token.favorite, !token.favorite)
-        }, afterWrite = {
-            if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
-        }, recoverWriteFailure = {
-            if (token is DetailIdentityToken) profileOperations.refreshLocalProfile(token.sessionId, token.listingId)
-        }, onFailure = { message ->
-            if (token is DetailIdentityToken) _searchUiState.update {
-                if (it.profileSessionId == token.sessionId) it.copy(actionError = message) else it
-            }
-        })
     }
 
     private fun admittedDeck(token: SwipeDeckToken): Boolean =

@@ -409,7 +409,6 @@ class SearchRunStateTest {
         assertTrue(discoveryMembership(discovery, SearchUiState()).isEmpty())
         val local = discovery.copy(activeRunId = null, localCards = rows)
         assertEquals(rows, discoveryMembership(local, SearchUiState()))
-        assertEquals(rows, discoveryMembership(local, SearchUiState()))
     }
 
     @Test fun gridPreferenceKeepsSharedMembershipAndUndoAdmission() {

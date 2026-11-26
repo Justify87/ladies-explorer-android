@@ -120,7 +120,7 @@ class ProfilePresentationTest {
         val selection = ProfileMediaSelection()
         selection.select(listOf(video, remote), 1)
         assertEquals("IMAGE:https://example.invalid/a", selection.id)
-        assertEquals(1, selection.resolve(listOf(video, archived, local), true))
+        assertEquals(2, selection.resolve(listOf(video, local, archived), true))
         selection.select(listOf(otherLocal, local), 1)
         assertEquals("IMAGE:/archive/b", selection.id)
         assertEquals(0, selection.resolve(listOf(local, otherLocal), true))
