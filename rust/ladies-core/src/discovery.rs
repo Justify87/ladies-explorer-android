@@ -257,41 +257,28 @@ fn person_card(core: &LadiesCore, row: &rusqlite::Row<'_>) -> Result<DiscoveryCa
 
 pub(crate) fn page(
     core: &LadiesCore,
-    favorites_only: bool,
     limit: u32,
     cursor: Option<DiscoveryCursor>,
-    excluded_people: &[i64],
 ) -> Result<DiscoveryPage, CoreError> {
     if !(1..=100).contains(&limit) {
         return Err(CoreError::InvalidInput(
             "Discovery page size must be between 1 and 100".into(),
         ));
     }
-    let excluded =
-        serde_json::to_string(excluded_people).map_err(|e| CoreError::Storage(e.to_string()))?;
     let db = core.connection()?;
     let mut query = db.prepare(&format!(
         "{PERSON_CARDS}
          SELECT * FROM projected
-         WHERE listing_id IS NOT NULL AND (?1=0 OR favorite=1)
-           AND (?1=1 OR preference='NONE')
-           AND person_id NOT IN (SELECT value FROM json_each(?5))
-           AND (?2 IS NULL OR favorite < ?2
-                OR (favorite=?2 AND last_seen_at < ?3)
-                OR (favorite=?2 AND last_seen_at=?3 AND listing_id < ?4))
-         ORDER BY favorite DESC,last_seen_at DESC,listing_id DESC LIMIT ?6"
+         WHERE listing_id IS NOT NULL AND preference='NONE'
+           AND (?1 IS NULL OR favorite < ?1
+                OR (favorite=?1 AND last_seen_at < ?2)
+                OR (favorite=?1 AND last_seen_at=?2 AND listing_id < ?3))
+         ORDER BY favorite DESC,last_seen_at DESC,listing_id DESC LIMIT ?4"
     ))?;
     let cursor_favorite = cursor.as_ref().map(|c| i64::from(c.favorite));
     let cursor_time = cursor.as_ref().map(|c| c.last_seen_at.as_str());
     let cursor_id = cursor.as_ref().map(|c| c.listing_id);
-    let mut rows = query.query(params![
-        favorites_only,
-        cursor_favorite,
-        cursor_time,
-        cursor_id,
-        excluded,
-        limit + 1
-    ])?;
+    let mut rows = query.query(params![cursor_favorite, cursor_time, cursor_id, limit + 1])?;
     let mut entries = Vec::new();
     while let Some(row) = rows.next()? {
         entries.push((person_card(core, row)?, row.get::<_, String>(11)?));
@@ -927,7 +914,7 @@ mod tests {
         core.add_listing(second, None, "LADIES".into(), "3".into(), None)
             .unwrap();
         assert_eq!(
-            page(&core, false, 100, None, &[])
+            page(&core, 100, None)
                 .map(|p| p.cards)
                 .unwrap()
                 .len(),
@@ -935,7 +922,7 @@ mod tests {
         );
         core.set_preference(first, Preference::Dislike).unwrap();
         assert_eq!(
-            page(&core, false, 100, None, &[])
+            page(&core, 100, None)
                 .map(|p| p.cards)
                 .unwrap()
                 .len(),
@@ -943,16 +930,25 @@ mod tests {
         );
         core.set_preference(second, Preference::Like).unwrap();
         assert!(
-            page(&core, false, 100, None, &[])
+            page(&core, 100, None)
                 .map(|p| p.cards)
                 .unwrap()
                 .is_empty()
         );
         core.set_favorite(first, true).unwrap();
-        let favorites = page(&core, true, 100, None, &[]).map(|p| p.cards).unwrap();
+        assert!(page(&core, 100, None).unwrap().cards.is_empty());
+        let saved = core
+            .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Name, 100, 100)
+            .unwrap();
+        let favorites = saved.regular.rows;
         assert_eq!(favorites.len(), 1);
         assert_eq!(favorites[0].person_id, first);
         assert!(favorites[0].favorite);
+        core.set_preference(first, Preference::None).unwrap();
+        let neutral = page(&core, 100, None).unwrap().cards;
+        assert_eq!(neutral.len(), 1);
+        assert_eq!(neutral[0].person_id, first);
+        assert!(neutral[0].favorite);
     }
 
     #[test]
@@ -1050,18 +1046,17 @@ mod tests {
     }
 
     #[test]
-    fn discovery_keyset_pages_beyond_old_limit_and_honors_skips() {
+    fn discovery_keyset_pages_beyond_old_limit_without_duplicates() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         for id in 1..=215 {
             let person = core.create_person(Some(format!("Person {id}"))).unwrap();
             core.add_listing(person, None, "LADIES".into(), id.to_string(), None)
                 .unwrap();
         }
-        let excluded = vec![214, 215];
         let mut cursor = None;
         let mut ids = std::collections::HashSet::new();
         loop {
-            let current = page(&core, false, 35, cursor, &excluded).unwrap();
+            let current = page(&core, 35, cursor).unwrap();
             for card in current.cards {
                 assert!(ids.insert(card.person_id));
             }
@@ -1070,9 +1065,9 @@ mod tests {
                 None => break,
             }
         }
-        assert_eq!(ids.len(), 213);
-        assert!(!ids.contains(&214));
-        assert!(!ids.contains(&215));
+        assert_eq!(ids.len(), 215);
+        assert!(ids.contains(&214));
+        assert!(ids.contains(&215));
     }
 
     #[test]
@@ -1355,12 +1350,12 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         for limit in [0, 101] {
             assert!(matches!(
-                page(&core, false, limit, None, &[]),
+                page(&core, limit, None),
                 Err(CoreError::InvalidInput(reason))
                     if reason == "Discovery page size must be between 1 and 100"
             ));
         }
-        assert!(page(&core, false, 1, None, &[]).unwrap().cards.is_empty());
-        assert!(page(&core, false, 100, None, &[]).unwrap().cards.is_empty());
+        assert!(page(&core, 1, None).unwrap().cards.is_empty());
+        assert!(page(&core, 100, None).unwrap().cards.is_empty());
     }
 }

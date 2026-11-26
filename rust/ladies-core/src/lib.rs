@@ -480,12 +480,10 @@ impl LadiesCore {
 
     pub fn discovery_cards(
         &self,
-        favorites_only: bool,
         limit: u32,
         cursor: Option<DiscoveryCursor>,
-        excluded_person_ids: Vec<i64>,
     ) -> Result<DiscoveryPage, CoreError> {
-        discovery::page(self, favorites_only, limit, cursor, &excluded_person_ids)
+        discovery::page(self, limit, cursor)
     }
 
     pub fn saved_status_targets(&self) -> Result<Vec<i64>, CoreError> {
