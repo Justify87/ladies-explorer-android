@@ -124,8 +124,7 @@ type RawPerson = (i64, String, i64, u32);
 
 pub use discovery::{
     DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow,
-    SavedPersonCursor, SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection,
-    SavedPersonSort,
+    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSort,
 };
 pub use encounters::{Encounter, EncounterService, EncounterValues};
 pub use history::ChangeRecord;

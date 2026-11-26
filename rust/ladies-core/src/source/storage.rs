@@ -1033,15 +1033,15 @@ mod tests {
             } else {
                 save_cards(&core, vec![card("101", "Anna")]);
             }
-            assert!(
-                core.get_person(person)
-                    .unwrap()
-                    .unwrap()
-                    .last_seen_at
-                    .as_str()
-                    > OLD
-            );
             let db = core.connection().unwrap();
+            let person_seen: String = db
+                .query_row(
+                    "SELECT last_seen_at FROM persons WHERE person_id=?1",
+                    [person],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert!(person_seen.as_str() > OLD);
             let (listing_seen, profile_seen): (String, String) = db
                 .query_row(
                     "SELECT l.last_seen_at, p.last_seen_at FROM listings l

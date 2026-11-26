@@ -323,8 +323,8 @@ pub enum SavedPersonSort {
     Name,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum SavedPersonSection {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SavedPersonSection {
     All,
     Recent,
     Regular,
@@ -338,17 +338,6 @@ impl SavedPersonSection {
             Self::Regular => "recent=0",
         }
     }
-}
-
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct SavedPersonCursor {
-    pub kind: SavedPersonKind,
-    pub sort: SavedPersonSort,
-    pub section: SavedPersonSection,
-    pub as_of: i64,
-    pub revision: i64,
-    pub key: String,
-    pub person_id: i64,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -374,7 +363,7 @@ pub struct SavedPersonPage {
     pub total: u32,
     pub section_total: u32,
     pub as_of: i64,
-    pub next_cursor: Option<SavedPersonCursor>,
+    pub has_more: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -462,7 +451,6 @@ fn saved_people_in(
         limit,
         as_of,
     } = query;
-    let revision: i64 = db.query_row("SELECT total_changes()", [], |row| row.get(0))?;
     if limit == 0
         || (section != SavedPersonSection::All
             && (kind != SavedPersonKind::Favorite || sort != SavedPersonSort::Date))
@@ -535,46 +523,30 @@ fn saved_people_in(
             None
         };
         let raw: String = row.get(7)?;
-        entries.push((
-            SavedPersonRow {
-                person_id: row.get(1)?,
-                name: row.get(2)?,
-                preference: Preference::from_db(&raw)?,
-                favorite: row.get(8)?,
-                card,
-                listing_count: row.get(22)?,
-                updated_at: row.get(14)?,
-                last_seen_at: row.get(15)?,
-                status: row.get(16)?,
-                status_checked_at: row.get(17)?,
-                latest_change_at: row.get(19)?,
-                latest_change_type: row.get(20)?,
-                recent: row.get(21)?,
-            },
-            row.get::<_, String>(18)?,
-        ));
+        entries.push(SavedPersonRow {
+            person_id: row.get(1)?,
+            name: row.get(2)?,
+            preference: Preference::from_db(&raw)?,
+            favorite: row.get(8)?,
+            card,
+            listing_count: row.get(22)?,
+            updated_at: row.get(14)?,
+            last_seen_at: row.get(15)?,
+            status: row.get(16)?,
+            status_checked_at: row.get(17)?,
+            latest_change_at: row.get(19)?,
+            latest_change_type: row.get(20)?,
+            recent: row.get(21)?,
+        });
     }
     let has_more = entries.len() > limit as usize;
     entries.truncate(limit as usize);
-    let next_cursor = if has_more {
-        entries.last().map(|(row, key)| SavedPersonCursor {
-            kind,
-            sort,
-            section,
-            as_of,
-            revision,
-            key: key.clone(),
-            person_id: row.person_id,
-        })
-    } else {
-        None
-    };
     Ok(SavedPersonPage {
-        rows: entries.into_iter().map(|(row, _)| row).collect(),
+        rows: entries,
         total,
         section_total,
         as_of,
-        next_cursor,
+        has_more,
     })
 }
 
@@ -1072,26 +1044,23 @@ mod tests {
         assert_eq!(fav.rows[0].person_id, a);
         assert_eq!(fav.rows[0].listing_count, 2);
         assert_eq!(fav.rows[0].card.as_ref().unwrap().listing_id, second);
-        let cursor = fav.next_cursor.unwrap();
-        assert_eq!(cursor.kind, SavedPersonKind::Favorite);
-        assert_eq!(cursor.sort, SavedPersonSort::Name);
-        assert_eq!(cursor.person_id, a);
+        assert!(fav.has_more);
         let next = saved(SavedPersonKind::Favorite, SavedPersonSort::Name, 2);
         assert_eq!(next.total, 2);
         assert_eq!(next.rows[0].person_id, a);
         assert_eq!(next.rows[1].person_id, b);
-        assert!(next.next_cursor.is_none());
+        assert!(!next.has_more);
 
         let liked = saved(SavedPersonKind::Like, SavedPersonSort::Date, 1);
         assert_eq!(liked.total, 2);
         assert_eq!(liked.rows[0].person_id, c);
         assert!(liked.rows[0].card.is_none());
-        assert!(liked.next_cursor.is_some());
+        assert!(liked.has_more);
         let more = saved(SavedPersonKind::Like, SavedPersonSort::Date, 2);
         assert_eq!(more.rows[0].person_id, c);
         assert_eq!(more.rows[1].person_id, a);
         assert!(more.rows[1].favorite);
-        assert!(more.next_cursor.is_none());
+        assert!(!more.has_more);
         core.set_swipe_preference(first, a, Some(Preference::Like), Preference::Dislike)
             .unwrap();
         let dislikes = saved(SavedPersonKind::Dislike, SavedPersonSort::Date, 100);
@@ -1139,13 +1108,13 @@ mod tests {
         assert_eq!(recent.section_total, 5);
         assert_eq!(recent.rows.len(), 3);
         assert!(recent.rows.iter().all(|row| row.recent));
-        assert!(recent.next_cursor.is_some());
+        assert!(recent.has_more);
         let expanded = read(5);
         let all_recent = expanded.recent.unwrap();
         let regular = expanded.regular;
         assert_eq!(regular.section_total, 2);
         assert_eq!(all_recent.as_of, regular.as_of);
-        assert!(all_recent.next_cursor.is_none());
+        assert!(!all_recent.has_more);
         let mut recent_ids = all_recent
             .rows
             .iter()
@@ -1215,7 +1184,7 @@ mod tests {
     }
 
     #[test]
-    fn saved_window_reconciles_changed_membership_and_issues_new_revision() {
+    fn saved_window_reconciles_changed_membership_and_counts() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let a = core.create_person(Some("Änne".into())).unwrap();
         let b = core.create_person(Some("anne".into())).unwrap();
@@ -1239,7 +1208,8 @@ mod tests {
         let first = core
             .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, 1)
             .unwrap();
-        let cursor = first.regular.next_cursor.unwrap();
+        assert!(first.regular.has_more);
+        assert_eq!(first.regular.total, 4);
         let initial = core
             .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Date, 1, 1)
             .unwrap();
@@ -1256,8 +1226,9 @@ mod tests {
         let new_name_window = core
             .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, 1)
             .unwrap();
-        let new_cursor = new_name_window.regular.next_cursor.unwrap();
-        assert_ne!(cursor.revision, new_cursor.revision);
+        assert!(new_name_window.regular.has_more);
+        assert_eq!(new_name_window.regular.total, 3);
+        assert_eq!(new_name_window.regular.rows[0].person_id, a);
         let fresh = core
             .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Date, 50, 50)
             .unwrap();

@@ -140,7 +140,7 @@ internal fun SavedPeopleScreen(
             val recentAction = recent?.let {
                 SavedPeoplePageAction(it, state.savedKind, state.savedSort, state.actionGeneration, true)
             }
-            val canPage = page.nextCursor != null && enabled && !state.savedLoadingMore && !state.savedRecentLoadingMore
+            val canPage = page.hasMore && enabled && !state.savedLoadingMore && !state.savedRecentLoadingMore
             LaunchedEffect(listState, pageAction, canPage, state.savedError) {
                 if (canPage && state.savedError == null) {
                     snapshotFlow {
@@ -174,7 +174,7 @@ internal fun SavedPeopleScreen(
                             Text(if (expanded) "Weniger anzeigen" else "Alle anzeigen (${recent.sectionTotal})")
                         }
                     }
-                    if (expanded && recent.nextCursor != null) item(key = "recent-more") {
+                    if (expanded && recent.hasMore) item(key = "recent-more") {
                         TextButton(onClick = { recentAction?.let(onLoadMore) },
                             enabled = enabled && !state.savedRecentLoadingMore && !state.savedLoadingMore) {
                             Text(if (state.savedRecentLoadingMore) "Lädt …" else "Weitere Änderungen")
@@ -189,7 +189,7 @@ internal fun SavedPeopleScreen(
                         enabled, onProfile, onFavorite, onPreference, onCheckSingle)
                 }
                 if (state.savedLoadingMore) item { CircularProgressIndicator() }
-                else if (page.nextCursor != null) item {
+                else if (page.hasMore) item {
                     TextButton(onClick = { onLoadMore(pageAction) }, enabled = canPage) { Text("Weitere Profile") }
                 }
             }
