@@ -61,9 +61,9 @@ class SavedPeopleStateTest {
         assertFalse(savedActionMatches(state.copy(savedPage = null), SearchUiState(), action))
         assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
             rows = listOf(row(person = 2L)))), SearchUiState(), action))
-        assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
+        assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage.copy(
             rows = listOf(row(preference = Preference.LIKE)))), SearchUiState(), action))
-        assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
+        assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage.copy(
             rows = listOf(row(favorite = true)))), SearchUiState(), action))
         assertFalse(savedActionMatches(state.copy(savedKind = SavedPersonKind.LIKE), SearchUiState(), action))
         assertFalse(savedActionMatches(state.copy(savedSort = SavedPersonSort.NAME), SearchUiState(), action))
@@ -101,7 +101,7 @@ class SavedPeopleStateTest {
             state.actionGeneration)
         assertTrue(savedStatusBatchMatches(state, action))
         assertFalse(savedStatusBatchMatches(state.copy(savedPage = null), action))
-        assertFalse(savedStatusBatchMatches(state.copy(savedPage = state.savedPage!!.copy()), action))
+        assertFalse(savedStatusBatchMatches(state.copy(savedPage = state.savedPage.copy()), action))
         assertFalse(savedStatusBatchMatches(state.copy(savedKind = SavedPersonKind.LIKE), action))
         assertFalse(savedStatusBatchMatches(state.copy(savedSort = SavedPersonSort.NAME), action))
         assertFalse(savedStatusBatchMatches(state.copy(actionGeneration = 43), action))

@@ -13,7 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
@@ -187,8 +187,8 @@ class MapDesignDeviceTest {
             rule.waitUntil(timeoutMillis = 20_000) {
                 rule.runOnIdle {
                     val group = rendered(MAP_GROUP_COUNTS).singleOrNull()
-                    group?.getNumberProperty("group_count")?.toInt() == 2 &&
-                        group != null && mapRenderedSelection(points, group) == a &&
+                    group != null && group.getNumberProperty("group_count").toInt() == 2 &&
+                        mapRenderedSelection(points, group) == a &&
                         style?.getImage(mapThumbnailId(d)) == null
                 }
             }

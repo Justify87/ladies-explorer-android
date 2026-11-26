@@ -25,8 +25,10 @@ class DiagnosticEventQueueTest {
             assertTrue(entered.await(5, TimeUnit.SECONDS))
             val secondRan = CountDownLatch(1)
             assertTrue(queue.offer { secondRan.countDown() })
-            assertFalse(queue.offer { error("This event must be rejected") })
-            assertTrue(queue.offer(critical = true) { })
+            val rejectedRan = CountDownLatch(1)
+            val criticalRan = CountDownLatch(1)
+            assertFalse(queue.offer { rejectedRan.countDown() })
+            assertTrue(queue.offer(critical = true) { criticalRan.countDown() })
             assertEquals(1L to 0L, queue.lossSummary())
 
             val barrierStarted = CountDownLatch(1)
@@ -34,11 +36,14 @@ class DiagnosticEventQueueTest {
                 barrierStarted.countDown()
                 queue.barrier()
                 assertEquals(0L, secondRan.count)
+                assertEquals(0L, criticalRan.count)
+                assertEquals(1L, rejectedRan.count)
             }
             assertTrue(barrierStarted.await(5, TimeUnit.SECONDS))
             assertThrows(TimeoutException::class.java) { barrier.get(250, TimeUnit.MILLISECONDS) }
             gate.countDown()
             barrier.get(5, TimeUnit.SECONDS)
+            assertEquals(1L to 0L, queue.lossSummary())
             assertTrue(queue.offer { })
             queue.barrier()
         } finally {

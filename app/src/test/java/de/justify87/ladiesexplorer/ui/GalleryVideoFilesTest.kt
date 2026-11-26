@@ -18,8 +18,10 @@ class GalleryVideoFilesTest {
     }
     private fun medium(name: String) = ProfileMediaItem("VIDEO", "https://example.invalid/$name.mp4", null, 0u)
     private fun cache(budget: Long = 64L, warmBudget: Long = 48L,
+        onDiagnostic: (String) -> Unit = {},
         download: suspend (String) -> ByteArray = { bytes }) =
-        GalleryVideoFiles(download, { File.createTempFile("video-", ".media", folder.root) }, budget, warmBudget)
+        GalleryVideoFiles(download, { File.createTempFile("video-", ".media", folder.root) }, budget, warmBudget,
+            diagnostic = { _, message, _ -> onDiagnostic(message) })
 
     @Test(timeout = 15_000) fun cachedPlaybackDoesNotWaitForUnrelatedDownload() = runBlocking {
         val started = CompletableDeferred<Unit>()
@@ -125,20 +127,32 @@ class GalleryVideoFilesTest {
     }
 
     @Test(timeout = 15_000) fun refreshWaitsForOldLeaseAndPreservesArchive() = runBlocking {
-        val cache = cache()
+        val waiting = CompletableDeferred<Unit>()
+        val cache = cache(onDiagnostic = { message ->
+            if (message.startsWith("replacement_waiting_for_lease ")) waiting.complete(Unit)
+        })
         val a = medium("a")
-        val entered = CompletableDeferred<Unit>()
+        val entered = CompletableDeferred<File>()
         val release = CompletableDeferred<Unit>()
         val lease = launch {
-            cache.withVideo(a) { entered.complete(Unit); release.await() }
+            cache.withVideo(a) { entered.complete(it.file); release.await() }
         }
-        entered.await()
         val refreshed = CompletableDeferred<File>()
+        val original = entered.awaitSignal()
         val retry = launch { cache.withVideo(a, refresh = true) { refreshed.complete(it.file) } }
-        release.complete(Unit)
+        try {
+            waiting.awaitSignal()
+            assertTrue(original.isFile)
+            assertFalse(refreshed.isCompleted)
+        } finally {
+            release.complete(Unit)
+        }
         lease.join()
-        assertTrue(withTimeout(3_000) { refreshed.await() }.isFile)
+        val replacement = withTimeout(3_000) { refreshed.await() }
         retry.join()
+        assertTrue(replacement.isFile)
+        assertNotEquals(original, replacement)
+        assertFalse(original.exists())
         val archive = File(folder.root, "archive.mp4").apply { writeBytes(bytes) }
         val archived = a.copy(localPath = archive.absolutePath)
         assertEquals(archive.canonicalFile, cache.withVideo(archived) { it.file })
