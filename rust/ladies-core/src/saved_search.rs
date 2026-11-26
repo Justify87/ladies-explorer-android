@@ -459,24 +459,21 @@ fn results_using(
          ORDER BY r.position ASC,r.result_key ASC
          LIMIT ?2",
     )?;
-    let rows = query.query_map(
-        params![id, i64::from(limit) + 1],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, Option<i64>>(3)?,
-                row.get::<_, Option<i64>>(4)?,
-                row.get::<_, Option<String>>(5)?,
-                row.get::<_, Option<String>>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, Option<String>>(8)?,
-                row.get::<_, Option<String>>(9)?,
-                row.get::<_, Option<i64>>(10)?,
-            ))
-        },
-    )?;
+    let rows = query.query_map(params![id, i64::from(limit) + 1], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<i64>>(3)?,
+            row.get::<_, Option<i64>>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<String>>(8)?,
+            row.get::<_, Option<String>>(9)?,
+            row.get::<_, Option<i64>>(10)?,
+        ))
+    })?;
     let mut cards = rows
         .map(|row| {
             let (
@@ -1651,10 +1648,12 @@ mod tests {
         let larger = window(&core, id.clone(), 1100).unwrap();
         assert_eq!(larger.cards.len(), 1100);
         assert!(larger.has_more);
-        assert!(larger.cards[..100]
-            .iter()
-            .zip(&first.cards)
-            .all(|(a, b)| a.result_key == b.result_key));
+        assert!(
+            larger.cards[..100]
+                .iter()
+                .zip(&first.cards)
+                .all(|(a, b)| a.result_key == b.result_key)
+        );
         let complete = window(&core, id, 1200).unwrap();
         assert!(!complete.has_more);
         let keys: Vec<_> = complete

@@ -205,7 +205,7 @@ class CoreStore(context: Context) {
     internal fun createDisplayVideoFile(): File =
         File.createTempFile("video-", ".media", displayVideoDirectory)
 
-    suspend fun loadDisplayVideo(url: String): DisplayVideo = withContext(displayVideoDispatcher) {
+    suspend fun loadDisplayVideo(url: String): ByteArray = withContext(displayVideoDispatcher) {
         suspendCancellableCoroutine { continuation ->
             val control = RequestControl()
             continuation.invokeOnCancellation { control.cancel() }

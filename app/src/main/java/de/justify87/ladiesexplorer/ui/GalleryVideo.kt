@@ -77,7 +77,7 @@ internal class GalleryVideoFiles(
     private val warmBudget: Long = budget - 48L * 1024 * 1024,
     private val diagnostic: (DiagnosticLevel, String, Throwable?) -> Unit = { _, _, _ -> },
 ) {
-    constructor(core: CoreStore) : this({ url -> core.loadDisplayVideo(url).bytes }, core::createDisplayVideoFile,
+    constructor(core: CoreStore) : this({ url -> core.loadDisplayVideo(url) }, core::createDisplayVideoFile,
         diagnostic = { level, message, error -> core.diagnostic("VIDEO_CACHE", level, message, error) })
     private fun report(level: DiagnosticLevel, url: String, event: String, error: Throwable? = null) =
         diagnostic(level, "$event media=${mediaDiagnosticKey(url)}", error)

@@ -106,7 +106,6 @@ pub struct DiagnosticStatus {
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct CoreStatus {
-    pub api_version: u32,
     pub schema_version: u32,
     pub person_count: u32,
     pub listing_count: u32,
@@ -135,7 +134,7 @@ pub use history::ChangeRecord;
 pub use http_capture::{CaptureMode, CaptureStatus};
 pub use identity::IdentityCandidate;
 pub use map::{MapOverview, MapProfile};
-pub use media::{DisplayImage, DisplayVideo, MediaArchiveReport};
+pub use media::{DisplayImage, MediaArchiveReport};
 pub use operation::RequestControl;
 pub use prices::{PaidEncounter, PriceItem, PriceList, PriceListValues, PriceOverview};
 pub use profile_detail::{
@@ -338,7 +337,7 @@ impl LadiesCore {
         &self,
         url: String,
         control: Arc<RequestControl>,
-    ) -> Result<DisplayVideo, CoreError> {
+    ) -> Result<Vec<u8>, CoreError> {
         self.diagnostics.timed_media("display_video", &url, || {
             media::display_video(self, &url, &control)
         })
@@ -650,7 +649,6 @@ impl LadiesCore {
             Ok(db.query_row(sql, [], |row| row.get(0))?)
         };
         Ok(CoreStatus {
-            api_version: 1,
             schema_version: schema::VERSION,
             person_count: count("persons")?,
             listing_count: count("listings")?,
