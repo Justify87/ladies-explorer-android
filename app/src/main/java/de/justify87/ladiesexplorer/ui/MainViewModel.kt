@@ -64,7 +64,6 @@ data class DiscoverUiState(
     val localProfileStrictIds: Set<Long> = emptySet(),
     val pendingMergeListingId: Long? = null,
     val mergeNotice: String? = null,
-    val activeVisibleCount: Int = 0,
     val replayLikes: Boolean = true,
     val globalVisibility: GlobalResultVisibility = GlobalResultVisibility(),
     val canUndoSwipe: Boolean = false,
@@ -135,11 +134,8 @@ data class SearchUiState(
     val error: String? = null,
 ) {
     val profile get() = profileRead?.profile
-    val profileIdentity get() = profileRead?.identity
     val profileFromArchive get() = profileRead?.fromArchive ?: profileRetryFromArchive
     val selectedPersonId get() = profileRead?.identity?.personId
-    val selectedPerson get() = profileRead?.person
-    val profileMedia get() = profileRead?.media.orEmpty()
     val identityCandidates get() = profileRead?.candidates.orEmpty()
 }
 
@@ -626,7 +622,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _discoverState.update {
                     it.copy(cards = swipeSession.queue(cards, active = true), localCards = emptyList(), canUndoSwipe = false, gridUndo = null, swipeRestore = null,
                         swipePresentationGeneration = it.swipePresentationGeneration + 1, nextCursor = null, activeRunId = result.searchRunId,
-                        activeVisibleCount = cards.size, loading = false, loadingMore = false,
+                        loading = false, loadingMore = false,
                         savedLoadingMore = false, savedRecentLoadingMore = false, error = null, actionGeneration = it.actionGeneration + 1)
                 }
                 _searchUiState.update { it.acceptRun(result, cards) }

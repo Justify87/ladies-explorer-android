@@ -82,7 +82,7 @@ class StandaloneProfileOperationsTest {
             operations.loadProfile(4L, owner) { calls += "open" }
             idle()
             assertTrue(search.value.profileFromArchive)
-            assertEquals(owner, search.value.profileIdentity?.personId)
+            assertEquals(owner, search.value.profileRead?.identity?.personId)
             assertTrue(controls.isEmpty())
             calls.clear()
         }
@@ -169,8 +169,8 @@ class StandaloneProfileOperationsTest {
         f.idle()
         assertEquals("confirm:4:2", f.calls.first())
         assertEquals(listOf("home", "map", "profile:4", "project:1", "saved"), f.calls.drop(1).sorted())
-        assertEquals(2L, f.search.value.profileIdentity?.personId)
-        assertEquals(2L, f.search.value.selectedPerson?.personId)
+        assertEquals(2L, f.search.value.profileRead?.identity?.personId)
+        assertEquals(2L, f.search.value.profileRead?.person?.personId)
         assertFalse(f.tickets.isCurrent(1L, a))
         assertFalse(f.tickets.isCurrent(2L, b))
         assertTrue(f.tickets.isCurrent(3L, other))
@@ -235,7 +235,7 @@ class StandaloneProfileOperationsTest {
             }
             assertTrue(f.search.value.profileOpen)
             assertEquals(4L, f.search.value.profile?.listingId)
-            assertEquals(2L, f.search.value.profileIdentity?.personId)
+            assertEquals(2L, f.search.value.profileRead?.identity?.personId)
             assertNull(f.search.value.retryProfileListingId)
             assertNull(f.search.value.actionError)
             assertNotEquals(old.sessionId, f.search.value.profileSessionId)
@@ -258,10 +258,10 @@ class StandaloneProfileOperationsTest {
         f.operations.confirmIdentity(token, 2L)
         f.idle()
         assertEquals(2L, f.owner)
-        assertNull(f.search.value.profileIdentity)
+        assertNull(f.search.value.profileRead?.identity)
         assertNull(f.search.value.selectedPersonId)
         assertNull(f.search.value.profile)
-        assertTrue(f.search.value.profileMedia.isEmpty())
+        assertNull(f.search.value.profileRead)
         assertEquals(4L, f.search.value.retryProfileListingId)
         assertFalse(f.tickets.isCurrent(1L, a))
         assertEquals(setOf(3L), f.notes.value.keys)
@@ -272,7 +272,7 @@ class StandaloneProfileOperationsTest {
         f.identityError = null
         f.retryCurrent()
         f.idle()
-        assertEquals(2L, f.search.value.profileIdentity?.personId)
+        assertEquals(2L, f.search.value.profileRead?.identity?.personId)
         assertNull(f.search.value.retryProfileListingId)
         assertEquals(1, f.calls.count { it.startsWith("confirm:") })
         assertFalse(f.calls.any { it.startsWith("source:") })
@@ -290,7 +290,7 @@ class StandaloneProfileOperationsTest {
         assertEquals("confirm:4:2", f.calls.first())
         assertEquals(listOf("map", "profile:4", "project:1", "saved"), f.calls.drop(1).sorted())
         assertEquals("write failed", f.search.value.actionError)
-        assertEquals(1L, f.search.value.profileIdentity?.personId)
+        assertEquals(1L, f.search.value.profileRead?.identity?.personId)
         assertTrue(f.tickets.isCurrent(1L, ticket))
         assertEquals(setOf(1L, 2L, 3L), f.notes.value.keys)
         assertFalse(f.discovery.value.busy)
@@ -306,7 +306,7 @@ class StandaloneProfileOperationsTest {
         f.cached = fixtureProfile(12L)
         f.operations.confirmIdentity(old, 2L)
         f.idle()
-        assertNull(f.search.value.profileIdentity)
+        assertNull(f.search.value.profileRead?.identity)
         assertNull(f.search.value.profile)
         assertNull(f.search.value.detailIdentityToken())
         assertEquals(4L, f.search.value.retryProfileListingId)
@@ -323,7 +323,7 @@ class StandaloneProfileOperationsTest {
         f.operations.loadProfile(4L, 1L) {}
         f.owner = 7L
         f.idle()
-        assertNull(f.search.value.profileIdentity)
+        assertNull(f.search.value.profileRead?.identity)
         assertNull(f.search.value.profile)
         assertEquals(4L, f.search.value.retryProfileListingId)
         assertTrue(f.search.value.error!!.contains("Profilzuordnung"))
@@ -336,7 +336,7 @@ class StandaloneProfileOperationsTest {
         f.closeCurrent()
         f.operations.loadProfile(4L, 7L) {}
         f.idle()
-        assertEquals(7L, f.search.value.profileIdentity?.personId)
+        assertEquals(7L, f.search.value.profileRead?.identity?.personId)
     }
 
     @Test(timeout = 15_000) fun lateDetailSuccessAndFailureCannotReplaceNewerProjection() = runBlocking {
@@ -423,7 +423,7 @@ class StandaloneProfileOperationsTest {
         assertEquals(1, f.sourceControls.single().cancelled)
         finish.complete(Unit)
         f.idle()
-        assertEquals(7L, f.search.value.profileIdentity?.personId)
+        assertEquals(7L, f.search.value.profileRead?.identity?.personId)
         assertEquals(12L, f.search.value.profile?.snapshotId)
         assertEquals(2, f.calls.count { it == "map" })
         assertEquals(2, f.profileChanges)
@@ -659,7 +659,7 @@ class StandaloneProfileOperationsTest {
         assertEquals("confirm:4:2", f.calls.first())
         assertEquals(listOf("discovery", "home", "map", "saved"), f.calls.drop(1).sorted())
         assertFalse(f.tickets.isCurrent(1L, ticket))
-        assertNull(f.search.value.profileIdentity)
+        assertNull(f.search.value.profileRead?.identity)
         assertNull(f.search.value.profile)
         assertEquals(4L, f.search.value.retryProfileListingId)
         assertFalse(f.discovery.value.busy)
@@ -700,13 +700,13 @@ class StandaloneProfileOperationsTest {
         f.operations.confirmIdentity(oldToken, 2L)
         f.idle()
         assertTrue(f.calls.isEmpty())
-        assertEquals(7L, f.search.value.profileIdentity?.personId)
+        assertEquals(7L, f.search.value.profileRead?.identity?.personId)
         assertTrue(f.tickets.isCurrent(1L, oldTicket))
         assertTrue(f.tickets.isCurrent(7L, currentTicket))
         f.confirmCurrent()
         f.idle()
         assertEquals(1, f.calls.count { it == "confirm:4:2" })
-        assertEquals(2L, f.search.value.profileIdentity?.personId)
+        assertEquals(2L, f.search.value.profileRead?.identity?.personId)
         assertFalse(f.tickets.isCurrent(7L, currentTicket))
     }
 
