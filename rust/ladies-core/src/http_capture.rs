@@ -72,7 +72,7 @@ pub(crate) struct HttpRecorder {
     state: Mutex<State>,
 }
 
-pub(crate) fn started_ms() -> u64 {
+fn started_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -230,7 +230,34 @@ impl HttpRecorder {
         }
     }
 
-    pub(crate) fn mode_epoch(&self) -> (CaptureMode, u64) {
+    pub(crate) fn begin_request(
+        &self,
+        request: &reqwest::blocking::Request,
+        is_media: bool,
+    ) -> (Option<HttpObservation>, u64) {
+        let (mode, epoch) = self.mode_epoch();
+        let observation = (mode != CaptureMode::Off).then(|| HttpObservation {
+            method: request.method().to_string(),
+            url: request.url().to_string(),
+            final_url: request.url().to_string(),
+            status: None,
+            http_version: "unknown".into(),
+            request_headers: headers(request.headers()),
+            response_headers: Vec::new(),
+            mime: None,
+            response_size: None,
+            started_ms: started_ms(),
+            headers_elapsed_ms: 0,
+            body_elapsed_ms: 0,
+            body: None,
+            is_media,
+            error: None,
+            body_omitted: None,
+        });
+        (observation, epoch)
+    }
+
+    fn mode_epoch(&self) -> (CaptureMode, u64) {
         self.state
             .lock()
             .map(|state| (state.mode, state.epoch))
@@ -560,6 +587,50 @@ mod tests {
             error: None,
             body_omitted: None,
         }
+    }
+
+    #[test]
+    fn request_observation_preserves_media_kind_and_capture_epoch() {
+        let root = tempfile::tempdir().unwrap();
+        let recorder = HttpRecorder::new(&root.path().join("db.sqlite").to_string_lossy());
+        let request = reqwest::blocking::Client::new()
+            .get("https://example.invalid/fixture")
+            .header("Accept", "text/plain")
+            .build()
+            .unwrap();
+        assert!(recorder.begin_request(&request, false).0.is_none());
+        recorder.set_mode(CaptureMode::Text);
+        let (source, epoch) = recorder.begin_request(&request, false);
+        let source = source.unwrap();
+        assert!(!source.is_media);
+        assert_eq!(source.method, "GET");
+        assert_eq!(source.url, request.url().as_str());
+        assert_eq!(source.final_url, source.url);
+        assert!(
+            source
+                .request_headers
+                .iter()
+                .any(|header| header.name == "accept" && header.value == "text/plain")
+        );
+        assert!(source.status.is_none() && source.body.is_none());
+        let (media, media_epoch) = recorder.begin_request(&request, true);
+        let media = media.unwrap();
+        assert!(media.is_media);
+        assert_eq!(media_epoch, epoch);
+        recorder.clear().unwrap();
+        recorder.set_mode(CaptureMode::Text);
+        recorder.record_for_epoch(source, epoch);
+        recorder.record_for_epoch(media, media_epoch);
+        assert_eq!(recorder.status().entries, 0);
+        let (media, new_epoch) = recorder.begin_request(&request, true);
+        let mut media = media.unwrap();
+        media.body = Some("never captured".into());
+        recorder.record_for_epoch(media, new_epoch);
+        assert_eq!(recorder.status().entries, 1);
+        let entry = fs::read_to_string(root.path().join("diagnostics/ladies-http.jsonl")).unwrap();
+        let captured: HttpObservation = serde_json::from_str(&entry).unwrap();
+        assert!(captured.body.is_none());
+        assert_eq!(captured.body_omitted.as_deref(), Some("media_body_disabled"));
     }
 
     #[test]

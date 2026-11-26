@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     CoreError, LadiesCore,
-    http_capture::{self, CaptureMode, HttpObservation, HttpRecorder},
+    http_capture::{self, HttpRecorder},
     identity,
     operation::RequestControl,
 };
@@ -105,25 +105,7 @@ impl Fetcher for HttpFetcher {
             .map_err(|error| {
                 CoreError::Media(format!("Media request failed: {}", error.without_url()))
             })?;
-        let (capture_mode, capture_epoch) = self.recorder.mode_epoch();
-        let mut observation = (capture_mode != CaptureMode::Off).then(|| HttpObservation {
-            method: request.method().to_string(),
-            url: request.url().to_string(),
-            final_url: request.url().to_string(),
-            status: None,
-            http_version: "unknown".into(),
-            request_headers: http_capture::headers(request.headers()),
-            response_headers: Vec::new(),
-            mime: None,
-            response_size: None,
-            started_ms: http_capture::started_ms(),
-            headers_elapsed_ms: 0,
-            body_elapsed_ms: 0,
-            body: None,
-            is_media: true,
-            error: None,
-            body_omitted: None,
-        });
+        let (mut observation, capture_epoch) = self.recorder.begin_request(&request, true);
         let sent = self.client.execute(request);
         let mut response = match sent {
             Ok(response) => response,

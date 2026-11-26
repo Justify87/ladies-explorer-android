@@ -11,7 +11,7 @@ use url::Url;
 use crate::{
     CoreError,
     diagnostics::Diagnostics,
-    http_capture::{self, CaptureMode, HttpObservation, HttpRecorder},
+    http_capture::{self, CaptureMode, HttpRecorder},
     operation::RequestControl,
 };
 
@@ -227,25 +227,7 @@ impl Transport for SourceHttp {
                 .map_err(|error| {
                     CoreError::Source(format!("Source HTTP request failed: {error}"))
                 })?;
-            let (capture_mode, capture_epoch) = self.recorder.mode_epoch();
-            let mut observation = (capture_mode != CaptureMode::Off).then(|| HttpObservation {
-                method: request.method().to_string(),
-                url: request.url().to_string(),
-                final_url: request.url().to_string(),
-                status: None,
-                http_version: "unknown".into(),
-                request_headers: http_capture::headers(request.headers()),
-                response_headers: Vec::new(),
-                mime: None,
-                response_size: None,
-                started_ms: http_capture::started_ms(),
-                headers_elapsed_ms: 0,
-                body_elapsed_ms: 0,
-                body: None,
-                is_media: false,
-                error: None,
-                body_omitted: None,
-            });
+            let (mut observation, capture_epoch) = self.recorder.begin_request(&request, false);
             let sent = self.client.execute(request);
             let response = match sent {
                 Ok(response) => response,
