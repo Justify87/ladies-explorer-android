@@ -147,7 +147,13 @@ class ProfileHeroLayoutTest {
             heroIdentity(profile, identity.copy(status = "INACTIVE"), false).status)
         assertEquals("Quellenstatus: Anzeige nicht verfügbar",
             heroIdentity(profile, identity.copy(status = "UNAVAILABLE"), false).status)
-        assertNull(heroIdentity(profile, null, false).status)
+        val fallback = HeroIdentity(profile.name, place = profile.city, hasVideo = true,
+            preference = Preference.LIKE, favorite = true)
+        assertNull(fallback.status)
+        assertNull(fallback.age)
+        assertEquals("Fixture", fallback.title)
+        assertEquals("Dresden", fallback.subtitle)
+        assertEquals("Gefällt · Favorit · Video", fallback.decisions)
     }
 
     @Test fun mediaZonesLeaveAnIndependentCenter() {

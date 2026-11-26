@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
@@ -142,7 +143,7 @@ class ProfileRestoreDeviceTest {
         rule.onNodeWithText("WhatsApp").assertDoesNotExist()
     }
 
-    @Test fun emptyProjectionAndRestoredGalleryUseTheSameSelectedMediumAndHeroBounds() {
+    @Test fun loadingEmptyAndRestoredGalleryPreserveSelectionAndHeroBounds() {
         val photo = ProfileMediaItem("IMAGE", "", null, 0u)
         val video = ProfileMediaItem("VIDEO", "", null, 1u)
         var model by mutableStateOf<ProfileReadModel?>(null)
@@ -160,24 +161,41 @@ class ProfileRestoreDeviceTest {
                     item("hero") {
                         ProfileMediaHero(model?.media.orEmpty(),
                             height = 180.dp, modifier = Modifier.testTag("restore-hero"), selection = mediaSelection,
-                            projectionAvailable = model != null, actionToken = model?.let(::token),
+                            projectionAvailable = model != null, preparing = model == null,
+                            actionToken = model?.let(::token),
                             actionsEnabled = false, isCurrent = { false }, compact = true)
                     }
                 }
             }
         }
-        rule.runOnIdle { assertNull(selected); model = profile(media = emptyList()) }
-        rule.runOnIdle { assertNull(selected) }
-        rule.onNodeWithText("Keine Medien verfügbar").assertExists()
         val hero = rule.onNodeWithTag("restore-hero")
+        val progress = rule.onNode(
+            hasAnyAncestor(hasTestTag("restore-hero")) and
+                SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo),
+            useUnmergedTree = true,
+        )
+        rule.runOnIdle { assertNull(selected) }
+        progress.assertIsDisplayed()
+        rule.onNodeWithText("Keine Medien verfügbar").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Profilbild 1").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Video abspielen").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Nächstes Medium").assertDoesNotExist()
         val bounds = hero.fetchSemanticsNode().boundsInRoot
+
+        rule.runOnIdle { model = profile(media = emptyList()) }
+        rule.runOnIdle { assertNull(selected) }
+        progress.assertDoesNotExist()
+        rule.onNodeWithText("Keine Medien verfügbar").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Nächstes Medium").assertDoesNotExist()
+        assertEquals(bounds, hero.fetchSemanticsNode().boundsInRoot)
         rule.runOnIdle {
             model = profile(media = listOf(photo, video))
             receipt = SwipePresentation(4, 1, 11, "{}", "VIDEO:", "hero", 0, emptyList(), 3, 1)
         }
         rule.waitUntil(5_000) { consumed == 1 }
         rule.onNodeWithContentDescription("Video abspielen").assertExists().assertIsNotEnabled()
-        rule.runOnIdle { assertEquals(video, selected) }
+        rule.onNodeWithText("Keine Medien verfügbar").assertDoesNotExist()
+        rule.runOnIdle { assertEquals(video, selected); assertEquals(1, consumed) }
         assertEquals(bounds, hero.fetchSemanticsNode().boundsInRoot)
         rule.onNodeWithContentDescription("Vorheriges Medium").performClick()
         rule.runOnIdle { assertEquals(photo, selected) }
