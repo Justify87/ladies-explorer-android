@@ -38,7 +38,6 @@ class SearchRunStateTest {
         partial = partial,
         radiusBoundaryStopped = false,
         radiusVerified = !partial,
-        profiles = emptyList(),
     )
 
     private fun card(id: Long) = fixtureCard(id)

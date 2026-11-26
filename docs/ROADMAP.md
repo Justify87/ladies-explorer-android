@@ -4,28 +4,20 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M13.2 — Native API, UniFFI und Rust-Altlasten. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M13.3 — Aktive Redundanz und semantisches Refactoring. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M13 — Dead Code & Refactoring Cleanup
 
-Ziel: die integrierte Codebasis repositoryweit auf entbehrliche, abgelöste und redundante Implementierungen prüfen und belegte Befunde ursächlich bereinigen. Kein neues Produktverhalten, keine pauschale Neustrukturierung, keine Wiedereröffnung historischer Aufgaben ohne aktuellen Befund. Die sechs Aufgaben sind sequenziell; Durchführung und Abschluss nach [AGENTS](../AGENTS.md#arbeitszyklus), [laufender Bereinigung](../AGENTS.md#laufende-bereinigung), [README](../README.md#prüfung--ci) und [Pflege](#pflege).
+Ziel: die integrierte Codebasis repositoryweit auf entbehrliche, abgelöste und redundante Implementierungen prüfen und belegte Befunde ursächlich bereinigen. Kein neues Produktverhalten, keine pauschale Neustrukturierung, keine Wiedereröffnung historischer Aufgaben ohne aktuellen Befund. Die Aufgaben sind sequenziell; Durchführung und Abschluss nach [AGENTS](../AGENTS.md#arbeitszyklus), [laufender Bereinigung](../AGENTS.md#laufende-bereinigung), [README](../README.md#prüfung--ci) und [Pflege](#pflege).
 
 **M13-spezifische Prüfmethode und Übergabe:**
 - Jede versionierte Datei im Inventar einer sachlich zuständigen Aufgabe zuordnen und im Verlauf des Meilensteins ihrer Funktion entsprechend semantisch prüfen. Eigenen Quellcode dateiweise tiefgehend untersuchen, einschließlich Rust-interner Pfade ohne FFI-Bezug. Generierte Dateien, Fremdcode, Binärdaten und Assets hinsichtlich Herkunft, Einbindung, Nutzung und Schutzbedarf prüfen, nicht blind umschreiben. Nicht prüfbare Bereiche und Gründe im PR offenlegen.
 - Statische Referenzen und Compiler-/Lint-/Clippy-Diagnosen sind Hinweise, keine alleinigen Löschbeweise. Auch indirekte Aufrufer, Framework-, Manifest-, Ressourcen-, Reflection-, JNI-/FFI- und Serialisierungsverträge, Feature-Konfiguration, Skripte und Testtargets berücksichtigen. Vertikal über die betroffenen Schichten und horizontal über gemeinsame Zustände und alternative Einstiegspunkte prüfen. Abgelöste Pfade mit exklusiven Helfern, Records, Fehlern, Tests, Ressourcen und Verweisen vollständig entfernen. Gültige Produkt-, Design-, Daten-, Architektur- und Schutzverträge erhalten; insbesondere interne Schemaentwicklung, Parser-/Netzwerk-/Mediengrenzen, Cursor-/Revisions-/Owner-Verträge, Cancel-/Drain-/Epoch-Schutz und notwendige Diagnose.
 - Je Aufgabe Inventarfortschritt, konkrete Kandidaten mit Codeankern, Beleg, Aufrufern, Risiko und Entscheidung im PR festhalten. Zu Beginn die integrierten Vorgänger-PRs des Meilensteins gezielt auswerten und übernommene offene Befunde am aktuellen Stand verifizieren. Vor Abschluss jeden noch offenen Befund mit zuständiger verbleibender Aufgaben-ID, Codeanker und Grund im PR übergeben; Umfang bzw. dauerhafte Blocker der zuständigen offenen Aufgabe bei Bedarf im selben Roadmap-Diff präzisieren. Spätere Aufgaben übernehmen diese Befunde ausdrücklich und dokumentieren ihre Entscheidung. Bestätigte Befunde im eigenen Umfang ursächlich beheben; nicht einfach zur Abschlussaufgabe verschieben. Bei bereits entfernten Aufgaben keine IDs wiedereröffnen; neu belegte Folgefehler einer sachlich zuständigen noch offenen Aufgabe zuordnen, gegebenenfalls M13.6. Unabhängige konkrete Fehler nach [Pflege](#pflege) erfassen. Keine zusätzlichen Register oder historischen Einträge in der Roadmap.
 
-### M13.2 — Native API, UniFFI und Rust-Altlasten
-
-**Status:** READY.
-
-Sämtliche eigenen Rust-Produktionsdateien einschließlich interner Module, privater Algorithmen und Rust-interner APIs unabhängig von FFI-Nutzung semantisch prüfen. Native Exporte und Records gegen tatsächliche CoreStore-/Kotlin-Aufrufer, regulär generierte Bindings, Android-/JNI-/Manifest-/R8-Konfiguration sowie Rust-interne und Testnutzer abgleichen. Obsolete FFI-Exporte, Wrapper, optional gewordene Altpfade, verwaiste Typen, Felder, Fehler und exklusive Helfer vertikal entfernen; benötigte Rust-interne APIs nicht wegen fehlender FFI-Aufrufer löschen. Rein testbezogene native Hilfen in Testmodule bzw. `cfg(test)` verschieben und auf minimale Fixtures begrenzen. Insbesondere Profil-/Medien-/Historien-/Identitäts-/Such-/Saved-People-/Diagnosepfade sowie interne Pagination, RequestControl, Queue-/Shutdown-/Recorder- und Revisionsverträge auf aktuelle Notwendigkeit prüfen. Keine Änderung des Datenformats, Schemas oder gültiger Migrationsverträge zur bloßen Bereinigung.
-
-**Akzeptanz/Prüfung:** Dateibezogener Rust-Prüfnachweis und Inventar der überprüften nativen Symbole mit Entscheidungen; kein bestätigter entbehrlicher Produktions-/Exportpfad im Umfang. Bindings regulär generiert, FFI-Aufrufer konsistent; Rust fmt/test/clippy, native synthetische Fixtures, Architektur-/Exportverträge, Android-Integration einschließlich APK-Vertrag und erforderliches Gate.
-
 ### M13.3 — Aktive Redundanz und semantisches Refactoring
 
-**Status:** PLANNED. Abhängig von M13.2.
+**Status:** READY.
 
 Verbleibende aktive Duplikate, unnötige Abstraktionen/Delegationen, redundante Daten- und Zustandsprojektionen, Übergangsimplementierungen und konkurrierende Verantwortlichkeiten in UI, Operations-/Lifecycle-Orchestrierung, CoreStore und Rust prüfen. Nur nachgewiesen gleichwertige Pfade vereinheitlichen, Verantwortlichkeiten am vorhandenen fachlichen Owner bündeln, vereinfachbare Pfade direkt ersetzen und abgelöste Implementierungen entfernen. Unterschiede zwischen Listing-/Person-Identität, CAS-/Owner-Prüfungen, Saved-/Discovery-/Standalone-Kontexten, Suchfenstern, Medienvorbereitung und Fehler-/Cancel-Semantik nicht als Duplikate behandeln, sofern fachlich verschieden.
 

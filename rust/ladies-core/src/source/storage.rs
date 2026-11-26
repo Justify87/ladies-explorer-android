@@ -4,7 +4,9 @@ use url::Url;
 
 use crate::{CoreError, LadiesCore, history, identity, operation::RequestControl};
 
-use super::{Card, Profile, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
+use super::{
+    Card, Profile, ProfileObservation, SearchCard, SearchRequest, SearchResponse, SearchResult,
+};
 use super::{network::DownloadedSearch, parse};
 
 #[cfg(test)]
@@ -12,7 +14,7 @@ pub(super) fn save_search(
     core: &LadiesCore,
     request: &SearchRequest,
     downloaded: DownloadedSearch,
-) -> Result<SearchResponse, CoreError> {
+) -> Result<SearchResult, CoreError> {
     save_search_with_control(core, request, downloaded, None)
 }
 
@@ -21,7 +23,7 @@ pub(super) fn save_search_with_control(
     request: &SearchRequest,
     downloaded: DownloadedSearch,
     control: Option<&RequestControl>,
-) -> Result<SearchResponse, CoreError> {
+) -> Result<SearchResult, CoreError> {
     if let Some(control) = control {
         control.check()?;
     }
@@ -109,32 +111,30 @@ pub(super) fn save_search_with_control(
             advert_id: card.advert_id.clone(),
             name: card.name.clone(),
             city: card.city.clone(),
-            category: card.category.clone(),
             profile_url: card.profile_url.clone(),
             thumbnail_url: card.thumbnail_url.clone(),
             has_video: card.has_video,
-            is_premium: card.is_premium,
             has_ai_content: card.has_ai_content,
-            has_18plus: card.has_18plus,
-            has_stars: card.has_stars,
         });
     }
     if let Some(control) = control {
         control.check()?;
     }
     tx.commit()?;
-    Ok(SearchResponse {
-        query: request.clone(),
-        local: crate::saved_search::LocalVisibility::default(),
-        search_run_id: run_id,
-        city: downloaded.city,
-        requested_radius_km: request.radius_km,
-        server_count: downloaded.server_count,
-        total_pages: downloaded.total_pages,
-        fetched_pages: downloaded.fetched_pages,
-        partial: downloaded.partial,
-        radius_boundary_stopped: downloaded.radius_boundary_stopped,
-        radius_verified: downloaded.radius_verified,
+    Ok(SearchResult {
+        run: SearchResponse {
+            query: request.clone(),
+            local: crate::saved_search::LocalVisibility::default(),
+            search_run_id: run_id,
+            city: downloaded.city,
+            requested_radius_km: request.radius_km,
+            server_count: downloaded.server_count,
+            total_pages: downloaded.total_pages,
+            fetched_pages: downloaded.fetched_pages,
+            partial: downloaded.partial,
+            radius_boundary_stopped: downloaded.radius_boundary_stopped,
+            radius_verified: downloaded.radius_verified,
+        },
         profiles,
     })
 }
@@ -476,7 +476,7 @@ pub(super) fn save_profile(
     listing_id: i64,
     url: &str,
     profile: Profile,
-) -> Result<ProfileResponse, CoreError> {
+) -> Result<ProfileObservation, CoreError> {
     let target = listing_target(core, listing_id, false)?;
     assert_eq!(target.url, url);
     save_observed_profile(core, &target, profile, true, None)
@@ -488,7 +488,7 @@ pub(super) fn save_observed_profile(
     profile: Profile,
     verified: bool,
     control: Option<&RequestControl>,
-) -> Result<ProfileResponse, CoreError> {
+) -> Result<ProfileObservation, CoreError> {
     if let Some(control) = control {
         control.check()?;
     }
@@ -681,24 +681,9 @@ pub(super) fn save_observed_profile(
         control.check()?;
     }
     tx.commit()?;
-    Ok(ProfileResponse {
-        listing_id,
+    Ok(ProfileObservation {
         snapshot_id,
         new_snapshot,
-        advert_id: profile.advert_id,
-        name: profile.name,
-        city: profile.city,
-        description: profile.description,
-        postal_code: profile.postal_code,
-        hidden_location: profile.hidden_location,
-        source_profile_id: profile.source_profile_id,
-        canonical_id: profile.canonical_id,
-        phone_display: profile.phone_display,
-        published_at: profile.published_at,
-        traits_json: profile.traits_json,
-        services_json: profile.services_json,
-        opening_times_json: profile.opening_times_json,
-        media: profile.media,
     })
 }
 
@@ -727,7 +712,7 @@ mod tests {
         }
     }
 
-    fn save_cards(core: &LadiesCore, cards: Vec<Card>) -> SearchResponse {
+    fn save_cards(core: &LadiesCore, cards: Vec<Card>) -> SearchResult {
         save_search(
             core,
             &SearchRequest::for_test(),
@@ -980,12 +965,18 @@ mod tests {
         let person = core.get_person(person_id).unwrap().unwrap();
         assert!(person.favorite);
         assert_eq!(person.preference, crate::Preference::Like);
-        assert_eq!(person.display_name.as_deref(), Some("Anna new"));
         assert_eq!(person.listing_count, 1);
         assert_eq!(core.status().unwrap().person_count, 2);
         assert_eq!(core.status().unwrap().listing_count, 2);
-        assert_eq!(core.list_people(10, None).unwrap().people.len(), 2);
         let db = core.connection().unwrap();
+        let display_name: Option<String> = db
+            .query_row(
+                "SELECT display_name FROM persons WHERE person_id=?1",
+                [person_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(display_name.as_deref(), Some("Anna new"));
         let count: i64 = db
             .query_row("SELECT COUNT(*) FROM search_runs", [], |r| r.get(0))
             .unwrap();
@@ -1027,15 +1018,15 @@ mod tests {
             } else {
                 save_cards(&core, vec![card("101", "Anna")]);
             }
-            assert!(
-                core.get_person(person)
-                    .unwrap()
-                    .unwrap()
-                    .last_seen_at
-                    .as_str()
-                    > OLD
-            );
             let db = core.connection().unwrap();
+            let person_seen: String = db
+                .query_row(
+                    "SELECT last_seen_at FROM persons WHERE person_id=?1",
+                    [person],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert!(person_seen.as_str() > OLD);
             let (listing_seen, profile_seen): (String, String) = db
                 .query_row(
                     "SELECT l.last_seen_at, p.last_seen_at FROM listings l
@@ -1260,10 +1251,17 @@ mod tests {
             })
             .count();
         assert_eq!(changes, 2);
-        assert_eq!(
-            history.first().unwrap().new_json.as_deref(),
-            Some("\"Anna\"")
-        );
+        let latest = history.first().unwrap();
+        assert_eq!(latest.new_display.as_deref(), Some("Anna"));
+        let db = core.connection().unwrap();
+        let raw: Option<String> = db
+            .query_row(
+                "SELECT new_json FROM change_events WHERE change_event_id=?1",
+                [latest.change_event_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(raw.as_deref(), Some("\"Anna\""));
     }
 
     #[test]
@@ -1294,9 +1292,10 @@ mod tests {
         let new = save_observed_profile(&core, &old_target, profile("New"), true, None).unwrap();
         let late = save_observed_profile(&core, &old_target, profile("Late"), true, None);
         assert!(matches!(late, Err(CoreError::Source(_))));
-        let current = core.cached_source_profile(listing).unwrap().unwrap();
-        assert_eq!(current.snapshot_id, new.snapshot_id);
-        assert_eq!(current.name, "New");
+        assert!(core.has_cached_profile(listing).unwrap());
+        let current = core.profile_projection(listing).unwrap().unwrap();
+        assert_eq!(current.profile.snapshot_id, new.snapshot_id);
+        assert_eq!(current.profile.name, "New");
         let db = core.connection().unwrap();
         let observations: i64 = db
             .query_row(
@@ -1314,13 +1313,13 @@ mod tests {
         let first = save_cards(&core, vec![card("101", "Fixture")]);
         let row = &first.profiles[0];
         let map = core
-            .map_overview(vec![row.listing_id], Some(first.search_run_id))
+            .map_overview(vec![row.listing_id], Some(first.run.search_run_id))
             .unwrap();
         assert_eq!(map.profiles.len(), 1);
         assert_eq!(map.profiles[0].precision, "CITY");
         save_profile(&core, row.listing_id, &row.profile_url, profile("Fixture")).unwrap();
         let map = core
-            .map_overview(vec![row.listing_id], Some(first.search_run_id))
+            .map_overview(vec![row.listing_id], Some(first.run.search_run_id))
             .unwrap();
         assert_eq!(map.profiles[0].precision, "POSTAL");
 
@@ -1328,12 +1327,12 @@ mod tests {
         moved.city = "Berlin".into();
         let second = save_cards(&core, vec![moved]);
         let map = core
-            .map_overview(vec![row.listing_id], Some(second.search_run_id))
+            .map_overview(vec![row.listing_id], Some(second.run.search_run_id))
             .unwrap();
         assert_eq!(map.profiles[0].city, "Berlin");
         assert_eq!(map.profiles[0].precision, "CITY");
         let historical = core
-            .map_overview(vec![row.listing_id], Some(first.search_run_id))
+            .map_overview(vec![row.listing_id], Some(first.run.search_run_id))
             .unwrap();
         assert_eq!(historical.profiles[0].precision, "POSTAL");
     }
@@ -1397,7 +1396,10 @@ mod tests {
         assert_eq!(before.cards[0].person_id, Some(owner));
         assert!(before.searches[0].unread_new_results);
         let map = core
-            .map_overview(vec![listing, target.listing_id], Some(found.search_run_id))
+            .map_overview(
+                vec![listing, target.listing_id],
+                Some(found.run.search_run_id),
+            )
             .unwrap();
         assert_eq!(map.total_profiles, 2);
         let in_flight = listing_target(&core, listing, false).unwrap();
@@ -1427,16 +1429,10 @@ mod tests {
         assert!(projected.person.favorite);
         assert_eq!(projected.person.preference, crate::Preference::Like);
         assert!(projected.candidates.is_empty());
-        assert_eq!(
-            core.cached_source_profile(listing)
-                .unwrap()
-                .unwrap()
-                .snapshot_id,
-            snapshot.snapshot_id
-        );
+        assert!(core.has_cached_profile(listing).unwrap());
         let grid = core
             .active_search_cards(
-                found.search_run_id,
+                found.run.search_run_id,
                 crate::saved_search::LocalVisibility::default(),
             )
             .unwrap();
@@ -1481,7 +1477,7 @@ mod tests {
         let map = core
             .map_overview(
                 grid.iter().map(|card| card.listing_id).collect(),
-                Some(found.search_run_id),
+                Some(found.run.search_run_id),
             )
             .unwrap();
         assert_eq!(map.total_profiles, 2);

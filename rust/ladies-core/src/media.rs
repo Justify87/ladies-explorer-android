@@ -639,10 +639,9 @@ pub(crate) fn display_image(
 }
 
 /// Bounded display-only video; never creates archive assets or profile observations.
-#[derive(Debug, uniffi::Record)]
-pub struct DisplayVideo {
-    pub bytes: Vec<u8>,
-    pub mime: String,
+struct DisplayVideo {
+    bytes: Vec<u8>,
+    mime: &'static str,
 }
 
 fn display_video_with(
@@ -675,7 +674,7 @@ fn display_video_with(
     }
     Ok(DisplayVideo {
         bytes: response.bytes,
-        mime: mime.into(),
+        mime,
     })
 }
 
@@ -683,7 +682,7 @@ pub(crate) fn display_video(
     core: &LadiesCore,
     url: &str,
     control: &RequestControl,
-) -> Result<DisplayVideo, CoreError> {
+) -> Result<Vec<u8>, CoreError> {
     let result = display_video_with(url, &core.media_http, control)?;
     core.diagnostics.debug(
         "MEDIA",
@@ -693,7 +692,7 @@ pub(crate) fn display_video(
             result.mime
         ),
     );
-    Ok(result)
+    Ok(result.bytes)
 }
 
 pub(crate) fn archive(

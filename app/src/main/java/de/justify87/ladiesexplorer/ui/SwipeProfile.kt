@@ -10,8 +10,8 @@ import kotlinx.coroutines.ensureActive
 internal class LocalProfileReadFailure(cause: Exception) : IllegalStateException(cause.message, cause)
 
 internal class SwipeProfileReads(
-    val cached: suspend (Long) -> ProfileResponse?,
-    val source: suspend (Long) -> ProfileResponse,
+    val cached: suspend (Long) -> Boolean,
+    val source: suspend (Long) -> Unit,
     val projection: suspend (Long) -> NativeProfileProjection?,
 )
 
@@ -24,7 +24,7 @@ internal suspend fun CoreStore.readSwipeProfile(
     onSourceRead: () -> Unit = {},
 ): ProfileReadModel = readSwipeProfile(
     listingId, refresh, allowNetwork, onSourceRead,
-    SwipeProfileReads(::cachedProfile, { loadProfile(it, control) }, ::profileProjection),
+    SwipeProfileReads(::hasCachedProfile, { loadProfile(it, control) }, ::profileProjection),
 )
 
 internal suspend fun readSwipeProfile(
@@ -35,25 +35,26 @@ internal suspend fun readSwipeProfile(
     reads: SwipeProfileReads,
 ): ProfileReadModel {
     var cached = reads.cached(listingId)
-    var fromArchive = cached != null
+    var fromArchive = cached
     var warning: String? = null
-    if (allowNetwork && (refresh || cached == null)) {
+    if (allowNetwork && (refresh || !cached)) {
         // Completion matters even if delivery was cancelled after a native commit.
         try {
-            cached = reads.source(listingId)
+            reads.source(listingId)
+            cached = true
             fromArchive = false
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (failure: Exception) {
             currentCoroutineContext().ensureActive()
-            if (cached == null) throw failure
+            if (!cached) throw failure
             fromArchive = true
             warning = "Online-Aktualisierung fehlgeschlagen; archivierte Daten."
         } finally {
             onSourceRead()
         }
     }
-    checkNotNull(cached) { "Kein archiviertes Profil vorhanden" }
+    check(cached) { "Kein archiviertes Profil vorhanden" }
     currentCoroutineContext().ensureActive()
     val local = try {
         checkNotNull(reads.projection(listingId)) { "Profil nicht mehr verfügbar" }

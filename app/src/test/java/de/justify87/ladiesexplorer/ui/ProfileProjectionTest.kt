@@ -40,7 +40,7 @@ class ProfileProjectionTest {
     @Test(timeout = 15_000) fun actualDiscoveryPublisherKeepsSuccessfulSiblingAndRejectsOutdatedEpoch() = runBlocking {
         val search = MutableStateFlow(SearchUiState(activeCards = listOf(fixtureCard(1L))))
         val state = MutableStateFlow(DiscoverUiState(cards = listOf(fixtureCard(1L))))
-        val page = SavedPersonPage(emptyList(), 0u, 0u, 1L, null)
+        val page = SavedPersonPage(emptyList(), 0u, 0u, 1L, false)
         var epoch = 1L
         var failDiscovery = true
         var failSaved = false
@@ -71,7 +71,7 @@ class ProfileProjectionTest {
 
         val run = SearchResponse(
             SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
-            defaultLocalVisibility(), 3L, "Leipzig", 20u, 1u, 1u, 1u, false, false, true, emptyList(),
+            defaultLocalVisibility(), 3L, "Leipzig", 20u, 1u, 1u, 1u, false, false, true,
         )
         search.value = search.value.acceptRun(run, listOf(fixtureCard(1L)))
         val activePublisher = DiscoveryProjectionPublisher(search, state, SwipeSession(), { epoch },
@@ -104,7 +104,7 @@ class ProfileProjectionTest {
         val state = MutableStateFlow(DiscoverUiState(
             cards = listOf(first), localCards = listOf(first), swipeSessionId = 7L, loading = false,
         ))
-        val page = SavedPersonPage(emptyList(), 0u, 0u, 1L, null)
+        val page = SavedPersonPage(emptyList(), 0u, 0u, 1L, false)
         var rows = listOf(first)
         val publisher = DiscoveryProjectionPublisher(search, state, SwipeSession(), { 1L }, {},
             {

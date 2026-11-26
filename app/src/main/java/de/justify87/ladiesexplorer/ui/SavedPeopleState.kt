@@ -99,7 +99,7 @@ internal fun savedPeoplePageMatches(
         state.actionGeneration == action.generation &&
         state.savedKind == action.kind && state.savedSort == action.sort &&
         (if (action.watchlist) state.savedRecent else state.savedPage) === action.page &&
-        action.page.nextCursor != null && !state.loading && !state.busy &&
+        action.page.hasMore && !state.loading && !state.busy &&
         !state.savedLoadingMore && !state.savedRecentLoadingMore &&
         !search.profileOpen && !search.loading && !search.actionBusy
 

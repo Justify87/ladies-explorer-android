@@ -12,7 +12,7 @@ class SavedPeopleStateTest {
 
     private fun displayed(row: SavedPersonRow) = DiscoverUiState(
         loading = false, actionSurface = ProfileActionSurface.SAVED, actionGeneration = 42,
-        savedPage = SavedPersonPage(listOf(row), 1u, 1u, 123L, null),
+        savedPage = SavedPersonPage(listOf(row), 1u, 1u, 123L, false),
     )
 
     @Test fun activityLabelsDistinguishSeenChangedAndStatusCheckWithoutRepeatingDates() {
@@ -75,8 +75,8 @@ class SavedPeopleStateTest {
 
     @Test fun recentSavedActionsUseTheSameStrictContract() {
         val recent = row().copy(recent = true)
-        val state = displayed(recent).copy(savedPage = SavedPersonPage(emptyList(), 1u, 0u, 123L, null),
-            savedRecent = SavedPersonPage(listOf(recent), 1u, 1u, 123L, null))
+        val state = displayed(recent).copy(savedPage = SavedPersonPage(emptyList(), 1u, 0u, 123L, false),
+            savedRecent = SavedPersonPage(listOf(recent), 1u, 1u, 123L, false))
         val action = SavedPersonAction(recent, state.savedKind, state.savedSort, state.actionGeneration)
         assertTrue(savedActionMatches(state, action))
         assertFalse(savedActionMatches(state.copy(savedRecent = null), action))
@@ -120,10 +120,8 @@ class SavedPeopleStateTest {
     }
 
     @Test fun paginationRequiresExactRenderedWindowAndAvailableOperation() {
-        val cursor = SavedPersonCursor(SavedPersonKind.FAVORITE, SavedPersonSort.DATE,
-            SavedPersonSection.REGULAR, 123L, 1L, "key", 1L)
-        val page = displayed(row()).savedPage!!.copy(nextCursor = cursor)
-        val recent = page.copy(nextCursor = cursor.copy(section = SavedPersonSection.RECENT))
+        val page = displayed(row()).savedPage!!.copy(hasMore = true)
+        val recent = page.copy()
         val state = displayed(row()).copy(savedPage = page, savedRecent = recent)
         val search = SearchUiState()
         val regularAction = SavedPeoplePageAction(page, state.savedKind, state.savedSort, 42L, false)
@@ -145,7 +143,7 @@ class SavedPeopleStateTest {
         }
         assertFalse(savedPeoplePageMatches(state.copy(savedPage = page.copy()), search, regularAction))
         assertFalse(savedPeoplePageMatches(state.copy(savedRecent = recent.copy()), search, recentAction))
-        val exhausted = page.copy(nextCursor = null)
+        val exhausted = page.copy(hasMore = false)
         assertFalse(savedPeoplePageMatches(state.copy(savedPage = exhausted), search, regularAction.copy(page = exhausted)))
         assertTrue(savedPeoplePageMatches(state.copy(savedError = "read failed"), search, regularAction))
     }

@@ -44,26 +44,28 @@ pub struct ProfileMediaItem {
     pub position: u32,
 }
 
-pub(crate) fn cached_profile(
-    core: &LadiesCore,
-    listing_id: i64,
-) -> Result<Option<crate::source::ProfileResponse>, CoreError> {
+pub(crate) fn has_cached_profile(core: &LadiesCore, listing_id: i64) -> Result<bool, CoreError> {
     let db = core.connection()?;
-    cached_profile_from(&db, listing_id)
+    Ok(db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM listings l
+         JOIN listing_snapshots s
+           ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
+         WHERE l.listing_id=?1)",
+        [listing_id],
+        |r| r.get(0),
+    )?)
 }
 
 pub(crate) fn cached_profile_from(
     db: &rusqlite::Connection,
     listing_id: i64,
 ) -> Result<Option<crate::source::ProfileResponse>, CoreError> {
-    use crate::source::{MediaReference, ProfileResponse};
+    use crate::source::ProfileResponse;
 
-    let mut profile: Option<ProfileResponse> = db
+    Ok(db
         .query_row(
-            "SELECT s.snapshot_id,l.external_listing_id,s.name,s.city,s.description,
-                    s.postal_code,s.hidden_location,s.external_profile_id,s.canonical_id,
-                    s.phone_display,s.published_at,s.traits_json,s.services_json,
-                    s.opening_times_json
+            "SELECT s.snapshot_id,s.name,s.city,s.description,
+                    s.postal_code,s.phone_display,s.published_at
              FROM listings l
              JOIN listing_snapshots s
                ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
@@ -73,51 +75,16 @@ pub(crate) fn cached_profile_from(
                 Ok(ProfileResponse {
                     listing_id,
                     snapshot_id: r.get(0)?,
-                    new_snapshot: false,
-                    advert_id: r.get(1)?,
-                    name: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    city: r.get::<_, Option<String>>(3)?.unwrap_or_default(),
-                    description: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                    postal_code: r.get(5)?,
-                    hidden_location: r.get(6)?,
-                    source_profile_id: r.get(7)?,
-                    canonical_id: r.get(8)?,
-                    phone_display: r.get(9)?,
-                    published_at: r.get(10)?,
-                    traits_json: r
-                        .get::<_, Option<String>>(11)?
-                        .unwrap_or_else(|| "{}".into()),
-                    services_json: r
-                        .get::<_, Option<String>>(12)?
-                        .unwrap_or_else(|| "{}".into()),
-                    opening_times_json: r
-                        .get::<_, Option<String>>(13)?
-                        .unwrap_or_else(|| "{}".into()),
-                    media: Vec::new(),
+                    name: r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    city: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    description: r.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    postal_code: r.get(4)?,
+                    phone_display: r.get(5)?,
+                    published_at: r.get(6)?,
                 })
             },
         )
-        .optional()?;
-    if let Some(profile) = profile.as_mut() {
-        let mut query = db.prepare(
-            "SELECT remote_url,kind,position,role,remote_variant,revision_token
-             FROM snapshot_media WHERE snapshot_id=?1
-             ORDER BY position,snapshot_media_id",
-        )?;
-        profile.media = query
-            .query_map([profile.snapshot_id], |r| {
-                Ok(MediaReference {
-                    url: r.get(0)?,
-                    kind: r.get(1)?,
-                    position: r.get(2)?,
-                    role: r.get(3)?,
-                    variant: r.get(4)?,
-                    revision_token: r.get(5)?,
-                })
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-    }
-    Ok(profile)
+        .optional()?)
 }
 
 pub(crate) fn media_from(
@@ -257,41 +224,28 @@ fn person_card(core: &LadiesCore, row: &rusqlite::Row<'_>) -> Result<DiscoveryCa
 
 pub(crate) fn page(
     core: &LadiesCore,
-    favorites_only: bool,
     limit: u32,
     cursor: Option<DiscoveryCursor>,
-    excluded_people: &[i64],
 ) -> Result<DiscoveryPage, CoreError> {
     if !(1..=100).contains(&limit) {
         return Err(CoreError::InvalidInput(
             "Discovery page size must be between 1 and 100".into(),
         ));
     }
-    let excluded =
-        serde_json::to_string(excluded_people).map_err(|e| CoreError::Storage(e.to_string()))?;
     let db = core.connection()?;
     let mut query = db.prepare(&format!(
         "{PERSON_CARDS}
          SELECT * FROM projected
-         WHERE listing_id IS NOT NULL AND (?1=0 OR favorite=1)
-           AND (?1=1 OR preference='NONE')
-           AND person_id NOT IN (SELECT value FROM json_each(?5))
-           AND (?2 IS NULL OR favorite < ?2
-                OR (favorite=?2 AND last_seen_at < ?3)
-                OR (favorite=?2 AND last_seen_at=?3 AND listing_id < ?4))
-         ORDER BY favorite DESC,last_seen_at DESC,listing_id DESC LIMIT ?6"
+         WHERE listing_id IS NOT NULL AND preference='NONE'
+           AND (?1 IS NULL OR favorite < ?1
+                OR (favorite=?1 AND last_seen_at < ?2)
+                OR (favorite=?1 AND last_seen_at=?2 AND listing_id < ?3))
+         ORDER BY favorite DESC,last_seen_at DESC,listing_id DESC LIMIT ?4"
     ))?;
     let cursor_favorite = cursor.as_ref().map(|c| i64::from(c.favorite));
     let cursor_time = cursor.as_ref().map(|c| c.last_seen_at.as_str());
     let cursor_id = cursor.as_ref().map(|c| c.listing_id);
-    let mut rows = query.query(params![
-        favorites_only,
-        cursor_favorite,
-        cursor_time,
-        cursor_id,
-        excluded,
-        limit + 1
-    ])?;
+    let mut rows = query.query(params![cursor_favorite, cursor_time, cursor_id, limit + 1])?;
     let mut entries = Vec::new();
     while let Some(row) = rows.next()? {
         entries.push((person_card(core, row)?, row.get::<_, String>(11)?));
@@ -336,8 +290,8 @@ pub enum SavedPersonSort {
     Name,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum SavedPersonSection {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SavedPersonSection {
     All,
     Recent,
     Regular,
@@ -351,17 +305,6 @@ impl SavedPersonSection {
             Self::Regular => "recent=0",
         }
     }
-}
-
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct SavedPersonCursor {
-    pub kind: SavedPersonKind,
-    pub sort: SavedPersonSort,
-    pub section: SavedPersonSection,
-    pub as_of: i64,
-    pub revision: i64,
-    pub key: String,
-    pub person_id: i64,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -387,7 +330,7 @@ pub struct SavedPersonPage {
     pub total: u32,
     pub section_total: u32,
     pub as_of: i64,
-    pub next_cursor: Option<SavedPersonCursor>,
+    pub has_more: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -401,8 +344,7 @@ struct SavedQuery {
     sort: SavedPersonSort,
     section: SavedPersonSection,
     limit: u32,
-    cursor: Option<SavedPersonCursor>,
-    as_of: Option<i64>,
+    as_of: i64,
 }
 
 fn saved_now(db: &rusqlite::Connection) -> Result<i64, CoreError> {
@@ -421,18 +363,29 @@ pub(crate) fn saved_window(
     recent_limit: u32,
 ) -> Result<SavedPeopleWindow, CoreError> {
     let db = core.connection()?;
-    let as_of = Some(saved_now(&db)?);
+    let as_of = saved_now(&db)?;
+    saved_window_at(core, &db, kind, sort, regular_limit, recent_limit, as_of)
+}
+
+fn saved_window_at(
+    core: &LadiesCore,
+    db: &rusqlite::Connection,
+    kind: SavedPersonKind,
+    sort: SavedPersonSort,
+    regular_limit: u32,
+    recent_limit: u32,
+    as_of: i64,
+) -> Result<SavedPeopleWindow, CoreError> {
     let watchlist = kind == SavedPersonKind::Favorite && sort == SavedPersonSort::Date;
     let read = |section, limit| {
         saved_people_in(
             core,
-            &db,
+            db,
             SavedQuery {
                 kind,
                 sort,
                 section,
                 limit,
-                cursor: None,
                 as_of,
             },
         )
@@ -453,36 +406,6 @@ pub(crate) fn saved_window(
     Ok(SavedPeopleWindow { regular, recent })
 }
 
-#[cfg(test)]
-fn saved_people(
-    core: &LadiesCore,
-    kind: SavedPersonKind,
-    sort: SavedPersonSort,
-    section: SavedPersonSection,
-    limit: u32,
-    cursor: Option<SavedPersonCursor>,
-    as_of: Option<i64>,
-) -> Result<SavedPersonPage, CoreError> {
-    if !(1..=100).contains(&limit) {
-        return Err(CoreError::InvalidInput(
-            "Invalid saved people page size".into(),
-        ));
-    }
-    let db = core.connection()?;
-    saved_people_in(
-        core,
-        &db,
-        SavedQuery {
-            kind,
-            sort,
-            section,
-            limit,
-            cursor,
-            as_of,
-        },
-    )
-}
-
 fn saved_people_in(
     core: &LadiesCore,
     db: &rusqlite::Connection,
@@ -493,47 +416,31 @@ fn saved_people_in(
         sort,
         section,
         limit,
-        cursor,
         as_of,
     } = query;
-    let revision: i64 = db.query_row("SELECT total_changes()", [], |row| row.get(0))?;
     if limit == 0
         || (section != SavedPersonSection::All
             && (kind != SavedPersonKind::Favorite || sort != SavedPersonSort::Date))
-        || cursor.as_ref().is_some_and(|c| {
-            c.kind != kind
-                || c.sort != sort
-                || c.section != section
-                || c.revision != revision
-                || as_of.is_some_and(|time| time != c.as_of)
-        })
     {
-        return Err(CoreError::InvalidInput(
-            "Invalid or outdated saved people page".into(),
-        ));
+        return Err(CoreError::InvalidInput("Invalid saved people page".into()));
     }
     let predicate = kind.predicate();
-    let as_of = match cursor.as_ref().map(|c| c.as_of).or(as_of) {
-        Some(time) => time,
-        None => saved_now(db)?,
-    };
     // Count persons, including unlisted imports, under one connection guard.
     let total = db.query_row(
         &format!("SELECT COUNT(*) FROM person_user_state WHERE {predicate}"),
         [],
         |row| row.get(0),
     )?;
-    let (key, comparison, direction, collation) = match sort {
+    let (key, direction, collation) = match sort {
         SavedPersonSort::Date => (
             "COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ',person_last_seen_at),'')",
-            "<",
             "DESC",
             "BINARY",
         ),
-        SavedPersonSort::Name => ("name", ">", "ASC", "SAVED_NAME"),
+        SavedPersonSort::Name => ("name", "ASC", "SAVED_NAME"),
     };
     let section_predicate = section.predicate();
-    // Freeze the watchlist boundary across sections and pagination; only the latest change counts.
+    // Freeze the watchlist boundary across sections of one window; only the latest change counts.
     let eligible = format!(
         "{PERSON_CARDS}, eligible AS (
            SELECT p.*, {key} AS sort_key, e.created_at AS change_at,
@@ -557,13 +464,11 @@ fn saved_people_in(
             |row| row.get(0),
         )?
     };
-    // Only enum-selected SQL fragments are interpolated; cursor values are bound.
+    // Only enum-selected SQL fragments are interpolated; window limits are bound.
     let mut query = db.prepare(&format!(
         "{eligible}, page_window AS (
             SELECT * FROM eligible
             WHERE {section_predicate}
-              AND (:cursor_key IS NULL OR sort_key COLLATE {collation} {comparison} :cursor_key
-               OR (sort_key COLLATE {collation} = :cursor_key AND person_id {comparison} :cursor_id))
             ORDER BY sort_key COLLATE {collation} {direction},person_id {direction}
             LIMIT :limit
          )
@@ -573,8 +478,6 @@ fn saved_people_in(
     ))?;
     let mut rows = query.query(named_params! {
         ":as_of": as_of,
-        ":cursor_key": cursor.as_ref().map(|c| c.key.as_str()),
-        ":cursor_id": cursor.as_ref().map(|c| c.person_id),
         ":limit": i64::from(limit) + 1,
     })?;
     let mut entries = Vec::new();
@@ -585,46 +488,30 @@ fn saved_people_in(
             None
         };
         let raw: String = row.get(7)?;
-        entries.push((
-            SavedPersonRow {
-                person_id: row.get(1)?,
-                name: row.get(2)?,
-                preference: Preference::from_db(&raw)?,
-                favorite: row.get(8)?,
-                card,
-                listing_count: row.get(22)?,
-                updated_at: row.get(14)?,
-                last_seen_at: row.get(15)?,
-                status: row.get(16)?,
-                status_checked_at: row.get(17)?,
-                latest_change_at: row.get(19)?,
-                latest_change_type: row.get(20)?,
-                recent: row.get(21)?,
-            },
-            row.get::<_, String>(18)?,
-        ));
+        entries.push(SavedPersonRow {
+            person_id: row.get(1)?,
+            name: row.get(2)?,
+            preference: Preference::from_db(&raw)?,
+            favorite: row.get(8)?,
+            card,
+            listing_count: row.get(22)?,
+            updated_at: row.get(14)?,
+            last_seen_at: row.get(15)?,
+            status: row.get(16)?,
+            status_checked_at: row.get(17)?,
+            latest_change_at: row.get(19)?,
+            latest_change_type: row.get(20)?,
+            recent: row.get(21)?,
+        });
     }
     let has_more = entries.len() > limit as usize;
     entries.truncate(limit as usize);
-    let next_cursor = if has_more {
-        entries.last().map(|(row, key)| SavedPersonCursor {
-            kind,
-            sort,
-            section,
-            as_of,
-            revision,
-            key: key.clone(),
-            person_id: row.person_id,
-        })
-    } else {
-        None
-    };
     Ok(SavedPersonPage {
-        rows: entries.into_iter().map(|(row, _)| row).collect(),
+        rows: entries,
         total,
         section_total,
         as_of,
-        next_cursor,
+        has_more,
     })
 }
 
@@ -926,33 +813,25 @@ mod tests {
             .unwrap();
         core.add_listing(second, None, "LADIES".into(), "3".into(), None)
             .unwrap();
-        assert_eq!(
-            page(&core, false, 100, None, &[])
-                .map(|p| p.cards)
-                .unwrap()
-                .len(),
-            2
-        );
+        assert_eq!(page(&core, 100, None).map(|p| p.cards).unwrap().len(), 2);
         core.set_preference(first, Preference::Dislike).unwrap();
-        assert_eq!(
-            page(&core, false, 100, None, &[])
-                .map(|p| p.cards)
-                .unwrap()
-                .len(),
-            1
-        );
+        assert_eq!(page(&core, 100, None).map(|p| p.cards).unwrap().len(), 1);
         core.set_preference(second, Preference::Like).unwrap();
-        assert!(
-            page(&core, false, 100, None, &[])
-                .map(|p| p.cards)
-                .unwrap()
-                .is_empty()
-        );
+        assert!(page(&core, 100, None).map(|p| p.cards).unwrap().is_empty());
         core.set_favorite(first, true).unwrap();
-        let favorites = page(&core, true, 100, None, &[]).map(|p| p.cards).unwrap();
+        assert!(page(&core, 100, None).unwrap().cards.is_empty());
+        let saved = core
+            .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Name, 100, 100)
+            .unwrap();
+        let favorites = saved.regular.rows;
         assert_eq!(favorites.len(), 1);
         assert_eq!(favorites[0].person_id, first);
         assert!(favorites[0].favorite);
+        core.set_preference(first, Preference::None).unwrap();
+        let neutral = page(&core, 100, None).unwrap().cards;
+        assert_eq!(neutral.len(), 1);
+        assert_eq!(neutral[0].person_id, first);
+        assert!(neutral[0].favorite);
     }
 
     #[test]
@@ -962,7 +841,7 @@ mod tests {
         let listing = core
             .add_listing(person, None, "LADIES".into(), "123".into(), None)
             .unwrap();
-        assert!(cached_profile(&core, listing).unwrap().is_none());
+        assert!(!core.has_cached_profile(listing).unwrap());
         {
             let db = core.connection().unwrap();
             db.execute(
@@ -986,14 +865,13 @@ mod tests {
             )
             .unwrap();
         }
-        let profile = cached_profile(&core, listing).unwrap().unwrap();
-        assert_eq!(profile.name, "Ada");
-        assert_eq!(profile.city, "Leipzig");
-        assert_eq!(profile.description, "archiviert");
-        assert_eq!(profile.advert_id, "123");
-        assert_eq!(profile.media.len(), 1);
-        assert!(!profile.new_snapshot);
-        assert!(cached_profile(&core, -1).unwrap().is_none());
+        assert!(core.has_cached_profile(listing).unwrap());
+        let projection = core.profile_projection(listing).unwrap().unwrap();
+        assert_eq!(projection.profile.name, "Ada");
+        assert_eq!(projection.profile.city, "Leipzig");
+        assert_eq!(projection.profile.description, "archiviert");
+        assert_eq!(projection.media.len(), 1);
+        assert!(!core.has_cached_profile(-1).unwrap());
     }
 
     #[test]
@@ -1043,25 +921,30 @@ mod tests {
         assert_eq!(projection.profile.snapshot_id, current);
         assert_eq!(projection.profile.city, "Dresden");
         assert_eq!(projection.identity.person_id, owner);
-        assert_eq!(
-            projection.profile.hidden_location.as_deref(),
-            Some("Offenbach am Main")
-        );
+        let db = core.connection().unwrap();
+        let hidden: Option<String> = db
+            .query_row(
+                "SELECT hidden_location FROM listing_snapshots WHERE snapshot_id=?1",
+                [current],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(hidden.as_deref(), Some("Offenbach am Main"));
+        assert_eq!(projection.profile.postal_code, None);
     }
 
     #[test]
-    fn discovery_keyset_pages_beyond_old_limit_and_honors_skips() {
+    fn discovery_keyset_pages_beyond_old_limit_without_duplicates() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         for id in 1..=215 {
             let person = core.create_person(Some(format!("Person {id}"))).unwrap();
             core.add_listing(person, None, "LADIES".into(), id.to_string(), None)
                 .unwrap();
         }
-        let excluded = vec![214, 215];
         let mut cursor = None;
         let mut ids = std::collections::HashSet::new();
         loop {
-            let current = page(&core, false, 35, cursor, &excluded).unwrap();
+            let current = page(&core, 35, cursor).unwrap();
             for card in current.cards {
                 assert!(ids.insert(card.person_id));
             }
@@ -1070,9 +953,9 @@ mod tests {
                 None => break,
             }
         }
-        assert_eq!(ids.len(), 213);
-        assert!(!ids.contains(&214));
-        assert!(!ids.contains(&215));
+        assert_eq!(ids.len(), 215);
+        assert!(ids.contains(&214));
+        assert!(ids.contains(&215));
     }
 
     #[test]
@@ -1104,65 +987,40 @@ mod tests {
             db.execute("UPDATE persons SET last_seen_at='2026-01-01T00:00:00Z'", [])
                 .unwrap();
         }
-        let saved = |kind, sort, limit, cursor| {
-            saved_people(
-                &core,
-                kind,
-                sort,
-                SavedPersonSection::All,
-                limit,
-                cursor,
-                None,
-            )
+        let saved = |kind, sort, limit| {
+            core.saved_people_window(kind, sort, limit, limit)
+                .unwrap()
+                .regular
         };
-        let fav = saved(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, None).unwrap();
+        let fav = saved(SavedPersonKind::Favorite, SavedPersonSort::Name, 1);
         assert_eq!(fav.total, 2);
         assert_eq!(fav.rows[0].person_id, a);
         assert_eq!(fav.rows[0].listing_count, 2);
         assert_eq!(fav.rows[0].card.as_ref().unwrap().listing_id, second);
-        let cursor = fav.next_cursor.unwrap();
-        assert!(
-            saved(
-                SavedPersonKind::Like,
-                SavedPersonSort::Name,
-                1,
-                Some(cursor.clone())
-            )
-            .is_err()
-        );
-        let next = saved(
-            SavedPersonKind::Favorite,
-            SavedPersonSort::Name,
-            1,
-            Some(cursor),
-        )
-        .unwrap();
+        assert!(fav.has_more);
+        let next = saved(SavedPersonKind::Favorite, SavedPersonSort::Name, 2);
         assert_eq!(next.total, 2);
-        assert_eq!(next.rows[0].person_id, b);
-        assert!(next.next_cursor.is_none());
+        assert_eq!(next.rows[0].person_id, a);
+        assert_eq!(next.rows[1].person_id, b);
+        assert!(!next.has_more);
 
-        let liked = saved(SavedPersonKind::Like, SavedPersonSort::Date, 1, None).unwrap();
+        let liked = saved(SavedPersonKind::Like, SavedPersonSort::Date, 1);
         assert_eq!(liked.total, 2);
         assert_eq!(liked.rows[0].person_id, c);
         assert!(liked.rows[0].card.is_none());
-        let more = saved(
-            SavedPersonKind::Like,
-            SavedPersonSort::Date,
-            1,
-            liked.next_cursor,
-        )
-        .unwrap();
-        assert_eq!(more.rows[0].person_id, a);
-        assert!(more.rows[0].favorite);
+        assert!(liked.has_more);
+        let more = saved(SavedPersonKind::Like, SavedPersonSort::Date, 2);
+        assert_eq!(more.rows[0].person_id, c);
+        assert_eq!(more.rows[1].person_id, a);
+        assert!(more.rows[1].favorite);
+        assert!(!more.has_more);
         core.set_swipe_preference(first, a, Some(Preference::Like), Preference::Dislike)
             .unwrap();
-        let dislikes = saved(SavedPersonKind::Dislike, SavedPersonSort::Date, 100, None).unwrap();
+        let dislikes = saved(SavedPersonKind::Dislike, SavedPersonSort::Date, 100);
         assert_eq!(dislikes.total, 2);
         assert!(dislikes.rows.iter().all(|row| row.favorite));
         assert_eq!(
-            saved(SavedPersonKind::Like, SavedPersonSort::Date, 10, None)
-                .unwrap()
-                .total,
+            saved(SavedPersonKind::Like, SavedPersonSort::Date, 10).total,
             1
         );
     }
@@ -1184,30 +1042,35 @@ mod tests {
             .unwrap();
             ids.push(person);
         }
-        let read = |section, cursor| {
-            saved_people(
+        let db = core.connection().unwrap();
+        let read = |recent_limit| {
+            saved_window_at(
                 &core,
+                &db,
                 SavedPersonKind::Favorite,
                 SavedPersonSort::Date,
-                section,
                 3,
-                cursor,
-                Some(as_of),
+                recent_limit,
+                as_of,
             )
             .unwrap()
         };
-        let recent = read(SavedPersonSection::Recent, None);
+        let first = read(3);
+        let recent = first.recent.unwrap();
         assert_eq!(recent.total, 7);
         assert_eq!(recent.section_total, 5);
         assert_eq!(recent.rows.len(), 3);
         assert!(recent.rows.iter().all(|row| row.recent));
-        let rest = read(SavedPersonSection::Recent, recent.next_cursor);
-        let regular = read(SavedPersonSection::Regular, None);
+        assert!(recent.has_more);
+        let expanded = read(5);
+        let all_recent = expanded.recent.unwrap();
+        let regular = expanded.regular;
         assert_eq!(regular.section_total, 2);
-        let mut recent_ids = recent
+        assert_eq!(all_recent.as_of, regular.as_of);
+        assert!(!all_recent.has_more);
+        let mut recent_ids = all_recent
             .rows
             .iter()
-            .chain(&rest.rows)
             .map(|row| row.person_id)
             .collect::<Vec<_>>();
         recent_ids.sort_unstable();
@@ -1274,7 +1137,7 @@ mod tests {
     }
 
     #[test]
-    fn saved_window_reconciles_changed_membership_and_rejects_old_cursor() {
+    fn saved_window_reconciles_changed_membership_and_counts() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let a = core.create_person(Some("Änne".into())).unwrap();
         let b = core.create_person(Some("anne".into())).unwrap();
@@ -1295,17 +1158,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![a, b, c, d]
         );
-        let first = saved_people(
-            &core,
-            SavedPersonKind::Favorite,
-            SavedPersonSort::Name,
-            SavedPersonSection::All,
-            1,
-            None,
-            None,
-        )
-        .unwrap();
-        let cursor = first.next_cursor.unwrap();
+        let first = core
+            .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, 1)
+            .unwrap();
+        assert!(first.regular.has_more);
+        assert_eq!(first.regular.total, 4);
         let initial = core
             .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Date, 1, 1)
             .unwrap();
@@ -1319,18 +1176,12 @@ mod tests {
             .unwrap();
         }
         core.set_favorite(b, false).unwrap();
-        assert!(
-            saved_people(
-                &core,
-                SavedPersonKind::Favorite,
-                SavedPersonSort::Name,
-                SavedPersonSection::All,
-                1,
-                Some(cursor),
-                None,
-            )
-            .is_err()
-        );
+        let new_name_window = core
+            .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Name, 1, 1)
+            .unwrap();
+        assert!(new_name_window.regular.has_more);
+        assert_eq!(new_name_window.regular.total, 3);
+        assert_eq!(new_name_window.regular.rows[0].person_id, a);
         let fresh = core
             .saved_people_window(SavedPersonKind::Favorite, SavedPersonSort::Date, 50, 50)
             .unwrap();
@@ -1355,12 +1206,12 @@ mod tests {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         for limit in [0, 101] {
             assert!(matches!(
-                page(&core, false, limit, None, &[]),
+                page(&core, limit, None),
                 Err(CoreError::InvalidInput(reason))
                     if reason == "Discovery page size must be between 1 and 100"
             ));
         }
-        assert!(page(&core, false, 1, None, &[]).unwrap().cards.is_empty());
-        assert!(page(&core, false, 100, None, &[]).unwrap().cards.is_empty());
+        assert!(page(&core, 1, None).unwrap().cards.is_empty());
+        assert!(page(&core, 100, None).unwrap().cards.is_empty());
     }
 }

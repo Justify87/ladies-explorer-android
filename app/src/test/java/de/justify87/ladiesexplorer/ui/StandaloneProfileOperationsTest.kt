@@ -36,8 +36,8 @@ class StandaloneProfileOperationsTest {
         val operations = StandaloneProfileOperations(
             scope, search, discovery, notes, tickets,
             StandaloneProfileIo(
-                loadProfile = { listing, _ -> calls += "source:$listing"; source(listing).also { cached = it } },
-                cachedProfile = { calls += "cache:$it"; cached },
+                loadProfile = { listing, _ -> calls += "source:$listing"; cached = source(listing) },
+                hasCachedProfile = { calls += "cache:$it"; cached != null },
                 profileProjection = {
                     calls += "profile:$it"
                     identityError?.let { e -> throw e }

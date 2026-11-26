@@ -106,7 +106,6 @@ pub struct DiagnosticStatus {
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct CoreStatus {
-    pub api_version: u32,
     pub schema_version: u32,
     pub person_count: u32,
     pub listing_count: u32,
@@ -116,38 +115,23 @@ pub struct CoreStatus {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct PersonSummary {
     pub person_id: i64,
-    pub display_name: Option<String>,
     pub preference: Preference,
     pub favorite: bool,
     pub listing_count: u32,
-    pub last_seen_at: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct PersonCursor {
-    pub last_seen_at: String,
-    pub person_id: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct PersonPage {
-    pub people: Vec<PersonSummary>,
-    pub next_cursor: Option<PersonCursor>,
-}
-
-type RawPerson = (i64, Option<String>, String, i64, u32, String);
+type RawPerson = (i64, String, i64, u32);
 
 pub use discovery::{
     DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow,
-    SavedPersonCursor, SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSection,
-    SavedPersonSort,
+    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSort,
 };
 pub use encounters::{Encounter, EncounterService, EncounterValues};
 pub use history::ChangeRecord;
-pub use http_capture::{CaptureMode, CaptureStatus, HttpHeader, HttpObservation};
+pub use http_capture::{CaptureMode, CaptureStatus};
 pub use identity::IdentityCandidate;
 pub use map::{MapOverview, MapProfile};
-pub use media::{DisplayImage, DisplayVideo, MediaArchiveReport};
+pub use media::{DisplayImage, MediaArchiveReport};
 pub use operation::RequestControl;
 pub use prices::{PaidEncounter, PriceItem, PriceList, PriceListValues, PriceOverview};
 pub use profile_detail::{
@@ -159,10 +143,7 @@ pub use saved_search::{
     SavedSearchWindow,
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
-pub use source::{
-    MediaReference, ProfileIdentity, ProfileResponse, SearchCard, SearchPreview, SearchRequest,
-    SearchResponse,
-};
+pub use source::{ProfileIdentity, ProfileResponse, SearchPreview, SearchRequest, SearchResponse};
 
 /// One coherent local read for both swipe and standalone profiles.
 #[derive(Debug, Clone, uniffi::Record)]
@@ -307,7 +288,7 @@ impl LadiesCore {
             control.check()?;
             saved_search::apply_local_visibility(self, &mut response, local)?;
             control.check()?;
-            Ok(response)
+            Ok(response.run)
         })
     }
 
@@ -323,17 +304,14 @@ impl LadiesCore {
         &self,
         listing_id: i64,
         control: Arc<RequestControl>,
-    ) -> Result<ProfileResponse, CoreError> {
+    ) -> Result<(), CoreError> {
         self.diagnostics.timed("PROFILE", "load_swipe_profile", || {
             source::load_profile(self, listing_id, &control)
         })
     }
 
-    pub fn cached_source_profile(
-        &self,
-        listing_id: i64,
-    ) -> Result<Option<ProfileResponse>, CoreError> {
-        discovery::cached_profile(self, listing_id)
+    pub fn has_cached_profile(&self, listing_id: i64) -> Result<bool, CoreError> {
+        discovery::has_cached_profile(self, listing_id)
     }
 
     pub fn load_display_image(
@@ -350,7 +328,7 @@ impl LadiesCore {
         &self,
         url: String,
         control: Arc<RequestControl>,
-    ) -> Result<DisplayVideo, CoreError> {
+    ) -> Result<Vec<u8>, CoreError> {
         self.diagnostics.timed_media("display_video", &url, || {
             media::display_video(self, &url, &control)
         })
@@ -493,12 +471,10 @@ impl LadiesCore {
 
     pub fn discovery_cards(
         &self,
-        favorites_only: bool,
         limit: u32,
         cursor: Option<DiscoveryCursor>,
-        excluded_person_ids: Vec<i64>,
     ) -> Result<DiscoveryPage, CoreError> {
-        discovery::page(self, favorites_only, limit, cursor, &excluded_person_ids)
+        discovery::page(self, limit, cursor)
     }
 
     pub fn saved_status_targets(&self) -> Result<Vec<i64>, CoreError> {
@@ -646,7 +622,7 @@ impl LadiesCore {
         &self,
         id: String,
         control: Arc<RequestControl>,
-    ) -> Result<SearchResponse, CoreError> {
+    ) -> Result<(), CoreError> {
         saved_search::run(self, id, Some(&control))
     }
 
@@ -662,17 +638,11 @@ impl LadiesCore {
             Ok(db.query_row(sql, [], |row| row.get(0))?)
         };
         Ok(CoreStatus {
-            api_version: 1,
             schema_version: schema::VERSION,
             person_count: count("persons")?,
             listing_count: count("listings")?,
             source_profile_count: count("source_profiles")?,
         })
-    }
-
-    pub fn get_person(&self, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
-        let db = self.connection()?;
-        person_from(&db, person_id)
     }
 
     /// CAS for a saved person that has no displayable listing.
@@ -785,23 +755,11 @@ impl LadiesCore {
 }
 
 const PERSON_QUERY_BY_ID: &str = r#"
-SELECT p.person_id, p.display_name, s.preference, s.favorite,
-       (SELECT COUNT(*) FROM listings l WHERE l.person_id = p.person_id),
-       p.last_seen_at
+SELECT p.person_id, s.preference, s.favorite,
+       (SELECT COUNT(*) FROM listings l WHERE l.person_id = p.person_id)
 FROM persons p
 JOIN person_user_state s ON s.person_id = p.person_id
 WHERE p.person_id = ?1
-"#;
-
-const PERSON_QUERY_LIST: &str = r#"
-SELECT p.person_id, p.display_name, s.preference, s.favorite,
-       (SELECT COUNT(*) FROM listings l WHERE l.person_id = p.person_id),
-       p.last_seen_at
-FROM persons p
-JOIN person_user_state s ON s.person_id = p.person_id
-WHERE (?1 IS NULL OR p.last_seen_at < ?1 OR (p.last_seen_at = ?1 AND p.person_id < ?2))
-ORDER BY p.last_seen_at DESC, p.person_id DESC
-LIMIT ?3
 "#;
 
 fn person_from(db: &Connection, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
@@ -812,14 +770,7 @@ fn person_from(db: &Connection, person_id: i64) -> Result<Option<PersonSummary>,
 }
 
 fn parse_person_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawPerson> {
-    Ok((
-        row.get(0)?,
-        row.get(1)?,
-        row.get(2)?,
-        row.get(3)?,
-        row.get(4)?,
-        row.get(5)?,
-    ))
+    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
 }
 
 impl TryFrom<RawPerson> for PersonSummary {
@@ -828,61 +779,14 @@ impl TryFrom<RawPerson> for PersonSummary {
     fn try_from(row: RawPerson) -> Result<Self, Self::Error> {
         Ok(Self {
             person_id: row.0,
-            display_name: row.1,
-            preference: Preference::from_db(&row.2)?,
-            favorite: row.3 != 0,
-            listing_count: row.4,
-            last_seen_at: row.5,
+            preference: Preference::from_db(&row.1)?,
+            favorite: row.2 != 0,
+            listing_count: row.3,
         })
     }
 }
 
 impl LadiesCore {
-    pub fn list_people(
-        &self,
-        limit: u32,
-        cursor: Option<PersonCursor>,
-    ) -> Result<PersonPage, CoreError> {
-        if limit == 0 || limit > 100 {
-            return Err(CoreError::InvalidInput(
-                "Page size must be between 1 and 100".into(),
-            ));
-        }
-        if cursor
-            .as_ref()
-            .is_some_and(|value| value.person_id <= 0 || value.last_seen_at.is_empty())
-        {
-            return Err(CoreError::InvalidInput("Invalid person cursor".into()));
-        }
-        let db = self.connection()?;
-        let mut query = db.prepare(PERSON_QUERY_LIST)?;
-        let rows = query.query_map(
-            params![
-                cursor.as_ref().map(|value| value.last_seen_at.as_str()),
-                cursor.as_ref().map(|value| value.person_id),
-                i64::from(limit) + 1,
-            ],
-            parse_person_row,
-        )?;
-        let mut people = rows
-            .map(|row| PersonSummary::try_from(row?))
-            .collect::<Result<Vec<_>, _>>()?;
-        let has_more = people.len() > limit as usize;
-        people.truncate(limit as usize);
-        let next_cursor = if has_more {
-            people.last().map(|person| PersonCursor {
-                last_seen_at: person.last_seen_at.clone(),
-                person_id: person.person_id,
-            })
-        } else {
-            None
-        };
-        Ok(PersonPage {
-            people,
-            next_cursor,
-        })
-    }
-
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, CoreError> {
         self.db
             .lock()
@@ -892,6 +796,11 @@ impl LadiesCore {
 
 #[cfg(test)]
 impl LadiesCore {
+    fn get_person(&self, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
+        let db = self.connection()?;
+        person_from(&db, person_id)
+    }
+
     pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
         let db = self.connection()?;
         let changed = db.execute(
@@ -1087,64 +996,6 @@ mod tests {
             again.person_note(listing, id).unwrap().as_deref(),
             Some("Local note")
         );
-    }
-
-    #[test]
-    fn keyset_pagination_returns_more_than_one_hundred_people_without_duplicates() {
-        let core = memory_core();
-        {
-            let mut db = core.connection().unwrap();
-            let tx = db.transaction().unwrap();
-            for number in 0..235 {
-                tx.execute(
-                    "INSERT INTO persons (display_name, last_seen_at)
-                     VALUES (?1, '2026-01-01T00:00:00.000Z')",
-                    params![format!("Person {number}")],
-                )
-                .unwrap();
-            }
-            tx.commit().unwrap();
-        }
-        let mut cursor = None;
-        let mut ids = Vec::new();
-        loop {
-            let page = core.list_people(70, cursor).unwrap();
-            assert!(!page.people.is_empty());
-            assert!(page.people.len() <= 70);
-            ids.extend(page.people.into_iter().map(|person| person.person_id));
-            match page.next_cursor {
-                Some(next) => cursor = Some(next),
-                None => break,
-            }
-        }
-        assert_eq!(ids.len(), 235);
-        assert!(ids.windows(2).all(|pair| pair[0] > pair[1]));
-        assert_eq!(ids.first().copied(), Some(235));
-        assert_eq!(ids.last().copied(), Some(1));
-    }
-
-    #[test]
-    fn pagination_rejects_invalid_page_size_and_cursor() {
-        let core = memory_core();
-        assert!(matches!(
-            core.list_people(0, None),
-            Err(CoreError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            core.list_people(101, None),
-            Err(CoreError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            core.list_people(
-                25,
-                Some(PersonCursor {
-                    last_seen_at: "2026".into(),
-                    person_id: 0
-                })
-            ),
-            Err(CoreError::InvalidInput(_))
-        ));
-        assert!(core.list_people(25, None).unwrap().people.is_empty());
     }
 
     #[test]

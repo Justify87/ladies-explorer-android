@@ -14,8 +14,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 internal class StandaloneProfileIo<C : Any>(
-    val loadProfile: suspend (Long, C) -> ProfileResponse,
-    val cachedProfile: suspend (Long) -> ProfileResponse?,
+    val loadProfile: suspend (Long, C) -> Unit,
+    val hasCachedProfile: suspend (Long) -> Boolean,
     val profileProjection: suspend (Long) -> NativeProfileProjection?,
     val archiveProfileMedia: suspend (Long, C) -> MediaArchiveReport,
     val newArchiveControl: () -> C,
@@ -219,7 +219,7 @@ internal class StandaloneProfileOperations<C : Any>(
                     throw failure
                 } catch (failure: Exception) {
                     if (!profileGeneration.isCurrent(requestId)) return@launch
-                    if (io.cachedProfile(listingId) == null) {
+                    if (!io.hasCachedProfile(listingId)) {
                         missingInitialProfile = true
                         throw failure
                     }

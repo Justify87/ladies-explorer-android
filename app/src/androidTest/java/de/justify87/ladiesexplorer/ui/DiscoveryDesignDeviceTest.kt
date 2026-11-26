@@ -38,15 +38,14 @@ class DiscoveryDesignDeviceTest {
         bitmap.recycle()
         try {
             val medium = ProfileMediaItem("IMAGE", "", image.absolutePath, 0u)
-            val base = ProfileResponse(listingId = 4, snapshotId = 11, newSnapshot = false, advertId = "fixture",
-                name = "Fixture", city = "Fixture", description = "Fixture description", postalCode = null,
-                hiddenLocation = null, sourceProfileId = null, canonicalId = null, phoneDisplay = "+49 170 1234567",
-                publishedAt = null, traitsJson = "{}", servicesJson = "{}", openingTimesJson = "{}", media = emptyList())
+            val base = ProfileResponse(listingId = 4, snapshotId = 11, name = "Fixture", city = "Fixture", description = "Fixture description", postalCode = null,
+                phoneDisplay = "+49 170 1234567",
+                publishedAt = null)
             fun fixture(phone: Boolean) = ProfileReadModel(NativeProfileProjection(
                 base.copy(phoneDisplay = base.phoneDisplay.takeIf { phone }),
                 ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null, personNew = false,
                     listingNew = false, hasVideo = false, age = null),
-                PersonSummary(1, "Fixture", Preference.NONE, false, 1u, ""),
+                PersonSummary(1, Preference.NONE, false, 1u),
                 listOf(medium), emptyList(), emptyList()), true)
             val notes = NoteEditorActions({ _, _ -> }, { _, _ -> }, { _, _, _ -> }, { _, _ -> }, { _, _ -> })
             val reads = ProfilePanelReads({ _, _ -> ProfileFacts(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()) },
@@ -203,7 +202,7 @@ class DiscoveryDesignDeviceTest {
             query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
             local = defaultLocalVisibility(), searchRunId = 7L, city = "Leipzig",
             requestedRadiusKm = 20u, serverCount = 0u, totalPages = 1u, fetchedPages = 1u,
-            partial = false, radiusBoundaryStopped = false, radiusVerified = true, profiles = emptyList(),
+            partial = false, radiusBoundaryStopped = false, radiusVerified = true,
         )
         var discovery by mutableStateOf(DiscoverUiState(activeRunId = 7L, loading = false,
             error = "Synthetischer Lesefehler"))
@@ -500,7 +499,7 @@ class DiscoveryDesignDeviceTest {
             query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
             local = defaultLocalVisibility(), searchRunId = 7L, city = "Leipzig",
             requestedRadiusKm = 20u, serverCount = 24u, totalPages = 1u, fetchedPages = 1u,
-            partial = false, radiusBoundaryStopped = false, radiusVerified = true, profiles = emptyList(),
+            partial = false, radiusBoundaryStopped = false, radiusVerified = true,
         )
         var search by mutableStateOf(SearchUiState().acceptRun(run, rows))
         val discovery = DiscoverUiState(activeRunId = 7L, loading = false)

@@ -50,14 +50,11 @@ class ProfileRestoreDeviceTest {
             ProfileMediaItem("VIDEO", "https://example.invalid/fixture", null, 1u)),
     ) = ProfileReadModel(
         NativeProfileProjection(
-            ProfileResponse(listingId = 4, snapshotId = snapshot, newSnapshot = false, advertId = "fixture",
-                name = "Fixture", city = "Fixture", description = "Fixture ".repeat(120), postalCode = null,
-                hiddenLocation = "Offenbach am Main", sourceProfileId = null, canonicalId = null,
-                phoneDisplay = phone, publishedAt = null, traitsJson = "{}", servicesJson = "{}",
-                openingTimesJson = "{}", media = emptyList()),
+            ProfileResponse(listingId = 4, snapshotId = snapshot, name = "Fixture", city = "Fixture",
+                description = "Fixture ".repeat(120), postalCode = null, phoneDisplay = phone, publishedAt = null),
             ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null,
                 personNew = false, listingNew = false, hasVideo = false, age = null),
-            PersonSummary(1, "Fixture", Preference.NONE, false, 1u, ""),
+            PersonSummary(1, Preference.NONE, false, 1u),
             media,
             emptyList(), emptyList(),
         ), true,
@@ -75,7 +72,7 @@ class ProfileRestoreDeviceTest {
 
     private val notes = NoteEditorActions({ _, _ -> }, { _, _ -> }, { _, _, _ -> }, { _, _ -> }, { _, _ -> })
 
-    @Test fun sharedProfileShowsContactsDirectlyAfterGalleryAndOnlyCanonicalPlace() {
+    @Test fun sharedProfileShowsContactsDirectlyAfterGalleryAndCanonicalPlace() {
         // Both contexts use the same ProfileFlow rows; no real contact intents are launched.
         var model by mutableStateOf(profile(phone = "+49 170 1234567"))
         var busy by mutableStateOf(false)
@@ -109,7 +106,6 @@ class ProfileRestoreDeviceTest {
             assertTrue(whatsapp.bottom <= heading.top)
             rule.onNodeWithText("Fixture · Zuletzt bekannter Quellenstatus: Anzeige aktiv").assertExists()
             rule.onAllNodesWithText("Anzeigen: 1").assertCountEquals(1)
-            rule.onNodeWithText("Offenbach am Main").assertDoesNotExist()
             rule.onNodeWithText("Übersicht").assertDoesNotExist()
             rule.runOnIdle { busy = true }
             rule.onNodeWithText("Telefon").assertIsNotEnabled()

@@ -205,7 +205,7 @@ class CoreStore(context: Context) {
     internal fun createDisplayVideoFile(): File =
         File.createTempFile("video-", ".media", displayVideoDirectory)
 
-    suspend fun loadDisplayVideo(url: String): DisplayVideo = withContext(displayVideoDispatcher) {
+    suspend fun loadDisplayVideo(url: String): ByteArray = withContext(displayVideoDispatcher) {
         suspendCancellableCoroutine { continuation ->
             val control = RequestControl()
             continuation.invokeOnCancellation { control.cancel() }
@@ -233,10 +233,6 @@ class CoreStore(context: Context) {
 
     suspend fun status(): CoreStatus = withContext(Dispatchers.IO) {
         recorded("status") { engine.status() }
-    }
-
-    suspend fun person(personId: Long): PersonSummary? = withContext(Dispatchers.IO) {
-        engine.getPerson(personId)
     }
 
     suspend fun setSwipePreference(listingId: Long, personId: Long, expected: Preference?, preference: Preference): Preference =
@@ -290,7 +286,7 @@ class CoreStore(context: Context) {
     // Source profile reads and identity confirmation share native execution ownership.
     private val profileSourceMutex = Mutex()
 
-    suspend fun loadProfile(listingId: Long, control: RequestControl): ProfileResponse =
+    suspend fun loadProfile(listingId: Long, control: RequestControl): Unit =
         profileSourceMutex.withLock {
             withContext(Dispatchers.IO) {
                 recorded("loadProfile listingId=$listingId") {
@@ -299,8 +295,8 @@ class CoreStore(context: Context) {
             }
         }
 
-    suspend fun cachedProfile(listingId: Long): ProfileResponse? = withContext(Dispatchers.IO) {
-        engine.cachedSourceProfile(listingId)
+    suspend fun hasCachedProfile(listingId: Long): Boolean = withContext(Dispatchers.IO) {
+        engine.hasCachedProfile(listingId)
     }
 
     suspend fun frequentFilters(): List<FrequentFilter> =
@@ -310,12 +306,8 @@ class CoreStore(context: Context) {
         engine.sourceFilterCatalog()
     }
 
-    suspend fun discoveryCards(
-        favoritesOnly: Boolean = false,
-        cursor: DiscoveryCursor? = null,
-        excludedPeople: List<Long> = emptyList(),
-    ): DiscoveryPage = withContext(Dispatchers.IO) {
-        engine.discoveryCards(favoritesOnly, 50u, cursor, excludedPeople)
+    suspend fun discoveryCards(cursor: DiscoveryCursor? = null): DiscoveryPage = withContext(Dispatchers.IO) {
+        engine.discoveryCards(50u, cursor)
     }
 
     suspend fun savedStatusTargets(): List<Long> = withContext(Dispatchers.IO) {
@@ -418,7 +410,7 @@ class CoreStore(context: Context) {
     suspend fun savedSearchWindow(id: String, limit: UInt): SavedSearchWindow =
         withContext(Dispatchers.IO) { engine.savedSearchWindow(id, limit) }
 
-    suspend fun runSavedSearch(id: String, control: RequestControl): SearchResponse =
+    suspend fun runSavedSearch(id: String, control: RequestControl): Unit =
         withContext(Dispatchers.IO) { recorded("runSavedSearch") { engine.runSavedSearch(id, control) } }
 
     suspend fun renameSavedSearch(id: String, name: String) =

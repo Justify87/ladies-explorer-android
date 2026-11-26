@@ -15,8 +15,8 @@ class SwipeProfileReadTest {
         var online: suspend () -> ProfileResponse = { requireNotNull(cachedProfile).copy(snapshotId = 12L) }
         var beforeProjection: suspend () -> Unit = {}
         val reads = SwipeProfileReads(
-            cached = { calls += "cache:$it"; cachedProfile },
-            source = { calls += "source:$it"; online().also { cachedProfile = it } },
+            cached = { calls += "cache:$it"; cachedProfile != null },
+            source = { calls += "source:$it"; cachedProfile = online() },
             projection = {
                 calls += "profile:$it"
                 beforeProjection()
