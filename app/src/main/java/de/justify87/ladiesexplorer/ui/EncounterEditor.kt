@@ -5,7 +5,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import de.justify87.ladiesexplorer.core.Encounter
 import de.justify87.ladiesexplorer.core.EncounterService
 import de.justify87.ladiesexplorer.core.EncounterValues

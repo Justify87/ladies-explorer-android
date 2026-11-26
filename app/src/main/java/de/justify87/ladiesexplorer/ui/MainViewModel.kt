@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import de.justify87.ladiesexplorer.core.*
 import de.justify87.ladiesexplorer.LadiesApplication
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
