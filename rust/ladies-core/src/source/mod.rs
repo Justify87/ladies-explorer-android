@@ -33,21 +33,17 @@ pub struct SearchRequest {
     pub filters_json: String,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct SearchCard {
+#[derive(Debug, Clone)]
+pub(crate) struct SearchCard {
     pub listing_id: i64,
     pub person_id: i64,
     pub advert_id: String,
     pub name: String,
     pub city: String,
-    pub category: String,
     pub profile_url: String,
     pub thumbnail_url: Option<String>,
     pub has_video: bool,
-    pub is_premium: bool,
     pub has_ai_content: bool,
-    pub has_18plus: bool,
-    pub has_stars: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -69,6 +65,11 @@ pub struct SearchResponse {
     pub partial: bool,
     pub radius_boundary_stopped: bool,
     pub radius_verified: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SearchResult {
+    pub run: SearchResponse,
     pub profiles: Vec<SearchCard>,
 }
 
@@ -145,7 +146,7 @@ pub(crate) fn search(
     core: &LadiesCore,
     request: SearchRequest,
     control: Option<&RequestControl>,
-) -> Result<SearchResponse, CoreError> {
+) -> Result<SearchResult, CoreError> {
     core.diagnostics.event(
         "SEARCH",
         format!(
@@ -178,7 +179,7 @@ pub(crate) fn search(
             "STORAGE",
             format!(
                 "Search saved run={} cards={}",
-                response.search_run_id,
+                response.run.search_run_id,
                 response.profiles.len()
             ),
         ),

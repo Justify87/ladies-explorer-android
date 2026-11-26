@@ -4,7 +4,9 @@ use url::Url;
 
 use crate::{CoreError, LadiesCore, history, identity, operation::RequestControl};
 
-use super::{Card, Profile, ProfileObservation, SearchCard, SearchRequest, SearchResponse};
+use super::{
+    Card, Profile, ProfileObservation, SearchCard, SearchRequest, SearchResponse, SearchResult,
+};
 use super::{network::DownloadedSearch, parse};
 
 #[cfg(test)]
@@ -12,7 +14,7 @@ pub(super) fn save_search(
     core: &LadiesCore,
     request: &SearchRequest,
     downloaded: DownloadedSearch,
-) -> Result<SearchResponse, CoreError> {
+) -> Result<SearchResult, CoreError> {
     save_search_with_control(core, request, downloaded, None)
 }
 
@@ -21,7 +23,7 @@ pub(super) fn save_search_with_control(
     request: &SearchRequest,
     downloaded: DownloadedSearch,
     control: Option<&RequestControl>,
-) -> Result<SearchResponse, CoreError> {
+) -> Result<SearchResult, CoreError> {
     if let Some(control) = control {
         control.check()?;
     }
@@ -109,32 +111,30 @@ pub(super) fn save_search_with_control(
             advert_id: card.advert_id.clone(),
             name: card.name.clone(),
             city: card.city.clone(),
-            category: card.category.clone(),
             profile_url: card.profile_url.clone(),
             thumbnail_url: card.thumbnail_url.clone(),
             has_video: card.has_video,
-            is_premium: card.is_premium,
             has_ai_content: card.has_ai_content,
-            has_18plus: card.has_18plus,
-            has_stars: card.has_stars,
         });
     }
     if let Some(control) = control {
         control.check()?;
     }
     tx.commit()?;
-    Ok(SearchResponse {
-        query: request.clone(),
-        local: crate::saved_search::LocalVisibility::default(),
-        search_run_id: run_id,
-        city: downloaded.city,
-        requested_radius_km: request.radius_km,
-        server_count: downloaded.server_count,
-        total_pages: downloaded.total_pages,
-        fetched_pages: downloaded.fetched_pages,
-        partial: downloaded.partial,
-        radius_boundary_stopped: downloaded.radius_boundary_stopped,
-        radius_verified: downloaded.radius_verified,
+    Ok(SearchResult {
+        run: SearchResponse {
+            query: request.clone(),
+            local: crate::saved_search::LocalVisibility::default(),
+            search_run_id: run_id,
+            city: downloaded.city,
+            requested_radius_km: request.radius_km,
+            server_count: downloaded.server_count,
+            total_pages: downloaded.total_pages,
+            fetched_pages: downloaded.fetched_pages,
+            partial: downloaded.partial,
+            radius_boundary_stopped: downloaded.radius_boundary_stopped,
+            radius_verified: downloaded.radius_verified,
+        },
         profiles,
     })
 }
@@ -712,7 +712,7 @@ mod tests {
         }
     }
 
-    fn save_cards(core: &LadiesCore, cards: Vec<Card>) -> SearchResponse {
+    fn save_cards(core: &LadiesCore, cards: Vec<Card>) -> SearchResult {
         save_search(
             core,
             &SearchRequest::for_test(),
@@ -1313,13 +1313,13 @@ mod tests {
         let first = save_cards(&core, vec![card("101", "Fixture")]);
         let row = &first.profiles[0];
         let map = core
-            .map_overview(vec![row.listing_id], Some(first.search_run_id))
+            .map_overview(vec![row.listing_id], Some(first.run.search_run_id))
             .unwrap();
         assert_eq!(map.profiles.len(), 1);
         assert_eq!(map.profiles[0].precision, "CITY");
         save_profile(&core, row.listing_id, &row.profile_url, profile("Fixture")).unwrap();
         let map = core
-            .map_overview(vec![row.listing_id], Some(first.search_run_id))
+            .map_overview(vec![row.listing_id], Some(first.run.search_run_id))
             .unwrap();
         assert_eq!(map.profiles[0].precision, "POSTAL");
 
@@ -1327,12 +1327,12 @@ mod tests {
         moved.city = "Berlin".into();
         let second = save_cards(&core, vec![moved]);
         let map = core
-            .map_overview(vec![row.listing_id], Some(second.search_run_id))
+            .map_overview(vec![row.listing_id], Some(second.run.search_run_id))
             .unwrap();
         assert_eq!(map.profiles[0].city, "Berlin");
         assert_eq!(map.profiles[0].precision, "CITY");
         let historical = core
-            .map_overview(vec![row.listing_id], Some(first.search_run_id))
+            .map_overview(vec![row.listing_id], Some(first.run.search_run_id))
             .unwrap();
         assert_eq!(historical.profiles[0].precision, "POSTAL");
     }
@@ -1396,7 +1396,7 @@ mod tests {
         assert_eq!(before.cards[0].person_id, Some(owner));
         assert!(before.searches[0].unread_new_results);
         let map = core
-            .map_overview(vec![listing, target.listing_id], Some(found.search_run_id))
+            .map_overview(vec![listing, target.listing_id], Some(found.run.search_run_id))
             .unwrap();
         assert_eq!(map.total_profiles, 2);
         let in_flight = listing_target(&core, listing, false).unwrap();
@@ -1429,7 +1429,7 @@ mod tests {
         assert!(core.has_cached_profile(listing).unwrap());
         let grid = core
             .active_search_cards(
-                found.search_run_id,
+                found.run.search_run_id,
                 crate::saved_search::LocalVisibility::default(),
             )
             .unwrap();
@@ -1474,7 +1474,7 @@ mod tests {
         let map = core
             .map_overview(
                 grid.iter().map(|card| card.listing_id).collect(),
-                Some(found.search_run_id),
+                Some(found.run.search_run_id),
             )
             .unwrap();
         assert_eq!(map.total_profiles, 2);

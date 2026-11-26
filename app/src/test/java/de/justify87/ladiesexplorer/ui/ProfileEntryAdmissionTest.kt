@@ -15,7 +15,6 @@ class ProfileEntryAdmissionTest {
         local = defaultLocalVisibility(), searchRunId = id, city = "Leipzig",
         requestedRadiusKm = 20u, serverCount = 1u, totalPages = 1u, fetchedPages = 1u,
         partial = false, radiusBoundaryStopped = false, radiusVerified = true,
-        profiles = emptyList(),
     )
 
     @Test fun gridAvailabilityRequiresRenderedRouteRunAndDraft() {

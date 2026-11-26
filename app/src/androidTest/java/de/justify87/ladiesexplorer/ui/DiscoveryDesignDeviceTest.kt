@@ -202,7 +202,7 @@ class DiscoveryDesignDeviceTest {
             query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
             local = defaultLocalVisibility(), searchRunId = 7L, city = "Leipzig",
             requestedRadiusKm = 20u, serverCount = 0u, totalPages = 1u, fetchedPages = 1u,
-            partial = false, radiusBoundaryStopped = false, radiusVerified = true, profiles = emptyList(),
+            partial = false, radiusBoundaryStopped = false, radiusVerified = true,
         )
         var discovery by mutableStateOf(DiscoverUiState(activeRunId = 7L, loading = false,
             error = "Synthetischer Lesefehler"))
@@ -499,7 +499,7 @@ class DiscoveryDesignDeviceTest {
             query = SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
             local = defaultLocalVisibility(), searchRunId = 7L, city = "Leipzig",
             requestedRadiusKm = 20u, serverCount = 24u, totalPages = 1u, fetchedPages = 1u,
-            partial = false, radiusBoundaryStopped = false, radiusVerified = true, profiles = emptyList(),
+            partial = false, radiusBoundaryStopped = false, radiusVerified = true,
         )
         var search by mutableStateOf(SearchUiState().acceptRun(run, rows))
         val discovery = DiscoverUiState(activeRunId = 7L, loading = false)

@@ -144,7 +144,7 @@ pub use saved_search::{
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
 pub use source::{
-    ProfileIdentity, ProfileResponse, SearchCard, SearchPreview, SearchRequest,
+    ProfileIdentity, ProfileResponse, SearchPreview, SearchRequest,
     SearchResponse,
 };
 
@@ -291,7 +291,7 @@ impl LadiesCore {
             control.check()?;
             saved_search::apply_local_visibility(self, &mut response, local)?;
             control.check()?;
-            Ok(response)
+            Ok(response.run)
         })
     }
 
@@ -625,7 +625,7 @@ impl LadiesCore {
         &self,
         id: String,
         control: Arc<RequestControl>,
-    ) -> Result<SearchResponse, CoreError> {
+    ) -> Result<(), CoreError> {
         saved_search::run(self, id, Some(&control))
     }
 

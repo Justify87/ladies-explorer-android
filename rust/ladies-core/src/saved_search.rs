@@ -5,8 +5,10 @@ use std::collections::HashSet;
 use crate::{
     CoreError, LadiesCore,
     operation::RequestControl,
-    source::{self, SearchRequest, SearchResponse},
+    source::{self, SearchRequest, SearchResult},
 };
+#[cfg(test)]
+use crate::source::SearchResponse;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SavedSearchInfo {
@@ -576,7 +578,7 @@ pub(crate) fn acknowledge_revision(
 fn persist_results(
     core: &LadiesCore,
     id: &str,
-    result: &SearchResponse,
+    result: &SearchResult,
     expected_definition: &str,
     expected_version: i64,
 ) -> Result<(), CoreError> {
@@ -593,7 +595,7 @@ fn persist_results(
 fn persist_results_with_control(
     core: &LadiesCore,
     id: &str,
-    result: &SearchResponse,
+    result: &SearchResult,
     expected_definition: &str,
     expected_version: i64,
     control: Option<&RequestControl>,
@@ -788,7 +790,7 @@ fn local_visibility(definition: &str) -> Result<LocalVisibility, CoreError> {
 
 pub(crate) fn apply_local_visibility(
     core: &LadiesCore,
-    response: &mut SearchResponse,
+    response: &mut SearchResult,
     rules: LocalVisibility,
 ) -> Result<(), CoreError> {
     let db = core.connection()?;
@@ -811,7 +813,7 @@ pub(crate) fn apply_local_visibility(
             visible.push(card);
         }
     }
-    response.local = rules;
+    response.run.local = rules;
     response.profiles = visible;
     Ok(())
 }
@@ -820,18 +822,19 @@ pub(crate) fn run(
     core: &LadiesCore,
     id: String,
     control: Option<&RequestControl>,
-) -> Result<SearchResponse, CoreError> {
+) -> Result<(), CoreError> {
     run_with_source(core, id, control, |request| {
         source::search(core, request, control)
     })
+    .map(|_| ())
 }
 
 fn run_with_source(
     core: &LadiesCore,
     id: String,
     control: Option<&RequestControl>,
-    fetch: impl FnOnce(SearchRequest) -> Result<SearchResponse, CoreError>,
-) -> Result<SearchResponse, CoreError> {
+    fetch: impl FnOnce(SearchRequest) -> Result<SearchResult, CoreError>,
+) -> Result<SearchResult, CoreError> {
     let (stored_definition, version) = definition(core, &id)?;
     let definition = decode_definition(&stored_definition)?;
     match fetch(definition.query) {
@@ -843,7 +846,7 @@ fn run_with_source(
             if let Some(control) = control {
                 control.check()?;
             }
-            if !response.partial && response.radius_verified {
+            if !response.run.partial && response.run.radius_verified {
                 persist_results_with_control(
                     core,
                     &id,
@@ -1294,27 +1297,25 @@ mod tests {
             advert_id: advert_id.into(),
             name: advert_id.into(),
             city: "Leipzig".into(),
-            category: "".into(),
             profile_url: "https://www.ladies.de/sex-anzeigen/x".into(),
             thumbnail_url: None,
             has_video: false,
-            is_premium: false,
             has_ai_content: false,
-            has_18plus: false,
-            has_stars: false,
         };
-        let mut result = SearchResponse {
-            query: SearchRequest::for_test(),
-            local: LocalVisibility::default(),
-            search_run_id: 1,
-            city: "Leipzig".into(),
-            requested_radius_km: 20,
-            server_count: Some(2),
-            total_pages: 1,
-            fetched_pages: 1,
-            partial: false,
-            radius_boundary_stopped: false,
-            radius_verified: true,
+        let mut result = SearchResult {
+            run: SearchResponse {
+                query: SearchRequest::for_test(),
+                local: LocalVisibility::default(),
+                search_run_id: 1,
+                city: "Leipzig".into(),
+                requested_radius_km: 20,
+                server_count: Some(2),
+                total_pages: 1,
+                fetched_pages: 1,
+                partial: false,
+                radius_boundary_stopped: false,
+                radius_verified: true,
+            },
             profiles: vec![card(la, a, "101"), card(lb, b, "102")],
         };
         let (stored_definition, version) = definition(&core, &id).unwrap();
@@ -1375,18 +1376,20 @@ mod tests {
         changed.query.radius_km = 30;
         core.update_search_definition(id.clone(), "Changed".into(), changed.query, changed.local)
             .unwrap();
-        let empty = SearchResponse {
-            query: SearchRequest::for_test(),
-            local: LocalVisibility::default(),
-            search_run_id: 1,
-            city: "Leipzig".into(),
-            requested_radius_km: 20,
-            server_count: Some(0),
-            total_pages: 1,
-            fetched_pages: 1,
-            partial: false,
-            radius_boundary_stopped: false,
-            radius_verified: true,
+        let empty = SearchResult {
+            run: SearchResponse {
+                query: SearchRequest::for_test(),
+                local: LocalVisibility::default(),
+                search_run_id: 1,
+                city: "Leipzig".into(),
+                requested_radius_km: 20,
+                server_count: Some(0),
+                total_pages: 1,
+                fetched_pages: 1,
+                partial: false,
+                radius_boundary_stopped: false,
+                radius_verified: true,
+            },
             profiles: Vec::new(),
         };
         assert!(matches!(
@@ -1434,24 +1437,26 @@ mod tests {
             [(true, true), (false, false), (true, false), (false, true)]
         {
             let response = run_with_source(&core, id.clone(), None, |query| {
-                Ok(SearchResponse {
-                    query,
-                    local: LocalVisibility::default(),
-                    search_run_id: 1,
-                    city: "Leipzig".into(),
-                    requested_radius_km: 20,
-                    server_count: Some(0),
-                    total_pages: 1,
-                    fetched_pages: 1,
-                    partial,
-                    radius_boundary_stopped: false,
-                    radius_verified,
+                Ok(SearchResult {
+                    run: SearchResponse {
+                        query,
+                        local: LocalVisibility::default(),
+                        search_run_id: 1,
+                        city: "Leipzig".into(),
+                        requested_radius_km: 20,
+                        server_count: Some(0),
+                        total_pages: 1,
+                        fetched_pages: 1,
+                        partial,
+                        radius_boundary_stopped: false,
+                        radius_verified,
+                    },
                     profiles: Vec::new(),
                 })
             })
             .unwrap();
-            assert_eq!(response.partial, partial);
-            assert_eq!(response.radius_verified, radius_verified);
+            assert_eq!(response.run.partial, partial);
+            assert_eq!(response.run.radius_verified, radius_verified);
             let info = list(&core).unwrap().remove(0);
             let cards = window(&core, id.clone(), 100).unwrap().cards;
             let delta = info.delta.unwrap();
@@ -1510,18 +1515,20 @@ mod tests {
             )
             .unwrap();
         }
-        let response = SearchResponse {
-            query: SearchRequest::for_test(),
-            local: LocalVisibility::default(),
-            search_run_id: 1,
-            city: "Leipzig".into(),
-            requested_radius_km: 20,
-            server_count: Some(0),
-            total_pages: 1,
-            fetched_pages: 1,
-            partial: false,
-            radius_boundary_stopped: false,
-            radius_verified: true,
+        let response = SearchResult {
+            run: SearchResponse {
+                query: SearchRequest::for_test(),
+                local: LocalVisibility::default(),
+                search_run_id: 1,
+                city: "Leipzig".into(),
+                requested_radius_km: 20,
+                server_count: Some(0),
+                total_pages: 1,
+                fetched_pages: 1,
+                partial: false,
+                radius_boundary_stopped: false,
+                radius_verified: true,
+            },
             profiles: Vec::new(),
         };
         let baseline = || {
@@ -1671,18 +1678,20 @@ mod tests {
     fn repeated_empty_complete_results_do_not_create_new_alerts() {
         let core = LadiesCore::new(":memory:".into()).unwrap();
         let id = save(&core, "test".into(), SearchRequest::for_test()).unwrap();
-        let response = SearchResponse {
-            query: SearchRequest::for_test(),
-            local: LocalVisibility::default(),
-            search_run_id: 1,
-            city: "Leipzig".into(),
-            requested_radius_km: 20,
-            server_count: Some(0),
-            total_pages: 1,
-            fetched_pages: 1,
-            partial: false,
-            radius_boundary_stopped: false,
-            radius_verified: true,
+        let response = SearchResult {
+            run: SearchResponse {
+                query: SearchRequest::for_test(),
+                local: LocalVisibility::default(),
+                search_run_id: 1,
+                city: "Leipzig".into(),
+                requested_radius_km: 20,
+                server_count: Some(0),
+                total_pages: 1,
+                fetched_pages: 1,
+                partial: false,
+                radius_boundary_stopped: false,
+                radius_verified: true,
+            },
             profiles: Vec::new(),
         };
         let (stored_definition, version) = definition(&core, &id).unwrap();

@@ -410,7 +410,7 @@ class CoreStore(context: Context) {
     suspend fun savedSearchWindow(id: String, limit: UInt): SavedSearchWindow =
         withContext(Dispatchers.IO) { engine.savedSearchWindow(id, limit) }
 
-    suspend fun runSavedSearch(id: String, control: RequestControl): SearchResponse =
+    suspend fun runSavedSearch(id: String, control: RequestControl): Unit =
         withContext(Dispatchers.IO) { recorded("runSavedSearch") { engine.runSavedSearch(id, control) } }
 
     suspend fun renameSavedSearch(id: String, name: String) =

@@ -71,7 +71,7 @@ class ProfileProjectionTest {
 
         val run = SearchResponse(
             SearchRequest("Leipzig", 20u, "", 18u, 60u, 140u, 200u, "{}"),
-            defaultLocalVisibility(), 3L, "Leipzig", 20u, 1u, 1u, 1u, false, false, true, emptyList(),
+            defaultLocalVisibility(), 3L, "Leipzig", 20u, 1u, 1u, 1u, false, false, true,
         )
         search.value = search.value.acceptRun(run, listOf(fixtureCard(1L)))
         val activePublisher = DiscoveryProjectionPublisher(search, state, SwipeSession(), { epoch },
