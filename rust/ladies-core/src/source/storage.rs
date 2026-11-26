@@ -980,11 +980,18 @@ mod tests {
         let person = core.get_person(person_id).unwrap().unwrap();
         assert!(person.favorite);
         assert_eq!(person.preference, crate::Preference::Like);
-        assert_eq!(person.display_name.as_deref(), Some("Anna new"));
         assert_eq!(person.listing_count, 1);
         assert_eq!(core.status().unwrap().person_count, 2);
         assert_eq!(core.status().unwrap().listing_count, 2);
         let db = core.connection().unwrap();
+        let display_name: Option<String> = db
+            .query_row(
+                "SELECT display_name FROM persons WHERE person_id=?1",
+                [person_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(display_name.as_deref(), Some("Anna new"));
         let count: i64 = db
             .query_row("SELECT COUNT(*) FROM search_runs", [], |r| r.get(0))
             .unwrap();

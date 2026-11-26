@@ -46,7 +46,7 @@ class DiscoveryDesignDeviceTest {
                 base.copy(phoneDisplay = base.phoneDisplay.takeIf { phone }),
                 ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null, personNew = false,
                     listingNew = false, hasVideo = false, age = null),
-                PersonSummary(1, "Fixture", Preference.NONE, false, 1u, ""),
+                PersonSummary(1, Preference.NONE, false, 1u),
                 listOf(medium), emptyList(), emptyList()), true)
             val notes = NoteEditorActions({ _, _ -> }, { _, _ -> }, { _, _, _ -> }, { _, _ -> }, { _, _ -> })
             val reads = ProfilePanelReads({ _, _ -> ProfileFacts(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()) },

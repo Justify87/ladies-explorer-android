@@ -115,14 +115,12 @@ pub struct CoreStatus {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct PersonSummary {
     pub person_id: i64,
-    pub display_name: Option<String>,
     pub preference: Preference,
     pub favorite: bool,
     pub listing_count: u32,
-    pub last_seen_at: String,
 }
 
-type RawPerson = (i64, Option<String>, String, i64, u32, String);
+type RawPerson = (i64, String, i64, u32);
 
 pub use discovery::{
     DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow,
@@ -764,9 +762,8 @@ impl LadiesCore {
 }
 
 const PERSON_QUERY_BY_ID: &str = r#"
-SELECT p.person_id, p.display_name, s.preference, s.favorite,
-       (SELECT COUNT(*) FROM listings l WHERE l.person_id = p.person_id),
-       p.last_seen_at
+SELECT p.person_id, s.preference, s.favorite,
+       (SELECT COUNT(*) FROM listings l WHERE l.person_id = p.person_id)
 FROM persons p
 JOIN person_user_state s ON s.person_id = p.person_id
 WHERE p.person_id = ?1
@@ -780,14 +777,7 @@ fn person_from(db: &Connection, person_id: i64) -> Result<Option<PersonSummary>,
 }
 
 fn parse_person_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawPerson> {
-    Ok((
-        row.get(0)?,
-        row.get(1)?,
-        row.get(2)?,
-        row.get(3)?,
-        row.get(4)?,
-        row.get(5)?,
-    ))
+    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
 }
 
 impl TryFrom<RawPerson> for PersonSummary {
@@ -796,11 +786,9 @@ impl TryFrom<RawPerson> for PersonSummary {
     fn try_from(row: RawPerson) -> Result<Self, Self::Error> {
         Ok(Self {
             person_id: row.0,
-            display_name: row.1,
-            preference: Preference::from_db(&row.2)?,
-            favorite: row.3 != 0,
-            listing_count: row.4,
-            last_seen_at: row.5,
+            preference: Preference::from_db(&row.1)?,
+            favorite: row.2 != 0,
+            listing_count: row.3,
         })
     }
 }

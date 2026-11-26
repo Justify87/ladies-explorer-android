@@ -37,7 +37,7 @@ class PriceProfileDeviceTest {
         )
         val model = ProfileReadModel(NativeProfileProjection(
             profile, ProfileIdentity(1, "ACTIVE", null, false, false, false, null),
-            PersonSummary(1, "Fixture", Preference.NONE, false, 1u, ""),
+            PersonSummary(1, Preference.NONE, false, 1u),
             emptyList(), emptyList(), emptyList(),
         ), true)
         val rows = mutableListOf<PriceList>()

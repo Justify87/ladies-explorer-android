@@ -57,7 +57,7 @@ class ProfileRestoreDeviceTest {
                 openingTimesJson = "{}", media = emptyList()),
             ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null,
                 personNew = false, listingNew = false, hasVideo = false, age = null),
-            PersonSummary(1, "Fixture", Preference.NONE, false, 1u, ""),
+            PersonSummary(1, Preference.NONE, false, 1u),
             media,
             emptyList(), emptyList(),
         ), true,
