@@ -57,20 +57,33 @@ class SavedPeopleStateTest {
         val original = row()
         val state = displayed(original)
         val action = SavedPersonAction(original, state.savedKind, state.savedSort, state.actionGeneration)
-        assertTrue(savedActionMatches(state, action))
-        assertFalse(savedActionMatches(state.copy(savedPage = null), action))
+        assertTrue(savedActionMatches(state, SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(savedPage = null), SearchUiState(), action))
         assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
-            rows = listOf(row(person = 2L)))), action))
+            rows = listOf(row(person = 2L)))), SearchUiState(), action))
         assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
-            rows = listOf(row(preference = Preference.LIKE)))), action))
+            rows = listOf(row(preference = Preference.LIKE)))), SearchUiState(), action))
         assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
-            rows = listOf(row(favorite = true)))), action))
-        assertFalse(savedActionMatches(state.copy(savedKind = SavedPersonKind.LIKE), action))
-        assertFalse(savedActionMatches(state.copy(savedSort = SavedPersonSort.NAME), action))
-        assertFalse(savedActionMatches(state.copy(actionGeneration = 43), action))
-        assertFalse(savedActionMatches(state.copy(actionSurface = ProfileActionSurface.GRID), action))
-        assertFalse(savedActionMatches(state.copy(loading = true), action))
-        assertFalse(savedActionMatches(state.copy(busy = true), action))
+            rows = listOf(row(favorite = true)))), SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(savedKind = SavedPersonKind.LIKE), SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(savedSort = SavedPersonSort.NAME), SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(actionGeneration = 43), SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(actionSurface = ProfileActionSurface.GRID), SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(loading = true), SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(busy = true), SearchUiState(), action))
+    }
+
+    @Test fun savedRowAdmissionRejectsOpenProfileAndCompetingWorkWithOrWithoutListing() {
+        for (person in listOf(row(), row().copy(card = fixtureCard(8L, 1L)))) {
+            val state = displayed(person)
+            val action = SavedPersonAction(person, state.savedKind, state.savedSort, state.actionGeneration)
+            val search = SearchUiState()
+            assertTrue(savedActionMatches(state, search, action))
+            assertFalse(savedActionMatches(state.copy(busy = true), search, action))
+            assertFalse(savedActionMatches(state, search.copy(profileOpen = true), action))
+            assertFalse(savedActionMatches(state, search.copy(loading = true), action))
+            assertFalse(savedActionMatches(state, search.copy(actionBusy = true), action))
+        }
     }
 
     @Test fun recentSavedActionsUseTheSameStrictContract() {
@@ -78,8 +91,8 @@ class SavedPeopleStateTest {
         val state = displayed(recent).copy(savedPage = SavedPersonPage(emptyList(), 1u, 0u, 123L, false),
             savedRecent = SavedPersonPage(listOf(recent), 1u, 1u, 123L, false))
         val action = SavedPersonAction(recent, state.savedKind, state.savedSort, state.actionGeneration)
-        assertTrue(savedActionMatches(state, action))
-        assertFalse(savedActionMatches(state.copy(savedRecent = null), action))
+        assertTrue(savedActionMatches(state, SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(savedRecent = null), SearchUiState(), action))
     }
 
     @Test fun statusBatchRequiresExactRenderedSavedSelectionAndWindow() {
@@ -152,12 +165,12 @@ class SavedPeopleStateTest {
         val person = row().copy(card = fixtureCard(8L, 1L))
         val state = displayed(person)
         val action = SavedPersonAction(person, state.savedKind, state.savedSort, state.actionGeneration)
-        assertTrue(savedActionMatches(state, action))
+        assertTrue(savedActionMatches(state, SearchUiState(), action))
         assertEquals(8L, action.row.card?.listingId)
         assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
-            rows = listOf(person.copy(card = fixtureCard(9L, 1L))))), action))
-        assertFalse(savedActionMatches(state.copy(actionSurface = ProfileActionSurface.NONE), action))
-        assertFalse(savedActionMatches(state.copy(actionGeneration = 43), action))
+            rows = listOf(person.copy(card = fixtureCard(9L, 1L))))), SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(actionSurface = ProfileActionSurface.NONE), SearchUiState(), action))
+        assertFalse(savedActionMatches(state.copy(actionGeneration = 43), SearchUiState(), action))
         assertNull(row().card)
     }
 

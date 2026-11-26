@@ -259,7 +259,6 @@ class StandaloneProfileOperationsTest {
         f.idle()
         assertEquals(2L, f.owner)
         assertNull(f.search.value.profileRead?.identity)
-        assertNull(f.search.value.selectedPersonId)
         assertNull(f.search.value.profile)
         assertNull(f.search.value.profileRead)
         assertEquals(4L, f.search.value.retryProfileListingId)

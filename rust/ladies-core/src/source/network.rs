@@ -232,11 +232,8 @@ impl Transport for SourceHttp {
             let response = match sent {
                 Ok(response) => response,
                 Err(error) => {
-                    if let Some(mut obs) = observation.take() {
-                        obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
-                        obs.error = Some(error.to_string());
-                        self.recorder.record_for_epoch(obs, capture_epoch);
-                    }
+                    self.recorder
+                        .record_send_failure(observation, capture_epoch, started, &error);
                     self.diagnostics
                         .error("HTTP", format!("GET failure {url}: {error}"));
                     return Err(CoreError::Source(format!(
@@ -253,16 +250,7 @@ impl Transport for SourceHttp {
                 let next = redirect_target(response.url(), status, location, followed);
                 if next.as_ref().is_err() || matches!(next, Ok(Some(_))) {
                     if let Some(mut obs) = observation.take() {
-                        obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
-                        obs.status = Some(status);
-                        obs.http_version = format!("{:?}", response.version());
-                        obs.response_headers = http_capture::headers(response.headers());
-                        obs.response_size = response.content_length();
-                        obs.mime = response
-                            .headers()
-                            .get(reqwest::header::CONTENT_TYPE)
-                            .and_then(|header| header.to_str().ok())
-                            .map(ToOwned::to_owned);
+                        obs.receive_headers(&response, started.elapsed(), None);
                         obs.body_omitted = Some("redirect_body_not_read".into());
                         self.recorder.record_for_epoch(obs, capture_epoch);
                     }
@@ -285,13 +273,8 @@ impl Transport for SourceHttp {
             .unwrap_or("not specified")
             .to_owned();
         if let Some(obs) = observation.as_mut() {
-            obs.status = Some(status);
-            obs.http_version = format!("{:?}", response.version());
-            obs.headers_elapsed_ms = header_duration.as_millis() as u64;
+            obs.receive_headers(&response, header_duration, Some("not specified"));
             obs.final_url = response.url().to_string();
-            obs.response_headers = http_capture::headers(response.headers());
-            obs.mime = Some(response_type.clone());
-            obs.response_size = response.content_length();
         }
         self.diagnostics.debug(
             "HTTP",

@@ -332,13 +332,6 @@ internal class StandaloneProfileOperations<C : Any>(
         }
     }
 
-    suspend fun refreshLocalProfileForOwner(personId: Long) {
-        val active = _searchUiState.value
-        val listingId = active.profile?.listingId ?: return
-        if (!active.profileOpen || active.selectedPersonId != personId) return
-        refreshLocalProfile(active.profileSessionId, listingId)
-    }
-
     suspend fun refreshLocalProfile(session: Long, listingId: Long) {
         readDetail(session, listingId) { local, revision -> withProjection(local, revision) }
     }

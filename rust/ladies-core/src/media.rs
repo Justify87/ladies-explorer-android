@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     CoreError, LadiesCore,
-    http_capture::{self, HttpRecorder},
+    http_capture::HttpRecorder,
     identity,
     operation::RequestControl,
 };
@@ -110,11 +110,8 @@ impl Fetcher for HttpFetcher {
         let mut response = match sent {
             Ok(response) => response,
             Err(error) => {
-                if let Some(mut obs) = observation.take() {
-                    obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
-                    obs.error = Some(error.to_string());
-                    self.recorder.record_for_epoch(obs, capture_epoch);
-                }
+                self.recorder
+                    .record_send_failure(observation, capture_epoch, started, &error);
                 return Err(CoreError::Media(format!(
                     "Media request failed: {}",
                     error.without_url()
@@ -122,17 +119,8 @@ impl Fetcher for HttpFetcher {
             }
         };
         if let Some(obs) = observation.as_mut() {
-            obs.headers_elapsed_ms = started.elapsed().as_millis() as u64;
-            obs.status = Some(response.status().as_u16());
-            obs.http_version = format!("{:?}", response.version());
+            obs.receive_headers(&response, started.elapsed(), None);
             obs.final_url = response.url().to_string();
-            obs.response_headers = http_capture::headers(response.headers());
-            obs.mime = response
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|h| h.to_str().ok())
-                .map(ToOwned::to_owned);
-            obs.response_size = response.content_length();
         }
         if !response.status().is_success() {
             if let Some(obs) = observation.take() {
