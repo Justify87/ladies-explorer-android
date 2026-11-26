@@ -123,18 +123,6 @@ pub struct PersonSummary {
     pub last_seen_at: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct PersonCursor {
-    pub last_seen_at: String,
-    pub person_id: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct PersonPage {
-    pub people: Vec<PersonSummary>,
-    pub next_cursor: Option<PersonCursor>,
-}
-
 type RawPerson = (i64, Option<String>, String, i64, u32, String);
 
 pub use discovery::{
@@ -670,11 +658,6 @@ impl LadiesCore {
         })
     }
 
-    pub fn get_person(&self, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
-        let db = self.connection()?;
-        person_from(&db, person_id)
-    }
-
     /// CAS for a saved person that has no displayable listing.
     pub fn set_person_preference_if(
         &self,
@@ -793,17 +776,6 @@ JOIN person_user_state s ON s.person_id = p.person_id
 WHERE p.person_id = ?1
 "#;
 
-const PERSON_QUERY_LIST: &str = r#"
-SELECT p.person_id, p.display_name, s.preference, s.favorite,
-       (SELECT COUNT(*) FROM listings l WHERE l.person_id = p.person_id),
-       p.last_seen_at
-FROM persons p
-JOIN person_user_state s ON s.person_id = p.person_id
-WHERE (?1 IS NULL OR p.last_seen_at < ?1 OR (p.last_seen_at = ?1 AND p.person_id < ?2))
-ORDER BY p.last_seen_at DESC, p.person_id DESC
-LIMIT ?3
-"#;
-
 fn person_from(db: &Connection, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
     let raw = db
         .query_row(PERSON_QUERY_BY_ID, params![person_id], parse_person_row)
@@ -838,51 +810,6 @@ impl TryFrom<RawPerson> for PersonSummary {
 }
 
 impl LadiesCore {
-    pub fn list_people(
-        &self,
-        limit: u32,
-        cursor: Option<PersonCursor>,
-    ) -> Result<PersonPage, CoreError> {
-        if limit == 0 || limit > 100 {
-            return Err(CoreError::InvalidInput(
-                "Page size must be between 1 and 100".into(),
-            ));
-        }
-        if cursor
-            .as_ref()
-            .is_some_and(|value| value.person_id <= 0 || value.last_seen_at.is_empty())
-        {
-            return Err(CoreError::InvalidInput("Invalid person cursor".into()));
-        }
-        let db = self.connection()?;
-        let mut query = db.prepare(PERSON_QUERY_LIST)?;
-        let rows = query.query_map(
-            params![
-                cursor.as_ref().map(|value| value.last_seen_at.as_str()),
-                cursor.as_ref().map(|value| value.person_id),
-                i64::from(limit) + 1,
-            ],
-            parse_person_row,
-        )?;
-        let mut people = rows
-            .map(|row| PersonSummary::try_from(row?))
-            .collect::<Result<Vec<_>, _>>()?;
-        let has_more = people.len() > limit as usize;
-        people.truncate(limit as usize);
-        let next_cursor = if has_more {
-            people.last().map(|person| PersonCursor {
-                last_seen_at: person.last_seen_at.clone(),
-                person_id: person.person_id,
-            })
-        } else {
-            None
-        };
-        Ok(PersonPage {
-            people,
-            next_cursor,
-        })
-    }
-
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, CoreError> {
         self.db
             .lock()
@@ -892,6 +819,11 @@ impl LadiesCore {
 
 #[cfg(test)]
 impl LadiesCore {
+    fn get_person(&self, person_id: i64) -> Result<Option<PersonSummary>, CoreError> {
+        let db = self.connection()?;
+        person_from(&db, person_id)
+    }
+
     pub fn set_preference(&self, person_id: i64, preference: Preference) -> Result<(), CoreError> {
         let db = self.connection()?;
         let changed = db.execute(
@@ -1087,64 +1019,6 @@ mod tests {
             again.person_note(listing, id).unwrap().as_deref(),
             Some("Local note")
         );
-    }
-
-    #[test]
-    fn keyset_pagination_returns_more_than_one_hundred_people_without_duplicates() {
-        let core = memory_core();
-        {
-            let mut db = core.connection().unwrap();
-            let tx = db.transaction().unwrap();
-            for number in 0..235 {
-                tx.execute(
-                    "INSERT INTO persons (display_name, last_seen_at)
-                     VALUES (?1, '2026-01-01T00:00:00.000Z')",
-                    params![format!("Person {number}")],
-                )
-                .unwrap();
-            }
-            tx.commit().unwrap();
-        }
-        let mut cursor = None;
-        let mut ids = Vec::new();
-        loop {
-            let page = core.list_people(70, cursor).unwrap();
-            assert!(!page.people.is_empty());
-            assert!(page.people.len() <= 70);
-            ids.extend(page.people.into_iter().map(|person| person.person_id));
-            match page.next_cursor {
-                Some(next) => cursor = Some(next),
-                None => break,
-            }
-        }
-        assert_eq!(ids.len(), 235);
-        assert!(ids.windows(2).all(|pair| pair[0] > pair[1]));
-        assert_eq!(ids.first().copied(), Some(235));
-        assert_eq!(ids.last().copied(), Some(1));
-    }
-
-    #[test]
-    fn pagination_rejects_invalid_page_size_and_cursor() {
-        let core = memory_core();
-        assert!(matches!(
-            core.list_people(0, None),
-            Err(CoreError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            core.list_people(101, None),
-            Err(CoreError::InvalidInput(_))
-        ));
-        assert!(matches!(
-            core.list_people(
-                25,
-                Some(PersonCursor {
-                    last_seen_at: "2026".into(),
-                    person_id: 0
-                })
-            ),
-            Err(CoreError::InvalidInput(_))
-        ));
-        assert!(core.list_people(25, None).unwrap().people.is_empty());
     }
 
     #[test]

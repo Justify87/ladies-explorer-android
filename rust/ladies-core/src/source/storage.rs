@@ -984,7 +984,6 @@ mod tests {
         assert_eq!(person.listing_count, 1);
         assert_eq!(core.status().unwrap().person_count, 2);
         assert_eq!(core.status().unwrap().listing_count, 2);
-        assert_eq!(core.list_people(10, None).unwrap().people.len(), 2);
         let db = core.connection().unwrap();
         let count: i64 = db
             .query_row("SELECT COUNT(*) FROM search_runs", [], |r| r.get(0))

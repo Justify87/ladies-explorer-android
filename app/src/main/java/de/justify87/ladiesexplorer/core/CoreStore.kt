@@ -235,10 +235,6 @@ class CoreStore(context: Context) {
         recorded("status") { engine.status() }
     }
 
-    suspend fun person(personId: Long): PersonSummary? = withContext(Dispatchers.IO) {
-        engine.getPerson(personId)
-    }
-
     suspend fun setSwipePreference(listingId: Long, personId: Long, expected: Preference?, preference: Preference): Preference =
         withContext(Dispatchers.IO) { engine.setSwipePreference(listingId, personId, expected, preference) }
 
