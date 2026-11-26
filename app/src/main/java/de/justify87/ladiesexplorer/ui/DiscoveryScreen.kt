@@ -2,6 +2,7 @@ package de.justify87.ladiesexplorer.ui
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -118,7 +119,7 @@ internal fun DiscoverScreen(
     val prepared = preparation.displayed(cardKey)?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
     val current = card?.takeIf { decks.isCurrent(state.swipeExternalRevision) }
         ?.let { decks[it] }?.takeIf { model ->
-            prepared?.model == model && prepared?.filters == executedFiltersJson
+            prepared?.model == model && prepared.filters == executedFiltersJson
         }
     val displayed = prepared?.model
     val readError = cardKey?.let { failures[it] }?.takeIf { it.current }?.message
@@ -332,12 +333,10 @@ internal fun DiscoverScreen(
                 "Profil- und Deckzustand unterscheiden sich. Bitte Ansicht aktualisieren.", warning = true))
             readError?.let { error ->
                 add(ProfileNotice("Profilfehler", error, "Erneut laden", enabled, {
-                    card?.let { target ->
-                        val key = target.listingId to target.personId
-                        failures.remove(key)
-                        decks.remove(target.listingId)
-                        preparation.remove(key)
-                    }
+                    val key = card.listingId to card.personId
+                    failures.remove(key)
+                    decks.remove(card.listingId)
+                    preparation.remove(key)
                 }, warning = true))
             }
             if (prepared?.hasMediaFailures == true) add(ProfileNotice("Medienhinweis", "Einige Medien konnten nicht vorbereitet werden.", warning = true))
@@ -595,7 +594,7 @@ internal fun SwipeDecisionControls(context: SwipeControlsContext, profileTitle: 
         }, horizontalArrangement = Arrangement.Center, verticalArrangement = Arrangement.Center,
             maxItemsInEachRow = ((maxWidth - inset * 2) / ShellMetrics.touch).toInt().coerceIn(1, 4)) {
             val actionCell = Modifier.weight(1f).widthIn(min = ShellMetrics.touch)
-            DecisionAction("Rückgängig", Icons.Default.Undo, context.deckEnabled && context.canUndo, compact,
+            DecisionAction("Rückgängig", Icons.AutoMirrored.Filled.Undo, context.deckEnabled && context.canUndo, compact,
                 scheme.surfaceContainer, scheme.onSurfaceVariant, false, actionCell, onUndo)
             DecisionAction("Nein", Icons.Default.Close, context.profile != null, compact,
                 scheme.errorContainer, scheme.onErrorContainer, true, actionCell) { onChoose(Preference.DISLIKE) }

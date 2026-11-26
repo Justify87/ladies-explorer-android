@@ -258,7 +258,7 @@ internal class GalleryVideoFiles(
         } finally {
             if (lease != null) withContext(NonCancellable + Dispatchers.IO) {
                 gate.withLock {
-                    lease?.let { if (--it.users == 0) it.idle.complete(Unit) }
+                    if (--lease.users == 0) lease.idle.complete(Unit)
                 }
             }
         }
