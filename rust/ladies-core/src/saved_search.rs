@@ -7,8 +7,6 @@ use crate::{
     operation::RequestControl,
     source::{self, SearchRequest, SearchResult},
 };
-#[cfg(test)]
-use crate::source::SearchResponse;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SavedSearchInfo {
@@ -887,6 +885,7 @@ fn run_with_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::source::SearchResponse;
     #[test]
     fn default_definition_roundtrip_is_independent_of_saved_searches() {
         let directory = tempfile::tempdir().unwrap();

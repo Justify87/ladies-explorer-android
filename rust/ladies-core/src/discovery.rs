@@ -422,9 +422,7 @@ fn saved_people_in(
         || (section != SavedPersonSection::All
             && (kind != SavedPersonKind::Favorite || sort != SavedPersonSort::Date))
     {
-        return Err(CoreError::InvalidInput(
-            "Invalid saved people page".into(),
-        ));
+        return Err(CoreError::InvalidInput("Invalid saved people page".into()));
     }
     let predicate = kind.predicate();
     // Count persons, including unlisted imports, under one connection guard.

@@ -123,8 +123,8 @@ pub struct PersonSummary {
 type RawPerson = (i64, String, i64, u32);
 
 pub use discovery::{
-    DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow,
-    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSort,
+    DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow, SavedPersonKind,
+    SavedPersonPage, SavedPersonRow, SavedPersonSort,
 };
 pub use encounters::{Encounter, EncounterService, EncounterValues};
 pub use history::ChangeRecord;
@@ -143,10 +143,7 @@ pub use saved_search::{
     SavedSearchWindow,
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
-pub use source::{
-    ProfileIdentity, ProfileResponse, SearchPreview, SearchRequest,
-    SearchResponse,
-};
+pub use source::{ProfileIdentity, ProfileResponse, SearchPreview, SearchRequest, SearchResponse};
 
 /// One coherent local read for both swipe and standalone profiles.
 #[derive(Debug, Clone, uniffi::Record)]
