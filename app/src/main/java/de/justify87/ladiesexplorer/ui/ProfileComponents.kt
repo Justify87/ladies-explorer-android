@@ -416,7 +416,7 @@ internal fun ProfileActionRail(
     onPreference: (Preference) -> Unit,
 ) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
-            FilterChip(selected = person.preference == Preference.LIKE, enabled = !busy,
+        FilterChip(selected = person.preference == Preference.LIKE, enabled = !busy,
             modifier = Modifier.heightIn(min = ShellMetrics.touch),
             onClick = { onPreference(toggledProfilePreference(person.preference, Preference.LIKE)) },
             label = { Text("Gefällt") }, leadingIcon = { Icon(Icons.Default.Favorite, null) })

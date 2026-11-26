@@ -440,7 +440,6 @@ internal fun DiscoverScreen(
                     }
                 }
             } else {
-                val fallback = emptyList<ProfileMediaItem>()
                 ProfileFlow(state = listState, model = profile, filters = executedFiltersJson,
                     token = token, actionsBusy = !actions, notes = notes, noteActions = noteActions,
                     isProfileCurrent = isProfileCurrent, onConfirmIdentity = onConfirmIdentity,
@@ -450,7 +449,7 @@ internal fun DiscoverScreen(
                     userScrollEnabled = !transitioning,
                     swipeRestore = state.swipeRestore, swipeRunId = state.activeRunId, swipeCapture = capture,
                     onSwipeRestoreConsumed = { onSwipeRestoreConsumed(deckToken, it) }, encounters = encounters, prices = prices,
-                    fallbackIdentity = identity, fallbackMedia = fallback, preparedPanels = prepared?.panelsFor(executedFiltersJson, current != null),
+                    fallbackIdentity = identity, preparedPanels = prepared?.panelsFor(executedFiltersJson, current != null),
                     afterHeading = {
                     if (profile == null) card.description?.let { item(key = "fallback-description") { Text(it) } }
                     }, afterDetails = {
@@ -471,7 +470,7 @@ internal fun DiscoverScreen(
                     }
                     item(key = "hero") {
                         Box(Modifier.fillMaxWidth().padding(horizontal = contentInset)) {
-                            ProfileMediaHero(media = profile?.media?.ifEmpty { fallback } ?: fallback,
+                            ProfileMediaHero(media = profile?.media.orEmpty(),
                             height = presentation.heroHeight,
                             onSwipe = if (actions) ({ decision ->
                                 choose(decision)

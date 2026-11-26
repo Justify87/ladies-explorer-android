@@ -102,7 +102,6 @@ internal fun ProfileFlow(
     encounters: EncounterEditor? = null,
     prices: PriceEditor? = null,
     fallbackIdentity: HeroIdentity? = null,
-    fallbackMedia: List<ProfileMediaItem> = emptyList(),
     preparedPanels: PreparedPanelData? = null,
     afterHeading: ProfileFlowRows.() -> Unit = {},
     afterDetails: ProfileFlowRows.() -> Unit = {},
@@ -119,7 +118,7 @@ internal fun ProfileFlow(
     val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
     val scroll = key(presentationOwner) { rememberProfileScrollMemory(ownerChanged) }
     val restore = remember(presentationOwner) { ProfileRestoreCoordinator() }
-    val selectedMedium = model?.media?.ifEmpty { fallbackMedia }?.let { it.getOrNull(mediaSelection.resolve(it, true)) }
+    val selectedMedium = model?.media?.let { it.getOrNull(mediaSelection.resolve(it, true)) }
     SideEffect { onGallerySelection(selectedMedium) }
     DisposableEffect(swipeCapture) { onDispose { swipeCapture?.read = { null } } }
     SideEffect {
