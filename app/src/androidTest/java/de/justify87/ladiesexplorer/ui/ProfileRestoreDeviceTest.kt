@@ -50,11 +50,8 @@ class ProfileRestoreDeviceTest {
             ProfileMediaItem("VIDEO", "https://example.invalid/fixture", null, 1u)),
     ) = ProfileReadModel(
         NativeProfileProjection(
-            ProfileResponse(listingId = 4, snapshotId = snapshot, newSnapshot = false, advertId = "fixture",
-                name = "Fixture", city = "Fixture", description = "Fixture ".repeat(120), postalCode = null,
-                hiddenLocation = "Offenbach am Main", sourceProfileId = null, canonicalId = null,
-                phoneDisplay = phone, publishedAt = null, traitsJson = "{}", servicesJson = "{}",
-                openingTimesJson = "{}", media = emptyList()),
+            ProfileResponse(listingId = 4, snapshotId = snapshot, name = "Fixture", city = "Fixture", description = "Fixture ".repeat(120), postalCode = null,
+                phoneDisplay = phone, publishedAt = null),
             ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null,
                 personNew = false, listingNew = false, hasVideo = false, age = null),
             PersonSummary(1, Preference.NONE, false, 1u),

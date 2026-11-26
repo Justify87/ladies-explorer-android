@@ -144,7 +144,7 @@ pub use saved_search::{
 };
 pub use source::filter::{FrequentFilter, SourceFilterCatalog, SourceFilterGroup};
 pub use source::{
-    MediaReference, ProfileIdentity, ProfileResponse, SearchCard, SearchPreview, SearchRequest,
+    ProfileIdentity, ProfileResponse, SearchCard, SearchPreview, SearchRequest,
     SearchResponse,
 };
 
@@ -307,17 +307,14 @@ impl LadiesCore {
         &self,
         listing_id: i64,
         control: Arc<RequestControl>,
-    ) -> Result<ProfileResponse, CoreError> {
+    ) -> Result<(), CoreError> {
         self.diagnostics.timed("PROFILE", "load_swipe_profile", || {
             source::load_profile(self, listing_id, &control)
         })
     }
 
-    pub fn cached_source_profile(
-        &self,
-        listing_id: i64,
-    ) -> Result<Option<ProfileResponse>, CoreError> {
-        discovery::cached_profile(self, listing_id)
+    pub fn has_cached_profile(&self, listing_id: i64) -> Result<bool, CoreError> {
+        discovery::has_cached_profile(self, listing_id)
     }
 
     pub fn load_display_image(

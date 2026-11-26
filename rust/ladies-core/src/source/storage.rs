@@ -4,7 +4,7 @@ use url::Url;
 
 use crate::{CoreError, LadiesCore, history, identity, operation::RequestControl};
 
-use super::{Card, Profile, ProfileResponse, SearchCard, SearchRequest, SearchResponse};
+use super::{Card, Profile, ProfileObservation, SearchCard, SearchRequest, SearchResponse};
 use super::{network::DownloadedSearch, parse};
 
 #[cfg(test)]
@@ -476,7 +476,7 @@ pub(super) fn save_profile(
     listing_id: i64,
     url: &str,
     profile: Profile,
-) -> Result<ProfileResponse, CoreError> {
+) -> Result<ProfileObservation, CoreError> {
     let target = listing_target(core, listing_id, false)?;
     assert_eq!(target.url, url);
     save_observed_profile(core, &target, profile, true, None)
@@ -488,7 +488,7 @@ pub(super) fn save_observed_profile(
     profile: Profile,
     verified: bool,
     control: Option<&RequestControl>,
-) -> Result<ProfileResponse, CoreError> {
+) -> Result<ProfileObservation, CoreError> {
     if let Some(control) = control {
         control.check()?;
     }
@@ -681,24 +681,9 @@ pub(super) fn save_observed_profile(
         control.check()?;
     }
     tx.commit()?;
-    Ok(ProfileResponse {
-        listing_id,
+    Ok(ProfileObservation {
         snapshot_id,
         new_snapshot,
-        advert_id: profile.advert_id,
-        name: profile.name,
-        city: profile.city,
-        description: profile.description,
-        postal_code: profile.postal_code,
-        hidden_location: profile.hidden_location,
-        source_profile_id: profile.source_profile_id,
-        canonical_id: profile.canonical_id,
-        phone_display: profile.phone_display,
-        published_at: profile.published_at,
-        traits_json: profile.traits_json,
-        services_json: profile.services_json,
-        opening_times_json: profile.opening_times_json,
-        media: profile.media,
     })
 }
 
@@ -1266,10 +1251,17 @@ mod tests {
             })
             .count();
         assert_eq!(changes, 2);
-        assert_eq!(
-            history.first().unwrap().new_json.as_deref(),
-            Some("\"Anna\"")
-        );
+        let latest = history.first().unwrap();
+        assert_eq!(latest.new_display.as_deref(), Some("Anna"));
+        let db = core.connection().unwrap();
+        let raw: Option<String> = db
+            .query_row(
+                "SELECT new_json FROM change_events WHERE change_event_id=?1",
+                [latest.change_event_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(raw.as_deref(), Some("\"Anna\""));
     }
 
     #[test]
@@ -1300,9 +1292,10 @@ mod tests {
         let new = save_observed_profile(&core, &old_target, profile("New"), true, None).unwrap();
         let late = save_observed_profile(&core, &old_target, profile("Late"), true, None);
         assert!(matches!(late, Err(CoreError::Source(_))));
-        let current = core.cached_source_profile(listing).unwrap().unwrap();
-        assert_eq!(current.snapshot_id, new.snapshot_id);
-        assert_eq!(current.name, "New");
+        assert!(core.has_cached_profile(listing).unwrap());
+        let current = core.profile_projection(listing).unwrap().unwrap();
+        assert_eq!(current.profile.snapshot_id, new.snapshot_id);
+        assert_eq!(current.profile.name, "New");
         let db = core.connection().unwrap();
         let observations: i64 = db
             .query_row(
@@ -1433,13 +1426,7 @@ mod tests {
         assert!(projected.person.favorite);
         assert_eq!(projected.person.preference, crate::Preference::Like);
         assert!(projected.candidates.is_empty());
-        assert_eq!(
-            core.cached_source_profile(listing)
-                .unwrap()
-                .unwrap()
-                .snapshot_id,
-            snapshot.snapshot_id
-        );
+        assert!(core.has_cached_profile(listing).unwrap());
         let grid = core
             .active_search_cards(
                 found.search_run_id,

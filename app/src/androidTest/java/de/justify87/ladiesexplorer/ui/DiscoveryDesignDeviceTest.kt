@@ -38,10 +38,9 @@ class DiscoveryDesignDeviceTest {
         bitmap.recycle()
         try {
             val medium = ProfileMediaItem("IMAGE", "", image.absolutePath, 0u)
-            val base = ProfileResponse(listingId = 4, snapshotId = 11, newSnapshot = false, advertId = "fixture",
-                name = "Fixture", city = "Fixture", description = "Fixture description", postalCode = null,
-                hiddenLocation = null, sourceProfileId = null, canonicalId = null, phoneDisplay = "+49 170 1234567",
-                publishedAt = null, traitsJson = "{}", servicesJson = "{}", openingTimesJson = "{}", media = emptyList())
+            val base = ProfileResponse(listingId = 4, snapshotId = 11, name = "Fixture", city = "Fixture", description = "Fixture description", postalCode = null,
+                phoneDisplay = "+49 170 1234567",
+                publishedAt = null)
             fun fixture(phone: Boolean) = ProfileReadModel(NativeProfileProjection(
                 base.copy(phoneDisplay = base.phoneDisplay.takeIf { phone }),
                 ProfileIdentity(personId = 1, status = "ACTIVE", profileUrl = null, personNew = false,

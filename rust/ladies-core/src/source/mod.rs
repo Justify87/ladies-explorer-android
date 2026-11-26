@@ -72,8 +72,8 @@ pub struct SearchResponse {
     pub profiles: Vec<SearchCard>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
-pub struct MediaReference {
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct MediaReference {
     pub url: String,
     pub kind: String,
     pub position: u32,
@@ -86,21 +86,18 @@ pub struct MediaReference {
 pub struct ProfileResponse {
     pub listing_id: i64,
     pub snapshot_id: i64,
-    pub new_snapshot: bool,
-    pub advert_id: String,
     pub name: String,
     pub city: String,
     pub description: String,
     pub postal_code: Option<String>,
-    pub hidden_location: Option<String>,
-    pub source_profile_id: Option<String>,
-    pub canonical_id: Option<String>,
     pub phone_display: Option<String>,
     pub published_at: Option<String>,
-    pub traits_json: String,
-    pub services_json: String,
-    pub opening_times_json: String,
-    pub media: Vec<MediaReference>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ProfileObservation {
+    pub snapshot_id: i64,
+    pub new_snapshot: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -196,7 +193,7 @@ pub(crate) fn load_profile(
     core: &LadiesCore,
     listing_id: i64,
     control: &RequestControl,
-) -> Result<ProfileResponse, CoreError> {
+) -> Result<(), CoreError> {
     control.check()?;
     core.diagnostics
         .event("PROFILE", format!("Profile requested listing={listing_id}"));
@@ -274,7 +271,7 @@ pub(crate) fn load_profile(
             .diagnostics
             .event("STORAGE", format!("Profile save failed: {error}")),
     }
-    result
+    result.map(|_| ())
 }
 
 pub(crate) fn saved_status_targets(core: &LadiesCore) -> Result<Vec<i64>, CoreError> {

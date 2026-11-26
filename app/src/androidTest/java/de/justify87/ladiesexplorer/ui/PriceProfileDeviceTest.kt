@@ -29,11 +29,8 @@ class PriceProfileDeviceTest {
 
     private fun exercise(token: ProfileIdentityToken) {
         val profile = ProfileResponse(
-            listingId = 4, snapshotId = 11, newSnapshot = false, advertId = "fixture",
-            name = "Fixture", city = "Fixture city", description = "", postalCode = null,
-            hiddenLocation = null, sourceProfileId = null, canonicalId = null,
-            phoneDisplay = null, publishedAt = null, traitsJson = "{}", servicesJson = "{}",
-            openingTimesJson = "{}", media = emptyList(),
+            listingId = 4, snapshotId = 11, name = "Fixture", city = "Fixture city", description = "", postalCode = null,
+            phoneDisplay = null, publishedAt = null,
         )
         val model = ProfileReadModel(NativeProfileProjection(
             profile, ProfileIdentity(1, "ACTIVE", null, false, false, false, null),

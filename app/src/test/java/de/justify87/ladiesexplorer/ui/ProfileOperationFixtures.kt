@@ -6,11 +6,9 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 
 internal fun fixtureProfile(snapshot: Long = 11L) = ProfileResponse(
-    listingId = 4L, snapshotId = snapshot, newSnapshot = false, advertId = "fixture",
+    listingId = 4L, snapshotId = snapshot,
     name = "Fixture", city = "Fixture city", description = "", postalCode = null,
-    hiddenLocation = null, sourceProfileId = null, canonicalId = null,
-    phoneDisplay = null, publishedAt = null, traitsJson = "{}", servicesJson = "{}",
-    openingTimesJson = "{}", media = emptyList(),
+    phoneDisplay = null, publishedAt = null,
 )
 
 internal fun fixtureIdentity(owner: Long) = ProfileIdentity(

@@ -44,26 +44,28 @@ pub struct ProfileMediaItem {
     pub position: u32,
 }
 
-pub(crate) fn cached_profile(
-    core: &LadiesCore,
-    listing_id: i64,
-) -> Result<Option<crate::source::ProfileResponse>, CoreError> {
+pub(crate) fn has_cached_profile(core: &LadiesCore, listing_id: i64) -> Result<bool, CoreError> {
     let db = core.connection()?;
-    cached_profile_from(&db, listing_id)
+    Ok(db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM listings l
+         JOIN listing_snapshots s
+           ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
+         WHERE l.listing_id=?1)",
+        [listing_id],
+        |r| r.get(0),
+    )?)
 }
 
 pub(crate) fn cached_profile_from(
     db: &rusqlite::Connection,
     listing_id: i64,
 ) -> Result<Option<crate::source::ProfileResponse>, CoreError> {
-    use crate::source::{MediaReference, ProfileResponse};
+    use crate::source::ProfileResponse;
 
-    let mut profile: Option<ProfileResponse> = db
+    Ok(db
         .query_row(
-            "SELECT s.snapshot_id,l.external_listing_id,s.name,s.city,s.description,
-                    s.postal_code,s.hidden_location,s.external_profile_id,s.canonical_id,
-                    s.phone_display,s.published_at,s.traits_json,s.services_json,
-                    s.opening_times_json
+            "SELECT s.snapshot_id,s.name,s.city,s.description,
+                    s.postal_code,s.phone_display,s.published_at
              FROM listings l
              JOIN listing_snapshots s
                ON s.snapshot_id=l.current_snapshot_id AND s.listing_id=l.listing_id
@@ -73,51 +75,16 @@ pub(crate) fn cached_profile_from(
                 Ok(ProfileResponse {
                     listing_id,
                     snapshot_id: r.get(0)?,
-                    new_snapshot: false,
-                    advert_id: r.get(1)?,
-                    name: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    city: r.get::<_, Option<String>>(3)?.unwrap_or_default(),
-                    description: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                    postal_code: r.get(5)?,
-                    hidden_location: r.get(6)?,
-                    source_profile_id: r.get(7)?,
-                    canonical_id: r.get(8)?,
-                    phone_display: r.get(9)?,
-                    published_at: r.get(10)?,
-                    traits_json: r
-                        .get::<_, Option<String>>(11)?
-                        .unwrap_or_else(|| "{}".into()),
-                    services_json: r
-                        .get::<_, Option<String>>(12)?
-                        .unwrap_or_else(|| "{}".into()),
-                    opening_times_json: r
-                        .get::<_, Option<String>>(13)?
-                        .unwrap_or_else(|| "{}".into()),
-                    media: Vec::new(),
+                    name: r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    city: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    description: r.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    postal_code: r.get(4)?,
+                    phone_display: r.get(5)?,
+                    published_at: r.get(6)?,
                 })
             },
         )
-        .optional()?;
-    if let Some(profile) = profile.as_mut() {
-        let mut query = db.prepare(
-            "SELECT remote_url,kind,position,role,remote_variant,revision_token
-             FROM snapshot_media WHERE snapshot_id=?1
-             ORDER BY position,snapshot_media_id",
-        )?;
-        profile.media = query
-            .query_map([profile.snapshot_id], |r| {
-                Ok(MediaReference {
-                    url: r.get(0)?,
-                    kind: r.get(1)?,
-                    position: r.get(2)?,
-                    role: r.get(3)?,
-                    variant: r.get(4)?,
-                    revision_token: r.get(5)?,
-                })
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-    }
-    Ok(profile)
+        .optional()?)
 }
 
 pub(crate) fn media_from(
@@ -893,7 +860,7 @@ mod tests {
         let listing = core
             .add_listing(person, None, "LADIES".into(), "123".into(), None)
             .unwrap();
-        assert!(cached_profile(&core, listing).unwrap().is_none());
+        assert!(!core.has_cached_profile(listing).unwrap());
         {
             let db = core.connection().unwrap();
             db.execute(
@@ -917,14 +884,13 @@ mod tests {
             )
             .unwrap();
         }
-        let profile = cached_profile(&core, listing).unwrap().unwrap();
-        assert_eq!(profile.name, "Ada");
-        assert_eq!(profile.city, "Leipzig");
-        assert_eq!(profile.description, "archiviert");
-        assert_eq!(profile.advert_id, "123");
-        assert_eq!(profile.media.len(), 1);
-        assert!(!profile.new_snapshot);
-        assert!(cached_profile(&core, -1).unwrap().is_none());
+        assert!(core.has_cached_profile(listing).unwrap());
+        let projection = core.profile_projection(listing).unwrap().unwrap();
+        assert_eq!(projection.profile.name, "Ada");
+        assert_eq!(projection.profile.city, "Leipzig");
+        assert_eq!(projection.profile.description, "archiviert");
+        assert_eq!(projection.media.len(), 1);
+        assert!(!core.has_cached_profile(-1).unwrap());
     }
 
     #[test]
@@ -974,10 +940,16 @@ mod tests {
         assert_eq!(projection.profile.snapshot_id, current);
         assert_eq!(projection.profile.city, "Dresden");
         assert_eq!(projection.identity.person_id, owner);
-        assert_eq!(
-            projection.profile.hidden_location.as_deref(),
-            Some("Offenbach am Main")
-        );
+        let db = core.connection().unwrap();
+        let hidden: Option<String> = db
+            .query_row(
+                "SELECT hidden_location FROM listing_snapshots WHERE snapshot_id=?1",
+                [current],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(hidden.as_deref(), Some("Offenbach am Main"));
+        assert_eq!(projection.profile.postal_code, None);
     }
 
     #[test]
