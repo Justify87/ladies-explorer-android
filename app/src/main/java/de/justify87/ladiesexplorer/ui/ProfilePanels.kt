@@ -102,7 +102,6 @@ internal fun ProfileFlow(
     encounters: EncounterEditor? = null,
     prices: PriceEditor? = null,
     fallbackIdentity: HeroIdentity? = null,
-    fallbackMedia: List<ProfileMediaItem> = emptyList(),
     preparedPanels: PreparedPanelData? = null,
     afterHeading: ProfileFlowRows.() -> Unit = {},
     afterDetails: ProfileFlowRows.() -> Unit = {},
@@ -119,7 +118,7 @@ internal fun ProfileFlow(
     val mediaSelection = key(presentationOwner) { rememberProfileMediaSelection() }
     val scroll = key(presentationOwner) { rememberProfileScrollMemory(ownerChanged) }
     val restore = remember(presentationOwner) { ProfileRestoreCoordinator() }
-    val selectedMedium = model?.media?.ifEmpty { fallbackMedia }?.let { it.getOrNull(mediaSelection.resolve(it, true)) }
+    val selectedMedium = model?.media?.let { it.getOrNull(mediaSelection.resolve(it, true)) }
     SideEffect { onGallerySelection(selectedMedium) }
     DisposableEffect(swipeCapture) { onDispose { swipeCapture?.read = { null } } }
     SideEffect {
@@ -178,7 +177,7 @@ internal fun ProfileFlow(
         afterHeading()
         if (model != null) profileContent(model.profile, model.identity, model.media,
             panels, sections, model.candidates, model.history, busy,
-            owner?.let(notes::get) ?: NoteEditorState(), boundNotes,
+            notes[model.identity.personId] ?: NoteEditorState(), boundNotes,
             noteDemand = noteDemand,
             onRetryNote = { if (!busy) noteDemand.request(token, true, isProfileCurrent, noteActions.load) },
             encounters = encounters, encounterPanel = encounterPanel,
@@ -619,7 +618,7 @@ private fun ProfileDescription(profile: ProfileResponse, sections: ProfileSectio
 @Composable
 private fun NotesPanel(
     listingId: Long,
-    owner: Long?,
+    owner: Long,
     state: NoteEditorState,
     actions: NoteEditorActions,
     busy: Boolean,
@@ -629,8 +628,8 @@ private fun NotesPanel(
     ProfileGroup("Private Personennotiz") {
         val draft = state.draft
         val loading = demand.status != ProfileNoteDemand.Status.Settled || state.loading
-        val editable = owner != null && !busy && !loading && state.canEdit()
-        if (draft != null && owner != null) {
+        val editable = !busy && !loading && state.canEdit()
+        if (draft != null) {
             OutlinedTextField(draft.text, { actions.edit(owner, it) },
                 modifier = Modifier.fillMaxWidth(), label = { Text("Notiz") },
                 minLines = 4, enabled = editable, shape = MaterialTheme.shapes.small)
@@ -652,10 +651,10 @@ private fun NotesPanel(
                 TextButton(modifier = Modifier.heightIn(min = 48.dp), onClick = { actions.useStored(owner, draft) },
                     enabled = !busy && !loading && state.canDiscard(draft)) { Text("Verwerfen") }
             }
-        } else if (owner == null) Text("Person nicht verfügbar.")
+        }
         if (loading || busy && draft != null) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (owner != null && (state.readError || state.error != null || draft == null && !state.loading)) {
+        if (state.readError || state.error != null || draft == null && !state.loading) {
             TextButton(onClick = onRetry,
                 enabled = !busy && !loading) { Text("Neu laden") }
         }
@@ -723,7 +722,7 @@ internal fun identityCandidateFields(candidate: IdentityCandidate): List<Pair<St
 
 private fun ProfileFlowRows.profileContent(
     profile: ProfileResponse,
-    identity: ProfileIdentity?,
+    identity: ProfileIdentity,
     media: List<ProfileMediaItem>,
     panels: ProfilePanels,
     sections: ProfileSections,
@@ -745,7 +744,7 @@ private fun ProfileFlowRows.profileContent(
     onConfirm: (Long) -> Unit,
 ) {
     val facts = panels.facts
-    val (overview, traits) = facts?.overviewAndTraits(identity?.age) ?: (emptyList<Pair<String, String>>() to emptyList())
+    val (overview, traits) = facts?.overviewAndTraits(identity.age) ?: (emptyList<Pair<String, String>>() to emptyList())
     if (facts == null) item(key = "profile-facts", read = ProfileRowRead.Facts) {
         FactsStatus(panels, actionsBusy, isCurrent, onRetryFacts)
     } else compactFields("profile-facts", "Wichtige Merkmale", overview)
@@ -787,7 +786,7 @@ private fun ProfileFlowRows.profileContent(
                 hintError = note.error != null || note.draft?.conflict == true)
         }
         if (sections.expanded(ProfileSection.Notes)) item(key = "profile-notes", read = ProfileRowRead.Note) {
-            NotesPanel(profile.listingId, identity?.personId, note, noteActions, actionsBusy, noteDemand, onRetryNote)
+            NotesPanel(profile.listingId, identity.personId, note, noteActions, actionsBusy, noteDemand, onRetryNote)
         }
     }
     if (encounters != null) withSection(ProfileSection.Encounters) {

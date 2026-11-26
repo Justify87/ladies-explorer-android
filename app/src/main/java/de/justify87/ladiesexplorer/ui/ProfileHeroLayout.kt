@@ -18,7 +18,6 @@ internal data class ProfileShellBudget(
     val rail: Float,
     val body: Float,
     val shortHeader: Boolean,
-    val narrowHeader: Boolean,
     val compactGallery: Boolean,
 ) {
     val railInContent get() = rail == 0f
@@ -106,7 +105,7 @@ internal fun profileShellBudget(
     val body = (available - header - rail).coerceAtLeast(0f)
     val compact = width < 320f || fontScale >= 1.5f ||
         profileHeroHeight(width, available + rootHeight, body) < 320f
-    return ProfileShellBudget(header, rail, body, short, width < 300f, compact)
+    return ProfileShellBudget(header, rail, body, short, compact)
 }
 
 internal fun readingDecisionColumns(width: Float, fontScale: Float): Int =
@@ -175,12 +174,11 @@ internal data class HeroIdentity(
     ).joinToString(" · ")
 }
 
-internal fun heroIdentity(profile: ProfileResponse, identity: ProfileIdentity?, archived: Boolean,
-    hasVideo: Boolean = identity?.hasVideo == true, preference: Preference? = null, favorite: Boolean? = null) =
-    HeroIdentity(profile.name, identity?.age,
+internal fun heroIdentity(profile: ProfileResponse, identity: ProfileIdentity, archived: Boolean,
+    hasVideo: Boolean = identity.hasVideo, preference: Preference? = null, favorite: Boolean? = null): HeroIdentity {
+    val status = statusLabel(identity.status)
+    return HeroIdentity(profile.name, identity.age,
         listOfNotNull(profile.city, profile.postalCode).filter { it.isNotBlank() }.joinToString(" · "),
-        identity?.let {
-            val status = statusLabel(it.status)
-            if (archived) "Zuletzt bekannter Quellenstatus: $status" else "Quellenstatus: $status"
-        },
-        hasVideo, preference, favorite, identity?.personNew == true, identity?.listingNew == true)
+        if (archived) "Zuletzt bekannter Quellenstatus: $status" else "Quellenstatus: $status",
+        hasVideo, preference, favorite, identity.personNew, identity.listingNew)
+}

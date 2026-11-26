@@ -174,7 +174,7 @@ internal fun DiscoveryGridScreen(
                             onDecision = { target -> onDecision(action, target) },
                         )
                     }
-                    if (showPage && pageAction != null) {
+                    if (showPage) {
                         item(key = "more", span = { GridItemSpan(maxLineSpan) }) {
                             if (discovery.loadingMore) {
                                 Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {

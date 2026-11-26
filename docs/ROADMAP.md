@@ -4,7 +4,7 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M13.1 — Bestandsaufnahme und Kotlin-/Compose-Altlasten. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M13.2 — Native API, UniFFI und Rust-Altlasten. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M13 — Dead Code & Refactoring Cleanup
 
@@ -15,17 +15,9 @@ Ziel: die integrierte Codebasis repositoryweit auf entbehrliche, abgelöste und 
 - Statische Referenzen und Compiler-/Lint-/Clippy-Diagnosen sind Hinweise, keine alleinigen Löschbeweise. Auch indirekte Aufrufer, Framework-, Manifest-, Ressourcen-, Reflection-, JNI-/FFI- und Serialisierungsverträge, Feature-Konfiguration, Skripte und Testtargets berücksichtigen. Vertikal über die betroffenen Schichten und horizontal über gemeinsame Zustände und alternative Einstiegspunkte prüfen. Abgelöste Pfade mit exklusiven Helfern, Records, Fehlern, Tests, Ressourcen und Verweisen vollständig entfernen. Gültige Produkt-, Design-, Daten-, Architektur- und Schutzverträge erhalten; insbesondere interne Schemaentwicklung, Parser-/Netzwerk-/Mediengrenzen, Cursor-/Revisions-/Owner-Verträge, Cancel-/Drain-/Epoch-Schutz und notwendige Diagnose.
 - Je Aufgabe Inventarfortschritt, konkrete Kandidaten mit Codeankern, Beleg, Aufrufern, Risiko und Entscheidung im PR festhalten. Zu Beginn die integrierten Vorgänger-PRs des Meilensteins gezielt auswerten und übernommene offene Befunde am aktuellen Stand verifizieren. Vor Abschluss jeden noch offenen Befund mit zuständiger verbleibender Aufgaben-ID, Codeanker und Grund im PR übergeben; Umfang bzw. dauerhafte Blocker der zuständigen offenen Aufgabe bei Bedarf im selben Roadmap-Diff präzisieren. Spätere Aufgaben übernehmen diese Befunde ausdrücklich und dokumentieren ihre Entscheidung. Bestätigte Befunde im eigenen Umfang ursächlich beheben; nicht einfach zur Abschlussaufgabe verschieben. Bei bereits entfernten Aufgaben keine IDs wiedereröffnen; neu belegte Folgefehler einer sachlich zuständigen noch offenen Aufgabe zuordnen, gegebenenfalls M13.6. Unabhängige konkrete Fehler nach [Pflege](#pflege) erfassen. Keine zusätzlichen Register oder historischen Einträge in der Roadmap.
 
-### M13.1 — Bestandsaufnahme und Kotlin-/Compose-Altlasten
-
-**Status:** READY.
-
-Inventar aller versionierten Dateien erstellen, nach den sechs Aufgabenumfängen zuordnen und verfügbare Diagnose-/CI-Belege als Ausgangspunkt prüfen. Erste Kandidaten für Folgeaufgaben mit Codeankern und Begründung erfassen; die dort erforderliche Tiefenanalyse bleibt Bestandteil der jeweiligen Aufgabe. Sämtliche eigenen Kotlin-/Compose-Produktionsdateien einschließlich Screens, Navigation, Komponenten, State/Controller/ViewModel, Medien/Prefetch, CoreStore-Fassade und zugehörige Ressourcen semantisch auf tote Deklarationen, verwaiste Getter/Callbacks, obsolete Adapter, ungenutzte Imports, redundante Nullprüfungen und unerreichbare Zweige prüfen. Bestätigte ausschließlich Android-seitige Altlasten vollständig entfernen; schichtübergreifende Dead-Code-Kandidaten M13.2, aktive Redundanz M13.3 zuordnen.
-
-**Akzeptanz/Prüfung:** Vollständiges dateibezogenes Inventar mit Zuordnung; tatsächliche Prüfung und Entscheidungen für den eigenen Umfang nachvollziehbar, offene Folgeaufgaben-Befunde übergeben, Prüfgrenzen benannt. Keine bestätigten unbearbeiteten Altlasten im eigenen Umfang; aktive Aufrufer, Zustands- und Interaktionsverträge erhalten. Gezielte JVM-/Android-Regressionen, verfügbare Compiler-/Lint-Diagnosen und erforderliches Gate.
-
 ### M13.2 — Native API, UniFFI und Rust-Altlasten
 
-**Status:** PLANNED. Abhängig von M13.1.
+**Status:** READY.
 
 Sämtliche eigenen Rust-Produktionsdateien einschließlich interner Module, privater Algorithmen und Rust-interner APIs unabhängig von FFI-Nutzung semantisch prüfen. Native Exporte und Records gegen tatsächliche CoreStore-/Kotlin-Aufrufer, regulär generierte Bindings, Android-/JNI-/Manifest-/R8-Konfiguration sowie Rust-interne und Testnutzer abgleichen. Obsolete FFI-Exporte, Wrapper, optional gewordene Altpfade, verwaiste Typen, Felder, Fehler und exklusive Helfer vertikal entfernen; benötigte Rust-interne APIs nicht wegen fehlender FFI-Aufrufer löschen. Rein testbezogene native Hilfen in Testmodule bzw. `cfg(test)` verschieben und auf minimale Fixtures begrenzen. Insbesondere Profil-/Medien-/Historien-/Identitäts-/Such-/Saved-People-/Diagnosepfade sowie interne Pagination, RequestControl, Queue-/Shutdown-/Recorder- und Revisionsverträge auf aktuelle Notwendigkeit prüfen. Keine Änderung des Datenformats, Schemas oder gültiger Migrationsverträge zur bloßen Bereinigung.
 

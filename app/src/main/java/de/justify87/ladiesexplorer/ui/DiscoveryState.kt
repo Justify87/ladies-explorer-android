@@ -294,7 +294,6 @@ internal class DiscoveryProjectionPublisher(
                 canUndoSwipe = swipeSession.last != null,
                 swipeRestore = restore,
                 activeRunId = projection.runId,
-                activeVisibleCount = projection.visible.size,
                 nextCursor = projection.page.nextCursor,
                 loadingMore = false, error = null, actionGeneration = it.actionGeneration + 1,
             )
@@ -312,7 +311,7 @@ internal class DiscoveryProjectionPublisher(
                     _searchUiState.update { it.copy(activeCards = emptyList(), activeProjectionPending = false,
                         activeProjectionError = if (it.response != null) failure.message ?: "Lokale Ergebnisse konnten nicht geladen werden." else null) }
                     _discoverState.update { it.copy(cards = emptyList(), localCards = emptyList(), nextCursor = null,
-                        activeVisibleCount = 0, actionGeneration = it.actionGeneration + 1,
+                        actionGeneration = it.actionGeneration + 1,
                         error = failure.message ?: "Entdecken fehlgeschlagen") }
                 },
             )

@@ -122,8 +122,8 @@ internal class GalleryVideoFiles(
         }
     }
 
-    suspend fun warm(item: ProfileMediaItem, owner: Any): Boolean =
-        withVideo(item, pinOwner = owner) { true }
+    suspend fun warm(item: ProfileMediaItem, owner: Any) =
+        withVideo(item, pinOwner = owner) { Unit }
 
     suspend fun <T> withVideo(item: ProfileMediaItem, refresh: Boolean = false,
         pinOwner: Any? = null, use: suspend (LocalGalleryVideo) -> T): T {
@@ -258,7 +258,7 @@ internal class GalleryVideoFiles(
         } finally {
             if (lease != null) withContext(NonCancellable + Dispatchers.IO) {
                 gate.withLock {
-                    lease?.let { if (--it.users == 0) it.idle.complete(Unit) }
+                    if (--lease.users == 0) lease.idle.complete(Unit)
                 }
             }
         }

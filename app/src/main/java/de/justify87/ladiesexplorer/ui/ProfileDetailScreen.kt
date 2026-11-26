@@ -3,7 +3,7 @@ package de.justify87.ladiesexplorer.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.platform.LocalContext
@@ -11,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -86,7 +85,7 @@ internal fun ProfileDetailScreen(
     val prepared = preparation.displayed(owner)
     val displayed = prepared?.model
     val profile = displayed?.profile
-    val projectionCurrent = displayed != null && displayed == raw && prepared?.filters == filters
+    val projectionCurrent = displayed != null && displayed == raw && prepared.filters == filters
     val renderedToken = state.detailIdentityToken().takeIf { projectionCurrent }
     val busy = actionsBusy || state.actionBusy || renderedToken == null
     val detailListState = rememberLazyListState()
@@ -121,7 +120,7 @@ internal fun ProfileDetailScreen(
         header = { presentation, compactNotice, onNotice ->
             Row(Modifier.fillMaxSize().padding(start = ShellMetrics.gap, end = shellContentInset()),
                 verticalAlignment = Alignment.CenterVertically) {
-                ShellIconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Zurück") }
+                ShellIconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") }
                 val shown = identity.takeIf { presentation.identityInHeader }
                 ProfileShellTitle(shown?.title ?: "Profil", shown?.compactSubtitle ?: "Profilansicht",
                     shown?.decisions.orEmpty(), presentation.budget.shortHeader, Modifier.weight(1f),
@@ -141,7 +140,7 @@ internal fun ProfileDetailScreen(
                             DropdownMenuItem(text = { Text("Bild groß anzeigen") }, enabled = !busy,
                                 onClick = { galleryMenu = false; if (latestSelected == item && renderedToken?.let(isProfileCurrent) == true) fullImage = item })
                         }
-                        displayed?.identity?.profileUrl?.let { url ->
+                        displayed.identity.profileUrl?.let { url ->
                             DropdownMenuItem(text = { Text("Originalprofil öffnen") }, enabled = !busy,
                                 onClick = { galleryMenu = false; if (renderedToken?.let(isProfileCurrent) == true) openExternal(context, url) })
                         }
@@ -158,9 +157,9 @@ internal fun ProfileDetailScreen(
             onGallerySelection = { selectedMedia = it }, encounters = encounters, prices = prices,
             preparedPanels = prepared?.panelsFor(filters, projectionCurrent),
             afterHeading = {
-                if (profile != null && displayed != null) item(key = "actions") {
+                if (profile != null) item(key = "actions") {
                     ProfileActionRail(displayed.person, busy, onFavorite = { renderedToken?.let(onFavorite) },
-                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
+                        onPreference = { preference -> renderedToken?.let { onPreference(it, preference) } })
                 }
                 state.mediaArchive?.takeIf { it.failed > 0u || it.deferred > 0u }?.let { report ->
                     item(key = "archive-report") {
