@@ -82,11 +82,11 @@ class ProfilePreparationWindowTest {
         val job = launch {
             window.step(current, "new", size, {
                 entered.complete(Unit)
-                release.await()
+                release.awaitSignal()
                 nextData
             }, { _, _ -> error("unchanged gallery must not be prepared again") })
         }
-        entered.await()
+        entered.awaitSignal()
         assertSame(prior, window.displayed(key))
         assertTrue(window.displayed(key)?.panelsFor("new", false)?.facts?.filters.orEmpty().isEmpty())
         release.complete(Unit)
@@ -114,11 +114,11 @@ class ProfilePreparationWindowTest {
         val pending = launch {
             window.step(newModel, "{}", size, {
                 entered.complete(Unit)
-                finish.await()
+                finish.awaitSignal()
                 panelData
             }, { _, _ -> error("same snapshot must reuse prepared media") })
         }
-        entered.await()
+        entered.awaitSignal()
         assertSame(prior, window.displayed(key))
         assertFalse(window.ready(newModel, "{}", size))
         finish.complete(Unit)
@@ -139,11 +139,11 @@ class ProfilePreparationWindowTest {
         val pending = launch {
             window.step(model, "{}", size, {
                 entered.complete(Unit)
-                finish.await()
+                finish.awaitSignal()
                 panelData
             }, { _, _ -> error("not reached") })
         }
-        entered.await()
+        entered.awaitSignal()
         window.retain(emptySet())
         window.retain(setOf(key))
         finish.complete(Unit)
@@ -197,10 +197,10 @@ class ProfilePreparationWindowTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val job = launch {
-            window.step(next, "{}", size, { entered.complete(Unit); release.await(); panelData },
+            window.step(next, "{}", size, { entered.complete(Unit); release.awaitSignal(); panelData },
                 { _, _ -> error("panels first") })
         }
-        entered.await()
+        entered.awaitSignal()
         window.recovered(published, first.presentationKey())
         release.complete(Unit)
         job.join()

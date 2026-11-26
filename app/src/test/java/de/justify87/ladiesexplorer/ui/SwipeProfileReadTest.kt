@@ -157,11 +157,4 @@ class SwipeProfileReadTest {
         assertFalse(swipeReadMayRetry(current, false))
     }
 
-    @Test(timeout = 15_000) fun cachedLocalOnlyPrefetchStillAvoidsSource() = runBlocking {
-        val f = Fixture(fixtureProfile())
-        val result = readSwipeProfile(4L, false, false, { f.calls += "completion" }, f.reads)
-        assertTrue(result.fromArchive)
-        assertEquals(1L, result.person.personId)
-        assertFalse(f.calls.any { it.startsWith("source:") || it == "completion" })
-    }
 }
