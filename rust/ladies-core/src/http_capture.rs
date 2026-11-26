@@ -665,7 +665,10 @@ mod tests {
         let entry = fs::read_to_string(root.path().join("diagnostics/ladies-http.jsonl")).unwrap();
         let captured: HttpObservation = serde_json::from_str(&entry).unwrap();
         assert!(captured.body.is_none());
-        assert_eq!(captured.body_omitted.as_deref(), Some("media_body_disabled"));
+        assert_eq!(
+            captured.body_omitted.as_deref(),
+            Some("media_body_disabled")
+        );
     }
 
     #[test]
@@ -691,7 +694,8 @@ mod tests {
             recorder.record_send_failure(current, epoch, started, &error);
         }
         assert_eq!(recorder.status().entries, 2);
-        let entries = fs::read_to_string(root.path().join("diagnostics/ladies-http.jsonl")).unwrap();
+        let entries =
+            fs::read_to_string(root.path().join("diagnostics/ladies-http.jsonl")).unwrap();
         let captured: Vec<HttpObservation> = entries
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
@@ -699,7 +703,10 @@ mod tests {
         assert_eq!(captured.len(), 2);
         assert!(!captured[0].is_media && captured[1].is_media);
         for entry in captured {
-            assert_eq!(entry.error.as_deref(), Some("send failed: token=[REDACTED]"));
+            assert_eq!(
+                entry.error.as_deref(),
+                Some("send failed: token=[REDACTED]")
+            );
             assert!(entry.status.is_none() && entry.body.is_none());
             assert_eq!(entry.body_elapsed_ms, 0);
         }

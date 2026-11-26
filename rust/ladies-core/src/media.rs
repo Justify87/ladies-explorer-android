@@ -11,10 +11,7 @@ use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    CoreError, LadiesCore,
-    http_capture::HttpRecorder,
-    identity,
-    operation::RequestControl,
+    CoreError, LadiesCore, http_capture::HttpRecorder, identity, operation::RequestControl,
 };
 
 const MAX_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
