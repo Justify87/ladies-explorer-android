@@ -122,8 +122,8 @@ internal class GalleryVideoFiles(
         }
     }
 
-    suspend fun warm(item: ProfileMediaItem, owner: Any): Boolean =
-        withVideo(item, pinOwner = owner) { true }
+    suspend fun warm(item: ProfileMediaItem, owner: Any) =
+        withVideo(item, pinOwner = owner) { Unit }
 
     suspend fun <T> withVideo(item: ProfileMediaItem, refresh: Boolean = false,
         pinOwner: Any? = null, use: suspend (LocalGalleryVideo) -> T): T {

@@ -210,13 +210,9 @@ internal suspend fun prepareProfileMedium(
                 PreparedMedium.Unavailable
             }
             "VIDEO" -> {
-                if (app.galleryVideoFiles.warm(item, pinOwner)) {
-                    record(DiagnosticLevel.DEBUG, "prepared")
-                    PreparedMedium.Video
-                } else {
-                    record(DiagnosticLevel.WARN, "failed reason=video_warm")
-                    PreparedMedium.Unavailable
-                }
+                app.galleryVideoFiles.warm(item, pinOwner)
+                record(DiagnosticLevel.DEBUG, "prepared")
+                PreparedMedium.Video
             }
             else -> {
                 record(DiagnosticLevel.WARN, "failed reason=unsupported_kind")

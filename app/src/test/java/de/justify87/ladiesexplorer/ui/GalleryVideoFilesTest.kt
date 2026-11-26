@@ -34,7 +34,7 @@ class GalleryVideoFilesTest {
             bytes
         }
         val owner = Any()
-        assertTrue(cache.warm(medium("a"), owner))
+        cache.warm(medium("a"), owner)
         val work = launch { cache.warm(medium("b"), owner) }
         try {
             started.await()
@@ -51,7 +51,7 @@ class GalleryVideoFilesTest {
     @Test(timeout = 15_000) fun pinnedFilesAndPlaybackLeasesCannotBeEvicted() = runBlocking {
         val cache = cache(16L, 16L)
         val owner = Any()
-        assertTrue(cache.warm(medium("a"), owner))
+        cache.warm(medium("a"), owner)
         val firstFile = cache.withVideo(medium("a")) { it.file }
         assertTrue(runCatching { cache.warm(medium("b"), owner) }.isFailure)
         assertTrue(firstFile.isFile)
@@ -69,7 +69,7 @@ class GalleryVideoFilesTest {
             release.complete(Unit)
             player.join()
         }
-        assertTrue(cache.warm(medium("b"), owner))
+        cache.warm(medium("b"), owner)
         assertFalse(firstFile.exists())
         assertEquals(16L, folder.root.listFiles()!!.sumOf { it.length() })
     }
@@ -78,7 +78,7 @@ class GalleryVideoFilesTest {
         var downloads = 0
         val cache = cache(32L, 16L) { downloads++; bytes }
         val owner = Any()
-        assertTrue(cache.warm(medium("a"), owner))
+        cache.warm(medium("a"), owner)
         assertTrue(runCatching { cache.warm(medium("b"), owner) }.exceptionOrNull() is VideoPreparationDeferred)
         assertEquals(1, downloads)
         cache.withVideo(medium("b")) { assertTrue(it.file.isFile) }
@@ -102,7 +102,7 @@ class GalleryVideoFilesTest {
         val cache = cache(16L, 16L) { downloads++; bytes }
         val owner = Any()
         val a = medium("a")
-        assertTrue(cache.warm(a, owner))
+        cache.warm(a, owner)
         val original = cache.withVideo(a) { it.file }
         val replacement = cache.withVideo(a, refresh = true) { it.file }
         assertFalse(original.exists())
