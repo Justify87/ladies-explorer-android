@@ -410,29 +410,27 @@ internal fun ProfileImageDialog(item: ProfileMediaItem, onDismiss: () -> Unit) {
 
 @Composable
 internal fun ProfileActionRail(
-    person: PersonSummary?,
+    person: PersonSummary,
     busy: Boolean,
-    onFavorite: (Long) -> Unit,
-    onPreference: (Long, Preference) -> Unit,
+    onFavorite: () -> Unit,
+    onPreference: (Preference) -> Unit,
 ) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(ShellMetrics.small), verticalArrangement = Arrangement.spacedBy(ShellMetrics.gap)) {
-        if (person != null) {
             FilterChip(selected = person.preference == Preference.LIKE, enabled = !busy,
-                modifier = Modifier.heightIn(min = ShellMetrics.touch),
-                onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.LIKE)) },
-                label = { Text("Gefällt") }, leadingIcon = { Icon(Icons.Default.Favorite, null) })
-            FilterChip(selected = person.favorite, enabled = !busy,
-                modifier = Modifier.heightIn(min = ShellMetrics.touch),
-                onClick = { onFavorite(person.personId) }, label = { Text("Favorit") },
-                leadingIcon = { Icon(if (person.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, null) })
-            FilterChip(selected = person.preference == Preference.DISLIKE, enabled = !busy,
-                modifier = Modifier.heightIn(min = ShellMetrics.touch),
-                onClick = { onPreference(person.personId, toggledProfilePreference(person.preference, Preference.DISLIKE)) },
-                label = { Text("Nein") })
-            FilterChip(selected = person.preference == Preference.NONE, enabled = !busy && person.preference != Preference.NONE,
-                modifier = Modifier.heightIn(min = ShellMetrics.touch),
-                onClick = { onPreference(person.personId, Preference.NONE) }, label = { Text("Neutral") })
-        }
+            modifier = Modifier.heightIn(min = ShellMetrics.touch),
+            onClick = { onPreference(toggledProfilePreference(person.preference, Preference.LIKE)) },
+            label = { Text("Gefällt") }, leadingIcon = { Icon(Icons.Default.Favorite, null) })
+        FilterChip(selected = person.favorite, enabled = !busy,
+            modifier = Modifier.heightIn(min = ShellMetrics.touch),
+            onClick = { onFavorite() }, label = { Text("Favorit") },
+            leadingIcon = { Icon(if (person.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, null) })
+        FilterChip(selected = person.preference == Preference.DISLIKE, enabled = !busy,
+            modifier = Modifier.heightIn(min = ShellMetrics.touch),
+            onClick = { onPreference(toggledProfilePreference(person.preference, Preference.DISLIKE)) },
+            label = { Text("Nein") })
+        FilterChip(selected = person.preference == Preference.NONE, enabled = !busy && person.preference != Preference.NONE,
+            modifier = Modifier.heightIn(min = ShellMetrics.touch),
+            onClick = { onPreference(Preference.NONE) }, label = { Text("Neutral") })
     }
 }
 

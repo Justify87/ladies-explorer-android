@@ -99,7 +99,7 @@ class ProfileShellDeviceTest {
                 ProfileActionRail(
                     de.justify87.ladiesexplorer.core.PersonSummary(1, "Fixture", preference, favorite, 1u, ""),
                     busy, onFavorite = { favorite = !favorite },
-                    onPreference = { _, value -> decisions.add(value); preference = value },
+                    onPreference = { value -> decisions.add(value); preference = value },
                 )
             }
         }

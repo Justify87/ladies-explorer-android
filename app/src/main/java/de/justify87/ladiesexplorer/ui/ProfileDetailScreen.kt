@@ -159,7 +159,7 @@ internal fun ProfileDetailScreen(
             afterHeading = {
                 if (profile != null) item(key = "actions") {
                     ProfileActionRail(displayed.person, busy, onFavorite = { renderedToken?.let(onFavorite) },
-                        onPreference = { _, preference -> renderedToken?.let { onPreference(it, preference) } })
+                        onPreference = { preference -> renderedToken?.let { onPreference(it, preference) } })
                 }
                 state.mediaArchive?.takeIf { it.failed > 0u || it.deferred > 0u }?.let { report ->
                     item(key = "archive-report") {
