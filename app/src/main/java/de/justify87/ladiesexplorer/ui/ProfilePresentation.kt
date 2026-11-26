@@ -224,14 +224,13 @@ internal class ProfileMediaSelection(initialIndex: Int = 0, initialId: String? =
         id = mediaId
     }
 
-    private fun ProfileMediaItem.key() = "${kind}:${url.ifBlank { localPath.orEmpty() }}"
     fun resolve(media: List<ProfileMediaItem>, available: Boolean): Int {
         if (!available) return 0
-        return media.indexOfFirst { it.key() == id }.takeIf { it >= 0 } ?: mediaIndex(index, media.size)
+        return media.indexOfFirst { it.presentationKey() == id }.takeIf { it >= 0 } ?: mediaIndex(index, media.size)
     }
     fun select(media: List<ProfileMediaItem>, position: Int) {
         index = mediaIndex(position, media.size)
-        id = media.getOrNull(index)?.key()
+        id = media.getOrNull(index)?.presentationKey()
     }
 }
 
