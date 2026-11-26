@@ -133,9 +133,8 @@ class ProfileHeroLayoutTest {
         assertEquals(180f, profileHeroHeight(600f, 400f, 180f), .01f)
     }
 
-    @Test fun inlineIdentityUsesCanonicalSnapshotPlaceNotHiddenSourceMetadata() {
-        val profile = fixtureProfile().copy(city = "Dresden", postalCode = "01067",
-            hiddenLocation = "Offenbach am Main")
+    @Test fun inlineIdentityUsesCanonicalSnapshotPlace() {
+        val profile = fixtureProfile().copy(city = "Dresden", postalCode = "01067")
         val identity = fixtureIdentity(1).copy(age = "29")
         val shown = heroIdentity(profile, identity, false)
         assertEquals("Fixture, 29", shown.title)

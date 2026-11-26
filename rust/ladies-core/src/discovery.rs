@@ -813,28 +813,11 @@ mod tests {
             .unwrap();
         core.add_listing(second, None, "LADIES".into(), "3".into(), None)
             .unwrap();
-        assert_eq!(
-            page(&core, 100, None)
-                .map(|p| p.cards)
-                .unwrap()
-                .len(),
-            2
-        );
+        assert_eq!(page(&core, 100, None).map(|p| p.cards).unwrap().len(), 2);
         core.set_preference(first, Preference::Dislike).unwrap();
-        assert_eq!(
-            page(&core, 100, None)
-                .map(|p| p.cards)
-                .unwrap()
-                .len(),
-            1
-        );
+        assert_eq!(page(&core, 100, None).map(|p| p.cards).unwrap().len(), 1);
         core.set_preference(second, Preference::Like).unwrap();
-        assert!(
-            page(&core, 100, None)
-                .map(|p| p.cards)
-                .unwrap()
-                .is_empty()
-        );
+        assert!(page(&core, 100, None).map(|p| p.cards).unwrap().is_empty());
         core.set_favorite(first, true).unwrap();
         assert!(page(&core, 100, None).unwrap().cards.is_empty());
         let saved = core

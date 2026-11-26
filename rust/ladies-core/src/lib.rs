@@ -123,8 +123,8 @@ pub struct PersonSummary {
 type RawPerson = (i64, String, i64, u32);
 
 pub use discovery::{
-    DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow, SavedPersonKind,
-    SavedPersonPage, SavedPersonRow, SavedPersonSort,
+    DiscoveryCard, DiscoveryCursor, DiscoveryPage, ProfileMediaItem, SavedPeopleWindow,
+    SavedPersonKind, SavedPersonPage, SavedPersonRow, SavedPersonSort,
 };
 pub use encounters::{Encounter, EncounterService, EncounterValues};
 pub use history::ChangeRecord;

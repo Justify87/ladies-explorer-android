@@ -1396,7 +1396,10 @@ mod tests {
         assert_eq!(before.cards[0].person_id, Some(owner));
         assert!(before.searches[0].unread_new_results);
         let map = core
-            .map_overview(vec![listing, target.listing_id], Some(found.run.search_run_id))
+            .map_overview(
+                vec![listing, target.listing_id],
+                Some(found.run.search_run_id),
+            )
             .unwrap();
         assert_eq!(map.total_profiles, 2);
         let in_flight = listing_target(&core, listing, false).unwrap();
