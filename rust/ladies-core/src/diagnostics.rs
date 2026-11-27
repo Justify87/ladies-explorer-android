@@ -365,13 +365,23 @@ mod tests {
             exports.push(log.snapshot(&export_dir).unwrap());
         }
         handle.join().unwrap();
-        exports.push(log.snapshot(&export_dir).unwrap());
+        let final_export = log.snapshot(&export_dir).unwrap();
+        assert!(
+            fs::read_to_string(&final_export)
+                .unwrap()
+                .contains("event=2999 ")
+        );
+        exports.push(final_export);
+        let payload = "x".repeat(600);
         for export in exports {
             let content = fs::read_to_string(export).unwrap();
             assert!(content.ends_with('\n'));
             assert!(!content.contains('\0'));
             for line in content.lines() {
                 assert!(!line.is_empty());
+                if line.contains("component=WORK") {
+                    assert!(line.ends_with(&payload));
+                }
             }
         }
     }

@@ -1327,13 +1327,16 @@ mod tests {
         persist_results(&core, &id, &result, &stored_definition, version).unwrap();
         core.rename_saved_search(id.clone(), "Umbenannt".into())
             .unwrap();
-        assert!(list(&core).unwrap()[0].last_run_at.is_some());
+        let renamed = list(&core).unwrap().remove(0);
+        assert_eq!(renamed.name, "Umbenannt");
+        assert!(renamed.last_run_at.is_some());
         result.profiles = vec![card(lb, b, "102"), card(lc, c, "103")];
         let (stored_definition, version) = definition(&core, &id).unwrap();
         persist_results(&core, &id, &result, &stored_definition, version).unwrap();
         let stored = window(&core, id.clone(), 100).unwrap().cards;
         assert_eq!(stored.len(), 2);
         assert_eq!(stored[0].listing_id, Some(lb));
+        assert_eq!(stored[1].listing_id, Some(lc));
         let db = core.connection().unwrap();
         let delta: String = db
             .query_row(

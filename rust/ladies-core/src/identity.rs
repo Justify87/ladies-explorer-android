@@ -904,11 +904,13 @@ mod tests {
             db.execute("INSERT INTO search_runs (search_run_id) VALUES (1)", [])
                 .unwrap();
             db.execute(
-                "INSERT INTO search_results (search_run_id,listing_id,position,name)
-                 VALUES (1,?1,1,'From'),(1,?2,2,'To')",
+                "INSERT INTO search_results (search_run_id,listing_id,position,name,city)
+                 VALUES (1,?1,1,'From','10115 Berlin'),(1,?2,2,'To','10115 Berlin')",
                 params![listing, target_listing],
             )
             .unwrap();
+            crate::map::prepare_evidence(&db, listing, "10115 Berlin", None).unwrap();
+            crate::map::prepare_evidence(&db, target_listing, "10115 Berlin", None).unwrap();
             db.execute(
                 "INSERT INTO saved_search_results
                  (saved_search_id,result_key,snapshot_json,position,present,visible)
@@ -929,6 +931,11 @@ mod tests {
             .map_overview(vec![listing, target_listing], Some(1))
             .unwrap();
         assert_eq!(map.total_profiles, 2);
+        assert_eq!(map.profiles.len(), 2);
+        assert_eq!(map.profiles[0].person_id, source);
+        assert_eq!(map.profiles[1].person_id, target);
+        assert!(map.profiles[0].favorite);
+        assert!(!map.profiles[1].favorite);
         assert_eq!(crate::identity::list(&core, listing).unwrap().len(), 1);
         let expected_snapshot = snapshot_id(&core, listing);
         core.confirm_identity_match(listing, source, expected_snapshot, target)
@@ -970,6 +977,9 @@ mod tests {
             .map_overview(active.iter().map(|card| card.listing_id).collect(), Some(1))
             .unwrap();
         assert_eq!(map.total_profiles, 2);
+        assert_eq!(map.profiles.len(), 2);
+        assert_eq!(map.profiles[0].listing_id, listing);
+        assert_eq!(map.profiles[1].listing_id, target_listing);
         assert!(
             map.profiles
                 .iter()

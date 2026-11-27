@@ -93,13 +93,13 @@ class RealRepositoryTest(unittest.TestCase):
         script = Path(__file__).resolve().with_name("check_architecture.py")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "init", "-q", str(root)], check=True, timeout=30)
 
             def put(path, content):
                 file = root / path
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text(content, encoding="utf-8")
-                subprocess.run(["git", "-C", tmp, "add", "--", path], check=True)
+                subprocess.run(["git", "-C", tmp, "add", "--", path], check=True, timeout=30)
 
             for path, content in ((APP, GOOD_APP), (STORE, GOOD_STORE), (VIDEO, GOOD_VIDEO),
                                   ("app/src/test/java/Example.kt", "import java.net.URL"),
@@ -107,9 +107,11 @@ class RealRepositoryTest(unittest.TestCase):
                 put(path, content)
 
             def run():
-                return subprocess.run([sys.executable, str(script), "--root", tmp], capture_output=True, text=True)
+                return subprocess.run([sys.executable, str(script), "--root", tmp],
+                                      capture_output=True, text=True, timeout=30)
 
-            self.assertEqual(0, run().returncode)
+            result = run()
+            self.assertEqual(0, result.returncode, result.stderr)
             for path, code, rule in (
                 ("app/src/debug/java/Example.kt", "import java.net.URL", "ARC-01"),
                 ("app/src/release/java/Example.kt", "val database = SQLiteDatabase()", "ARC-02"),
@@ -123,7 +125,8 @@ class RealRepositoryTest(unittest.TestCase):
                 if path == APP:
                     put(APP, GOOD_APP)
                 else:
-                    subprocess.run(["git", "-C", tmp, "rm", "-f", "--", path], check=True)
+                    subprocess.run(["git", "-C", tmp, "rm", "-f", "--", path],
+                                   check=True, timeout=30)
             self.assertEqual([], check_source(root))
 
 

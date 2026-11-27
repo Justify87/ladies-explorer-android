@@ -303,7 +303,7 @@ class FormDesignDeviceTest {
         rule.onNodeWithText("Metadaten").performScrollTo().performClick()
         rule.runOnIdle { assertEquals(listOf(CaptureMode.METADATA), capture) }
     }
-    @Test fun globalVisibilityRoundTripsAcrossStoreInstancesWithoutTouchingReplayOrCapture() {
+    @Test fun globalVisibilityRoundTripsAcrossStoreInstancesWithoutTouchingReplay() {
         val context = InstrumentationRegistry.getInstrumentation().context
         val fixture = object : ContextWrapper(context) {
             override fun getSharedPreferences(name: String, mode: Int) =
