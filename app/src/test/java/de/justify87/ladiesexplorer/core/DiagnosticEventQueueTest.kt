@@ -55,8 +55,8 @@ class DiagnosticEventQueueTest {
         } finally {
             gate.countDown()
             waiter?.interrupt()
-            waiter?.join(1_000)
             queue.shutdown()
+            waiter?.join(1_000)
         }
     }
 

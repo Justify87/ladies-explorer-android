@@ -325,7 +325,7 @@ class MapDesignDeviceTest {
         }
     }
 
-    @Test fun thumbnailDecodeUsesExistingLoaderForSyntheticLocalFileAndFallsBackOnMissingFile() {
+    @Test(timeout = 35_000) fun thumbnailDecodeUsesExistingLoaderForSyntheticLocalFileAndFallsBackOnMissingFile() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File.createTempFile("map-thumbnail-fixture", ".png", context.cacheDir)
         try {
