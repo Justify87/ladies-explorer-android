@@ -943,8 +943,12 @@ mod tests {
         }
         let mut cursor = None;
         let mut ids = std::collections::HashSet::new();
+        let mut page_count = 0;
         loop {
+            page_count += 1;
+            assert!(page_count <= 7, "pagination did not terminate");
             let current = page(&core, 35, cursor).unwrap();
+            assert!(!current.cards.is_empty());
             for card in current.cards {
                 assert!(ids.insert(card.person_id));
             }
@@ -1076,12 +1080,13 @@ mod tests {
         recent_ids.sort_unstable();
         assert_eq!(recent_ids, ids[..5]);
         assert!(regular.rows.iter().all(|row| !row.recent));
-        assert!(
-            regular
-                .rows
-                .iter()
-                .all(|row| ids[5..].contains(&row.person_id))
-        );
+        let mut regular_ids = regular
+            .rows
+            .iter()
+            .map(|row| row.person_id)
+            .collect::<Vec<_>>();
+        regular_ids.sort_unstable();
+        assert_eq!(regular_ids, ids[5..]);
     }
 
     #[test]
