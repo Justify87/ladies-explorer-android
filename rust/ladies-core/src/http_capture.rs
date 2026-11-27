@@ -808,7 +808,10 @@ mod tests {
     #[test]
     fn parallel_exports_keep_valid_har_snapshots() {
         use std::sync::Arc;
+        use std::sync::mpsc::channel;
         use std::thread;
+        use std::time::Duration;
+
         let root = tempfile::tempdir().unwrap();
         let recorder = Arc::new(HttpRecorder::new(
             &root.path().join("ladies.sqlite").to_string_lossy(),
@@ -816,20 +819,30 @@ mod tests {
         recorder.set_mode(CaptureMode::Metadata);
         recorder.record(sample());
         let writer = Arc::clone(&recorder);
+        let (written, checkpoint) = channel();
+        let (resume, next) = channel();
+        let timeout = Duration::from_secs(10);
         let job = thread::spawn(move || {
             for n in 0..200 {
                 let mut event = sample();
                 event.url = format!("https://www.ladies.de/fixture/{n}");
                 writer.record(event);
+                if (n + 1) % 50 == 0 {
+                    written.send(n + 1).unwrap();
+                    if n + 1 < 200 {
+                        next.recv_timeout(timeout).unwrap();
+                    }
+                }
             }
         });
         let mut previous = 1;
-        let mut verify = || {
+        let mut verify = |min, max| {
             let har: Value =
                 serde_json::from_slice(&fs::read(recorder.export(root.path()).unwrap()).unwrap())
                     .unwrap();
             let entries = har["log"]["entries"].as_array().unwrap();
-            assert!((previous..=201).contains(&entries.len()));
+            assert!((min..=max).contains(&entries.len()));
+            assert!(entries.len() >= previous);
             for (n, entry) in entries.iter().skip(1).enumerate() {
                 assert_eq!(
                     entry["request"]["url"],
@@ -837,13 +850,16 @@ mod tests {
                 );
             }
             previous = entries.len();
-            previous
         };
-        for _ in 0..10 {
-            verify();
+        for end in [50, 100, 150, 200] {
+            assert_eq!(checkpoint.recv_timeout(timeout).unwrap(), end);
+            verify(end + 1, end + 1);
+            if end < 200 {
+                resume.send(()).unwrap();
+                verify(end + 1, end + 51);
+            }
         }
         job.join().unwrap();
-        assert_eq!(verify(), 201);
         assert_eq!(recorder.status().entries, 201);
         assert_eq!(recorder.status().mode, CaptureMode::Metadata);
     }

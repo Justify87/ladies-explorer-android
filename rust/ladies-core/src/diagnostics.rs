@@ -351,39 +351,66 @@ mod tests {
 
     #[test]
     fn snapshots_are_complete_during_simultaneous_rotation() {
+        use std::sync::mpsc::channel;
+        use std::time::Duration;
+
         let directory = tempfile::tempdir().unwrap();
         let log = Arc::new(logger(directory.path()));
         let writer = Arc::clone(&log);
+        let (written, checkpoint) = channel();
+        let (resume, next) = channel();
+        let timeout = Duration::from_secs(10);
         let handle = thread::spawn(move || {
             for n in 0..3_000 {
                 writer.event("WORK", format!("event={n} {}", "x".repeat(600)));
+                if (n + 1) % 1_000 == 0 {
+                    written.send(n + 1).unwrap();
+                    if n + 1 < 3_000 {
+                        next.recv_timeout(timeout).unwrap();
+                    }
+                }
             }
         });
         let export_dir = directory.path().join("snapshots");
-        let mut exports = Vec::new();
-        for _ in 0..20 {
-            exports.push(log.snapshot(&export_dir).unwrap());
-        }
-        handle.join().unwrap();
-        let final_export = log.snapshot(&export_dir).unwrap();
-        assert!(
-            fs::read_to_string(&final_export)
-                .unwrap()
-                .contains("event=2999 ")
-        );
-        exports.push(final_export);
         let payload = "x".repeat(600);
-        for export in exports {
-            let content = fs::read_to_string(export).unwrap();
+        let verify = |min_last, max_last| {
+            let content = fs::read_to_string(log.snapshot(&export_dir).unwrap()).unwrap();
             assert!(content.ends_with('\n'));
             assert!(!content.contains('\0'));
+            assert!(content.len() <= MAX_BYTES);
+            let mut ids = Vec::new();
             for line in content.lines() {
                 assert!(!line.is_empty());
                 if line.contains("component=WORK") {
-                    assert!(line.ends_with(&payload));
+                    let (_, event) = line.split_once("event=").unwrap();
+                    let (id, body) = event.split_once(' ').unwrap();
+                    assert_eq!(body, payload);
+                    ids.push(id.parse::<usize>().unwrap());
                 }
             }
+            let first = *ids.first().expect("snapshot must contain actual WORK events");
+            let last = *ids.last().unwrap();
+            assert!((min_last..=max_last).contains(&last));
+            assert_eq!(ids, (first..=last).collect::<Vec<_>>());
+            let rotated = content.starts_with("[old diagnostic events truncated]\n");
+            assert_eq!(rotated, first > 0);
+            rotated
+        };
+        for end in [1_000, 2_000, 3_000] {
+            assert_eq!(checkpoint.recv_timeout(timeout).unwrap(), end);
+            let rotated = verify(end - 1, end - 1);
+            if end == 1_000 {
+                assert!(!rotated);
+            }
+            if end == 3_000 {
+                assert!(rotated, "the rotation path must actually execute");
+            } else {
+                resume.send(()).unwrap();
+                // Race an export with the next batch; the next checkpoint bounds progress.
+                verify(end - 1, end + 999);
+            }
         }
+        handle.join().unwrap();
     }
 
     #[test]
