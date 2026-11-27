@@ -985,37 +985,80 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM search_runs", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 2);
-        let counts = |db: &Connection| -> (i64, i64, i64, i64, i64) {
-            db.query_row(
-                "SELECT (SELECT COUNT(*) FROM persons), (SELECT COUNT(*) FROM listings),
-                        (SELECT COUNT(*) FROM search_runs), (SELECT COUNT(*) FROM search_results),
-                        (SELECT COUNT(*) FROM listing_observations)",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-            )
-            .unwrap()
+        let listing = again.profiles[0].listing_id;
+        record_status(&db, listing, person_id, "INACTIVE").unwrap();
+        db.execute(
+            "UPDATE listings SET last_seen_at='2000-01-01',status_checked_at='2000-01-01',
+             ended_at='2000-01-01' WHERE listing_id=?1",
+            [listing],
+        )
+        .unwrap();
+        // Compare all affected rows, including updates to existing rows and trigger writes.
+        let snapshot = |db: &Connection| {
+            [
+                "persons",
+                "person_user_state",
+                "listings",
+                "search_runs",
+                "search_results",
+                "listing_observations",
+                "listing_locations",
+                "change_events",
+            ]
+            .into_iter()
+            .map(|table| {
+                let mut stmt = db
+                    .prepare(&format!("SELECT * FROM {table} ORDER BY rowid"))
+                    .unwrap();
+                let columns = stmt.column_count();
+                let rows = stmt
+                    .query_map([], |row| {
+                        (0..columns)
+                            .map(|i| row.get::<_, rusqlite::types::Value>(i))
+                            .collect::<rusqlite::Result<Vec<_>>>()
+                    })
+                    .unwrap()
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .unwrap();
+                (table, rows)
+            })
+            .collect::<Vec<_>>()
         };
-        let before = counts(&db);
+        let before = snapshot(&db);
         db.execute_batch(
             "CREATE TEMP TRIGGER fail_second_result BEFORE INSERT ON search_results
-             WHEN NEW.position=2 BEGIN SELECT RAISE(ABORT, 'fixture search rollback'); END;",
+             WHEN NEW.position=2 BEGIN
+               SELECT RAISE(ABORT, 'fixture rollback precondition missing') WHERE NOT EXISTS (
+                 SELECT 1 FROM search_results r
+                 JOIN listings l ON l.listing_id=r.listing_id
+                 JOIN persons p ON p.person_id=l.person_id
+                 JOIN listing_locations loc ON loc.listing_id=l.listing_id
+                 JOIN change_events e ON e.listing_id=l.listing_id
+                 JOIN listing_observations o ON o.listing_id=l.listing_id
+                 WHERE r.search_run_id=NEW.search_run_id AND r.position=1
+                   AND l.external_listing_id='101' AND l.current_status='ACTIVE'
+                   AND l.ended_at IS NULL AND p.display_name='Rolled back'
+                   AND loc.city_key='berlin' AND e.event_type='STATUS_CHANGED'
+                   AND json_extract(e.old_json,'$')='INACTIVE'
+                   AND json_extract(e.new_json,'$')='ACTIVE'
+                   AND o.search_run_id=NEW.search_run_id
+               );
+               SELECT RAISE(ABORT, 'fixture search rollback');
+             END;",
         )
         .unwrap();
         drop(db);
-        let failed = try_save_cards(&core, vec![card("101", "Rolled back"), card("103", "New")]);
+        let mut changed = card("101", "Rolled back");
+        changed.city = "Berlin".into();
+        let failed = try_save_cards(&core, vec![changed, card("103", "New")]);
         assert!(
             matches!(failed, Err(CoreError::Storage(reason)) if reason.contains("fixture search rollback"))
         );
         let db = core.connection().unwrap();
-        assert_eq!(counts(&db), before);
-        let display_name: Option<String> = db
-            .query_row(
-                "SELECT display_name FROM persons WHERE person_id=?1",
-                [person_id],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(display_name.as_deref(), Some("Anna new"));
+        for ((table, expected), (actual_table, actual)) in before.into_iter().zip(snapshot(&db)) {
+            assert_eq!(table, actual_table);
+            assert_eq!(actual, expected, "rollback changed {table}");
+        }
         drop(db);
         let person = core.get_person(person_id).unwrap().unwrap();
         assert!(person.favorite);
