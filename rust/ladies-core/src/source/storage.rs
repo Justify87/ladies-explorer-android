@@ -713,6 +713,11 @@ mod tests {
     }
 
     fn save_cards(core: &LadiesCore, cards: Vec<Card>) -> SearchResult {
+        try_save_cards(core, cards).unwrap()
+    }
+
+    fn try_save_cards(core: &LadiesCore, cards: Vec<Card>) -> Result<SearchResult, CoreError> {
+        let count = u32::try_from(cards.len()).unwrap();
         save_search(
             core,
             &SearchRequest::for_test(),
@@ -720,7 +725,7 @@ mod tests {
                 cards,
                 city: "Leipzig".into(),
                 city_slug: "leipzig".into(),
-                server_count: Some(1),
+                server_count: Some(count),
                 total_pages: 1,
                 fetched_pages: 1,
                 partial: false,
@@ -728,7 +733,6 @@ mod tests {
                 radius_verified: true,
             },
         )
-        .unwrap()
     }
 
     #[test]
@@ -981,6 +985,41 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM search_runs", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 2);
+        let counts = |db: &Connection| -> (i64, i64, i64, i64, i64) {
+            db.query_row(
+                "SELECT (SELECT COUNT(*) FROM persons), (SELECT COUNT(*) FROM listings),
+                        (SELECT COUNT(*) FROM search_runs), (SELECT COUNT(*) FROM search_results),
+                        (SELECT COUNT(*) FROM listing_observations)",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .unwrap()
+        };
+        let before = counts(&db);
+        db.execute_batch(
+            "CREATE TEMP TRIGGER fail_second_result BEFORE INSERT ON search_results
+             WHEN NEW.position=2 BEGIN SELECT RAISE(ABORT, 'fixture search rollback'); END;",
+        )
+        .unwrap();
+        drop(db);
+        let failed = try_save_cards(&core, vec![card("101", "Rolled back"), card("103", "New")]);
+        assert!(
+            matches!(failed, Err(CoreError::Storage(reason)) if reason.contains("fixture search rollback"))
+        );
+        let db = core.connection().unwrap();
+        assert_eq!(counts(&db), before);
+        let display_name: Option<String> = db
+            .query_row(
+                "SELECT display_name FROM persons WHERE person_id=?1",
+                [person_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(display_name.as_deref(), Some("Anna new"));
+        drop(db);
+        let person = core.get_person(person_id).unwrap().unwrap();
+        assert!(person.favorite);
+        assert_eq!(person.preference, crate::Preference::Like);
     }
 
     #[test]

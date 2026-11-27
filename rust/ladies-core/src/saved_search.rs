@@ -1112,13 +1112,19 @@ mod tests {
     #[test]
     fn imported_search_definition_converts_ranges_and_source_filters() {
         let legacy = r#"{"city":"Leipzig","radius":30,"category":"escort","ageMin":22,"ageMax":45,"heightMin":150,"heightMax":190,"selected":{"figur":["schlank"]},"local":{"videoOnly":true}}"#;
-        let q = decode_definition(legacy).unwrap().query;
+        let definition = decode_definition(legacy).unwrap();
+        assert!(definition.local.video_only);
+        let q = definition.query;
         assert_eq!(
             (q.city.as_str(), q.radius_km, q.age_min, q.age_max),
             ("Leipzig", 30, 22, 45)
         );
         assert_eq!(q.category, "escort");
-        assert!(q.filters_json.contains("schlank"));
+        assert_eq!((q.height_min, q.height_max), (150, 190));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&q.filters_json).unwrap(),
+            serde_json::json!({"figur":["schlank"]})
+        );
     }
 
     #[test]

@@ -20,7 +20,9 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -110,6 +112,7 @@ class MapDesignDeviceTest {
         var testLifecycle: androidx.lifecycle.Lifecycle? = null
         val decoded = mutableListOf<String>()
         val delayed = CompletableDeferred<Unit>()
+        var oldDecode: Job? = null
         val old = b.copy(thumbnailUrl = "fixture-delayed")
         val fresh = old.copy(personId = 22L, thumbnailUrl = "fixture-fresh")
         fun rendered(layer: String) = map?.let { ready ->
@@ -138,7 +141,10 @@ class MapDesignDeviceTest {
                                     source = loaded.getSource(MAP_SOURCE) as GeoJsonSource
                                     val controller = MapMarkerImages(native, ready, loaded, lifecycle) { _, url, _ ->
                                         decoded.add(url)
-                                        if (url == old.thumbnailUrl) withContext(NonCancellable) { delayed.await() }
+                                        if (url == old.thumbnailUrl) {
+                                            oldDecode = currentCoroutineContext()[Job]
+                                            withContext(NonCancellable) { delayed.await() }
+                                        }
                                         photo()
                                     }
                                     images = controller
@@ -222,7 +228,9 @@ class MapDesignDeviceTest {
                 }
             }
             delayed.complete(Unit)
-            rule.waitForIdle()
+            rule.waitUntil(timeoutMillis = 10_000) {
+                rule.runOnIdle { oldDecode?.isCompleted == true }
+            }
             rule.runOnIdle {
                 assertNull(style?.getImage(mapThumbnailId(old)))
                 val visible = rendered(MAP_SINGLE).single()
