@@ -25,6 +25,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import androidx.compose.ui.viewinterop.AndroidView
 import org.maplibre.android.MapLibre
@@ -112,7 +113,7 @@ class MapDesignDeviceTest {
         var testLifecycle: androidx.lifecycle.Lifecycle? = null
         val decoded = mutableListOf<String>()
         val delayed = CompletableDeferred<Unit>()
-        var oldDecode: Job? = null
+        val oldDecodes = mutableListOf<Job>()
         val old = b.copy(thumbnailUrl = "fixture-delayed")
         val fresh = old.copy(personId = 22L, thumbnailUrl = "fixture-fresh")
         fun rendered(layer: String) = map?.let { ready ->
@@ -142,7 +143,7 @@ class MapDesignDeviceTest {
                                     val controller = MapMarkerImages(native, ready, loaded, lifecycle) { _, url, _ ->
                                         decoded.add(url)
                                         if (url == old.thumbnailUrl) {
-                                            oldDecode = currentCoroutineContext()[Job]
+                                            oldDecodes.add(requireNotNull(currentCoroutineContext()[Job]))
                                             withContext(NonCancellable) { delayed.await() }
                                         }
                                         photo()
@@ -217,6 +218,16 @@ class MapDesignDeviceTest {
                         style?.getImage(mapThumbnailId(old)) == null
                 }
             }
+            // Force a new camera generation while the previous decode is still draining.
+            rule.runOnIdle {
+                if (oldDecodes.size == 1) {
+                    requireNotNull(images).cameraMoving()
+                    requireNotNull(images).cameraIdle()
+                }
+            }
+            rule.waitUntil(timeoutMillis = 10_000) {
+                rule.runOnIdle { oldDecodes.size >= 2 && oldDecodes.none { it.isCompleted } }
+            }
             rule.runOnIdle {
                 images?.update(listOf(fresh))
                 requireNotNull(source).setGeoJson(asFeatures(listOf(fresh), fresh.listingId))
@@ -229,7 +240,7 @@ class MapDesignDeviceTest {
             }
             delayed.complete(Unit)
             rule.waitUntil(timeoutMillis = 10_000) {
-                rule.runOnIdle { oldDecode?.isCompleted == true }
+                rule.runOnIdle { oldDecodes.size >= 2 && oldDecodes.all { it.isCompleted } }
             }
             rule.runOnIdle {
                 assertNull(style?.getImage(mapThumbnailId(old)))
@@ -322,13 +333,18 @@ class MapDesignDeviceTest {
                 eraseColor(BitmapColor.GREEN)
             }
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            val decoded = requireNotNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString(), file.path) })
+            fun decode(url: String, localPath: String? = null) = runBlocking {
+                withTimeout(10_000) { loadMapThumbnail(context, url, localPath) }
+            }
+            val missing = file.path + ".missing"
+            val missingUrl = Uri.fromFile(File(missing)).toString()
+            val decoded = requireNotNull(decode(missingUrl, file.path))
             assertEquals(80, decoded.width)
             assertEquals(80, decoded.height)
             assertEquals(BitmapColor.GREEN, decoded.getPixel(40, 40))
             assertEquals(BitmapColor.TRANSPARENT, decoded.getPixel(0, 0))
-            assertNotNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(file).toString(), file.path + ".missing") })
-            assertNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString()) })
+            assertNotNull(decode(Uri.fromFile(file).toString(), missing))
+            assertNull(decode(missingUrl))
             assertEquals(BitmapColor.TRANSPARENT, mapFallbackBitmap().getPixel(0, 0))
         } finally {
             file.delete()

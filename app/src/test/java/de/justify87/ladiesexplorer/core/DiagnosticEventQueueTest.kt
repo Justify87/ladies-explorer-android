@@ -1,11 +1,10 @@
 package de.justify87.ladiesexplorer.core
 
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
+import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
+import java.util.concurrent.locks.LockSupport
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -16,11 +15,11 @@ class DiagnosticEventQueueTest {
         val queue = DiagnosticEventQueue(maxPending = 2)
         val gate = CountDownLatch(1)
         val entered = CountDownLatch(1)
-        val awaiting = Executors.newSingleThreadExecutor()
+        var waiter: Thread? = null
         try {
             assertTrue(queue.offer {
                 entered.countDown()
-                gate.await()
+                check(gate.await(8, TimeUnit.SECONDS))
             })
             assertTrue(entered.await(5, TimeUnit.SECONDS))
             val secondRan = CountDownLatch(1)
@@ -31,16 +30,23 @@ class DiagnosticEventQueueTest {
             assertTrue(queue.offer(critical = true) { criticalRan.countDown() })
             assertEquals(1L to 0L, queue.lossSummary())
 
-            val barrierStarted = CountDownLatch(1)
-            val barrier = awaiting.submit {
-                barrierStarted.countDown()
+            val barrier = FutureTask<Unit> {
                 queue.barrier()
                 assertEquals(0L, secondRan.count)
                 assertEquals(0L, criticalRan.count)
                 assertEquals(1L, rejectedRan.count)
             }
-            assertTrue(barrierStarted.await(5, TimeUnit.SECONDS))
-            assertThrows(TimeoutException::class.java) { barrier.get(250, TimeUnit.MILLISECONDS) }
+            val thread = Thread(barrier, "fixture-diagnostic-barrier").apply { isDaemon = true }
+            waiter = thread
+            thread.start()
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+            fun waitingAtFence() = thread.state == Thread.State.WAITING &&
+                thread.stackTrace.any { it.className == DiagnosticEventQueue::class.java.name && it.methodName == "barrier" }
+            while (!waitingAtFence() && !barrier.isDone && System.nanoTime() < deadline) {
+                LockSupport.parkNanos(1_000_000)
+            }
+            assertTrue("Barrier never waited on its queued fence", waitingAtFence())
+            assertFalse(barrier.isDone)
             gate.countDown()
             barrier.get(5, TimeUnit.SECONDS)
             assertEquals(1L to 0L, queue.lossSummary())
@@ -48,7 +54,8 @@ class DiagnosticEventQueueTest {
             queue.barrier()
         } finally {
             gate.countDown()
-            awaiting.shutdownNow()
+            waiter?.interrupt()
+            waiter?.join(1_000)
             queue.shutdown()
         }
     }

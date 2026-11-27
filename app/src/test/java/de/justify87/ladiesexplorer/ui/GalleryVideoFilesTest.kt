@@ -127,29 +127,46 @@ class GalleryVideoFilesTest {
     }
 
     @Test(timeout = 15_000) fun refreshWaitsForOldLeaseAndPreservesArchive() = runBlocking {
-        val waiting = CompletableDeferred<Unit>()
+        var waiting = CompletableDeferred<Unit>()
+        var downloads = 0
+        val release = CompletableDeferred<Unit>()
         val cache = cache(onDiagnostic = { message ->
             if (message.startsWith("replacement_waiting_for_lease ")) waiting.complete(Unit)
-        })
+        }) {
+            if (++downloads > 1) assertTrue("Downloaded before playback released", release.isCompleted)
+            bytes
+        }
         val a = medium("a")
         val entered = CompletableDeferred<File>()
-        val release = CompletableDeferred<Unit>()
         val lease = launch {
-            cache.withVideo(a) { entered.complete(it.file); release.await() }
+            cache.withVideo(a) { entered.complete(it.file); release.awaitSignal() }
         }
-        val refreshed = CompletableDeferred<File>()
         val original = entered.awaitSignal()
-        val retry = launch { cache.withVideo(a, refresh = true) { refreshed.complete(it.file) } }
+        val refreshed = CompletableDeferred<File>()
         try {
+            // Keep the lease until the actual replacement deadline expires.
+            val blocked = runCatching { cache.withVideo(a, refresh = true) {
+                fail("Replacement returned while playback still held the lease")
+            } }.exceptionOrNull()
+            assertTrue(blocked is IllegalStateException)
+            assertEquals("Video cache replacement blocked by active playback", blocked?.message)
+            assertEquals(1, downloads)
+            assertTrue(original.isFile)
+
+            waiting = CompletableDeferred()
+            val retry = launch { cache.withVideo(a, refresh = true) { refreshed.complete(it.file) } }
             waiting.awaitSignal()
+            assertEquals(1, downloads)
             assertTrue(original.isFile)
             assertFalse(refreshed.isCompleted)
+            release.complete(Unit)
+            lease.join()
+            retry.join()
         } finally {
             release.complete(Unit)
         }
-        lease.join()
-        val replacement = withTimeout(3_000) { refreshed.await() }
-        retry.join()
+        val replacement = refreshed.awaitSignal()
+        assertEquals(2, downloads)
         assertTrue(replacement.isFile)
         assertNotEquals(original, replacement)
         assertFalse(original.exists())
