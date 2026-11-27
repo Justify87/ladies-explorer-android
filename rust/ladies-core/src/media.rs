@@ -872,8 +872,14 @@ mod tests {
         let first =
             archive_with(&core, snapshot, false, &fetcher, &RequestControl::default()).unwrap();
         assert_eq!((first.downloaded, first.failed), (2, 0));
-        let again =
-            archive_with(&core, snapshot, false, &NeverFetch, &RequestControl::default()).unwrap();
+        let again = archive_with(
+            &core,
+            snapshot,
+            false,
+            &NeverFetch,
+            &RequestControl::default(),
+        )
+        .unwrap();
         assert_eq!((again.reused, again.downloaded), (2, 0));
         let db = core.connection().unwrap();
         let assets: i64 = db
@@ -927,8 +933,14 @@ mod tests {
         db.execute("UPDATE media_sources SET revision_token='rev1'", [])
             .unwrap();
         drop(db);
-        let reused =
-            archive_with(&core, second, false, &NeverFetch, &RequestControl::default()).unwrap();
+        let reused = archive_with(
+            &core,
+            second,
+            false,
+            &NeverFetch,
+            &RequestControl::default(),
+        )
+        .unwrap();
         assert_eq!((reused.reused, reused.failed), (2, 0));
         let db = core.connection().unwrap();
         let count:i64=db.query_row(

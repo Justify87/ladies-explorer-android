@@ -388,7 +388,9 @@ mod tests {
                     ids.push(id.parse::<usize>().unwrap());
                 }
             }
-            let first = *ids.first().expect("snapshot must contain actual WORK events");
+            let first = *ids
+                .first()
+                .expect("snapshot must contain actual WORK events");
             let last = *ids.last().unwrap();
             assert!((min_last..=max_last).contains(&last));
             assert_eq!(ids, (first..=last).collect::<Vec<_>>());
