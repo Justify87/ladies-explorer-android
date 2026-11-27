@@ -161,17 +161,22 @@ class SavedPeopleStateTest {
         assertTrue(savedPeoplePageMatches(state.copy(savedError = "read failed"), search, regularAction))
     }
 
-    @Test fun singleStatusUsesExistingRenderedRowAdmissionAndCannotTargetCardlessPerson() {
+    @Test fun singleStatusTargetsOnlyTheCurrentRenderedListing() {
         val person = row().copy(card = fixtureCard(8L, 1L))
         val state = displayed(person)
+        val search = SearchUiState()
         val action = SavedPersonAction(person, state.savedKind, state.savedSort, state.actionGeneration)
-        assertTrue(savedActionMatches(state, SearchUiState(), action))
-        assertEquals(8L, action.row.card?.listingId)
-        assertFalse(savedActionMatches(state.copy(savedPage = state.savedPage!!.copy(
-            rows = listOf(person.copy(card = fixtureCard(9L, 1L))))), SearchUiState(), action))
-        assertFalse(savedActionMatches(state.copy(actionSurface = ProfileActionSurface.NONE), SearchUiState(), action))
-        assertFalse(savedActionMatches(state.copy(actionGeneration = 43), SearchUiState(), action))
-        assertNull(row().card)
+        assertEquals(8L, savedStatusTarget(state, search, action))
+        assertNull(savedStatusTarget(state.copy(savedPage = state.savedPage!!.copy(
+            rows = listOf(person.copy(card = fixtureCard(9L, 1L))))), search, action))
+        assertNull(savedStatusTarget(state.copy(actionSurface = ProfileActionSurface.NONE), search, action))
+        assertNull(savedStatusTarget(state.copy(actionGeneration = 43), search, action))
+        assertNull(savedStatusTarget(state, search.copy(profileOpen = true), action))
+        val cardless = row()
+        val cardlessState = displayed(cardless)
+        val cardlessAction = action.copy(row = cardless)
+        assertTrue(savedActionMatches(cardlessState, search, cardlessAction))
+        assertNull(savedStatusTarget(cardlessState, search, cardlessAction))
     }
 
     @Test fun independentWindowSizesSurviveTabAndRetry() {

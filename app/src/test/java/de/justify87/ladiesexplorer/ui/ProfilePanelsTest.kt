@@ -153,26 +153,46 @@ class ProfilePanelsTest {
     }
 
     @Test(timeout = 15_000) fun factsAndDetailCoalesceInFlightAndSuccessfulReads() = runBlocking {
-        val start = CompletableDeferred<Unit>()
+        val factsStarted = CompletableDeferred<Unit>()
+        val detailStarted = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
+        val expectedFacts = facts()
+        val expectedDetail = detail()
         var factsCalls = 0
         var detailCalls = 0
         val panel = ProfilePanels(this, 7L, { _, _ ->
             factsCalls++
-            start.complete(Unit)
+            factsStarted.complete(Unit)
             finish.awaitSignal()
-            facts()
-        }, { detailCalls++; detail() }, { _, _, _ -> emptyList() })
-        val read = launch { panel.loadFacts(11L, "{}") }
-        start.awaitSignal()
+            expectedFacts
+        }, {
+            detailCalls++
+            detailStarted.complete(Unit)
+            finish.awaitSignal()
+            expectedDetail
+        }, { _, _, _ -> emptyList() })
+        val factsRead = launch { panel.loadFacts(11L, "{}") }
+        val detailRead = launch { panel.loadDetail() }
+        try {
+            factsStarted.awaitSignal()
+            detailStarted.awaitSignal()
+            panel.loadFacts(11L, "{}")
+            panel.loadDetail()
+            assertEquals(1, factsCalls)
+            assertEquals(1, detailCalls)
+            assertNull(panel.facts)
+            assertNull(panel.detail)
+        } finally {
+            finish.complete(Unit)
+        }
+        factsRead.join()
+        detailRead.join()
         panel.loadFacts(11L, "{}")
         panel.loadDetail()
-        panel.loadDetail()
-        finish.complete(Unit)
-        read.join()
-        panel.loadFacts(11L, "{}")
         assertEquals(1, factsCalls)
         assertEquals(1, detailCalls)
+        assertEquals(expectedFacts, panel.facts)
+        assertEquals(expectedDetail, panel.detail)
     }
 
     @Test(timeout = 15_000) fun failedDetailRetriesIndependentlyOnlyByExplicitAction() = runBlocking {

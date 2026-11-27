@@ -56,6 +56,9 @@ internal fun savedActionMatches(state: DiscoverUiState, search: SearchUiState, a
     return current == action.row
 }
 
+internal fun savedStatusTarget(state: DiscoverUiState, search: SearchUiState, action: SavedPersonAction): Long? =
+    if (savedActionMatches(state, search, action)) action.row.card?.listingId else null
+
 /** A batch check starts only from the saved selection and window that rendered its button. */
 internal data class SavedStatusBatchAction(
     val page: SavedPersonPage,
