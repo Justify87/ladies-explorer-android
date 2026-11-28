@@ -136,7 +136,7 @@ pub(crate) fn reconcile_relistings(db: &Connection, person_id: i64) -> Result<()
         if exists {
             continue;
         }
-        // Reclassify native events without changing timestamps/snapshots; preserve imported provenance.
+        // Reclassify existing events without changing timestamps or snapshot links.
         let updated = db.execute(
             "UPDATE change_events SET event_type='NEW_LISTING_FOR_PERSON',importance='HIGH'
              WHERE person_id=?1 AND listing_id=?2 AND event_type='PROFILE_CREATED'",

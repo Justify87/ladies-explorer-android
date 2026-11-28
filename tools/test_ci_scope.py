@@ -7,7 +7,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from ci_scope import classify, docs_only, is_docs_only, parse_diff, main
+from ci_scope import classify, is_docs_only, parse_diff, main
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -23,7 +23,14 @@ def diff(path, status=b"M", old=b"100644", new=b"100644"):
 
 
 class CiScopeTest(unittest.TestCase):
-    def test_documentation_paths_and_regular_modes(self):
+    @patch("ci_scope.subprocess.check_output")
+    def test_documentation_paths_and_regular_modes(self, command):
+        def assert_mode(raw, mode):
+            command.reset_mock()
+            command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), raw]
+            self.assert_policy(classify(ENV), mode, False, False)
+            self.assertEqual(2, command.call_count)
+
         paths = (b"README.md", b"AGENTS.md", b"docs/PROVENANCE.md",
                  b"docs/new.md", b"docs/nested/guide.md", b"tools/M05-REFERENCE.md",
                  b"tools/other.md", b"CHANGELOG.md")
@@ -32,20 +39,21 @@ class CiScopeTest(unittest.TestCase):
                                      (b"A", b"000000", b"100644"),
                                      (b"D", b"100644", b"000000")):
                 with self.subTest(path=path, status=status):
-                    self.assertTrue(docs_only(diff(path, status, old, new)))
+                    assert_mode(diff(path, status, old, new), "docs")
         for path in (b"app/src/main/assets/help.md", b"rust/README.md",
                      b"gradle/README.md", b"tools/m05-reference.py",
                      b"docs/input.json", b"LICENSE", b"NOTICE", b".gitignore",
                      b".github/workflows/android.yml"):
             with self.subTest(path=path):
-                self.assertFalse(docs_only(diff(path)))
-                self.assertFalse(docs_only(diff(b"README.md") + diff(path)))
+                assert_mode(diff(path), "full")
+                assert_mode(diff(b"README.md") + diff(path), "full")
         for raw in (b"", diff(b"README.md")[:-1],
                     diff(b"README.md", new=b"100755"),
                     diff(b"README.md", b"T", new=b"120000"),
                     diff(b"docs/symlink.md", b"A", b"000000", b"120000"),
                     diff(b"docs/submodule.md", b"A", b"000000", b"160000")):
-            self.assertFalse(docs_only(raw))
+            with self.subTest(raw=raw):
+                assert_mode(raw, "full")
 
     @patch("ci_scope.subprocess.check_output")
     def test_full_merge_diff_docs_needs_no_remote_evidence(self, command):
@@ -67,11 +75,16 @@ class CiScopeTest(unittest.TestCase):
 
     @patch("ci_scope.subprocess.check_output")
     def test_unverified_diff_defaults_full(self, command):
-        for outputs in ([f"{MERGE} {BASE} {HEAD}\n".encode(), b"incomplete"],
-                        [f"{MERGE} {BASE} {HEAD}\n".encode(),
-                         subprocess.CalledProcessError(1, "git")]):
-            command.side_effect = outputs
-            self.assertEqual("full", classify(ENV).mode)
+        for raw in (b"incomplete", b"", diff(b"README.md")[:-1],
+                    diff(b"README.md") * 2, diff(b"../README.md"),
+                    diff(b"README.md", b"R"), diff(b"README.md", old=b"000000"),
+                    OSError("git unavailable"), subprocess.CalledProcessError(1, "git"),
+                    subprocess.TimeoutExpired("git", 30)):
+            with self.subTest(raw=raw):
+                command.reset_mock()
+                command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), raw]
+                self.assert_policy(classify(ENV), "full", False, False)
+                self.assertEqual(2, command.call_count)
 
     @patch("ci_scope.subprocess.check_output")
     def test_unverified_pr_identity_blocks_gate(self, command):
@@ -89,11 +102,15 @@ class CiScopeTest(unittest.TestCase):
 
     @patch("ci_scope.subprocess.check_output")
     def test_manual_and_unknown_event_are_full(self, command):
-        for env in (dict(ENV, GITHUB_EVENT_NAME="unrecognized"),
-                    dict(ENV, GITHUB_EVENT_NAME="workflow_dispatch")):
-            self.assertEqual("full", classify(env)[0])
+        for event in ("unrecognized", "push", ""):
+            for native, measure in itertools.product(("false", "true"), repeat=2):
+                with self.subTest(event=event, native=native, measure=measure):
+                    env = dict(ENV, GITHUB_EVENT_NAME=event,
+                               VERIFY_NATIVE_CACHE=native, MEASURE_ANDROID_BUILD=measure)
+                    self.assert_policy(classify(env), "full", False, False)
+        self.assert_policy(classify(dict(ENV, GITHUB_EVENT_NAME="workflow_dispatch")),
+                           "full", False, False)
         command.assert_not_called()
-
 
     def assert_policy(self, decision, mode, native, measure):
         self.assertEqual((mode, native, measure),
@@ -162,7 +179,7 @@ class CiScopeTest(unittest.TestCase):
         for path in (b"app/src/main/java/X.kt", b"README.md"):
             changes = parse_diff(diff(path, new=b"100755"))
             self.assertEqual(b"100755", changes[0].new_mode)
-            self.assertFalse(docs_only(diff(path, new=b"100755")))
+            self.assertFalse(is_docs_only(changes))
 
     @patch("ci_scope.subprocess.check_output")
     def test_missing_invalid_event_evidence(self, command):
@@ -256,10 +273,13 @@ class RealGitPolicyTest(unittest.TestCase):
         for name, change in changes.items():
             with self.subTest(change=name):
                 self.git("reset", "--hard", self.base)
+                self.git("checkout", "-qb", "case-" + name)
                 change()
                 self.commit(name)
-                self.assertEqual(name in {"add", "delete", "rename"},
-                                 docs_only(self.raw_diff()))
+                self.git("checkout", "-q", "main")
+                self.git("merge", "--no-ff", "-qm", "PR merge", "case-" + name)
+                mode = "docs" if name in {"add", "delete", "rename"} else "full"
+                self.assert_decision(self.classify_pr(), mode, False, False)
 
     def test_gitignore_protects_exports_without_hiding_generic_fixtures(self):
         ignore = Path(__file__).resolve().parents[1] / ".gitignore"

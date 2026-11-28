@@ -71,14 +71,6 @@ def is_docs_only(changes):
     )
 
 
-def docs_only(raw):
-    """Only regular Markdown in documentation locations; fail closed on invalid diffs."""
-    try:
-        return is_docs_only(parse_diff(raw))
-    except ValueError:
-        return False
-
-
 def git(*args):
     return subprocess.check_output(["git", *args], timeout=30)
 
