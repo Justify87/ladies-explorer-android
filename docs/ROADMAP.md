@@ -4,7 +4,7 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M13.5 — Abhängigkeiten, Build, Tools und semantische Dokumentationspflege. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M13.6 — Abschluss der repositoryweiten Bereinigung. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M13 — Dead Code & Refactoring Cleanup
 
@@ -15,19 +15,9 @@ Ziel: die integrierte Codebasis repositoryweit auf entbehrliche, abgelöste und 
 - Statische Referenzen und Compiler-/Lint-/Clippy-Diagnosen sind Hinweise, keine alleinigen Löschbeweise. Auch indirekte Aufrufer, Framework-, Manifest-, Ressourcen-, Reflection-, JNI-/FFI- und Serialisierungsverträge, Feature-Konfiguration, Skripte und Testtargets berücksichtigen. Vertikal über die betroffenen Schichten und horizontal über gemeinsame Zustände und alternative Einstiegspunkte prüfen. Abgelöste Pfade mit exklusiven Helfern, Records, Fehlern, Tests, Ressourcen und Verweisen vollständig entfernen. Gültige Produkt-, Design-, Daten-, Architektur- und Schutzverträge erhalten; insbesondere interne Schemaentwicklung, Parser-/Netzwerk-/Mediengrenzen, Cursor-/Revisions-/Owner-Verträge, Cancel-/Drain-/Epoch-Schutz und notwendige Diagnose.
 - Je Aufgabe Inventarfortschritt, konkrete Kandidaten mit Codeankern, Beleg, Aufrufern, Risiko und Entscheidung im PR festhalten. Zu Beginn die integrierten Vorgänger-PRs des Meilensteins gezielt auswerten und übernommene offene Befunde am aktuellen Stand verifizieren. Vor Abschluss jeden noch offenen Befund mit zuständiger verbleibender Aufgaben-ID, Codeanker und Grund im PR übergeben; Umfang bzw. dauerhafte Blocker der zuständigen offenen Aufgabe bei Bedarf im selben Roadmap-Diff präzisieren. Spätere Aufgaben übernehmen diese Befunde ausdrücklich und dokumentieren ihre Entscheidung. Bestätigte Befunde im eigenen Umfang ursächlich beheben; nicht einfach zur Abschlussaufgabe verschieben. Bei bereits entfernten Aufgaben keine IDs wiedereröffnen; neu belegte Folgefehler einer sachlich zuständigen noch offenen Aufgabe zuordnen, gegebenenfalls M13.6. Unabhängige konkrete Fehler nach [Pflege](#pflege) erfassen. Keine zusätzlichen Register oder historischen Einträge in der Roadmap.
 
-### M13.5 — Abhängigkeiten, Build, Tools und semantische Dokumentationspflege
-
-**Status:** READY.
-
-Sämtliche zugeordneten Manifeste, Gradle-/Cargo-Abhängigkeiten, Cargo-Features, Gradle-Varianten, Lockfiles, native AAR-/ABI-/Ressourcenreferenzen, Skripte, Tool-Aufrufer, CI-/Build-/Testkonfiguration sowie bedingte Kompilierungs- und Ausführungspfade semantisch auf Notwendigkeit prüfen. Transitive und dynamische Nutzung bei konkretem Verdacht mit vorhandenen Dependency-/Build-Diagnosen klären. Nur belegte Altlasten entfernen; Schutzprüfungen, wirksame Konfiguration, Lizenz-/Provenance-Verträge und erforderliche Buildpfade erhalten. Kein pauschales Upgrade, kein CI-Laufzeitprojekt und keine Änderung der unabhängigen Lizenzklärung L01.
-
-Repositoryweit sämtliche eigenen Dokumentationsdateien und verbliebenen Kommentare/KDoc/Rustdoc semantisch auf Aktualität, Notwendigkeit, Widerspruch, Redundanz und korrekte Verweise prüfen, auch unabhängig von bisherigen Codeänderungen. Abgelöste Verträge, Beispiele, Verweise und reine Historie entfernen; gültige Aussagen an ihrer maßgeblichen Stelle, notwendige Begründungen, rechtliche Header und bewusst erhaltene Referenzmaterialien gemäß ihrer Funktion schützen. Bereinigungsregeln des [Harness](../AGENTS.md#laufende-bereinigung) verwenden; nur konkret belegte dauerhafte Lücken dort korrigieren, keine Duplikate.
-
-**Akzeptanz/Prüfung:** Für entfernte Abhängigkeiten und Konfigurationen Beleg der Nichtnotwendigkeit einschließlich relevanter bedingter Nutzung; betroffene Build-/Tool-/Testpfade geprüft. Dokumentationsumfang nachvollziehbar abgeglichen; gültige Vertragsinhalte, Referenzen und dokumentlokale Semantik erhalten, keine parallelen Register oder Abschwächung von Schutzverträgen. Vorhandene relevante Prüfungen und erforderliches Gate gemäß tatsächlichem Diff.
-
 ### M13.6 — Abschluss der repositoryweiten Bereinigung
 
-**Status:** PLANNED. Abhängig von M13.5.
+**Status:** READY.
 
 Inventarfortschritt und übergebene Kandidaten aus allen integrierten M13-PRs gegen den tatsächlich integrierten Stand abgleichen. Verfügbare Compiler-/Lint-/Clippy-, Architektur-, Export-, Build- und Testdiagnosen der relevanten Prüfungen dem geprüften Code zuordnen und auf bestätigte Altlasten, Folgefehler und verwaiste schichtübergreifende Referenzen auswerten; ein grünes Gate allein ersetzt diese Auswertung nicht. Fehlende oder abgelaufene Berichte sowie daraus folgende Prüfgrenzen offenlegen; bei konkretem ungeklärtem Risiko notwendige Nachweise mit bestehenden gezielten Prüfmitteln nachholen. Nur konkrete verbleibende M13-Befunde ursächlich beseitigen; notwendige Pfade oder bloße Stilhinweise nicht künstlich zum Dead Code erklären. Kein erneuter vollständiger Audit ohne konkreten Anlass. Bei reinem Registerabschluss ausreichende integrierte Full-CI-Belege zuordnen und das erforderliche Dokumentationsgate nutzen; kein zusätzlicher Full-CI-Lauf allein zum Abschluss. Bei Code-/Build-relevanten Änderungen gilt das vollständige Gate.
 

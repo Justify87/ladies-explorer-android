@@ -10,7 +10,7 @@
 
 Es gibt vier Root-Ziele (Entdecken, Suche, Gespeichert, Einstellungen); Entdecken schaltet zwischen Swipe, Grid und Karte um. Profilaufrufe öffnen eine eigenständige Ansicht ohne Root-Navigation. Die Hauptaktionen, Galerie, Favoriten/Like, Undo, Suchfilter, gespeicherte Suchen, Notizen und illustrative Standortauflösung sind lokal bedienbar.
 
-Die inzwischen vorhandenen nativen Bereiche **Meine Begegnungen** und **Manuelle Angebotspreise** besitzen zusätzlich lokale exemplarische Bearbeitungsdialoge. Diese Dialoge demonstrieren die Struktur, **nicht** das vollständige native Fachmodell, CAS-Verhalten, Identitätsprüfung oder Persistenz. Insbesondere die vereinfachten Leistungszeilen sind keine fachliche Spezifikation.
+**Meine Begegnungen** und **Manuelle Angebotspreise** besitzen lokale exemplarische Bearbeitungsdialoge. Diese Dialoge demonstrieren die Struktur, **nicht** das vollständige native Fachmodell, CAS-Verhalten, Identitätsprüfung oder Persistenz. Insbesondere die vereinfachten Leistungszeilen sind keine fachliche Spezifikation.
 
 Die Karte enthält lediglich eine schematische Illustration mit ungefähren Marken; keine Geokodierung. Kontakte werden ausdrücklich nicht geöffnet. Ein ausgeschalteter bzw. nicht verbundener Datenbank-/HTTP-Status wird nicht als erfolgreiche Verbindung ausgegeben. Jede Interaktion läuft im flüchtigen Browser-Speicher; Reload stellt die Ausgangslage wieder her.
 
@@ -18,7 +18,7 @@ Die Karte enthält lediglich eine schematische Illustration mit ungefähren Mark
 
 Visuelle Hierarchie, Tokens, Interaktionsoberflächen, States und Komponentenzuschnitte sind nur insoweit übertragbar, wie sie dem aktuellen DESIGN-Vertrag entsprechen. `.reference-stage`, `.phone`, `demo-data.js`, SVG-Demokarte, lokale Simulationsantworten und JavaScript-State **nicht nach Android portieren**. Bestehende `LadiesTheme`, `LadiesApp`, `MainViewModel`, `ProfileFlow`, `CoreStore` und die nativen Verträge sind maßgeblich.
 
-Maßgebliche UI-/UX-Regeln stehen ausschließlich in [`docs/DESIGN.md`](../docs/DESIGN.md); der Prototyp ist eine historische visuelle und interaktive Illustration, kein aktueller Abnahmebeleg. Aufgaben und Umsetzung: [`docs/ROADMAP.md`](../docs/ROADMAP.md). Im Repository existiert **nur eine** normative Designdatei: `docs/DESIGN.md`. Diese Referenz ist eine verlinkte visuelle Beilage und niemals zweite Fach- oder Architekturautorität.
+Maßgebliche UI-/UX-Regeln stehen ausschließlich in [`docs/DESIGN.md`](../docs/DESIGN.md). Die Referenz ist kein aktueller Abnahmebeleg und keine Fach- oder Architekturautorität. Aufgaben: [`docs/ROADMAP.md`](../docs/ROADMAP.md).
 
 ## Dateien
 

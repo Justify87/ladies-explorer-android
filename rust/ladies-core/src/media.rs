@@ -341,7 +341,7 @@ fn persist(
     };
     core.diagnostics
         .phase("MEDIA", "image_hash_and_decode", processing_started);
-    // Respect an already imported asset path for the same content hash.
+    // Reuse an existing file at its persisted path for the same content hash.
     let existing: Option<String> = {
         let db = core.connection()?;
         db.query_row(

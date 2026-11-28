@@ -7,14 +7,14 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from ci_scope import classify, docs_only, is_docs_only, parse_diff, main
+from ci_scope import classify, is_docs_only, parse_diff, main
 
 BASE = "a" * 40
 HEAD = "b" * 40
 MERGE = "c" * 40
 ENV = {
     "GITHUB_EVENT_NAME": "pull_request", "BASE_REF": "main",
-    "BASE_SHA": BASE, "PR_HEAD_SHA": HEAD, "GITHUB_SHA": MERGE, "GITHUB_REPOSITORY": "owner/repo",
+    "BASE_SHA": BASE, "PR_HEAD_SHA": HEAD, "GITHUB_SHA": MERGE,
 }
 
 
@@ -23,7 +23,14 @@ def diff(path, status=b"M", old=b"100644", new=b"100644"):
 
 
 class CiScopeTest(unittest.TestCase):
-    def test_documentation_paths_and_regular_modes(self):
+    @patch("ci_scope.subprocess.check_output")
+    def test_documentation_paths_and_regular_modes(self, command):
+        def assert_mode(raw, mode):
+            command.reset_mock()
+            command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), raw]
+            self.assert_policy(classify(ENV), mode, False, False)
+            self.assertEqual(2, command.call_count)
+
         paths = (b"README.md", b"AGENTS.md", b"docs/PROVENANCE.md",
                  b"docs/new.md", b"docs/nested/guide.md", b"tools/M05-REFERENCE.md",
                  b"tools/other.md", b"CHANGELOG.md")
@@ -32,20 +39,21 @@ class CiScopeTest(unittest.TestCase):
                                      (b"A", b"000000", b"100644"),
                                      (b"D", b"100644", b"000000")):
                 with self.subTest(path=path, status=status):
-                    self.assertTrue(docs_only(diff(path, status, old, new)))
+                    assert_mode(diff(path, status, old, new), "docs")
         for path in (b"app/src/main/assets/help.md", b"rust/README.md",
                      b"gradle/README.md", b"tools/m05-reference.py",
                      b"docs/input.json", b"LICENSE", b"NOTICE", b".gitignore",
                      b".github/workflows/android.yml"):
             with self.subTest(path=path):
-                self.assertFalse(docs_only(diff(path)))
-                self.assertFalse(docs_only(diff(b"README.md") + diff(path)))
+                assert_mode(diff(path), "full")
+                assert_mode(diff(b"README.md") + diff(path), "full")
         for raw in (b"", diff(b"README.md")[:-1],
                     diff(b"README.md", new=b"100755"),
                     diff(b"README.md", b"T", new=b"120000"),
                     diff(b"docs/symlink.md", b"A", b"000000", b"120000"),
                     diff(b"docs/submodule.md", b"A", b"000000", b"160000")):
-            self.assertFalse(docs_only(raw))
+            with self.subTest(raw=raw):
+                assert_mode(raw, "full")
 
     @patch("ci_scope.subprocess.check_output")
     def test_full_merge_diff_docs_needs_no_remote_evidence(self, command):
@@ -67,11 +75,16 @@ class CiScopeTest(unittest.TestCase):
 
     @patch("ci_scope.subprocess.check_output")
     def test_unverified_diff_defaults_full(self, command):
-        for outputs in ([f"{MERGE} {BASE} {HEAD}\n".encode(), b"incomplete"],
-                        [f"{MERGE} {BASE} {HEAD}\n".encode(),
-                         subprocess.CalledProcessError(1, "git")]):
-            command.side_effect = outputs
-            self.assertEqual("full", classify(ENV).mode)
+        for raw in (b"incomplete", b"", diff(b"README.md")[:-1],
+                    diff(b"README.md") * 2, diff(b"../README.md"),
+                    diff(b"README.md", b"R"), diff(b"README.md", old=b"000000"),
+                    OSError("git unavailable"), subprocess.CalledProcessError(1, "git"),
+                    subprocess.TimeoutExpired("git", 30)):
+            with self.subTest(raw=raw):
+                command.reset_mock()
+                command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), raw]
+                self.assert_policy(classify(ENV), "full", False, False)
+                self.assertEqual(2, command.call_count)
 
     @patch("ci_scope.subprocess.check_output")
     def test_unverified_pr_identity_blocks_gate(self, command):
@@ -88,12 +101,16 @@ class CiScopeTest(unittest.TestCase):
             classify(ENV)
 
     @patch("ci_scope.subprocess.check_output")
-    def test_main_manual_and_other_base_are_full(self, command):
-        for env in (dict(ENV, GITHUB_EVENT_NAME="push"),
-                    dict(ENV, GITHUB_EVENT_NAME="workflow_dispatch")):
-            self.assertEqual("full", classify(env)[0])
+    def test_manual_and_unknown_event_are_full(self, command):
+        for event in ("unrecognized", "push", ""):
+            for native, measure in itertools.product(("false", "true"), repeat=2):
+                with self.subTest(event=event, native=native, measure=measure):
+                    env = dict(ENV, GITHUB_EVENT_NAME=event,
+                               VERIFY_NATIVE_CACHE=native, MEASURE_ANDROID_BUILD=measure)
+                    self.assert_policy(classify(env), "full", False, False)
+        self.assert_policy(classify(dict(ENV, GITHUB_EVENT_NAME="workflow_dispatch")),
+                           "full", False, False)
         command.assert_not_called()
-
 
     def assert_policy(self, decision, mode, native, measure):
         self.assertEqual((mode, native, measure),
@@ -134,7 +151,7 @@ class CiScopeTest(unittest.TestCase):
         self.assert_policy(classify(ENV), "full", False, False)
 
     @patch("ci_scope.subprocess.check_output")
-    def test_automatic_events_ignore_manual_diagnostic_inputs(self, command):
+    def test_pr_ignores_manual_diagnostic_inputs(self, command):
         for path in (b".github/workflows/android.yml", b"gradle.properties",
                      b"rust/Cargo.lock", b"tools/verify-native-cache.sh",
                      b"tools/ci_scope.py", b"unknown.bin", b"tools/measure-android-build.sh",
@@ -143,10 +160,6 @@ class CiScopeTest(unittest.TestCase):
                 command.side_effect = [f"{MERGE} {BASE} {HEAD}\n".encode(), diff(path)]
                 self.assert_policy(classify(dict(ENV, VERIFY_NATIVE_CACHE="true", MEASURE_ANDROID_BUILD="true")),
                                    "full", False, False)
-                command.side_effect = [MERGE.encode(), b"", diff(path)]
-                env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
-                           BEFORE_SHA=BASE, VERIFY_NATIVE_CACHE="true", MEASURE_ANDROID_BUILD="true")
-                self.assert_policy(classify(env), "full", False, False)
 
     def test_manual_inputs_independent(self):
         for n in (True, False):
@@ -166,19 +179,7 @@ class CiScopeTest(unittest.TestCase):
         for path in (b"app/src/main/java/X.kt", b"README.md"):
             changes = parse_diff(diff(path, new=b"100755"))
             self.assertEqual(b"100755", changes[0].new_mode)
-            self.assertFalse(docs_only(diff(path, new=b"100755")))
-
-    @patch("ci_scope.subprocess.check_output")
-    def test_push_head_and_ancestry_required(self, command):
-        env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
-                   BEFORE_SHA=BASE)
-        command.side_effect = [MERGE.encode(), subprocess.CalledProcessError(1, "git")]
-        self.assert_policy(classify(env), "full", False, False)
-        command.side_effect = [HEAD.encode()]
-        self.assert_policy(classify(env), "full", False, False)
-        command.side_effect = [MERGE.encode(), b"", diff(b"tools/measure-android-build.sh")]
-        self.assert_policy(classify(env), "full", False, False)
-
+            self.assertFalse(is_docs_only(changes))
 
     @patch("ci_scope.subprocess.check_output")
     def test_missing_invalid_event_evidence(self, command):
@@ -186,11 +187,6 @@ class CiScopeTest(unittest.TestCase):
                     dict(ENV, GITHUB_SHA="not a commit"), dict(ENV, PR_HEAD_SHA="")):
             with self.subTest(env=env), self.assertRaises(ValueError):
                 classify(env)
-        for env in (dict(ENV, GITHUB_EVENT_NAME="push", BEFORE_SHA=""),
-                    dict(ENV, GITHUB_EVENT_NAME="push", BEFORE_SHA="0" * 40),
-                    dict(ENV, GITHUB_EVENT_NAME="unrecognized")):
-            with self.subTest(env=env):
-                self.assert_policy(classify(env), "full", False, False)
         command.assert_not_called()
 
     @patch("ci_scope.subprocess.check_output")
@@ -277,10 +273,13 @@ class RealGitPolicyTest(unittest.TestCase):
         for name, change in changes.items():
             with self.subTest(change=name):
                 self.git("reset", "--hard", self.base)
+                self.git("checkout", "-qb", "case-" + name)
                 change()
                 self.commit(name)
-                self.assertEqual(name in {"add", "delete", "rename"},
-                                 docs_only(self.raw_diff()))
+                self.git("checkout", "-q", "main")
+                self.git("merge", "--no-ff", "-qm", "PR merge", "case-" + name)
+                mode = "docs" if name in {"add", "delete", "rename"} else "full"
+                self.assert_decision(self.classify_pr(), mode, False, False)
 
     def test_gitignore_protects_exports_without_hiding_generic_fixtures(self):
         ignore = Path(__file__).resolve().parents[1] / ".gitignore"
@@ -303,39 +302,13 @@ class RealGitPolicyTest(unittest.TestCase):
                     cwd=self.root, timeout=30).returncode)
 
 
-    def classify_push(self):
-        env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
-                   BEFORE_SHA=self.base, GITHUB_SHA=self.git("rev-parse", "HEAD").decode().strip())
-        with patch("ci_scope.git", side_effect=self.git):
-            return classify(env)
-
-    def test_real_multicommit_push_and_rename(self):
-        self.write("tools/install-cargo-ndk.sh", "installer")
-        self.commit("native and measurement")
-        self.write("README.md", "updated")
-        self.commit("docs")
-        result = self.classify_push()
-        self.assertEqual(("full", False, False),
-                         (result.mode, result.native_qualification, result.performance_measurement))
-        self.git("reset", "--hard", self.base)
+    def test_real_pr_build_input_rename_requires_full(self):
+        self.git("checkout", "-qb", "rename")
         self.git("mv", "app/build.gradle.kts", "README2.md")
         self.commit("rename build contract")
-        result = self.classify_push()
-        self.assertEqual(("full", False, False),
-                         (result.mode, result.native_qualification, result.performance_measurement))
-
-    def test_real_push_docs_and_new_code(self):
-        self.write("README.md", "updated")
-        self.commit("docs")
-        result = self.classify_push()
-        self.assertEqual(("docs", False, False),
-                         (result.mode, result.native_qualification, result.performance_measurement))
-        self.write("app/src/main/java/New.kt", "new source")
-        self.commit("code")
-        result = self.classify_push()
-        self.assertEqual(("full", False, False),
-                         (result.mode, result.native_qualification, result.performance_measurement))
-
+        self.git("checkout", "-q", "main")
+        self.git("merge", "--no-ff", "-qm", "PR merge", "rename")
+        self.assert_decision(self.classify_pr(), "full", False, False)
 
     def classify_pr(self):
         env = dict(ENV, BASE_SHA=self.base,
@@ -384,31 +357,17 @@ class RealGitPolicyTest(unittest.TestCase):
         self.assert_decision(self.classify_pr(),
                              "full", False, False)
 
-    def test_real_push_missing_or_nonancestor_base(self):
-        self.git("checkout", "-qb", "other")
-        self.write("README.md", "different ancestor")
-        self.commit("other history")
-        other = self.git("rev-parse", "HEAD").decode().strip()
-        self.git("checkout", "-q", "main")
-        self.write("README.md", "main history")
-        self.commit("main change")
-        head = self.git("rev-parse", "HEAD").decode().strip()
-        for before in (other, "f" * 40, head):
-            with self.subTest(before=before):
-                env = dict(ENV, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
-                           BEFORE_SHA=before, GITHUB_SHA=head)
-                with patch("ci_scope.git", side_effect=self.git):
-                    self.assert_decision(classify(env), "full", False, False)
-
     def test_real_nul_paths_and_unknown_paths_fail_closed(self):
-        self.write("app/src/main/java/space tab\tnewline\n.kt", "// synthetic\n")
-        self.commit("NUL paths")
-        self.assert_decision(self.classify_push(), "full", False, False)
-        self.git("reset", "--hard", self.base)
-        self.write("unknown\nfile", "synthetic")
-        self.commit("unknown path")
-        self.assert_decision(self.classify_push(), "full", False, False)
-
+        for branch, path in (("nul-path", "app/src/main/java/space tab\tnewline\n.kt"),
+                             ("unknown-path", "unknown\nfile")):
+            with self.subTest(path=path):
+                self.git("reset", "--hard", self.base)
+                self.git("checkout", "-qb", branch)
+                self.write(path, "synthetic\n")
+                self.commit("non-documentation path")
+                self.git("checkout", "-q", "main")
+                self.git("merge", "--no-ff", "-qm", "PR merge", branch)
+                self.assert_decision(self.classify_pr(), "full", False, False)
 
 
 class WorkflowGateTest(unittest.TestCase):
@@ -464,7 +423,7 @@ class WorkflowGateTest(unittest.TestCase):
         self.assertNotIn("paths-ignore:", trigger)
         self.assertNotIn("paths:", trigger)
         self.assertIn("workflow_dispatch:", trigger)
-        self.assertIn("push:", trigger)  # Unprotected-main migration fallback.
+        self.assertNotIn("push:", trigger)
         ready = "${{ github.event_name != 'pull_request' || (toJSON(github.event.pull_request.draft) == 'false' && github.event.action != 'converted_to_draft') }}"
         scope = self.workflow.split("  scope:\n", 1)[1].split("  core:\n", 1)[0]
         self.assertIn("    if: " + ready, scope)
@@ -617,7 +576,8 @@ done
                 ("NATIVE_OUTCOME", "android", "native_qualification"),
                 ("PERFORMANCE_OUTCOME", "android", "performance_measurement")):
             self.assertIn(variable + ": ${{ needs." + job + ".outputs." + field + " }}", gate)
-        self.assertIn("BEFORE_SHA: ${{ github.event.before }}", self.step("Classify complete event diff"))
+        self.assertNotIn("BEFORE_SHA:", self.step("Classify complete event diff"))
+        self.assertIn("fetch-depth: 2", self.workflow.split("  core:\n", 1)[0])
         self.assertIn("PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}", self.step("Classify complete event diff"))
         self.assertIn("VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}",
                       self.step("Classify complete event diff"))

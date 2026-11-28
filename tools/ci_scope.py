@@ -71,14 +71,6 @@ def is_docs_only(changes):
     )
 
 
-def docs_only(raw):
-    """Only regular Markdown in documentation locations; fail closed on invalid diffs."""
-    try:
-        return is_docs_only(parse_diff(raw))
-    except ValueError:
-        return False
-
-
 def git(*args):
     return subprocess.check_output(["git", *args], timeout=30)
 
@@ -100,15 +92,6 @@ def verified_pr_base(env):
     return base
 
 
-def verified_push_base(env):
-    head = oid(env.get("GITHUB_SHA", ""))
-    base = oid(env.get("BEFORE_SHA", ""))
-    if env.get("GITHUB_REF") != "refs/heads/main" or git("rev-parse", "HEAD").decode().strip() != head:
-        raise ValueError("push head/ref not verified")
-    git("merge-base", "--is-ancestor", base, head)
-    return base
-
-
 def manual_flag(env, name):
     value = env.get(name, "")
     if value not in {"", "false", "true"}:
@@ -121,17 +104,15 @@ def classify(env):
     if event == "workflow_dispatch":
         return Decision("full", "Manual full CI; explicit qualification inputs.",
                         manual_flag(env, "VERIFY_NATIVE_CACHE"), manual_flag(env, "MEASURE_ANDROID_BUILD"))
-    if event not in {"pull_request", "push"}:
+    if event != "pull_request":
         return Decision("full", "Unknown event; conservative full CI.", False, False)
     # An unknown diff warrants full CI; an unverified PR identity cannot authorize any merge.
-    base = verified_pr_base(env) if event == "pull_request" else None
+    base = verified_pr_base(env)
     try:
-        if event == "push":
-            base = verified_push_base(env)
         changes = parse_diff(git("diff", "--raw", "-z", "--no-renames", base, "HEAD"))
     except DIFF_ERRORS:
         return Decision("full", "Could not verify complete event diff; full CI required.", False, False)
-    if is_docs_only(changes) and (event == "push" or env.get("BASE_REF") == "main"):
+    if is_docs_only(changes) and env.get("BASE_REF") == "main":
         return Decision("docs", "Verified documentation-only diff; no build inputs changed.",
                         False, False)
     return Decision("full", "Verified event diff; routine full CI.", False, False)

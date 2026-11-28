@@ -1,5 +1,5 @@
 'use strict';
-/* HTML/CSS UX specification: presentation, local demo state and event handlers only. */
+/* Historical offline design illustration; presentation and synthetic local interactions only. */
 const PROFILES = window.DEMO_PROFILES;
 const byId = id => PROFILES.find(p=>p.id===id);
 const ROOTS = ['discover','search','saved','settings'];
@@ -332,7 +332,6 @@ function runSearch(source){
  },480);
 }
 function downloadable(filename,content,type){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);let a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2500);}
-// Zustände werden nur durch echte UI-Aktionen oder isolierte QA-Skripte gesetzt.
 function serializeEditor(){
  const f=app.querySelector('#recordEditor');
  return f?JSON.stringify([...new FormData(f)]):null;
