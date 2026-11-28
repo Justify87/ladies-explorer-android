@@ -341,7 +341,7 @@ class ProfileGestureDeviceTest {
             rule.waitUntil(10_000) { visual?.media == first }
             val hero = rule.onNodeWithTag("hero")
             assertFalse(rule.runOnIdle { requireNotNull(visual).geometry.cropped })
-            // The old full-width reserved strip swallowed this tap above the fitted image.
+            // Side taps above the fitted image must remain outside the bookmark target.
             hero.performTouchInput { click(Offset(width * .8f, height * .1f)) }
             rule.waitUntil(10_000) { visual?.media == second }
             hero.performTouchInput { click(Offset(width * .2f, height * .1f)) }

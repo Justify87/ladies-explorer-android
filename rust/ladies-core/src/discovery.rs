@@ -425,7 +425,7 @@ fn saved_people_in(
         return Err(CoreError::InvalidInput("Invalid saved people page".into()));
     }
     let predicate = kind.predicate();
-    // Count persons, including unlisted imports, under one connection guard.
+    // Include persons without displayable listings; read the total under the same connection guard.
     let total = db.query_row(
         &format!("SELECT COUNT(*) FROM person_user_state WHERE {predicate}"),
         [],

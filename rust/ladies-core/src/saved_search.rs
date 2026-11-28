@@ -531,7 +531,7 @@ fn results_using(
     Ok((cards, has_more))
 }
 
-// Rename must preserve imported definition bytes and result baseline.
+// Rename must preserve the stored definition bytes and result baseline.
 pub(crate) fn rename(core: &LadiesCore, id: String, name: String) -> Result<(), CoreError> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {
