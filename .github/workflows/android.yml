@@ -4,10 +4,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-  # Migration fallback: remove only after strict main protection is verified.
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       verify_native_cache:
@@ -22,7 +18,7 @@ on:
 permissions:
   contents: read
 
-# New commits and draft transitions supersede outdated PR checks, not main/manual builds.
+# New commits and draft transitions supersede outdated PR checks, not manual builds.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -40,8 +36,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Push ancestry needs full history; PRs need only the checked merge and its parents.
-          fetch-depth: ${{ github.event_name != 'push' && 2 || 0 }}
+          # PR scope verifies the checked merge and both parents.
+          fetch-depth: 2
           persist-credentials: false
       - name: Verify scope policy
         run: python3 -m unittest discover -s tools -p test_ci_scope.py
@@ -51,7 +47,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
-          BEFORE_SHA: ${{ github.event.before }}
           VERIFY_NATIVE_CACHE: ${{ inputs.verify_native_cache }}
           MEASURE_ANDROID_BUILD: ${{ inputs.measure_android_build }}
         run: python3 tools/ci_scope.py
