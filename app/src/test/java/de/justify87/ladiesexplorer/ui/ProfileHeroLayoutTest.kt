@@ -63,7 +63,7 @@ class ProfileHeroLayoutTest {
         val landscape = heroMediaGeometry(viewport, IntSize(1200, 300))
         assertFalse(landscape.cropped)
         assertEquals(340f, landscape.imageBounds!!.width, .01f)
-        assertEquals(85f, landscape.imageBounds!!.height, .01f)
+        assertEquals(85f, landscape.imageBounds.height, .01f)
         val tall = heroMediaGeometry(viewport, IntSize(100, 1200))
         assertFalse(tall.cropped)
         assertEquals(50f, tall.imageBounds!!.width, .01f)

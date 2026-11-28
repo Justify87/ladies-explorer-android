@@ -4,7 +4,7 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M13.4 — Testcode und Fixtures. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+M13.5 — Abhängigkeiten, Build, Tools und semantische Dokumentationspflege. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
 
 ## M13 — Dead Code & Refactoring Cleanup
 
@@ -15,17 +15,9 @@ Ziel: die integrierte Codebasis repositoryweit auf entbehrliche, abgelöste und 
 - Statische Referenzen und Compiler-/Lint-/Clippy-Diagnosen sind Hinweise, keine alleinigen Löschbeweise. Auch indirekte Aufrufer, Framework-, Manifest-, Ressourcen-, Reflection-, JNI-/FFI- und Serialisierungsverträge, Feature-Konfiguration, Skripte und Testtargets berücksichtigen. Vertikal über die betroffenen Schichten und horizontal über gemeinsame Zustände und alternative Einstiegspunkte prüfen. Abgelöste Pfade mit exklusiven Helfern, Records, Fehlern, Tests, Ressourcen und Verweisen vollständig entfernen. Gültige Produkt-, Design-, Daten-, Architektur- und Schutzverträge erhalten; insbesondere interne Schemaentwicklung, Parser-/Netzwerk-/Mediengrenzen, Cursor-/Revisions-/Owner-Verträge, Cancel-/Drain-/Epoch-Schutz und notwendige Diagnose.
 - Je Aufgabe Inventarfortschritt, konkrete Kandidaten mit Codeankern, Beleg, Aufrufern, Risiko und Entscheidung im PR festhalten. Zu Beginn die integrierten Vorgänger-PRs des Meilensteins gezielt auswerten und übernommene offene Befunde am aktuellen Stand verifizieren. Vor Abschluss jeden noch offenen Befund mit zuständiger verbleibender Aufgaben-ID, Codeanker und Grund im PR übergeben; Umfang bzw. dauerhafte Blocker der zuständigen offenen Aufgabe bei Bedarf im selben Roadmap-Diff präzisieren. Spätere Aufgaben übernehmen diese Befunde ausdrücklich und dokumentieren ihre Entscheidung. Bestätigte Befunde im eigenen Umfang ursächlich beheben; nicht einfach zur Abschlussaufgabe verschieben. Bei bereits entfernten Aufgaben keine IDs wiedereröffnen; neu belegte Folgefehler einer sachlich zuständigen noch offenen Aufgabe zuordnen, gegebenenfalls M13.6. Unabhängige konkrete Fehler nach [Pflege](#pflege) erfassen. Keine zusätzlichen Register oder historischen Einträge in der Roadmap.
 
-### M13.4 — Testcode und Fixtures
-
-**Status:** READY.
-
-Sämtliche eigenen Rust-, JVM-, Instrumentierungs- und Python-Testdateien samt Fixtures, Helfern und Testkonfiguration semantisch prüfen: obsolete API-Wrapper, redundante oder wirkungslose Assertions, tote Fixtures, mehrfach abgesicherte identische Verträge, unproduktive Mock-/Roundtrip-Tests und unnötige Kopplung. Test-Discovery, Filter, Ignore-/Skip-Bedingungen und tatsächlich ausgeführte Tests anhand vorhandener Berichte prüfen; bewusst separat ausgeführte Tests und nicht automatisch ausgeführte Instrumentierung unterscheiden. Sicherstellen, dass behauptete Fehlerfälle tatsächlich ausgelöst und beobachtet werden, positive und negative Kontrollfälle den realen Produktionsvertrag prüfen und keine unbeabsichtigten No-ops, Selbst-Joins oder unbeschränkten Wartepfade bestehen. Belegte Redundanzen konsolidieren, nützliche Regressionen auf aktive Produktionspfade übertragen; minimale testexklusive SQL-/Datenfixtures und deterministische Synchronisationshilfen beibehalten. Fehler-, Owner-/Cursor-/Zeitstempel-/Schema-/Revisions-/Cancel- und Integritätsregressionen nicht mit entfernten Produktionswrappers verlieren. Testschichten nach [AGENTS](../AGENTS.md#laufende-bereinigung); keine künstlichen Coverage-Ziele, neue Testframeworks oder realen Quellenzugriffe.
-
-**Akzeptanz/Prüfung:** Entfernte oder ersetzte Tests nachvollziehbar einem weiterhin gültigen Vertrag beziehungsweise dessen belegtem Wegfall zugeordnet; notwendige positive/negative Abdeckung, aussagekräftige Assertions und deterministische Ausführung erhalten. Betroffene Test-Discovery und Ausführung anhand verfügbarer Nachweise geprüft, unbeabsichtigte Auslassungen behoben; gezielte Prüfungen und erforderliches Gate. Instrumentierungs-Build nicht als Geräteausführung ausgeben.
-
 ### M13.5 — Abhängigkeiten, Build, Tools und semantische Dokumentationspflege
 
-**Status:** PLANNED. Abhängig von M13.4.
+**Status:** READY.
 
 Sämtliche zugeordneten Manifeste, Gradle-/Cargo-Abhängigkeiten, Cargo-Features, Gradle-Varianten, Lockfiles, native AAR-/ABI-/Ressourcenreferenzen, Skripte, Tool-Aufrufer, CI-/Build-/Testkonfiguration sowie bedingte Kompilierungs- und Ausführungspfade semantisch auf Notwendigkeit prüfen. Transitive und dynamische Nutzung bei konkretem Verdacht mit vorhandenen Dependency-/Build-Diagnosen klären. Nur belegte Altlasten entfernen; Schutzprüfungen, wirksame Konfiguration, Lizenz-/Provenance-Verträge und erforderliche Buildpfade erhalten. Kein pauschales Upgrade, kein CI-Laufzeitprojekt und keine Änderung der unabhängigen Lizenzklärung L01.
 

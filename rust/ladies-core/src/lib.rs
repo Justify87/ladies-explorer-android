@@ -1001,7 +1001,10 @@ mod tests {
     #[test]
     fn independent_core_exports_remain_consistent_under_parallel_writes() {
         use std::fs;
+        use std::sync::mpsc::channel;
         use std::thread;
+        use std::time::Duration;
+
         let first = tempfile::tempdir().unwrap();
         let second = tempfile::tempdir().unwrap();
         let a = LadiesCore::new(
@@ -1020,22 +1023,35 @@ mod tests {
                 .into_owned(),
         )
         .unwrap();
+        let timeout = Duration::from_secs(10);
         let jobs: Vec<_> = [(a.clone(), "core-alpha"), (b.clone(), "core-beta")]
             .into_iter()
             .map(|(core, label)| {
-                thread::spawn(move || {
+                let (written, checkpoint) = channel();
+                let (resume, next) = channel();
+                let job = thread::spawn(move || {
                     for n in 0..200 {
                         core.record_kotlin_event(
                             "TEST".into(),
                             format!("{label}-{n}"),
                             DiagnosticLevel::Info,
                         );
+                        if (n + 1) % 50 == 0 {
+                            written.send(n + 1).unwrap();
+                            if n + 1 < 200 {
+                                next.recv_timeout(timeout).unwrap();
+                            }
+                        }
                     }
-                })
+                });
+                (checkpoint, resume, job)
             })
             .collect();
-        for _ in 0..5 {
-            for (core, directory) in [(&a, &first), (&b, &second)] {
+        let verify = |min, max| {
+            for (core, directory, label, foreign) in [
+                (&a, &first, "core-alpha-", "core-beta-"),
+                (&b, &second, "core-beta-", "core-alpha-"),
+            ] {
                 let snapshot = core
                     .export_diagnostic_snapshot(
                         directory
@@ -1047,29 +1063,34 @@ mod tests {
                     .unwrap();
                 let data = fs::read_to_string(snapshot).unwrap();
                 assert!(data.ends_with('\n'));
+                assert!(!data.contains(foreign));
+                let ids = data
+                    .lines()
+                    .filter(|line| line.contains("component=TEST"))
+                    .map(|line| {
+                        let (_, id) = line.split_once(label).unwrap();
+                        id.parse::<usize>().unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                assert!((min..=max).contains(&ids.len()));
+                assert_eq!(ids, (0..ids.len()).collect::<Vec<_>>());
+            }
+        };
+        for end in [50, 100, 150, 200] {
+            for (checkpoint, _, _) in &jobs {
+                assert_eq!(checkpoint.recv_timeout(timeout).unwrap(), end);
+            }
+            verify(end, end);
+            if end < 200 {
+                for (_, resume, _) in &jobs {
+                    resume.send(()).unwrap();
+                }
+                verify(end, end + 50);
             }
         }
-        for job in jobs {
+        for (_, _, job) in jobs {
             job.join().unwrap();
         }
-        let export_a = fs::read_to_string(
-            a.export_diagnostic_snapshot(
-                first.path().join("exports").to_string_lossy().into_owned(),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let export_b = fs::read_to_string(
-            b.export_diagnostic_snapshot(
-                second.path().join("exports").to_string_lossy().into_owned(),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert!(export_a.contains("core-alpha-199"));
-        assert!(!export_a.contains("core-beta-"));
-        assert!(export_b.contains("core-beta-199"));
-        assert!(!export_b.contains("core-alpha-"));
     }
 }
 

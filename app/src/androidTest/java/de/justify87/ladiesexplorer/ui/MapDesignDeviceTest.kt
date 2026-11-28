@@ -13,16 +13,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import androidx.compose.ui.viewinterop.AndroidView
 import org.maplibre.android.MapLibre
@@ -110,6 +113,7 @@ class MapDesignDeviceTest {
         var testLifecycle: androidx.lifecycle.Lifecycle? = null
         val decoded = mutableListOf<String>()
         val delayed = CompletableDeferred<Unit>()
+        val oldDecodes = mutableListOf<Job>()
         val old = b.copy(thumbnailUrl = "fixture-delayed")
         val fresh = old.copy(personId = 22L, thumbnailUrl = "fixture-fresh")
         fun rendered(layer: String) = map?.let { ready ->
@@ -138,7 +142,10 @@ class MapDesignDeviceTest {
                                     source = loaded.getSource(MAP_SOURCE) as GeoJsonSource
                                     val controller = MapMarkerImages(native, ready, loaded, lifecycle) { _, url, _ ->
                                         decoded.add(url)
-                                        if (url == old.thumbnailUrl) withContext(NonCancellable) { delayed.await() }
+                                        if (url == old.thumbnailUrl) {
+                                            oldDecodes.add(requireNotNull(currentCoroutineContext()[Job]))
+                                            withContext(NonCancellable) { delayed.await() }
+                                        }
                                         photo()
                                     }
                                     images = controller
@@ -187,8 +194,8 @@ class MapDesignDeviceTest {
             rule.waitUntil(timeoutMillis = 20_000) {
                 rule.runOnIdle {
                     val group = rendered(MAP_GROUP_COUNTS).singleOrNull()
-                    group?.getNumberProperty("group_count")?.toInt() == 2 &&
-                        group != null && mapRenderedSelection(points, group) == a &&
+                    group != null && group.getNumberProperty("group_count").toInt() == 2 &&
+                        mapRenderedSelection(points, group) == a &&
                         style?.getImage(mapThumbnailId(d)) == null
                 }
             }
@@ -211,6 +218,16 @@ class MapDesignDeviceTest {
                         style?.getImage(mapThumbnailId(old)) == null
                 }
             }
+            // Force a new camera generation while the previous decode is still draining.
+            rule.runOnIdle {
+                if (oldDecodes.size == 1) {
+                    requireNotNull(images).cameraMoving()
+                    requireNotNull(images).cameraIdle()
+                }
+            }
+            rule.waitUntil(timeoutMillis = 10_000) {
+                rule.runOnIdle { oldDecodes.size >= 2 && oldDecodes.none { it.isCompleted } }
+            }
             rule.runOnIdle {
                 images?.update(listOf(fresh))
                 requireNotNull(source).setGeoJson(asFeatures(listOf(fresh), fresh.listingId))
@@ -222,7 +239,9 @@ class MapDesignDeviceTest {
                 }
             }
             delayed.complete(Unit)
-            rule.waitForIdle()
+            rule.waitUntil(timeoutMillis = 10_000) {
+                rule.runOnIdle { oldDecodes.size >= 2 && oldDecodes.all { it.isCompleted } }
+            }
             rule.runOnIdle {
                 assertNull(style?.getImage(mapThumbnailId(old)))
                 val visible = rendered(MAP_SINGLE).single()
@@ -306,7 +325,7 @@ class MapDesignDeviceTest {
         }
     }
 
-    @Test fun thumbnailDecodeUsesExistingLoaderForSyntheticLocalFileAndFallsBackOnMissingFile() {
+    @Test(timeout = 35_000) fun thumbnailDecodeUsesExistingLoaderForSyntheticLocalFileAndFallsBackOnMissingFile() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File.createTempFile("map-thumbnail-fixture", ".png", context.cacheDir)
         try {
@@ -314,13 +333,18 @@ class MapDesignDeviceTest {
                 eraseColor(BitmapColor.GREEN)
             }
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            val decoded = requireNotNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString(), file.path) })
+            fun decode(url: String, localPath: String? = null) = runBlocking {
+                withTimeout(10_000) { loadMapThumbnail(context, url, localPath) }
+            }
+            val missing = file.path + ".missing"
+            val missingUrl = Uri.fromFile(File(missing)).toString()
+            val decoded = requireNotNull(decode(missingUrl, file.path))
             assertEquals(80, decoded.width)
             assertEquals(80, decoded.height)
             assertEquals(BitmapColor.GREEN, decoded.getPixel(40, 40))
             assertEquals(BitmapColor.TRANSPARENT, decoded.getPixel(0, 0))
-            assertNotNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(file).toString(), file.path + ".missing") })
-            assertNull(runBlocking { loadMapThumbnail(context, Uri.fromFile(File(file.path + ".missing")).toString()) })
+            assertNotNull(decode(Uri.fromFile(file).toString(), missing))
+            assertNull(decode(missingUrl))
             assertEquals(BitmapColor.TRANSPARENT, mapFallbackBitmap().getPixel(0, 0))
         } finally {
             file.delete()

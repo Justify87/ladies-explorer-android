@@ -305,7 +305,7 @@ mod tests {
             let db = core.connection().unwrap();
             db.execute_batch(
                 "CREATE TEMP TRIGGER fail_price BEFORE INSERT ON price_items
-                 WHEN NEW.amount_cents=77 BEGIN SELECT RAISE(ABORT,'fixture'); END;",
+                 WHEN NEW.amount_cents=77 BEGIN SELECT RAISE(ABORT,'fixture price rollback'); END;",
             )
             .unwrap();
         }
@@ -315,8 +315,18 @@ mod tests {
             duration_minutes: None,
             amount_cents: 77,
         });
-        assert!(create(&core, listing, person, failing.clone()).is_err());
-        assert!(update(&core, listing, person, original.clone(), failing).is_err());
+        assert!(matches!(
+            create(&core, listing, person, failing.clone()),
+            Err(CoreError::Storage(reason)) if reason.contains("fixture price rollback")
+        ));
+        assert_eq!(
+            overview(&core, listing, person).unwrap().lists,
+            vec![original.clone(), older.clone()]
+        );
+        assert!(matches!(
+            update(&core, listing, person, original.clone(), failing),
+            Err(CoreError::Storage(reason)) if reason.contains("fixture price rollback")
+        ));
         assert_eq!(
             overview(&core, listing, person).unwrap().lists,
             vec![original.clone(), older.clone()]

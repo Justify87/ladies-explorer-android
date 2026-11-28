@@ -10,14 +10,12 @@ class GalleryVideoTest {
             "decode failed $path with spaces\nhttps://example.invalid/private relative/name token=secret\u0000")
         assertFalse(message.contains(path))
         assertFalse(message.contains("example.invalid"))
-        assertFalse(message.contains("/data/another"))
         assertFalse(message.contains('\n'))
         assertFalse(message.contains("secret"))
         assertFalse(message.contains("relative/name"))
         assertFalse(message.contains('\u0000'))
         assertEquals("native subsystem=ffmpeg reason=decode", message)
     }
-
 
     @Test fun onlyOrdinaryLocalContainersAreAccepted() {
         assertEquals("mov", videoDemuxer(byteArrayOf(0, 0, 0, 24, 102, 116, 121, 112)))

@@ -406,6 +406,7 @@ mod tests {
         assert_eq!(result[1].value, "mittel");
         assert_eq!(result[1].count, 2);
         assert_eq!(result[2].value, "blond");
+        assert_eq!(result[2].count, 1);
         assert_eq!(frequent(&core).unwrap(), result);
     }
 

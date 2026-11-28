@@ -512,5 +512,20 @@ mod profile_identity_tests {
             .unwrap();
         }
         assert!(!profile_identity(&core, listing).unwrap().listing_new);
+        {
+            let db = core.connection().unwrap();
+            db.execute(
+                "UPDATE listings SET first_seen_at='2000-01-01' WHERE listing_id=?1",
+                [listing],
+            )
+            .unwrap();
+            db.execute(
+                "UPDATE listing_snapshots SET published_at=datetime('now','-1 hour')
+                 WHERE listing_id=?1",
+                [listing],
+            )
+            .unwrap();
+        }
+        assert!(profile_identity(&core, listing).unwrap().listing_new);
     }
 }

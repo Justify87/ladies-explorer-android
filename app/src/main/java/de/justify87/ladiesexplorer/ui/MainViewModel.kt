@@ -1099,8 +1099,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     internal fun checkSingleSavedStatus(action: SavedPersonAction) {
-        if (!savedActionMatches(_discoverState.value, _searchUiState.value, action)) return
-        val listingId = action.row.card?.listingId ?: return
+        val listingId = savedStatusTarget(_discoverState.value, _searchUiState.value, action) ?: return
         checkSavedStatus(listingId)
     }
 

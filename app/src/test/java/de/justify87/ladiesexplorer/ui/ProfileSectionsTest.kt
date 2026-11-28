@@ -15,12 +15,15 @@ class ProfileSectionsTest {
         assertEquals(true, swipe.expanded(ProfileSection.Notes))
         assertEquals(false, swipe.expanded(ProfileSection.Analysis))
         assertEquals(false, detail.expanded(ProfileSection.Notes))
+        assertEquals(true, detail.expanded(ProfileSection.Analysis))
         swipe.toggle(ProfileSection.Notes)
+        assertEquals(false, swipe.expanded(ProfileSection.Notes))
         assertEquals(true, swipe.expanded(ProfileSection.History))
         swipe.setShowDescriptionChanges(true)
         assertEquals(false, detail.showDescriptionChanges)
         val restored = ProfileSections(swipe.entries)
         assertEquals(true, restored.expanded(ProfileSection.History))
+        assertEquals(false, restored.expanded(ProfileSection.Notes))
         assertEquals(true, restored.showDescriptionChanges)
     }
 

@@ -674,20 +674,21 @@ pub(crate) fn archive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct NeverFetch;
+    impl Fetcher for NeverFetch {
+        fn get(
+            &self,
+            _: &str,
+            _: u64,
+            _: Duration,
+            _: &RequestControl,
+        ) -> Result<Download, CoreError> {
+            panic!("unexpected media transport request")
+        }
+    }
+
     #[test]
     fn display_image_rejects_disallowed_hosts_and_cancelled_requests() {
-        struct NeverFetch;
-        impl Fetcher for NeverFetch {
-            fn get(
-                &self,
-                _: &str,
-                _: u64,
-                _: Duration,
-                _: &RequestControl,
-            ) -> Result<Download, CoreError> {
-                panic!("invalid or cancelled request must not fetch")
-            }
-        }
         let control = RequestControl::new();
         assert!(display_image_with("https://example.org/a.jpg", &NeverFetch, &control).is_err());
         assert!(
@@ -871,8 +872,14 @@ mod tests {
         let first =
             archive_with(&core, snapshot, false, &fetcher, &RequestControl::default()).unwrap();
         assert_eq!((first.downloaded, first.failed), (2, 0));
-        let again =
-            archive_with(&core, snapshot, false, &fetcher, &RequestControl::default()).unwrap();
+        let again = archive_with(
+            &core,
+            snapshot,
+            false,
+            &NeverFetch,
+            &RequestControl::default(),
+        )
+        .unwrap();
         assert_eq!((again.reused, again.downloaded), (2, 0));
         let db = core.connection().unwrap();
         let assets: i64 = db
@@ -926,20 +933,14 @@ mod tests {
         db.execute("UPDATE media_sources SET revision_token='rev1'", [])
             .unwrap();
         drop(db);
-        struct Offline;
-        impl Fetcher for Offline {
-            fn get(
-                &self,
-                _: &str,
-                _: u64,
-                _: Duration,
-                _: &RequestControl,
-            ) -> Result<Download, CoreError> {
-                Err(CoreError::Media("No network allowed".into()))
-            }
-        }
-        let reused =
-            archive_with(&core, second, false, &Offline, &RequestControl::default()).unwrap();
+        let reused = archive_with(
+            &core,
+            second,
+            false,
+            &NeverFetch,
+            &RequestControl::default(),
+        )
+        .unwrap();
         assert_eq!((reused.reused, reused.failed), (2, 0));
         let db = core.connection().unwrap();
         let count:i64=db.query_row(
@@ -987,19 +988,7 @@ mod tests {
         let (_temp, core, snapshot, _) = fixture();
         let control = RequestControl::default();
         control.cancel();
-        struct Never;
-        impl Fetcher for Never {
-            fn get(
-                &self,
-                _: &str,
-                _: u64,
-                _: Duration,
-                _: &RequestControl,
-            ) -> Result<Download, CoreError> {
-                panic!("Cancelled archive attempted an HTTP request")
-            }
-        }
-        let report = archive_with(&core, snapshot, false, &Never, &control).unwrap();
+        let report = archive_with(&core, snapshot, false, &NeverFetch, &control).unwrap();
         assert_eq!(
             (report.downloaded, report.failed, report.deferred),
             (0, 0, 2)

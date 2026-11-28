@@ -374,7 +374,7 @@ mod tests {
             let db = core.connection().unwrap();
             db.execute_batch(
                 "CREATE TEMP TRIGGER fail_service BEFORE INSERT ON encounter_services
-                 WHEN NEW.service_name='Fail' BEGIN SELECT RAISE(ABORT,'fixture'); END;",
+                 WHEN NEW.service_name='Fail' BEGIN SELECT RAISE(ABORT,'fixture encounter rollback'); END;",
             )
             .unwrap();
         }
@@ -384,8 +384,18 @@ mod tests {
             name: "Fail".into(),
             amount_cents: None,
         });
-        assert!(create(&core, listing, person, failing.clone()).is_err());
-        assert!(update(&core, listing, person, original.clone(), failing).is_err());
+        assert!(matches!(
+            create(&core, listing, person, failing.clone()),
+            Err(CoreError::Storage(reason)) if reason.contains("fixture encounter rollback")
+        ));
+        assert_eq!(
+            list(&core, listing, person).unwrap(),
+            vec![original.clone()]
+        );
+        assert!(matches!(
+            update(&core, listing, person, original.clone(), failing),
+            Err(CoreError::Storage(reason)) if reason.contains("fixture encounter rollback")
+        ));
         assert_eq!(
             list(&core, listing, person).unwrap(),
             vec![original.clone()]

@@ -1112,13 +1112,19 @@ mod tests {
     #[test]
     fn imported_search_definition_converts_ranges_and_source_filters() {
         let legacy = r#"{"city":"Leipzig","radius":30,"category":"escort","ageMin":22,"ageMax":45,"heightMin":150,"heightMax":190,"selected":{"figur":["schlank"]},"local":{"videoOnly":true}}"#;
-        let q = decode_definition(legacy).unwrap().query;
+        let definition = decode_definition(legacy).unwrap();
+        assert!(definition.local.video_only);
+        let q = definition.query;
         assert_eq!(
             (q.city.as_str(), q.radius_km, q.age_min, q.age_max),
             ("Leipzig", 30, 22, 45)
         );
         assert_eq!(q.category, "escort");
-        assert!(q.filters_json.contains("schlank"));
+        assert_eq!((q.height_min, q.height_max), (150, 190));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&q.filters_json).unwrap(),
+            serde_json::json!({"figur":["schlank"]})
+        );
     }
 
     #[test]
@@ -1321,13 +1327,16 @@ mod tests {
         persist_results(&core, &id, &result, &stored_definition, version).unwrap();
         core.rename_saved_search(id.clone(), "Umbenannt".into())
             .unwrap();
-        assert!(list(&core).unwrap()[0].last_run_at.is_some());
+        let renamed = list(&core).unwrap().remove(0);
+        assert_eq!(renamed.name, "Umbenannt");
+        assert!(renamed.last_run_at.is_some());
         result.profiles = vec![card(lb, b, "102"), card(lc, c, "103")];
         let (stored_definition, version) = definition(&core, &id).unwrap();
         persist_results(&core, &id, &result, &stored_definition, version).unwrap();
         let stored = window(&core, id.clone(), 100).unwrap().cards;
         assert_eq!(stored.len(), 2);
         assert_eq!(stored[0].listing_id, Some(lb));
+        assert_eq!(stored[1].listing_id, Some(lc));
         let db = core.connection().unwrap();
         let delta: String = db
             .query_row(

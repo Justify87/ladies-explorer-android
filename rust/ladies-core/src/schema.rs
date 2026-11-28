@@ -744,21 +744,27 @@ mod tests {
         drop(db);
         let mut db = Connection::open(&path).unwrap();
         migrate(&mut db).unwrap();
-        let row: (String, i64, i64) = db
+        let row: (String, i64, i64, String) = db
             .query_row(
-                "SELECT saved_search_id, definition_version, unread_new_results
+                "SELECT saved_search_id, definition_version, unread_new_results, last_delta_json
              FROM saved_searches",
                 [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .unwrap();
-        assert_eq!(row, ("uuid-abc-4711".into(), 7, 1));
-        let result_key: String = db
-            .query_row("SELECT result_key FROM saved_search_results", [], |r| {
-                r.get(0)
-            })
+        assert_eq!(row, ("uuid-abc-4711".into(), 7, 1, "{\"new\":2}".into()));
+        let result: (String, String, i64, i64, i64) = db
+            .query_row(
+                "SELECT result_key, snapshot_json, position, present, visible
+                 FROM saved_search_results WHERE saved_search_id=?1",
+                ["uuid-abc-4711"],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
             .unwrap();
-        assert_eq!(result_key, "source-ad-id");
+        assert_eq!(
+            result,
+            ("source-ad-id".into(), "{\"ad\":1}".into(), 1, 1, 1)
+        );
         db.execute(
             "DELETE FROM saved_searches WHERE saved_search_id = ?1",
             ["uuid-abc-4711"],
