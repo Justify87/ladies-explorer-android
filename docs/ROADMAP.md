@@ -4,7 +4,17 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-Kein regulärer Entwicklungsschritt. Die unabhängigen Aufgaben erfordern einen einschlägigen Auftrag; L01 bleibt vor weiterer öffentlicher Distribution zu klären.
+SEC-D2D-01 — Android-Gerätetransfer privater App-Daten ausschließen. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
+
+## Reguläre Aufgaben
+
+### SEC-D2D-01 — Android-Gerätetransfer privater App-Daten ausschließen
+
+**Status:** READY.
+
+Konkrete Schutzlücke: `app/src/main/AndroidManifest.xml` setzt nur `android:allowBackup="false"`; `tools/check_architecture.py` (ARC-08) prüft in Bezug auf Backup nur dieses Attribut. `CoreStore.kt` legt `ladies.sqlite` unter `context.filesDir` und die Einstellungen in den SharedPreferences `diagnostics` und `explorer` ab. Auch zugehörige private Medien, Diagnose- und sonstige App-Daten sind einzubeziehen. Bei Android 12+ kann es laut [Android-Plattformvertrag](https://developer.android.com/about/versions/12/behavior-changes-12#backup-restore) je nach Hersteller trotz deaktiviertem Backup Gerät-zu-Gerät-Übertragungen geben. Dies lässt eine vom [Produktvertrag](PRODUCT.md#produktziel-und-grenzen) ausgeschlossene Nutzerdatenmigration zu; ein tatsächlich erfolgter Datentransfer ist nicht belegt.
+
+**Akzeptanz/Prüfung:** Auf unterstützten Android-Versionen (Min-API 29, Target-SDK 37) private App-Daten aus den anwendbaren Backup- und Transferpfaden ausschließen: Legacy-Regeln für API 29–30 sowie getrennte Cloud-Backup- und Gerätetransferregeln ab API 31 gemäß [Auto Backup](https://developer.android.com/identity/data/autobackup); die Anwendbarkeit der Cross-Platform-Transferregeln ab API 36.1 prüfen und erforderliche Ausschlüsse berücksichtigen. Tatsächliche Speicherorte und Regelbereiche abgleichen, `allowBackup="false"` und bestehende Schutzregeln erhalten. Quell- und gebaute APK-Konfiguration einschließlich referenzierter Regeln mit vorhandenen Architekturprüfmitteln und positiven/negativen Regressionen absichern; Hersteller-/Gerätegrenzen offenlegen, tatsächliche Geräteübertragung nur bei entsprechendem Nachweis behaupten. Keine neue Import-/Exportfunktion, keine Änderung der Lizenzaufgabe.
 
 ## Unabhängige Aufgaben
 
@@ -13,14 +23,6 @@ Kein regulärer Entwicklungsschritt. Die unabhängigen Aufgaben erfordern einen 
 **Status:** READY.
 
 libmpv/FFmpeg-AAR-Lizenz, enthaltene Bibliotheken und ABIs, Corresponding Source und Weiterverteilungspflichten einschließlich bereits öffentlich verfügbarer Debug-Artefakte klären ([NOTICE](../NOTICE)). Keine Lizenzfreigabe oder Behauptung eines Rechtsverstoßes allein aus der Wrapper-Lizenz. Vor weiterer öffentlicher Distribution klären, unabhängig vom lokalen Projektabschluss.
-
-### SEC-D2D-01 — Android-Gerätetransfer privater App-Daten ausschließen
-
-**Status:** READY.
-
-Konkrete Schutzlücke: `app/src/main/AndroidManifest.xml` setzt nur `android:allowBackup="false"`; `tools/check_architecture.py` (ARC-08) prüft derzeit nur dieses Attribut. Bei Android 12+ kann es laut [Android-Plattformvertrag](https://developer.android.com/about/versions/12/behavior-changes-12#backup-restore) je nach Hersteller dennoch Gerät-zu-Gerät-Übertragungen geben. Das widerspricht dem Ausschluss nutzerseitiger Datenmigration in [PRODUCT](PRODUCT.md#produktziel-und-grenzen); ein tatsächlich erfolgter Datentransfer ist nicht belegt.
-
-**Akzeptanz/Prüfung:** Plattformkonforme explizite Ausschlüsse für private App-Daten bei Backup und unterstützten Transferarten passend zu den unterstützten Android-Versionen; vorhandene Schutzregeln nicht abschwächen. Quell- und gebaute APK-Konfiguration einschließlich referenzierter Regeln mit vorhandenen Architekturprüfmitteln und positiven/negativen Regressionen absichern; Hersteller-/Gerätegrenzen offenlegen, reale Geräteübertragung nur bei entsprechendem Nachweis behaupten. Keine Import-/Exportfunktion oder Änderung der Lizenzaufgabe.
 
 ## Pflege
 
