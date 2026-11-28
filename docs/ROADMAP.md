@@ -4,24 +4,7 @@ Einzige operative Quelle für offene Aufgaben, Reihenfolge, Status und Abnahme. 
 
 ## Nächster Entwicklungsschritt
 
-M13.6 — Abschluss der repositoryweiten Bereinigung. L01 bleibt unabhängig vor weiterer öffentlicher Distribution zu klären.
-
-## M13 — Dead Code & Refactoring Cleanup
-
-Ziel: die integrierte Codebasis repositoryweit auf entbehrliche, abgelöste und redundante Implementierungen prüfen und belegte Befunde ursächlich bereinigen. Kein neues Produktverhalten, keine pauschale Neustrukturierung, keine Wiedereröffnung historischer Aufgaben ohne aktuellen Befund. Die Aufgaben sind sequenziell; Durchführung und Abschluss nach [AGENTS](../AGENTS.md#arbeitszyklus), [laufender Bereinigung](../AGENTS.md#laufende-bereinigung), [README](../README.md#prüfung--ci) und [Pflege](#pflege).
-
-**M13-spezifische Prüfmethode und Übergabe:**
-- Jede versionierte Datei im Inventar einer sachlich zuständigen Aufgabe zuordnen und im Verlauf des Meilensteins ihrer Funktion entsprechend semantisch prüfen. Eigenen Quellcode dateiweise tiefgehend untersuchen, einschließlich Rust-interner Pfade ohne FFI-Bezug. Generierte Dateien, Fremdcode, Binärdaten und Assets hinsichtlich Herkunft, Einbindung, Nutzung und Schutzbedarf prüfen, nicht blind umschreiben. Nicht prüfbare Bereiche und Gründe im PR offenlegen.
-- Statische Referenzen und Compiler-/Lint-/Clippy-Diagnosen sind Hinweise, keine alleinigen Löschbeweise. Auch indirekte Aufrufer, Framework-, Manifest-, Ressourcen-, Reflection-, JNI-/FFI- und Serialisierungsverträge, Feature-Konfiguration, Skripte und Testtargets berücksichtigen. Vertikal über die betroffenen Schichten und horizontal über gemeinsame Zustände und alternative Einstiegspunkte prüfen. Abgelöste Pfade mit exklusiven Helfern, Records, Fehlern, Tests, Ressourcen und Verweisen vollständig entfernen. Gültige Produkt-, Design-, Daten-, Architektur- und Schutzverträge erhalten; insbesondere interne Schemaentwicklung, Parser-/Netzwerk-/Mediengrenzen, Cursor-/Revisions-/Owner-Verträge, Cancel-/Drain-/Epoch-Schutz und notwendige Diagnose.
-- Je Aufgabe Inventarfortschritt, konkrete Kandidaten mit Codeankern, Beleg, Aufrufern, Risiko und Entscheidung im PR festhalten. Zu Beginn die integrierten Vorgänger-PRs des Meilensteins gezielt auswerten und übernommene offene Befunde am aktuellen Stand verifizieren. Vor Abschluss jeden noch offenen Befund mit zuständiger verbleibender Aufgaben-ID, Codeanker und Grund im PR übergeben; Umfang bzw. dauerhafte Blocker der zuständigen offenen Aufgabe bei Bedarf im selben Roadmap-Diff präzisieren. Spätere Aufgaben übernehmen diese Befunde ausdrücklich und dokumentieren ihre Entscheidung. Bestätigte Befunde im eigenen Umfang ursächlich beheben; nicht einfach zur Abschlussaufgabe verschieben. Bei bereits entfernten Aufgaben keine IDs wiedereröffnen; neu belegte Folgefehler einer sachlich zuständigen noch offenen Aufgabe zuordnen, gegebenenfalls M13.6. Unabhängige konkrete Fehler nach [Pflege](#pflege) erfassen. Keine zusätzlichen Register oder historischen Einträge in der Roadmap.
-
-### M13.6 — Abschluss der repositoryweiten Bereinigung
-
-**Status:** READY.
-
-Inventarfortschritt und übergebene Kandidaten aus allen integrierten M13-PRs gegen den tatsächlich integrierten Stand abgleichen. Verfügbare Compiler-/Lint-/Clippy-, Architektur-, Export-, Build- und Testdiagnosen der relevanten Prüfungen dem geprüften Code zuordnen und auf bestätigte Altlasten, Folgefehler und verwaiste schichtübergreifende Referenzen auswerten; ein grünes Gate allein ersetzt diese Auswertung nicht. Fehlende oder abgelaufene Berichte sowie daraus folgende Prüfgrenzen offenlegen; bei konkretem ungeklärtem Risiko notwendige Nachweise mit bestehenden gezielten Prüfmitteln nachholen. Nur konkrete verbleibende M13-Befunde ursächlich beseitigen; notwendige Pfade oder bloße Stilhinweise nicht künstlich zum Dead Code erklären. Kein erneuter vollständiger Audit ohne konkreten Anlass. Bei reinem Registerabschluss ausreichende integrierte Full-CI-Belege zuordnen und das erforderliche Dokumentationsgate nutzen; kein zusätzlicher Full-CI-Lauf allein zum Abschluss. Bei Code-/Build-relevanten Änderungen gilt das vollständige Gate.
-
-**Akzeptanz/Prüfung:** Dateiinventar und tatsächliche Prüfabdeckung aller Aufgaben abgeglichen; jeder belegte Kandidat nachvollziehbar erledigt, begründet erhalten, als unbegründet verworfen oder als tatsächlich unabhängige konkrete offene Aufgabe erfasst. Keine unbegründeten Reste und kein behaupteter Vollständigkeitsnachweis jenseits der erfolgten Prüfungen. Gültige Funktionen, Architektur-/Datenverträge und Schutztests erhalten. M13-Abschluss im Draft nach [Pflege](#pflege) vorbereiten; mit erfolgreichem Gate und Merge entfällt der gesamte Meilenstein, L01 bleibt erhalten.
+Kein regulärer Entwicklungsschritt. Die unabhängigen Aufgaben erfordern einen einschlägigen Auftrag; L01 bleibt vor weiterer öffentlicher Distribution zu klären.
 
 ## Unabhängige Aufgaben
 
@@ -30,6 +13,14 @@ Inventarfortschritt und übergebene Kandidaten aus allen integrierten M13-PRs ge
 **Status:** READY.
 
 libmpv/FFmpeg-AAR-Lizenz, enthaltene Bibliotheken und ABIs, Corresponding Source und Weiterverteilungspflichten einschließlich bereits öffentlich verfügbarer Debug-Artefakte klären ([NOTICE](../NOTICE)). Keine Lizenzfreigabe oder Behauptung eines Rechtsverstoßes allein aus der Wrapper-Lizenz. Vor weiterer öffentlicher Distribution klären, unabhängig vom lokalen Projektabschluss.
+
+### SEC-D2D-01 — Android-Gerätetransfer privater App-Daten ausschließen
+
+**Status:** READY.
+
+Konkrete Schutzlücke: `app/src/main/AndroidManifest.xml` setzt nur `android:allowBackup="false"`; `tools/check_architecture.py` (ARC-08) prüft derzeit nur dieses Attribut. Bei Android 12+ kann es laut [Android-Plattformvertrag](https://developer.android.com/about/versions/12/behavior-changes-12#backup-restore) je nach Hersteller dennoch Gerät-zu-Gerät-Übertragungen geben. Das widerspricht dem Ausschluss nutzerseitiger Datenmigration in [PRODUCT](PRODUCT.md#produktziel-und-grenzen); ein tatsächlich erfolgter Datentransfer ist nicht belegt.
+
+**Akzeptanz/Prüfung:** Plattformkonforme explizite Ausschlüsse für private App-Daten bei Backup und unterstützten Transferarten passend zu den unterstützten Android-Versionen; vorhandene Schutzregeln nicht abschwächen. Quell- und gebaute APK-Konfiguration einschließlich referenzierter Regeln mit vorhandenen Architekturprüfmitteln und positiven/negativen Regressionen absichern; Hersteller-/Gerätegrenzen offenlegen, reale Geräteübertragung nur bei entsprechendem Nachweis behaupten. Keine Import-/Exportfunktion oder Änderung der Lizenzaufgabe.
 
 ## Pflege
 
